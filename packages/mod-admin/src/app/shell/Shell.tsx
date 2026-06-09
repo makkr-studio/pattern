@@ -7,6 +7,7 @@ import { useTheme } from "../lib/theme";
 import { Icon } from "../components/icon";
 import { Sun, Moon, Search } from "../components/icon";
 import { CommandPalette, useCommandHotkey } from "./CommandPalette";
+import { TooltipHost } from "../components/Tooltip";
 
 /** A sensible default nav if the manifest hasn't loaded yet (the admin's own). */
 const FALLBACK_MENU: MenuEntry[] = [
@@ -96,6 +97,7 @@ export function Shell() {
       </main>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <TooltipHost />
     </div>
   );
 }

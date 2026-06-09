@@ -7,6 +7,8 @@ export interface OpNodeData extends Record<string, unknown> {
   op: string;
   title?: string;
   comment?: string;
+  /** The op's description (markdown) — surfaced as a node tooltip. */
+  description?: string;
   config: Record<string, unknown>;
   inputs: PortInfo[];
   outputs: PortInfo[];
@@ -78,7 +80,7 @@ export function buildFlow(doc: WorkflowDoc, opMap: OpMap): { nodes: RFNode<OpNod
       id: n.id,
       type: "op",
       position: { x: ui.x, y: ui.y },
-      data: { op: n.op, title: n.title, comment: n.comment, config: (n.config as Record<string, unknown>) ?? {}, inputs, outputs, boundary: op?.boundary },
+      data: { op: n.op, title: n.title, comment: n.comment, description: op?.description, config: (n.config as Record<string, unknown>) ?? {}, inputs, outputs, boundary: op?.boundary },
     };
   });
   const edges: RFEdge[] = doc.edges.map((e, i) => {

@@ -64,6 +64,7 @@ export const timeOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.time.add",
+    description: "Adds a duration to a timestamp (ms). Input `{ timestamp }`; config `{ amount, unit }`.",
     inputs: { timestamp: required(num) },
     output: num,
     config: duration,
@@ -71,6 +72,7 @@ export const timeOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.time.subtract",
+    description: "Subtracts a duration from a timestamp (ms). Input `{ timestamp }`; config `{ amount, unit }`.",
     inputs: { timestamp: required(num) },
     output: num,
     config: duration,

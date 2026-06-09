@@ -9,23 +9,42 @@ import { defineOp, value, z } from "./helpers.js";
 import { castEnvValue, isEnvUnset, EnvConfigError } from "../env-config.js";
 import type { OpDefinition } from "../types.js";
 
-const literal = (type: string, schema: z.ZodType, configKey = "value"): OpDefinition =>
+const literal = (
+  type: string,
+  schema: z.ZodType,
+  description: string,
+  configKey = "value",
+): OpDefinition =>
   defineOp({
     type,
     title: type,
+    description,
     inputs: {},
     outputs: { out: value(schema) },
     config: z.object({ [configKey]: schema }),
     execute: (ctx) => ({ out: (ctx.config as Record<string, unknown>)[configKey] }),
   });
 
-export const constString = literal("core.const.string", z.string());
-export const constNumber = literal("core.const.number", z.number());
-export const constBoolean = literal("core.const.boolean", z.boolean());
+export const constString = literal(
+  "core.const.string",
+  z.string(),
+  "Emits a constant string from `config.value`. Output `{ out }`.",
+);
+export const constNumber = literal(
+  "core.const.number",
+  z.number(),
+  "Emits a constant number from `config.value`. Output `{ out }`.",
+);
+export const constBoolean = literal(
+  "core.const.boolean",
+  z.boolean(),
+  "Emits a constant boolean from `config.value`. Output `{ out }`.",
+);
 
 export const constNull = defineOp({
   type: "core.const.null",
   title: "core.const.null",
+  description: "Emits a constant `null`. Output `{ out }`.",
   inputs: {},
   outputs: { out: value(z.null()) },
   execute: () => ({ out: null }),
@@ -34,6 +53,7 @@ export const constNull = defineOp({
 export const constObject = defineOp({
   type: "core.const.object",
   title: "core.const.object",
+  description: "Emits a constant object from `config.value`. Output `{ out }`.",
   inputs: {},
   outputs: { out: value(z.record(z.string(), z.unknown())) },
   config: z.object({ value: z.record(z.string(), z.unknown()) }),
@@ -43,6 +63,7 @@ export const constObject = defineOp({
 export const constArray = defineOp({
   type: "core.const.array",
   title: "core.const.array",
+  description: "Emits a constant array from `config.value`. Output `{ out }`.",
   inputs: {},
   outputs: { out: value(z.array(z.unknown())) },
   config: z.object({ value: z.array(z.unknown()) }),
