@@ -77,6 +77,8 @@ export interface CommandDef {
   label: string;
   /** The op type or workflow id to run, or a client-side action key. */
   run?: string;
+  /** Route to navigate to when chosen (e.g. a contributed page's path). */
+  path?: string;
   icon?: string;
   /** Grouping in the palette. */
   group?: string;

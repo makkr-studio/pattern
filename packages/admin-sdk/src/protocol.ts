@@ -42,10 +42,23 @@ export interface RouteInfo {
   port?: number;
 }
 
+/** What an audit entry records — mirrors the backend's control-plane union so
+ *  SDK consumers can switch-exhaust on it. */
+export type AuditAction =
+  | "create"
+  | "save"
+  | "activate"
+  | "rollback"
+  | "disable"
+  | "enable"
+  | "delete"
+  | "fork"
+  | "import";
+
 export interface AuditEntry {
   at: string;
   principal: unknown;
-  action: string;
+  action: AuditAction;
   version?: VersionId;
   note?: string;
 }
@@ -146,6 +159,12 @@ export interface SpanIoSample {
   truncated?: boolean;
 }
 
+export interface SpanEvent {
+  name: string;
+  time: number;
+  attributes?: Record<string, unknown>;
+}
+
 export interface SpanData {
   traceId: string;
   spanId: string;
@@ -156,6 +175,7 @@ export interface SpanData {
   attributes: Record<string, unknown>;
   status: "unset" | "ok" | "error";
   error?: { message: string; stack?: string };
+  events?: SpanEvent[];
   io?: { inputs?: Record<string, SpanIoSample>; outputs?: Record<string, SpanIoSample> };
 }
 
