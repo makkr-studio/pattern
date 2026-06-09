@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -9,6 +9,7 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Connection,
   type Edge as RFEdge,
   type Node as RFNode,
@@ -23,7 +24,7 @@ import { Badge, GlassPanel, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson } from "../components/FormFromSchema";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
-import { Rocket, Play } from "../components/icon";
+import { Rocket, Play, Redo2, Undo2 } from "../components/icon";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 
 const nodeTypes = { op: OpNode };
@@ -31,6 +32,11 @@ const nodeTypes = { op: OpNode };
 function EditorInner() {
   const { slug } = useParams();
   const isNew = !slug;
+  const navigate = useNavigate();
+  const location = useLocation();
+  /** A starting doc handed over by the template picker (new workflows only). */
+  const template = (location.state as { template?: WorkflowDoc } | null)?.template;
+  const rf = useReactFlow<RFNode<OpNodeData>, RFEdge>();
   const { data: opsData } = useOps();
   const { data: wfData, isLoading } = useWorkflow(slug);
   const save = useSaveWorkflow();
@@ -48,6 +54,60 @@ function EditorInner() {
   const baseDoc = useRef<WorkflowDoc>({ id: slug ?? "untitled", nodes: [], edges: [] });
   const loadedFor = useRef<string | null>(null);
 
+  // ── Undo/redo (spec §15.12): a snapshot stack over the canvas. Snapshots are
+  // taken *before* each structural mutation (add/connect/delete/drag/config
+  // burst), so ⌘Z returns to the state the user last saw.
+  type Snap = { nodes: RFNode<OpNodeData>[]; edges: RFEdge[] };
+  const history = useRef<{ past: Snap[]; future: Snap[] }>({ past: [], future: [] });
+  const [histVersion, setHistVersion] = useState(0); // re-render for disabled states
+  const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const takeSnap = useCallback((): Snap => ({ nodes: rf.getNodes(), edges: rf.getEdges() }), [rf]);
+  const pushHistory = useCallback(() => {
+    history.current.past.push(takeSnap());
+    if (history.current.past.length > 100) history.current.past.shift();
+    history.current.future = [];
+    setHistVersion((v) => v + 1);
+  }, [takeSnap]);
+  /** Leading-edge capture for typing bursts: snapshot before the first change,
+   *  then swallow captures until the burst goes quiet. */
+  const pushHistoryBurst = useCallback(() => {
+    if (burstTimer.current === null) pushHistory();
+    else clearTimeout(burstTimer.current);
+    burstTimer.current = setTimeout(() => (burstTimer.current = null), 800);
+  }, [pushHistory]);
+
+  const undo = useCallback(() => {
+    const prev = history.current.past.pop();
+    if (!prev) return;
+    history.current.future.push(takeSnap());
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+    setHistVersion((v) => v + 1);
+  }, [takeSnap, setNodes, setEdges]);
+  const redo = useCallback(() => {
+    const next = history.current.future.pop();
+    if (!next) return;
+    history.current.past.push(takeSnap());
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setHistVersion((v) => v + 1);
+  }, [takeSnap, setNodes, setEdges]);
+
+  // ⌘Z / ⌘⇧Z — skipped while a text field has focus (native undo wins there).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
   // Initialize the canvas from the live doc (once per slug, after ops load).
   // Wait for the workflow query too, so we don't lock in an empty doc when
   // `useOps` happens to resolve before `useWorkflow`.
@@ -57,20 +117,27 @@ function EditorInner() {
     const key = slug ?? "__new__";
     if (loadedFor.current === key) return;
     loadedFor.current = key;
-    const doc: WorkflowDoc = wfData?.liveDoc ?? { id: slug ?? "untitled", name: slug, nodes: [], edges: [] };
+    const doc: WorkflowDoc =
+      wfData?.liveDoc ?? (isNew && template ? template : { id: slug ?? "untitled", name: slug, nodes: [], edges: [] });
     baseDoc.current = doc;
+    history.current = { past: [], future: [] };
     const flow = buildFlow(doc, opMap);
     setNodes(flow.nodes);
     setEdges(flow.edges);
-  }, [opMap, slug, wfData, isNew, setNodes, setEdges]);
+  }, [opMap, slug, wfData, isNew, template, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (c: Connection) => {
-      const kind = outputKind(c.source!, c.sourceHandle ?? "out", toDoc(baseDoc.current, nodes, edges), opMap);
+      // Read live canvas state from the RF store — the closed-over `nodes`/
+      // `edges` snapshot can lag pointer-driven events (rapid connects).
+      const curNodes = rf.getNodes();
+      const curEdges = rf.getEdges();
+      pushHistory();
+      const kind = outputKind(c.source!, c.sourceHandle ?? "out", toDoc(baseDoc.current, curNodes, curEdges), opMap);
       setEdges((eds) => addEdge({ ...c, type: "smoothstep", animated: kind === "stream", style: edgeStyle(kind) }, eds));
       // Connection assist (T2): verify and flag if incompatible.
-      const fromNode = nodes.find((n) => n.id === c.source);
-      const toNode = nodes.find((n) => n.id === c.target);
+      const fromNode = curNodes.find((n) => n.id === c.source);
+      const toNode = curNodes.find((n) => n.id === c.target);
       if (fromNode && toNode) {
         void api
           .portsCompatible(
@@ -82,10 +149,27 @@ function EditorInner() {
           });
       }
     },
-    [nodes, edges, opMap, setEdges],
+    [rf, opMap, setEdges, pushHistory],
+  );
+
+  // Capture deletions (canvas ⌫) — other change kinds flow through untouched.
+  const onNodesChangeTracked: typeof onNodesChange = useCallback(
+    (changes) => {
+      if (changes.some((ch) => ch.type === "remove")) pushHistory();
+      onNodesChange(changes);
+    },
+    [onNodesChange, pushHistory],
+  );
+  const onEdgesChangeTracked: typeof onEdgesChange = useCallback(
+    (changes) => {
+      if (changes.some((ch) => ch.type === "remove")) pushHistory();
+      onEdgesChange(changes);
+    },
+    [onEdgesChange, pushHistory],
   );
 
   const addNode = (op: OpInfo) => {
+    pushHistory();
     const base = op.type.split(".").slice(-1)[0]!;
     let id = base;
     let i = 1;
@@ -106,6 +190,17 @@ function EditorInner() {
     return { ...toDoc(baseDoc.current, nodes, edges), id: targetSlug, name: baseDoc.current.name ?? targetSlug };
   };
 
+  /** After a successful save the canvas doc IS the base — keep the ref in sync
+   *  so later `currentDoc()` calls carry the saved identity/metadata, and move
+   *  a brand-new workflow onto its real URL. */
+  const adoptSaved = (doc: WorkflowDoc) => {
+    baseDoc.current = doc;
+    if (isNew) {
+      loadedFor.current = doc.id; // canvas already shows this doc — don't reload
+      navigate(`/editor/${doc.id}`, { replace: true });
+    }
+  };
+
   const onSave = async () => {
     const doc = currentDoc();
     if (isNew && !newSlug) {
@@ -114,17 +209,23 @@ function EditorInner() {
     }
     const res = await save.mutateAsync({ slug: doc.id, doc, note: "edited in admin" });
     setIssues(res.issues);
+    if (!res.issues.length) adoptSaved(doc);
     setNotice(res.issues.length ? `${res.issues.length} validation issue(s)` : `Saved ${res.version?.id}. Deploy to activate.`);
   };
 
   const onDeploy = async () => {
     const doc = currentDoc();
+    if (isNew && !newSlug) {
+      setNotice("Enter a slug to save the new workflow.");
+      return;
+    }
     const saved = await save.mutateAsync({ slug: doc.id, doc, note: "deploy" });
     if (saved.issues.length) {
       setIssues(saved.issues);
       setNotice(`${saved.issues.length} validation issue(s) — fix before deploying.`);
       return;
     }
+    adoptSaved(doc);
     const res = await deploy.mutateAsync({ slug: doc.id, version: saved.version!.id, swap: false });
     setNotice(res.ok ? `Deployed ${doc.id} ${saved.version!.id} 🚀` : `Route conflict with: ${res.conflicts.map((c) => c.conflictsWith).join(", ")}`);
   };
@@ -148,6 +249,27 @@ function EditorInner() {
         )}
         <div className="ml-auto flex items-center gap-2">
           {notice && <span className="text-muted max-w-md truncate text-xs">{notice}</span>}
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Undo (⌘Z)"
+            title="Undo (⌘Z)"
+            onClick={undo}
+            disabled={history.current.past.length === 0}
+            data-hist={histVersion}
+          >
+            <Undo2 size={14} />
+          </NeonButton>
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Redo (⌘⇧Z)"
+            title="Redo (⌘⇧Z)"
+            onClick={redo}
+            disabled={history.current.future.length === 0}
+          >
+            <Redo2 size={14} />
+          </NeonButton>
           <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
             <Play size={14} /> Run
           </NeonButton>
@@ -169,9 +291,10 @@ function EditorInner() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={onNodesChangeTracked}
+            onEdgesChange={onEdgesChangeTracked}
             onConnect={onConnect}
+            onNodeDragStart={() => pushHistory()}
             onNodeClick={(_e, n) => setSelected(n.id)}
             onPaneClick={() => setSelected(null)}
             nodeTypes={nodeTypes}
@@ -200,12 +323,14 @@ function EditorInner() {
               key={selectedNode.id}
               node={selectedNode}
               op={opMap.get(selectedNode.data.op)}
-              onChange={(config) =>
-                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)))
-              }
-              onMeta={(meta) =>
-                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...meta } } : n)))
-              }
+              onChange={(config) => {
+                pushHistoryBurst();
+                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)));
+              }}
+              onMeta={(meta) => {
+                pushHistoryBurst();
+                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...meta } } : n)));
+              }}
             />
           ) : (
             <p className="text-muted text-sm">Select a node to edit its config. Drag from a palette op to add a node; drag between handles to connect.</p>
@@ -281,7 +406,7 @@ function Inspector({
       <div className="mt-4 mb-2 flex items-center justify-between">
         <span className="text-muted text-xs font-semibold uppercase tracking-wider">Config</span>
         {hasSchema && (
-          <button className="text-muted text-[10px] underline" onClick={() => setRaw((r) => !r)}>
+          <button type="button" className="text-muted text-[10px] underline" onClick={() => setRaw((r) => !r)}>
             {raw ? "form" : "raw JSON"}
           </button>
         )}

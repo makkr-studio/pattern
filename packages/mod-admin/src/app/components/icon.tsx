@@ -17,6 +17,11 @@ import {
   Moon,
   ChevronRight,
   CircleDot,
+  Undo2,
+  Redo2,
+  Pause,
+  SkipBack,
+  SkipForward,
   type LucideIcon,
 } from "lucide-react";
 
@@ -44,4 +49,4 @@ export function Icon({ name, size = 16, className }: { name?: string; size?: num
   return <C size={size} className={className} />;
 }
 
-export { ChevronRight, CircleDot, Sun, Moon, Search, Play, Plus, Rocket, Power, Trash2 };
+export { ChevronRight, CircleDot, Sun, Moon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward };

@@ -3,6 +3,9 @@ import type { OpInfo, PortInfo, WorkflowDoc } from "@pattern/admin-sdk";
 
 export type OpMap = Map<string, OpInfo>;
 
+/** A node's execution state at the replay scrubber's position (§15.1). */
+export type ReplayState = "pending" | "running" | "ok" | "error" | "skipped";
+
 export interface OpNodeData extends Record<string, unknown> {
   op: string;
   title?: string;
@@ -13,6 +16,8 @@ export interface OpNodeData extends Record<string, unknown> {
   inputs: PortInfo[];
   outputs: PortInfo[];
   boundary?: "trigger" | "outgate";
+  /** Set only on replay canvases — drives the node's status treatment. */
+  replay?: ReplayState;
 }
 
 const KIND_FALLBACK: PortInfo["kind"] = "value";
