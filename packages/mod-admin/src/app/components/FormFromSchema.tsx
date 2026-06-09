@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 /**
  * A config form generated from a JSON Schema (mod-admin-spec §12) — the
@@ -161,39 +161,74 @@ function Field({ name, schema, required, value, onChange }: { name: string; sche
   );
 }
 
-function JsonField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+/**
+ * A JSON textarea that owns its text while the user types (controlled, so
+ * nothing is silently dropped) and reports parse state visibly. Only valid
+ * JSON propagates via `onChange`; invalid text shows an amber ring + note so
+ * the user knows a Save now would use the last valid value.
+ */
+function JsonTextarea({
+  value,
+  onChange,
+  rows,
+  label,
+}: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  rows: string;
+  label?: string;
+}) {
+  const serialized = value === undefined ? "" : JSON.stringify(value, null, 2);
+  const [text, setText] = useState(serialized);
+  const [dirty, setDirty] = useState(false);
+  // External value changed and the user isn't mid-edit → resync.
+  if (!dirty && text !== serialized) setText(serialized);
+
+  let invalid = false;
+  if (dirty && text.trim()) {
+    try {
+      JSON.parse(text);
+    } catch {
+      invalid = true;
+    }
+  }
+
   return (
-    <textarea
-      defaultValue={value === undefined ? "" : JSON.stringify(value)}
-      spellCheck={false}
-      onChange={(e) => {
-        try {
-          onChange(e.target.value.trim() ? JSON.parse(e.target.value) : undefined);
-        } catch {
-          /* keep typing; invalid JSON ignored until valid */
-        }
-      }}
-      className="glass h-16 w-full rounded-lg p-2 font-mono text-xs outline-none"
-    />
+    <div>
+      {label && <div className="text-muted mb-1 text-xs">{label}</div>}
+      <textarea
+        value={text}
+        spellCheck={false}
+        onChange={(e) => {
+          setText(e.target.value);
+          setDirty(true);
+          try {
+            onChange(e.target.value.trim() ? JSON.parse(e.target.value) : undefined);
+          } catch {
+            /* surfaced via the invalid indicator below */
+          }
+        }}
+        onBlur={() => {
+          if (!invalid) setDirty(false);
+        }}
+        aria-invalid={invalid}
+        className={`glass ${rows} w-full rounded-lg p-2 font-mono text-xs outline-none ${
+          invalid ? "ring-1 ring-[var(--color-neon-amber)]" : ""
+        }`}
+      />
+      {invalid && (
+        <div className="mt-1 text-[10px] text-[var(--color-neon-amber)]">
+          Invalid JSON — the last valid value is what saves.
+        </div>
+      )}
+    </div>
   );
 }
 
+function JsonField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  return <JsonTextarea value={value} onChange={onChange} rows="h-16" />;
+}
+
 export function RawJson({ value, onChange }: { value: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
-  return (
-    <div>
-      <div className="text-muted mb-1 text-xs">config (JSON)</div>
-      <textarea
-        defaultValue={JSON.stringify(value ?? {}, null, 2)}
-        spellCheck={false}
-        onChange={(e) => {
-          try {
-            onChange(e.target.value.trim() ? JSON.parse(e.target.value) : {});
-          } catch {
-            /* ignore until valid */
-          }
-        }}
-        className="glass h-40 w-full rounded-lg p-2 font-mono text-xs outline-none"
-      />
-    </div>
-  );
+  return <JsonTextarea value={value ?? {}} onChange={(v) => onChange((v as Record<string, unknown>) ?? {})} rows="h-40" label="config (JSON)" />;
 }

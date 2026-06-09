@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "motion/react";
 import type { RunSummary, SpanData } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
@@ -65,6 +65,12 @@ function RunDetail({ runId }: { runId: string }) {
         <span className="font-mono text-sm font-semibold">{summary.workflowId}</span>
         <Badge hue={summary.status === "error" ? 340 : 150}>{summary.status}</Badge>
         <span className="text-muted text-xs">{ms(summary.durationMs)}</span>
+        <Link
+          to={`/runs/${summary.runId}/replay`}
+          className="flex items-center gap-1 text-xs text-[var(--color-neon-cyan)] hover:underline"
+        >
+          <Play size={12} /> replay on graph
+        </Link>
         <span className="text-muted ml-auto font-mono text-xs">{summary.runId.slice(0, 8)}</span>
       </div>
       <Waterfall spans={spans} runStart={runStart} total={runEnd - runStart} />
@@ -75,19 +81,22 @@ function RunDetail({ runId }: { runId: string }) {
 function LiveTail() {
   const [spans, setSpans] = useState<SpanData[]>([]);
   const [on, setOn] = useState(false);
-  const mounted = useRef(true);
-  useEffect(() => () => void (mounted.current = false), []);
   useEffect(() => {
     if (!on) return;
     let active = true;
+    // Keep the generator so cleanup can `.return()` it — that runs its
+    // `finally` (reader.cancel) and actually closes the SSE connection.
+    // Breaking out of the loop alone leaves the socket open until GC.
+    const tail = api.runs.tail();
     (async () => {
-      for await (const span of api.runs.tail()) {
-        if (!active || !mounted.current) break;
+      for await (const span of tail) {
+        if (!active) break;
         setSpans((prev) => [span, ...prev].slice(0, 50));
       }
     })().catch(() => {});
     return () => {
       active = false;
+      void tail.return?.(undefined);
     };
   }, [on]);
   return (
