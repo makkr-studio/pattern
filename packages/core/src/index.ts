@@ -19,7 +19,19 @@ export {
   type EngineOptions,
   type RunOptions,
   type PatternMod,
+  type InstalledMod,
 } from "./engine.js";
+
+// Frontend contribution contract (admin-spec P2)
+export type {
+  FrontendContribution,
+  MenuEntry,
+  PageDef,
+  DeclarativeView,
+  DeclarativeColumn,
+  DeclarativeAction,
+  CommandDef,
+} from "./frontend.js";
 
 // Terminal graph rendering (for `pattern graph`)
 export { formatGraph } from "./graph-format.js";
@@ -31,10 +43,14 @@ export { jsonSchemaToZod, type JsonSchema } from "./json-schema.js";
 export {
   interpolateValue,
   resolveWorkflowEnv,
+  resolveWorkflowEnvTracked,
   EnvConfigError,
   type EnvMap,
   type EnvCastType,
 } from "./env-config.js";
+
+// Secret-safe config (admin-spec P4)
+export { secret, redactConfig, REDACTED } from "./redact.js";
 
 // Type contracts
 export * from "./types.js";
@@ -77,7 +93,7 @@ export {
 
 // Boundary config resolve phase
 export { resolveBoundaryConfig, hasConfigPorts } from "./resolve-config.js";
-export { schemasCompatible, isWildcard } from "./schema-compat.js";
+export { schemasCompatible, isWildcard, portCompatibility, type PortCompatibility } from "./schema-compat.js";
 
 // Scheduler primitives & runner (for advanced/embedding use)
 export { runWorkflow, type RunDeps, type RunWorkflowRequest } from "./scheduler/run.js";

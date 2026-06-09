@@ -184,6 +184,40 @@ export const httpResponse = outgate({
   config: z.object({ mode: z.enum(["buffered", "sse", "chunked"]).default("buffered") }),
 });
 
+/**
+ * App-serving boundary (admin-spec P1). Serves a built static asset bundle (e.g.
+ * an SPA) from a *registered filesystem* under `mount`. It is served entirely by
+ * the host — there is **no downstream graph and no execute**; declaring this node
+ * in a workflow tells the HTTP host to mount static serving. On a miss with an
+ * HTML `Accept`, the host serves `spaFallback` (client-side routing); otherwise 404.
+ */
+export const httpApp: OpDefinition = {
+  type: "boundary.http.app",
+  title: "boundary.http.app",
+  description:
+    "Serves a static asset bundle (SPA) from a registered filesystem under `mount`, with SPA " +
+    "fallback. Served entirely by the host; no downstream graph.",
+  boundary: "trigger",
+  inputs: {},
+  outputs: {},
+  config: z.object({
+    /** URL prefix the assets are served under, e.g. "/admin". */
+    mount: z.string().default("/"),
+    /** Name of a filesystem registered on the engine (host resolves it). */
+    filesystem: z.string(),
+    /** Served on a miss when the client accepts HTML (client-side routing). "" disables. */
+    spaFallback: z.string().default("index.html"),
+    /** Send long-lived immutable cache headers (use with hashed filenames). */
+    immutableAssets: z.boolean().default(false),
+    /** Port to serve on (defaults to the host's default port, like routes). */
+    port: z.number().int().positive().optional(),
+    /** CORS policy for the asset routes. */
+    cors: corsConfigSchema.optional(),
+    requireAuth,
+  }),
+  execute: TRIGGER_EXECUTE,
+};
+
 // ────────────────────────────────────────────────────────────────────────────
 // WebSocket
 // ────────────────────────────────────────────────────────────────────────────
@@ -291,6 +325,7 @@ export const boundaryOps: OpDefinition[] = [
   returnGateConfigurable,
   httpRequest,
   httpResponse,
+  httpApp,
   wsMessage,
   wsOpen,
   wsClose,

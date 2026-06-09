@@ -86,6 +86,21 @@ export interface SpanEvent {
   attributes?: Record<string, unknown>;
 }
 
+/**
+ * An opt-in sample of a single port's data, captured on a node span when I/O
+ * sampling is enabled (T1). Bounded and secret-masked; powers the admin's
+ * run-replay data peeks. Replay works structurally without it.
+ */
+export type IoSample =
+  | { kind: "value"; preview: unknown; truncated?: boolean }
+  | { kind: "stream"; head: unknown[]; count: number; truncated: boolean };
+
+/** Per-node captured I/O, keyed by port name (T1). */
+export interface SpanIo {
+  inputs?: Record<string, IoSample>;
+  outputs?: Record<string, IoSample>;
+}
+
 /** Immutable snapshot of a finished span, handed to `TraceSink.onSpanEnd` (§10). */
 export interface SpanData {
   traceId: string;
@@ -101,6 +116,11 @@ export interface SpanData {
   status: SpanStatus;
   /** Present when `status === "error"`. */
   error?: { message: string; stack?: string };
+  /**
+   * Opt-in sampled inputs/outputs of the node (T1). Present only when sampling
+   * is enabled for the run; capped and secret-masked. Off by default.
+   */
+  io?: SpanIo;
 }
 
 /** The live span handed to an op as `ctx.trace` (§5, §10). */
@@ -111,6 +131,8 @@ export interface Span {
   setAttributes(attrs: Record<string, unknown>): void;
   addEvent(name: string, attributes?: Record<string, unknown>): void;
   setStatus(status: SpanStatus, error?: unknown): void;
+  /** Attach an opt-in I/O sample to this node span (T1). */
+  setIo(io: SpanIo): void;
   /** Start a child span (e.g. for a sub-workflow invocation). */
   startChild(name: string): Span;
   end(): void;
@@ -219,11 +241,20 @@ export interface AuthProvider {
 /** A reference to a sub-workflow for higher-order ops (§12). */
 export type SubworkflowRef = { workflow: Workflow } | { workflowId: string };
 
-/** Capability services handed to ops via context (§4: capabilities, not globals). */
+/**
+ * Capability services handed to ops via context (§4: capabilities, not globals).
+ *
+ * The three core capabilities are always present. Mods register additional
+ * named services with `engine.provideService(name, impl)` — e.g. the admin mod's
+ * `adminControlPlane`, or a filesystem registry — reachable here as
+ * `ctx.services.<name>`. The index signature keeps that extension typed-loose
+ * but real; consumers narrow with a cast at the use site.
+ */
 export interface OpServices {
   events: EventBus;
   hooks: HookInvoker;
   connections: ConnectionRegistry;
+  [name: string]: unknown;
 }
 
 /**
@@ -319,6 +350,15 @@ export const EdgeSchema = z.object({
   to: EdgeEndpointSchema,
 });
 
+/**
+ * The editor's canvas position (and any other view-only hints) for a node (T3).
+ * Inline on the node so a workflow stays one self-contained file. Data-only —
+ * never read by the engine, never affects execution.
+ */
+export const NodeUiSchema = z
+  .object({ x: z.number(), y: z.number() })
+  .loose();
+
 export const WorkflowNodeSchema = z.object({
   id: z.string(),
   op: z.string(),
@@ -330,19 +370,39 @@ export const WorkflowNodeSchema = z.object({
    */
   comment: z.string().optional(),
   config: z.unknown().optional(),
+  /** Editor canvas position + view hints (T3). Data-only. */
+  ui: NodeUiSchema.optional(),
 });
+
+/** Provenance of a workflow document (admin control-plane, §4 of the admin spec). */
+export const WorkflowSourceSchema = z.enum(["code", "file", "db"]);
+export type WorkflowSource = z.infer<typeof WorkflowSourceSchema>;
 
 export const WorkflowSchema = z.object({
   $schema: z.string().optional(),
   id: z.string(),
   name: z.string().optional(),
+  /**
+   * A longer prose description of what the workflow does (T3). Data-only;
+   * surfaced by the catalog and "explain this workflow". The structural
+   * summarizer can write back into it.
+   */
+  description: z.string().optional(),
   version: z.string().optional(),
+  /** Free-form tags for filtering/grouping in the catalog. Data-only. */
+  tags: z.array(z.string()).optional(),
+  /**
+   * Provenance hint (`code` | `file` | `db`). Data-only; the control plane is
+   * the authority, this is a convenience for self-contained documents.
+   */
+  source: WorkflowSourceSchema.optional(),
   nodes: z.array(WorkflowNodeSchema),
   edges: z.array(EdgeSchema),
 });
 
 export type EdgeEndpoint = z.infer<typeof EdgeEndpointSchema>;
 export type Edge = z.infer<typeof EdgeSchema>;
+export type NodeUi = z.infer<typeof NodeUiSchema>;
 export type WorkflowNode = z.infer<typeof WorkflowNodeSchema>;
 export type Workflow = z.infer<typeof WorkflowSchema>;
 
@@ -361,6 +421,8 @@ export interface RunRequest {
   principal: Principal;
   /** Run-scoped parameters, exposed to ops as `ctx.params` (read by `core.input`). */
   params?: Record<string, unknown>;
+  /** Opt into bounded, masked per-node I/O sampling on spans (admin-spec T1). */
+  sampleIo?: boolean;
 }
 
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */

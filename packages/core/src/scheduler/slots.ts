@@ -13,12 +13,18 @@ export class Deferred<T> {
   resolve!: (value: T) => void;
   reject!: (reason?: unknown) => void;
   settled = false;
+  /** The resolved value (for synchronous, non-blocking inspection — e.g. I/O sampling). */
+  value?: T;
+  /** True once resolved (not rejected). */
+  resolved = false;
 
   constructor() {
     this.promise = new Promise<T>((res, rej) => {
       this.resolve = (v) => {
         if (this.settled) return;
         this.settled = true;
+        this.resolved = true;
+        this.value = v;
         res(v);
       };
       this.reject = (e) => {

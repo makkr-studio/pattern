@@ -7,6 +7,7 @@
  */
 
 import { portKindOf, resolveControlOuts, resolvePorts } from "./graph.js";
+import { redactConfig } from "./redact.js";
 import type { OpRegistry } from "./registry.js";
 import type { Workflow } from "./types.js";
 
@@ -30,6 +31,11 @@ export function formatGraph(workflow: Workflow, ops: OpRegistry): string {
     if (!op) {
       lines.push(`      ⚠ unknown op`);
       continue;
+    }
+    if (node.config && Object.keys(node.config as object).length) {
+      // Surface config inline, with schema-tagged secrets masked (P4).
+      const safe = redactConfig(node.config, op.config);
+      lines.push(`      cfg: ${JSON.stringify(safe)}`);
     }
     const ins = resolvePorts(op.inputs, node.config);
     const outs = resolvePorts(op.outputs, node.config);

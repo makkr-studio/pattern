@@ -6,7 +6,7 @@
  * subscribes via `TraceSink`. We emit; we never persist.
  */
 
-import type { Span, SpanData, SpanEvent, SpanStatus, TraceSink } from "../types.js";
+import type { Span, SpanData, SpanEvent, SpanIo, SpanStatus, TraceSink } from "../types.js";
 
 const hex = "0123456789abcdef";
 
@@ -55,6 +55,7 @@ export class SpanImpl implements Span {
   private readonly events: SpanEvent[] = [];
   private status: SpanStatus = "unset";
   private error?: { message: string; stack?: string };
+  private io?: SpanIo;
   private ended = false;
   private readonly sink?: TraceSink;
 
@@ -85,6 +86,9 @@ export class SpanImpl implements Span {
           : { message: String(error) };
     }
   }
+  setIo(io: SpanIo): void {
+    this.io = io;
+  }
   startChild(name: string): Span {
     return new SpanImpl({ traceId: this.traceId, name, parentSpanId: this.spanId, sink: this.sink });
   }
@@ -102,6 +106,7 @@ export class SpanImpl implements Span {
       events: this.events,
       status: this.status === "unset" ? "ok" : this.status,
       error: this.error,
+      io: this.io,
     };
     this.sink?.onSpanEnd?.(data);
   }

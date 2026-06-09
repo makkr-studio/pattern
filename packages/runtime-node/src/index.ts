@@ -8,6 +8,16 @@
  */
 
 export { HttpHost, createHttpHost, type HttpHostOptions } from "./http.js";
+export {
+  LocalFilesystem,
+  MemoryFilesystem,
+  FilesystemRegistry,
+  filesystems,
+  provideFilesystem,
+  FILESYSTEMS_SERVICE,
+  type Filesystem,
+  type FileStat,
+} from "./filesystem.js";
 export { runCli, type CliHostOptions } from "./cli.js";
 export { WsHost, createWsHost, type WsBinding, type WsHostOptions } from "./ws.js";
 export { NodeConnectionRegistry } from "./ws-registry.js";

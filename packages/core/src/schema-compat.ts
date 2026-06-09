@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import type { ZodAny } from "./types.js";
+import type { PortSpec, ZodAny } from "./types.js";
 
 /** The Zod "type tag" of a schema (e.g. "string", "object", "array", "union"). */
 function tag(schema: ZodAny): string {
@@ -123,6 +123,40 @@ function compat(p: ZodAny, c: ZodAny, depth: number): boolean {
 export function isWildcard(schema?: ZodAny): boolean {
   if (!schema) return true;
   return WILDCARD.has(tag(unwrap(schema)));
+}
+
+/** The verdict of connecting one output port to one input port (admin-spec T2). */
+export interface PortCompatibility {
+  ok: boolean;
+  reason?: string;
+  /** A one-click adapter that would bridge a value↔stream kind mismatch. */
+  fix?: "accumulate" | "emit";
+}
+
+/**
+ * Can a value produced on `from` (an output port) flow into `to` (an input port)?
+ *
+ * The **single source of truth** for both load-time validation and the editor's
+ * connection assist (`admin.ports.compatible`, T2). Checks port kind first (the
+ * hard rule — a port only connects to its own kind), then structural schema
+ * assignability for value/stream edges. A value↔stream mismatch returns the
+ * adapter op that bridges it (`core.stream.accumulate` / `core.stream.emit`).
+ */
+export function portCompatibility(from: PortSpec, to: PortSpec): PortCompatibility {
+  if (from.kind !== to.kind) {
+    if (from.kind === "stream" && to.kind === "value") {
+      return { ok: false, reason: "stream output → value input: insert core.stream.accumulate", fix: "accumulate" };
+    }
+    if (from.kind === "value" && to.kind === "stream") {
+      return { ok: false, reason: "value output → stream input: insert core.stream.emit", fix: "emit" };
+    }
+    return { ok: false, reason: `cannot connect ${from.kind} output to ${to.kind} input` };
+  }
+  if (from.kind === "control") return { ok: true }; // control carries no schema
+  if (!schemasCompatible(from.schema, to.schema)) {
+    return { ok: false, reason: "schema mismatch: producer is not assignable to consumer" };
+  }
+  return { ok: true };
 }
 
 export const __testing = { tag, unwrap, compat };

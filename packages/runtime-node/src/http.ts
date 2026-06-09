@@ -11,7 +11,9 @@
  * Response modes: `buffered`, `sse` (Server-Sent Events), `chunked`.
  */
 
+import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { extname } from "node:path";
 import { Readable } from "node:stream";
 import {
   jsonSchemaToZod,
@@ -22,6 +24,7 @@ import {
   type Workflow,
   type z,
 } from "@pattern/core";
+import { filesystems, type Filesystem } from "./filesystem.js";
 
 export interface HttpHostOptions {
   /**
@@ -57,6 +60,18 @@ interface CompiledRoute {
   requireAuth?: unknown;
 }
 
+/** A static app mount derived from a `boundary.http.app` node (admin-spec P1). */
+interface AppMount {
+  /** Normalized URL prefix, no trailing slash ("" means root). */
+  mount: string;
+  port: number;
+  filesystem: string;
+  spaFallback: string;
+  immutableAssets: boolean;
+  cors?: CorsPolicy;
+  requireAuth?: unknown;
+}
+
 /** Read a positive integer port from the PORT env var, if valid. */
 function envPort(): number | undefined {
   const raw = process.env.PORT;
@@ -78,6 +93,47 @@ function compilePath(path: string): { regex: RegExp; paramNames: string[] } {
   return { regex: new RegExp(`^${pattern}/?$`), paramNames };
 }
 
+/** Normalize a mount prefix: leading slash, no trailing slash; root → "". */
+function normalizeMount(mount: string): string {
+  let m = mount.trim();
+  if (!m.startsWith("/")) m = `/${m}`;
+  m = m.replace(/\/+$/, "");
+  return m; // "" for root
+}
+
+/** Is `pathname` at or under `mount` ("" matches everything)? */
+function pathUnderMount(pathname: string, mount: string): boolean {
+  if (mount === "") return true;
+  return pathname === mount || pathname.startsWith(`${mount}/`);
+}
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain; charset=utf-8",
+  ".wasm": "application/wasm",
+};
+
+/** Content-type for a served asset, from its extension. */
+function mimeType(path: string): string {
+  return MIME[extname(path).toLowerCase()] ?? "application/octet-stream";
+}
+
 function normalizeCors(cors: unknown): CorsPolicy | undefined {
   if (!cors) return undefined;
   if (cors === true) return { origin: "*", credentials: false };
@@ -88,6 +144,7 @@ function normalizeCors(cors: unknown): CorsPolicy | undefined {
 export class HttpHost {
   private servers = new Map<number, Server>();
   private routes: CompiledRoute[] = [];
+  private apps: AppMount[] = [];
   private unsubscribe?: () => void;
   private readonly defaultPort: number;
 
@@ -113,7 +170,8 @@ export class HttpHost {
   /** Scan workflows for `boundary.http.request` routes and reconcile servers. */
   private async rebuild(): Promise<void> {
     this.routes = this.scanRoutes();
-    const needed = new Set(this.routes.map((r) => r.port));
+    this.apps = this.scanApps();
+    const needed = new Set<number>([...this.routes.map((r) => r.port), ...this.apps.map((a) => a.port)]);
 
     for (const port of needed) {
       if (!this.servers.has(port)) await this.openServer(port);
@@ -154,6 +212,36 @@ export class HttpHost {
     return routes;
   }
 
+  /** Scan workflows for `boundary.http.app` static mounts (admin-spec P1). */
+  private scanApps(): AppMount[] {
+    const apps: AppMount[] = [];
+    for (const wf of this.engine.workflows.list()) {
+      for (const node of wf.nodes) {
+        const op = this.engine.ops.get(node.op);
+        if (op?.type !== "boundary.http.app") continue;
+        const cfg = parseConfig(op, node.config);
+        if (!cfg.filesystem) continue;
+        apps.push({
+          mount: normalizeMount(cfg.mount ?? "/"),
+          port: cfg.port ?? this.defaultPort,
+          filesystem: cfg.filesystem,
+          spaFallback: cfg.spaFallback ?? "index.html",
+          immutableAssets: Boolean(cfg.immutableAssets),
+          cors: normalizeCors(cfg.cors),
+          requireAuth: cfg.requireAuth,
+        });
+      }
+    }
+    // Longest mount first, so "/admin/sub" wins over "/admin" / "/".
+    apps.sort((a, b) => b.mount.length - a.mount.length);
+    return apps;
+  }
+
+  /** The first app mount on `port` whose prefix matches `pathname`. */
+  private matchApp(port: number, pathname: string): AppMount | undefined {
+    return this.apps.find((a) => a.port === port && pathUnderMount(pathname, a.mount));
+  }
+
   private openServer(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const server = createServer((req, res) => void this.handle(req, res, port));
@@ -187,12 +275,17 @@ export class HttpHost {
 
     // CORS preflight: any route on this port + path that declares CORS.
     if (method === "OPTIONS") {
-      const cors = this.routes.find((r) => r.port === port && r.cors && r.regex.test(url.pathname))?.cors;
+      const cors =
+        this.routes.find((r) => r.port === port && r.cors && r.regex.test(url.pathname))?.cors ??
+        this.matchApp(port, url.pathname)?.cors;
       if (cors) return this.preflight(req, res, cors, port, url.pathname);
     }
 
     const matched = this.match(port, method, url.pathname);
     if (!matched) {
+      // API routes take precedence; fall back to static app mounts (P1).
+      const app = this.matchApp(port, url.pathname);
+      if (app) return this.serveApp(req, res, app, url.pathname);
       res.writeHead(404, { "content-type": "text/plain" }).end("Not Found");
       return;
     }
@@ -264,6 +357,69 @@ export class HttpHost {
       return;
     }
     await writeResponse(res, payload);
+  }
+
+  /** Serve a static asset (or SPA fallback) for an app mount (admin-spec P1). */
+  private async serveApp(
+    req: IncomingMessage,
+    res: ServerResponse,
+    app: AppMount,
+    pathname: string,
+  ): Promise<void> {
+    const method = (req.method ?? "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      res.writeHead(404, { "content-type": "text/plain" }).end("Not Found");
+      return;
+    }
+    if (app.cors) applyCors(res, app.cors, req.headers.origin);
+
+    // Auth (§9): the app mount may require it, like any route.
+    if (app.requireAuth) {
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (typeof v === "string") headers.set(k, v);
+        else if (Array.isArray(v)) headers.set(k, v.join(", "));
+      }
+      const principal = await this.engine.authenticate({ headers, raw: req });
+      const auth = this.engine.authorize(principal, app.requireAuth as any);
+      if (!auth.ok) {
+        res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
+        return;
+      }
+    }
+
+    const fs: Filesystem | undefined = filesystems(this.engine).get(app.filesystem);
+    if (!fs) {
+      res.writeHead(500, { "content-type": "text/plain" }).end(`filesystem "${app.filesystem}" not registered`);
+      return;
+    }
+
+    let rel = pathname.slice(app.mount.length).replace(/^\/+/, "");
+    if (rel === "") rel = app.spaFallback || "index.html";
+
+    let bytes = await fs.read(rel);
+    let servedFallback = false;
+    if (bytes == null && app.spaFallback) {
+      // Client-side routing: serve the fallback for HTML navigations only.
+      const accept = String(req.headers["accept"] ?? "");
+      if (accept.includes("text/html")) {
+        bytes = await fs.read(app.spaFallback);
+        servedFallback = true;
+        rel = app.spaFallback;
+      }
+    }
+    if (bytes == null) {
+      res.writeHead(404, { "content-type": "text/plain" }).end("Not Found");
+      return;
+    }
+
+    const headers: Record<string, string> = { "content-type": mimeType(rel) };
+    const isHtmlEntry = servedFallback || rel === app.spaFallback;
+    if (app.immutableAssets && !isHtmlEntry) headers["cache-control"] = "public, max-age=31536000, immutable";
+    else if (isHtmlEntry) headers["cache-control"] = "no-cache";
+    res.writeHead(200, headers);
+    if (method === "HEAD") return void res.end();
+    res.end(Buffer.from(bytes));
   }
 
   private preflight(req: IncomingMessage, res: ServerResponse, cors: CorsPolicy, port: number, pathname: string): void {

@@ -113,6 +113,35 @@ export function interpolateValue(value: unknown, env: EnvMap): unknown {
 }
 
 /**
+ * Like `interpolateValue`, but also records the dotted config paths whose value
+ * was resolved from the environment — `$env` object form or a `${VAR}` string.
+ * The engine treats these as secret-by-provenance (admin-spec P4): anything an
+ * operator injects from the environment is masked in introspection output.
+ */
+function interpolateTracked(value: unknown, env: EnvMap, path: string, secrets: string[]): unknown {
+  if (value && typeof value === "object" && !Array.isArray(value) && "$env" in (value as object)) {
+    if (path) secrets.push(path);
+    return interpolateValue(value, env);
+  }
+  if (Array.isArray(value)) {
+    return value.map((v, i) => interpolateTracked(v, env, path ? `${path}.${i}` : String(i), secrets));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as object)) {
+      out[k] = interpolateTracked(v, env, path ? `${path}.${k}` : k, secrets);
+    }
+    return out;
+  }
+  if (typeof value === "string") {
+    // A non-escaped `${VAR}` reference means an env value lands in this field.
+    if (path && /(?<!\$)\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}/.test(value)) secrets.push(path);
+    return interpolateString(value, env);
+  }
+  return value;
+}
+
+/**
  * Return a copy of `workflow` with every node's config env-resolved against
  * `env`. Used by the engine on registration; safe to call on env-free workflows
  * (it just deep-clones the config).
@@ -124,4 +153,24 @@ export function resolveWorkflowEnv(workflow: Workflow, env: EnvMap): Workflow {
       n.config === undefined ? n : { ...n, config: interpolateValue(n.config, env) },
     ),
   };
+}
+
+/**
+ * Env-resolve a workflow *and* report, per node, the dotted config paths that
+ * took their value from the environment (so they can be masked as secrets by
+ * provenance — admin-spec P4). `secretPaths` only contains nodes with ≥1 path.
+ */
+export function resolveWorkflowEnvTracked(
+  workflow: Workflow,
+  env: EnvMap,
+): { workflow: Workflow; secretPaths: Record<string, string[]> } {
+  const secretPaths: Record<string, string[]> = {};
+  const nodes = workflow.nodes.map((n) => {
+    if (n.config === undefined) return n;
+    const paths: string[] = [];
+    const config = interpolateTracked(n.config, env, "", paths);
+    if (paths.length) secretPaths[n.id] = paths;
+    return { ...n, config };
+  });
+  return { workflow: { ...workflow, nodes }, secretPaths };
 }
