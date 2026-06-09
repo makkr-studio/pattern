@@ -1,10 +1,17 @@
 {
   "name": "@pattern/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pattern execution engine — runtime-neutral core (Web-standard APIs only).",
   "type": "module",
   "license": "MIT",
-  "keywords": ["workflow", "engine", "dataflow", "dag", "automation", "pattern"],
+  "keywords": [
+    "workflow",
+    "engine",
+    "dataflow",
+    "dag",
+    "automation",
+    "pattern"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -21,7 +28,10 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

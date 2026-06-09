@@ -1,14 +1,24 @@
 {
   "name": "create-pattern",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffolder for Pattern projects — npm create pattern@latest.",
   "type": "module",
   "license": "MIT",
-  "keywords": ["pattern", "scaffold", "create", "cli", "workflow"],
+  "keywords": [
+    "pattern",
+    "scaffold",
+    "create",
+    "cli",
+    "workflow"
+  ],
   "bin": {
     "create-pattern": "./dist/index.js"
   },
-  "files": ["dist", "templates", "README.md"],
+  "files": [
+    "dist",
+    "templates",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

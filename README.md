@@ -38,14 +38,6 @@ npm create pattern@latest          # scaffold a project (interactive)
 # or: pnpm create pattern my-app --template agent-sse-tts
 ```
 
-Run the streaming example straight from this repo:
-
-```bash
-pnpm install && pnpm build
-pnpm --filter example-agent-sse-tts dev          # serves SSE on :3000
-curl -N "http://localhost:3000/chat?q=hello"     # watch tokens stream in
-```
-
 Or use the engine directly:
 
 ```ts
@@ -122,6 +114,26 @@ pnpm build         # build all packages
 pnpm test          # 44 tests across scheduler, streams, boundaries, hooks, auth, workers
 pnpm typecheck
 ```
+
+## Local testing with Verdaccio
+
+Publish the packages to a local [Verdaccio](https://verdaccio.org) registry and
+exercise the scaffolder exactly as a user would.
+
+```bash
+npx verdaccio                                    # start the registry (:4873)
+npm adduser --registry http://localhost:4873     # one-time login (any creds)
+
+pnpm local:publish                               # bump patch, build, publish all 3 packages
+pnpm local:test-create                           # scaffold + install + run against Verdaccio
+```
+
+- `pnpm local:publish` keeps the three packages in lockstep and bumps within
+  `0.1.x` so the templates' `^0.1.0` deps resolve to what you just published.
+  Flags: `--set <version>`, `--no-bump`, `--dry-run`.
+- `pnpm local:test-create` scaffolds into a temp dir, installs the published
+  `@pattern/*`, and runs it. Flags: `--template <id>`, `--keep`, `--no-run`.
+- Override the registry with `VERDACCIO_REGISTRY=http://host:port`.
 
 ## Status
 
