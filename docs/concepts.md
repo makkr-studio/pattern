@@ -8,7 +8,7 @@ this is the working mental model with pointers into the code.
 | Term | Meaning |
 |------|---------|
 | **Op** | A reusable definition: a type id, typed input/output ports, a config schema, an `execute`. Lives in the registry. |
-| **Node** | An instance of an op placed in a workflow, with its own id and config. |
+| **Node** | An instance of an op placed in a workflow, with its own id and config. May carry a `title` (short label) and a `comment` (free-form note) — data-only annotations for self-documenting, educational workflows; shown by `pattern graph`. |
 | **Port** | A typed slot — **value**, **stream**, or **control**. |
 | **Edge** | A connection from one node's output port to another's input port. |
 | **Workflow** | A JSON document: nodes + edges. |

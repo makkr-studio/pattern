@@ -23,7 +23,10 @@ export function formatGraph(workflow: Workflow, ops: OpRegistry): string {
   for (const node of workflow.nodes) {
     const op = ops.get(node.op);
     const tag = op?.boundary ? ` [${op.boundary}]` : "";
-    lines.push(`  ● ${node.id}  (${node.op})${tag}`);
+    lines.push(`  ● ${node.id}${node.title ? ` — ${node.title}` : ""}  (${node.op})${tag}`);
+    if (node.comment) {
+      for (const line of node.comment.split("\n")) lines.push(`      ┄ ${line}`);
+    }
     if (!op) {
       lines.push(`      ⚠ unknown op`);
       continue;
