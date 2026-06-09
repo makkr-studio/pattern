@@ -1,0 +1,206 @@
+/**
+ * @pattern/admin-sdk — wire protocol (mod-admin-spec §9, §10).
+ *
+ * The data shapes the admin API speaks over HTTP. These mirror the `admin.*` op
+ * I/O; the SDK owns them as the *client-facing contract* (the backend produces
+ * structurally-compatible values). Kept dependency-light so any UI can import
+ * them; richer engine types come from `@pattern/core`.
+ */
+
+import type { PortKind } from "@pattern/core";
+
+export type Source = "code" | "file" | "db";
+export type VersionId = string;
+
+export interface VersionInfo {
+  id: VersionId;
+  hash: string;
+  note?: string;
+  author?: string;
+  createdAt: string;
+}
+
+export interface RouteInfo {
+  method: string;
+  path: string;
+  port?: number;
+}
+
+export interface AuditEntry {
+  at: string;
+  principal: unknown;
+  action: string;
+  version?: VersionId;
+  note?: string;
+}
+
+export interface WorkflowMeta {
+  slug: string;
+  name: string;
+  description?: string;
+  source: Source;
+  enabled: boolean;
+  live: VersionId | null;
+  route?: RouteInfo;
+  tags?: string[];
+  versions: VersionInfo[];
+  audit: AuditEntry[];
+}
+
+/** A workflow document (kept loose here; `@pattern/core`'s `Workflow` is exact). */
+export interface WorkflowDoc {
+  id: string;
+  name?: string;
+  description?: string;
+  tags?: string[];
+  source?: Source;
+  nodes: Array<{ id: string; op: string; title?: string; comment?: string; config?: unknown; ui?: { x: number; y: number; [k: string]: unknown } }>;
+  edges: Array<{ from: { node: string; port: string }; to: { node: string; port: string } }>;
+}
+
+export interface ValidationIssue {
+  nodeId?: string;
+  port?: string;
+  path?: string;
+  message: string;
+  code: string;
+}
+
+export interface PortInfo {
+  name: string;
+  kind: PortKind;
+  required?: boolean;
+  description?: string;
+  schema?: unknown;
+}
+
+export interface OpInfo {
+  type: string;
+  title?: string;
+  description?: string;
+  category: string;
+  boundary?: "trigger" | "outgate";
+  mod?: string;
+  inputs: PortInfo[];
+  outputs: PortInfo[];
+  controlOut: string[];
+  configSchema?: unknown;
+  usedBy: number;
+}
+
+export interface ModInfo {
+  name: string;
+  ops: string[];
+  workflows: string[];
+  frontend?: { menu: number; pages: number; commands: number; assets?: string };
+}
+
+export interface PortRef {
+  op: string;
+  port: string;
+  dir: "in" | "out";
+}
+
+export interface PortCompatibility {
+  ok: boolean;
+  reason?: string;
+  fix?: "accumulate" | "emit";
+}
+
+export interface RunSummary {
+  runId: string;
+  traceId: string;
+  workflowId: string;
+  trigger: string;
+  principal: unknown;
+  status: "ok" | "error" | "running";
+  startTime: number;
+  endTime?: number;
+  durationMs?: number;
+  spanCount: number;
+  error?: { message: string };
+}
+
+export interface SpanIoSample {
+  kind: "value" | "stream";
+  preview?: unknown;
+  head?: unknown[];
+  count?: number;
+  truncated?: boolean;
+}
+
+export interface SpanData {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  startTime: number;
+  endTime: number;
+  attributes: Record<string, unknown>;
+  status: "unset" | "ok" | "error";
+  error?: { message: string; stack?: string };
+  io?: { inputs?: Record<string, SpanIoSample>; outputs?: Record<string, SpanIoSample> };
+}
+
+export interface RunDetail {
+  summary: RunSummary;
+  spans: SpanData[];
+}
+
+export interface LatencyStats {
+  workflowId: string;
+  count: number;
+  errors: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  maxMs: number;
+}
+
+export interface MetricsSummary {
+  window: { label: string; sinceBoot: boolean; minutes?: number };
+  runs: number;
+  errors: number;
+  errorRate: number;
+  inFlight: number;
+  runsPerMin: number;
+  perWorkflow: LatencyStats[];
+}
+
+export interface NodeChange {
+  id: string;
+  before: { op: string; config?: unknown; title?: string; comment?: string };
+  after: { op: string; config?: unknown; title?: string; comment?: string };
+}
+
+export interface JsonDiff {
+  equal: boolean;
+  nodes: { added: unknown[]; removed: unknown[]; changed: NodeChange[] };
+  edges: { added: unknown[]; removed: unknown[] };
+  meta: { field: string; before: unknown; after: unknown }[];
+}
+
+export interface RouteConflict {
+  route: RouteInfo;
+  conflictsWith: string;
+}
+
+export type DeployResult = { ok: true; version: VersionId } | { ok: false; conflicts: RouteConflict[] };
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  doc: WorkflowDoc;
+}
+
+export interface WorkflowGetResult {
+  meta: WorkflowMeta | null;
+  liveDoc: WorkflowDoc | null;
+  safeConfigs?: Record<string, unknown>;
+}
+
+export interface SaveResult {
+  version?: VersionInfo;
+  issues: ValidationIssue[];
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@pattern/admin-sdk",
+  "version": "0.1.0",
+  "description": "Pattern admin SDK — the stable extension surface for admin UIs and mods (typed API client, menu/command helpers, shared protocol types).",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pattern",
+    "admin",
+    "sdk",
+    "client"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@pattern/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@pattern/mod-admin": "workspace:*",
+    "@pattern/runtime-node": "workspace:*",
+    "typescript": "^5.6.0"
+  }
+}

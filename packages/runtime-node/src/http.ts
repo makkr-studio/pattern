@@ -13,6 +13,7 @@
 
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import { extname } from "node:path";
 import { Readable } from "node:stream";
 import {
@@ -143,6 +144,9 @@ function normalizeCors(cors: unknown): CorsPolicy | undefined {
 
 export class HttpHost {
   private servers = new Map<number, Server>();
+  /** Live sockets per server, so shutdown can force-close lingering connections
+   *  (e.g. an open SSE stream that would otherwise keep `close()` pending). */
+  private sockets = new Map<number, Set<Socket>>();
   private routes: CompiledRoute[] = [];
   private apps: AppMount[] = [];
   private unsubscribe?: () => void;
@@ -178,10 +182,19 @@ export class HttpHost {
     }
     for (const port of [...this.servers.keys()]) {
       if (!needed.has(port)) {
-        await new Promise<void>((r) => this.servers.get(port)!.close(() => r()));
-        this.servers.delete(port);
+        await this.closeServer(port);
       }
     }
+  }
+
+  /** Close one server, destroying any lingering sockets first. */
+  private closeServer(port: number): Promise<void> {
+    const server = this.servers.get(port);
+    if (!server) return Promise.resolve();
+    for (const socket of this.sockets.get(port) ?? []) socket.destroy();
+    this.sockets.delete(port);
+    this.servers.delete(port);
+    return new Promise<void>((r) => server.close(() => r()));
   }
 
   private scanRoutes(): CompiledRoute[] {
@@ -248,6 +261,13 @@ export class HttpHost {
       // Surface listen errors (e.g. EADDRINUSE) as a rejection instead of an
       // unhandled 'error' event that would crash the process.
       server.once("error", (err) => reject(err));
+      // Track live sockets so close() can force them shut.
+      const live = new Set<Socket>();
+      this.sockets.set(port, live);
+      server.on("connection", (socket: Socket) => {
+        live.add(socket);
+        socket.once("close", () => live.delete(socket));
+      });
       server.listen(port, this.opts.host, () => {
         server.removeAllListeners("error");
         this.servers.set(port, server);
@@ -437,8 +457,9 @@ export class HttpHost {
   async close(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    await Promise.all([...this.servers.values()].map((s) => new Promise<void>((r) => s.close(() => r()))));
+    await Promise.all([...this.servers.keys()].map((port) => this.closeServer(port)));
     this.servers.clear();
+    this.sockets.clear();
   }
 }
 
