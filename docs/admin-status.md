@@ -2,7 +2,7 @@
 
 Where the `mod-admin` work stands against [`mod-admin-spec.md`](../mod-admin-spec.md),
 and exactly what's next. Everything below is committed to `main` and **green**
-(114 tests, all 5 packages typecheck + build).
+(all packages typecheck + build; `pnpm test` is the source of truth for counts).
 
 ## Done
 
@@ -45,12 +45,19 @@ default (placeholder until built). Pages:
   `api.ops.list()` (self-reflection); source badges, enable toggle; op ports +
   config schema + usage.
 - **M6 Graph editor** — `@xyflow/react`; nodes rendered from `OpInfo` with
-  kind-colored handles/edges; palette add; drag-connect with `api.portsCompatible`
-  assist; JSON config inspector; save → version → deploy; validation problems panel.
-- **M7 Runs** — list from the sink; span waterfall + I/O peek (T1); live SSE tail;
+  kind-colored handles/edges; categorized palette (color+icon per category,
+  non-reusable ops in a collapsed Advanced section); drag-connect with
+  `api.portsCompatible` assist; schema-driven config forms (raw-JSON toggle with
+  invalid-state indicator); node name/comment authoring; **undo/redo (⌘Z/⌘⇧Z)**
+  over a canvas snapshot stack; in-editor trigger-aware test runs; template
+  picker on "New workflow"; save → version → deploy; validation problems panel.
+- **M7 Runs** — list from the sink; span waterfall + I/O peek (T1); live SSE tail
+  (connection properly closed on toggle/unmount); **replay-on-canvas** at
+  `/runs/:id/replay` — scrubber with play/pause/step/speed, nodes transitioning
+  pending→running→ok|error|skipped, edges illuminating as upstream completes;
   metrics strip (`api.metrics`).
 - **M8 Versions** — history, structural JSON diff (`api.versions.diff`),
-  one-click promote/rollback.
+  one-click promote/rollback; delete-workflow with confirm in the catalog.
 - **M9 System map** — routes (+conflict flags), apps, schedules, hooks (priority
   order), events, WS — from `admin.system.map`.
 
@@ -84,7 +91,33 @@ curl checks (manifest aggregation, `admin.invoke`, the served remote bundle).
 - **Env-derived secrets** are tracked by config *path* at registration and masked
   by `redactConfig`; schema-tagged `secret()` fields are masked structurally.
   (Config-port values resolved from `core.env` are a narrower, documented follow-up.)
-- **I/O sampling** captures value ports fully; stream ports are *marked* not
-  drained (draining would change run behavior). Masking is a pluggable hook.
+- **I/O sampling is value-masked.** The engine pools concrete secret *values*
+  (schema-tagged + `$env`-resolved) across registered workflows and wires
+  `maskSample` into every run, so a token flowing through run *data* is masked in
+  span samples — not just in config surfaces. Streams are *marked* not drained.
 - **SSE shutdown:** `HttpHost.close()` force-closes lingering sockets so an open
   run-tail stream can't hang shutdown.
+
+## Hardening pass (post-audit)
+A four-reviewer audit of the whole repo was triaged and fixed in one pass:
+- **Path traversal** closed at the store boundary: `safeSegment()` validates every
+  slug / version id / fixture name before it joins a storage path (URL params and
+  imported JSON both reach these). `admin.workflow.import` re-checks the id.
+- **CORS allowlists** no longer echo a fallback origin: a non-matching request
+  origin gets *no* `Access-Control-Allow-Origin` header.
+- **`adminMod({ auth })` stamps the SPA workflow** too, not just API routes.
+- **`admin.invoke` ACL**: refuses `admin.*`, `boundary.*`, and `reusable: false`
+  ops as page data sources.
+- **Worker pool**: `sampleIo` crosses the seam; crashed workers respawn in place
+  (in-flight runs reject, `inflight` resets); `mods: [...]` option loads mod ops
+  in workers; error-path runs always post `done`.
+- **Hook recursion guard** is per-call-chain (`AsyncLocalStorage`), so concurrent
+  invocations can't trip it spuriously.
+- **`HttpHost.rebuild()` serialized** (burst workflow changes can't race
+  `openServer` into EADDRINUSE); buffered bodies capped (413, default 10 MiB).
+- **Store writes per slug are queued** — concurrent saves can't mint duplicate
+  version ids; metadata-only saves leave an audit entry.
+- **SPA**: deploy/enable/delete invalidate the right query keys; the SSE tail
+  closes its connection on toggle/unmount; JSON config fields are controlled with
+  a visible invalid state; tooltips flip at the viewport bottom; dialogs have
+  roles/Escape/focus handling.

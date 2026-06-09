@@ -30,16 +30,31 @@ const greetingsList: OpDefinition = {
 };
 
 /** A plain ESM Tier-2 remote: default-exports a component using the admin's
- *  shared React (no bundler needed; deps come from `window.__PATTERN_ADMIN__`). */
+ *  shared React, API client, and glass UI kit (no bundler needed; deps come
+ *  from `window.__PATTERN_ADMIN__` — typed as `PatternAdminGlobal` in the SDK). */
 const STUDIO_REMOTE = `
-const { React } = (globalThis).__PATTERN_ADMIN__;
+const { React, api, ui } = (globalThis).__PATTERN_ADMIN__;
+const { GlassPanel, PageHeader, Badge, NeonButton, JsonView } = ui;
+const h = React.createElement;
+
 export default function SampleStudio() {
-  return React.createElement(
+  const [data, setData] = React.useState(null);
+  return h(
     "div",
-    { className: "glass rounded-2xl p-8" },
-    React.createElement("h2", { className: "text-lg font-semibold" }, "Sample Studio"),
-    React.createElement("p", { className: "text-muted mt-2 text-sm" },
-      "This page is a Tier-2 ESM remote shipped by @pattern/mod-sample and loaded at runtime — the admin core was never touched."),
+    null,
+    h(PageHeader, {
+      title: "Sample Studio",
+      subtitle: "A Tier-2 ESM remote shipped by @pattern/mod-sample — admin core untouched.",
+      actions: h(Badge, { hue: 280 }, "tier 2"),
+    }),
+    h(
+      GlassPanel,
+      { className: "p-6 space-y-4" },
+      h("p", { className: "text-muted text-sm" },
+        "This page renders with the admin's shared UI kit (GlassPanel, PageHeader, NeonButton, JsonView) and calls the live API through the shared client."),
+      h(NeonButton, { onClick: () => api.invoke("sample.greetings.list").then(setData) }, "Load greetings via api.invoke"),
+      data && h(JsonView, { value: data, className: "max-h-64" }),
+    ),
   );
 }
 `;

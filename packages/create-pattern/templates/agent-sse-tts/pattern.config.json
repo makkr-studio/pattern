@@ -1,0 +1,5 @@
+{
+  "$schema": "pattern/config/v1",
+  "mods": ["./mods/agent.mjs"],
+  "workflows": "./workflows"
+}
