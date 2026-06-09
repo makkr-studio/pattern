@@ -85,6 +85,8 @@ export interface HookRegistry {
   register(reg: HookRegistration): void;
   /** Registrations for a hook, sorted ascending by priority then node id (§8). */
   registrations(name: string): HookRegistration[];
+  /** Remove every registration contributed by a workflow (runtime update/remove). */
+  unregisterWorkflow(workflowId: string): void;
 }
 
 export class InMemoryHookRegistry implements HookRegistry {
@@ -111,30 +113,76 @@ export class InMemoryHookRegistry implements HookRegistry {
     list.sort((a, b) => a.priority - b.priority || a.nodeId.localeCompare(b.nodeId));
     return list;
   }
+
+  unregisterWorkflow(workflowId: string): void {
+    for (const [name, list] of this.regs) {
+      const kept = list.filter((r) => r.workflowId !== workflowId);
+      if (kept.length) this.regs.set(name, kept);
+      else this.regs.delete(name);
+    }
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // Workflow registry — resolves sub-workflow refs and named workflows
 // ────────────────────────────────────────────────────────────────────────────
 
+/** A change to the workflow set, broadcast to subscribers (runtime modifiability). */
+export interface WorkflowChange {
+  type: "set" | "delete";
+  id: string;
+  workflow?: Workflow;
+}
+
 export interface WorkflowRegistry {
   register(wf: Workflow): void;
   get(id: string): Workflow | undefined;
   list(): Workflow[];
+  has(id: string): boolean;
+  delete(id: string): boolean;
+  /** Observe add/update/remove. Returns an unsubscribe fn. */
+  subscribe(listener: (change: WorkflowChange) => void): () => void;
 }
 
 export class InMemoryWorkflowRegistry implements WorkflowRegistry {
   private workflows = new Map<string, Workflow>();
+  private listeners = new Set<(change: WorkflowChange) => void>();
 
   register(wf: Workflow): void {
     this.workflows.set(wf.id, wf);
+    this.notify({ type: "set", id: wf.id, workflow: wf });
   }
 
   get(id: string): Workflow | undefined {
     return this.workflows.get(id);
   }
 
+  has(id: string): boolean {
+    return this.workflows.has(id);
+  }
+
   list(): Workflow[] {
     return [...this.workflows.values()];
+  }
+
+  delete(id: string): boolean {
+    const existed = this.workflows.delete(id);
+    if (existed) this.notify({ type: "delete", id });
+    return existed;
+  }
+
+  subscribe(listener: (change: WorkflowChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(change: WorkflowChange): void {
+    for (const l of this.listeners) {
+      try {
+        l(change);
+      } catch (err) {
+        console.error("[pattern] workflow change listener threw:", err);
+      }
+    }
   }
 }

@@ -27,8 +27,7 @@ interface Template {
 }
 const TEMPLATES: Template[] = [
   { id: "hello-workflow", label: "Hello workflow", hint: "the smallest possible Pattern program" },
-  { id: "http-api", label: "HTTP API", hint: "request → workflow → response, a couple of routes" },
-  { id: "agent-sse-tts", label: "Agent + SSE + TTS", hint: "streaming dataflow: split tokens to SSE and TTS" },
+  { id: "http-api", label: "HTTP API", hint: "declarative routes, JSON workflows, an app-local mod" },
 ];
 
 const PMS = ["npm", "pnpm", "yarn", "bun"] as const;

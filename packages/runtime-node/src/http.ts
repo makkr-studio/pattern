@@ -1,89 +1,164 @@
 /**
  * @pattern/runtime-node — HTTP host (§6, §7).
  *
- * Binds Node's `node:http` server to `boundary.http.request` triggers and writes
- * `boundary.http.response` out-gate results. Supports the three response modes:
+ * Routing is **declarative**: the host derives its routes from the
+ * `boundary.http.request` nodes of the workflows registered on the engine. Each
+ * node's config carries the method, path, port, CORS policy, and JSON-Schema
+ * validation for body/query — there is no programmatic route table. When
+ * workflows change at runtime (e.g. loaded/updated from a DB), the host
+ * re-derives its routes live, opening/closing servers per declared port.
  *
- *  - buffered — write the whole body once.
- *  - sse      — Server-Sent Events; flush each stream chunk as `data: …`.
- *  - chunked  — chunked transfer; flush each stream chunk raw.
- *
- * This is the only place HTTP-specific code lives; core stays runtime-neutral.
+ * Response modes: `buffered`, `sse` (Server-Sent Events), `chunked`.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
-import type { Engine, Principal, RunResult, Workflow } from "@pattern/core";
-
-export interface HttpRoute {
-  /** HTTP method to match (any if omitted). */
-  method?: string;
-  /** Path pattern with `:param` segments, e.g. "/users/:id". */
-  path: string;
-  /** Workflow (or its registered id) to run. */
-  workflow: Workflow | string;
-  /** The `boundary.http.request` trigger node id (inferred if omitted). */
-  trigger?: string;
-}
+import {
+  jsonSchemaToZod,
+  type Engine,
+  type OpDefinition,
+  type Principal,
+  type RunResult,
+  type Workflow,
+  type z,
+} from "@pattern/core";
 
 export interface HttpHostOptions {
-  routes?: HttpRoute[];
-  /** Fallback when no route matches. Defaults to 404. */
-  notFound?: (req: IncomingMessage, res: ServerResponse) => void;
+  /** Port for routes that don't declare their own. Default 3000. */
+  defaultPort?: number;
+  /** Interface to bind. Default all interfaces. */
+  host?: string;
 }
 
-interface CompiledRoute extends HttpRoute {
+interface CorsPolicy {
+  origin: string | string[];
+  methods?: string[];
+  headers?: string[];
+  credentials: boolean;
+  maxAge?: number;
+  exposeHeaders?: string[];
+}
+
+interface CompiledRoute {
+  method: string; // upper-case, or "ANY"
+  path: string;
+  port: number;
   regex: RegExp;
   paramNames: string[];
+  workflowId: string;
+  trigger: string;
+  bodyMode: "buffered" | "stream";
+  cors?: CorsPolicy;
+  bodySchema?: z.ZodType;
+  querySchema?: z.ZodType;
+  requireAuth?: unknown;
 }
 
-/** Compile "/users/:id" into a matcher capturing named params. */
-function compile(path: string): { regex: RegExp; paramNames: string[] } {
+function compilePath(path: string): { regex: RegExp; paramNames: string[] } {
   const paramNames: string[] = [];
+  // Escape regex specials (`:` is not one, so params survive as `:name`), then
+  // turn each `:param` segment into a capture group.
   const pattern = path
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\\:([A-Za-z0-9_]+)/g, (_, name) => {
+    .replace(/:([A-Za-z0-9_]+)/g, (_, name) => {
       paramNames.push(name);
       return "([^/]+)";
     });
   return { regex: new RegExp(`^${pattern}/?$`), paramNames };
 }
 
+function normalizeCors(cors: unknown): CorsPolicy | undefined {
+  if (!cors) return undefined;
+  if (cors === true) return { origin: "*", credentials: false };
+  const c = cors as Partial<CorsPolicy>;
+  return { origin: c.origin ?? "*", credentials: c.credentials ?? false, methods: c.methods, headers: c.headers, maxAge: c.maxAge, exposeHeaders: c.exposeHeaders };
+}
+
 export class HttpHost {
-  readonly server: Server;
+  private servers = new Map<number, Server>();
   private routes: CompiledRoute[] = [];
+  private unsubscribe?: () => void;
+  private readonly defaultPort: number;
 
   constructor(
     private readonly engine: Engine,
     private readonly opts: HttpHostOptions = {},
   ) {
-    for (const r of opts.routes ?? []) this.addRoute(r);
-    this.server = createServer((req, res) => void this.handle(req, res));
+    this.defaultPort = opts.defaultPort ?? 3000;
   }
 
-  addRoute(route: HttpRoute): this {
-    this.routes.push({ ...route, ...compile(route.path) });
-    return this;
+  /** Derive routes from registered workflows, open servers, and watch for changes. */
+  async start(): Promise<{ ports: number[]; close: () => Promise<void> }> {
+    await this.rebuild();
+    this.unsubscribe = this.engine.onWorkflowsChanged(() => {
+      void this.rebuild().catch((err) => console.error("[pattern] http rebuild failed:", err));
+    });
+    return { ports: [...this.servers.keys()], close: () => this.close() };
   }
 
-  listen(port: number, host?: string): Promise<{ port: number; close: () => Promise<void> }> {
-    return new Promise((resolve) => {
-      this.server.listen(port, host, () => {
-        const addr = this.server.address();
-        const actual = typeof addr === "object" && addr ? addr.port : port;
-        resolve({
-          port: actual,
-          close: () => new Promise<void>((r) => this.server.close(() => r())),
+  /** Scan workflows for `boundary.http.request` routes and reconcile servers. */
+  private async rebuild(): Promise<void> {
+    this.routes = this.scanRoutes();
+    const needed = new Set(this.routes.map((r) => r.port));
+
+    for (const port of needed) {
+      if (!this.servers.has(port)) await this.openServer(port);
+    }
+    for (const port of [...this.servers.keys()]) {
+      if (!needed.has(port)) {
+        await new Promise<void>((r) => this.servers.get(port)!.close(() => r()));
+        this.servers.delete(port);
+      }
+    }
+  }
+
+  private scanRoutes(): CompiledRoute[] {
+    const routes: CompiledRoute[] = [];
+    for (const wf of this.engine.workflows.list()) {
+      for (const node of wf.nodes) {
+        const op = this.engine.ops.get(node.op);
+        if (op?.type !== "boundary.http.request") continue;
+        const cfg = parseConfig(op, node.config);
+        if (!cfg.path) continue; // not routable without a path
+        const { regex, paramNames } = compilePath(cfg.path);
+        routes.push({
+          method: String(cfg.method ?? "GET").toUpperCase(),
+          path: cfg.path,
+          port: cfg.port ?? this.defaultPort,
+          regex,
+          paramNames,
+          workflowId: wf.id,
+          trigger: node.id,
+          bodyMode: cfg.bodyMode === "stream" ? "stream" : "buffered",
+          cors: normalizeCors(cfg.cors),
+          bodySchema: cfg.body ? jsonSchemaToZod(cfg.body as any) : undefined,
+          querySchema: cfg.query ? jsonSchemaToZod(cfg.query as any, { coerce: true }) : undefined,
+          requireAuth: cfg.requireAuth,
         });
+      }
+    }
+    return routes;
+  }
+
+  private openServer(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const server = createServer((req, res) => void this.handle(req, res, port));
+      // Surface listen errors (e.g. EADDRINUSE) as a rejection instead of an
+      // unhandled 'error' event that would crash the process.
+      server.once("error", (err) => reject(err));
+      server.listen(port, this.opts.host, () => {
+        server.removeAllListeners("error");
+        this.servers.set(port, server);
+        resolve();
       });
     });
   }
 
-  private match(req: IncomingMessage): { route: CompiledRoute; params: Record<string, string> } | undefined {
-    const url = new URL(req.url ?? "/", "http://localhost");
+  private match(port: number, method: string, pathname: string): { route: CompiledRoute; params: Record<string, string> } | undefined {
     for (const route of this.routes) {
-      if (route.method && route.method.toUpperCase() !== req.method) continue;
-      const m = route.regex.exec(url.pathname);
+      if (route.port !== port) continue;
+      if (route.method !== "ANY" && route.method !== method) continue;
+      const m = route.regex.exec(pathname);
       if (!m) continue;
       const params: Record<string, string> = {};
       route.paramNames.forEach((name, i) => (params[name] = decodeURIComponent(m[i + 1] ?? "")));
@@ -92,70 +167,82 @@ export class HttpHost {
     return undefined;
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const matched = this.match(req);
+  private async handle(req: IncomingMessage, res: ServerResponse, port: number): Promise<void> {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const method = (req.method ?? "GET").toUpperCase();
+
+    // CORS preflight: any route on this port + path that declares CORS.
+    if (method === "OPTIONS") {
+      const cors = this.routes.find((r) => r.port === port && r.cors && r.regex.test(url.pathname))?.cors;
+      if (cors) return this.preflight(req, res, cors, port, url.pathname);
+    }
+
+    const matched = this.match(port, method, url.pathname);
     if (!matched) {
-      if (this.opts.notFound) return this.opts.notFound(req, res);
-      res.writeHead(404, { "content-type": "text/plain" });
-      res.end("Not Found");
+      res.writeHead(404, { "content-type": "text/plain" }).end("Not Found");
       return;
     }
     const { route, params } = matched;
+    if (route.cors) applyCors(res, route.cors, req.headers.origin);
 
-    const workflow =
-      typeof route.workflow === "string" ? this.engine.workflows.get(route.workflow) : route.workflow;
+    const workflow = this.engine.workflows.get(route.workflowId);
     if (!workflow) {
       res.writeHead(500).end("workflow not registered");
       return;
     }
-    const triggerId = route.trigger ?? findTrigger(workflow, "boundary.http.request");
-    if (!triggerId) {
-      res.writeHead(500).end("no boundary.http.request trigger");
-      return;
-    }
-    const triggerNode = workflow.nodes.find((n) => n.id === triggerId);
-    const bodyMode = (triggerNode?.config as { bodyMode?: string } | undefined)?.bodyMode ?? "buffered";
 
-    // ── Auth (§9): resolve principal, enforce requireAuth before running. ──
+    // ── Auth (§9) ──
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
       if (typeof v === "string") headers.set(k, v);
       else if (Array.isArray(v)) headers.set(k, v.join(", "));
     }
     const principal: Principal = await this.engine.authenticate({ headers, raw: req });
-    const requireAuth = (triggerNode?.config as { requireAuth?: unknown } | undefined)?.requireAuth;
-    const auth = this.engine.authorize(principal, requireAuth as any);
+    const auth = this.engine.authorize(principal, route.requireAuth as any);
     if (!auth.ok) {
       res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
       return;
     }
 
-    // ── Build the trigger input. ──
-    const url = new URL(req.url ?? "/", "http://localhost");
+    // ── Validate query & body against the declared JSON Schemas (§7) ──
     const headersObj: Record<string, string> = {};
     headers.forEach((v, k) => (headersObj[k] = v));
+    let query: unknown = Object.fromEntries(url.searchParams.entries());
+    if (route.querySchema) {
+      const parsed = route.querySchema.safeParse(query);
+      if (!parsed.success) return badRequest(res, "query", parsed.error);
+      query = parsed.data;
+    }
+
+    let body: unknown;
+    if (route.bodyMode === "stream") {
+      body = Readable.toWeb(req);
+    } else {
+      body = await readBody(req, headers.get("content-type"));
+      if (route.bodySchema) {
+        const parsed = route.bodySchema.safeParse(body);
+        if (!parsed.success) return badRequest(res, "body", parsed.error);
+        body = parsed.data;
+      }
+    }
+
     const input: Record<string, unknown> = {
-      method: req.method ?? "GET",
+      method,
       url: url.toString(),
       path: url.pathname,
       headers: headersObj,
-      query: Object.fromEntries(url.searchParams.entries()),
+      query,
       params,
-      body: bodyMode === "stream" ? Readable.toWeb(req) : await readBody(req, headers.get("content-type")),
+      body,
     };
 
-    // ── Run and write the out-gate result. ──
     let result: RunResult;
     try {
-      result = await this.engine.runFrom(workflow, triggerId, input, principal);
+      result = await this.engine.runFrom(workflow, route.trigger, input, principal);
     } catch (err) {
-      writeError(res, err);
-      return;
+      return writeError(res, err);
     }
-    if (result.status === "error") {
-      writeError(res, result.error);
-      return;
-    }
+    if (result.status === "error") return writeError(res, result.error);
 
     const payload = firstOutgate(result, workflow, "boundary.http.response");
     if (!payload) {
@@ -164,9 +251,64 @@ export class HttpHost {
     }
     await writeResponse(res, payload);
   }
+
+  private preflight(req: IncomingMessage, res: ServerResponse, cors: CorsPolicy, port: number, pathname: string): void {
+    const methods = cors.methods ?? collectMethods(this.routes, port, pathname);
+    applyCors(res, cors, req.headers.origin);
+    res.setHeader("Access-Control-Allow-Methods", methods.join(", "));
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      cors.headers?.join(", ") ?? req.headers["access-control-request-headers"] ?? "*",
+    );
+    if (cors.maxAge != null) res.setHeader("Access-Control-Max-Age", String(cors.maxAge));
+    res.writeHead(204).end();
+  }
+
+  async close(): Promise<void> {
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    await Promise.all([...this.servers.values()].map((s) => new Promise<void>((r) => s.close(() => r()))));
+    this.servers.clear();
+  }
 }
 
-/** Read & parse a request body (json/text/bytes) for buffered mode. */
+// ── helpers ──
+
+function parseConfig(op: OpDefinition, config: unknown): any {
+  return op.config ? op.config.parse(config ?? {}) : (config ?? {});
+}
+
+function collectMethods(routes: CompiledRoute[], port: number, pathname: string): string[] {
+  const methods = new Set<string>();
+  for (const r of routes) if (r.port === port && r.regex.test(pathname)) methods.add(r.method);
+  methods.add("OPTIONS");
+  return [...methods];
+}
+
+function applyCors(res: ServerResponse, cors: CorsPolicy, reqOrigin?: string): void {
+  const origin =
+    cors.origin === "*"
+      ? "*"
+      : Array.isArray(cors.origin)
+        ? reqOrigin && cors.origin.includes(reqOrigin)
+          ? reqOrigin
+          : cors.origin[0] ?? "*"
+        : cors.origin;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  if (origin !== "*") res.setHeader("Vary", "Origin");
+  if (cors.credentials) res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (cors.exposeHeaders?.length) res.setHeader("Access-Control-Expose-Headers", cors.exposeHeaders.join(", "));
+}
+
+function badRequest(res: ServerResponse, where: string, error: z.ZodError): void {
+  res.writeHead(400, { "content-type": "application/json" }).end(
+    JSON.stringify({
+      error: `invalid ${where}`,
+      issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+    }),
+  );
+}
+
 async function readBody(req: IncomingMessage, contentType: string | null): Promise<unknown> {
   const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c as Buffer);
@@ -197,46 +339,27 @@ async function writeResponse(res: ServerResponse, payload: ResponsePayload): Pro
   const status = payload.status ?? 200;
   const headers = { ...(payload.headers ?? {}) };
 
-  if (mode === "sse") {
-    res.writeHead(status, {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-      ...headers,
-    });
+  if (mode === "sse" || mode === "chunked") {
+    const sse = mode === "sse";
+    res.writeHead(status, sse
+      ? { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", ...headers }
+      : { "transfer-encoding": "chunked", ...headers });
     const src = payload.stream ?? (payload.body instanceof ReadableStream ? payload.body : undefined);
     if (src) {
       for await (const chunk of streamIter(src)) {
-        res.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
+        if (sse) res.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
+        else res.write(chunk instanceof Uint8Array ? chunk : typeof chunk === "string" ? chunk : JSON.stringify(chunk));
       }
     }
     res.end();
     return;
   }
 
-  if (mode === "chunked") {
-    res.writeHead(status, { "transfer-encoding": "chunked", ...headers });
-    const src = payload.stream ?? (payload.body instanceof ReadableStream ? payload.body : undefined);
-    if (src) {
-      for await (const chunk of streamIter(src)) {
-        res.write(chunk instanceof Uint8Array ? chunk : typeof chunk === "string" ? chunk : JSON.stringify(chunk));
-      }
-    }
-    res.end();
-    return;
-  }
-
-  // buffered
   const body = payload.body;
-  if (body == null) {
-    res.writeHead(status, headers).end();
-  } else if (typeof body === "string") {
-    res.writeHead(status, { "content-type": "text/plain; charset=utf-8", ...headers }).end(body);
-  } else if (body instanceof Uint8Array) {
-    res.writeHead(status, headers).end(Buffer.from(body));
-  } else {
-    res.writeHead(status, { "content-type": "application/json", ...headers }).end(JSON.stringify(body));
-  }
+  if (body == null) res.writeHead(status, headers).end();
+  else if (typeof body === "string") res.writeHead(status, { "content-type": "text/plain; charset=utf-8", ...headers }).end(body);
+  else if (body instanceof Uint8Array) res.writeHead(status, headers).end(Buffer.from(body));
+  else res.writeHead(status, { "content-type": "application/json", ...headers }).end(JSON.stringify(body));
 }
 
 async function* streamIter(stream: ReadableStream<unknown>): AsyncGenerator<unknown> {
@@ -258,21 +381,14 @@ function writeError(res: ServerResponse, err: unknown): void {
   res.end(JSON.stringify({ error: message }));
 }
 
-function findTrigger(workflow: Workflow, opType: string): string | undefined {
-  return workflow.nodes.find((n) => n.op === opType)?.id;
-}
-
 function firstOutgate(result: RunResult, workflow: Workflow, opType: string): ResponsePayload | undefined {
   for (const [nodeId, payload] of Object.entries(result.outputs)) {
-    const node = workflow.nodes.find((n) => n.id === nodeId);
-    if (node?.op === opType) return payload as ResponsePayload;
+    if (workflow.nodes.find((n) => n.id === nodeId)?.op === opType) return payload as ResponsePayload;
   }
-  // Fall back to any single out-gate.
-  const values = Object.values(result.outputs);
-  return values[0] as ResponsePayload | undefined;
+  return Object.values(result.outputs)[0] as ResponsePayload | undefined;
 }
 
-/** Create and return an HTTP host. */
+/** Create an HTTP host that derives its routes from the engine's workflows. */
 export function createHttpHost(engine: Engine, opts?: HttpHostOptions): HttpHost {
   return new HttpHost(engine, opts);
 }

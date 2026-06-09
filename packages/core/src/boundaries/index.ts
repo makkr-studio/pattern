@@ -14,6 +14,7 @@
 
 import { z } from "zod";
 import { required, stream, value } from "../ops-core/helpers.js";
+import { jsonSchemaToZod } from "../json-schema.js";
 import type { OpDefinition, Ports } from "../types.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
@@ -22,6 +23,22 @@ const connectionSchema = z.union([z.string(), z.object({ id: z.string() }).loose
 const requireAuth = z
   .union([z.boolean(), z.object({ scopes: z.array(z.string()) })])
   .optional();
+
+/** A JSON-Schema object carried in op config (compiled to Zod by the host). */
+const jsonSchema = z.record(z.string(), z.unknown());
+
+/** Declarative CORS policy for an HTTP route (§7). */
+export const corsConfigSchema = z.union([
+  z.boolean(),
+  z.object({
+    origin: z.union([z.string(), z.array(z.string())]).default("*"),
+    methods: z.array(z.string()).optional(),
+    headers: z.array(z.string()).optional(),
+    credentials: z.boolean().default(false),
+    maxAge: z.number().int().optional(),
+    exposeHeaders: z.array(z.string()).optional(),
+  }),
+]);
 
 /** Triggers never run their execute (the engine seeds outputs). */
 const TRIGGER_EXECUTE = () => ({});
@@ -113,21 +130,40 @@ export const returnGateConfigurable: OpDefinition = {
 export const httpRequest: OpDefinition = {
   type: "boundary.http.request",
   title: "boundary.http.request",
-  description: "Inbound HTTP request trigger. Outputs { method, url, path, headers, query, params, body }.",
+  description:
+    "Inbound HTTP request trigger. The route is declared here: method, path, port, " +
+    "cors, and JSON-Schema validation of body/query. Outputs { method, url, path, " +
+    "headers, query, params, body }.",
   boundary: "trigger",
   inputs: {},
-  outputs: (config: { bodyMode?: string }): Ports => ({
+  // Output port schemas are derived from the declared body/query schemas, so the
+  // graph is typed end-to-end and downstream value edges are checked.
+  outputs: (config: { bodyMode?: string; body?: unknown; query?: unknown }): Ports => ({
     method: value(z.string()),
     url: value(z.string()),
     path: value(z.string()),
     headers: value(stringRecord),
-    query: value(stringRecord),
+    query: value(config.query ? jsonSchemaToZod(config.query as any) : stringRecord),
     params: value(stringRecord),
-    body: config.bodyMode === "stream" ? stream(z.instanceof(Uint8Array)) : value(),
+    body:
+      config.bodyMode === "stream"
+        ? stream(z.instanceof(Uint8Array))
+        : value(config.body ? jsonSchemaToZod(config.body as any) : z.unknown()),
   }),
   config: z.object({
-    method: z.string().optional(),
+    /** HTTP method to match. Use "ANY" to match all. */
+    method: z.string().default("GET"),
+    /** Path pattern with :params, e.g. "/users/:id". Required to be routable. */
     path: z.string().optional(),
+    /** Port to serve this route on (defaults to the host's default port). */
+    port: z.number().int().positive().optional(),
+    /** CORS policy for this route. */
+    cors: corsConfigSchema.optional(),
+    /** JSON Schema validating the request body (400 on mismatch). */
+    body: jsonSchema.optional(),
+    /** JSON Schema validating the query parameters (400 on mismatch). */
+    query: jsonSchema.optional(),
+    /** "buffered" parses the whole body; "stream" hands a byte stream to the graph. */
     bodyMode: z.enum(["buffered", "stream"]).default("buffered"),
     requireAuth,
   }),

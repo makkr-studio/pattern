@@ -94,6 +94,7 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 ## Docs
 
 - [Concepts](./docs/concepts.md) — ports, edges, the scheduler, boundaries, hooks vs events, auth.
+- [Projects & mods](./docs/projects-and-mods.md) — `pattern.config.json`, declarative HTTP routes, runtime-modifiable workflows, the mod system.
 - [Op catalog](./docs/op-catalog.md) — every base op, grouped, with ports & config.
 - [Authoring ops & mods](./docs/authoring-ops.md) — write your own ops, boundaries, and plugins.
 - [The spec](./pattern-engine-spec.md) — the full design of record.
@@ -111,7 +112,7 @@ pattern dev [entry]              # run an entry with file-watch hot-reload
 ```bash
 pnpm install
 pnpm build         # build all packages
-pnpm test          # 44 tests across scheduler, streams, boundaries, hooks, auth, workers
+pnpm test          # 55 tests across scheduler, streams, boundaries, hooks, auth, workers, projects
 pnpm typecheck
 ```
 

@@ -1,0 +1,16 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "hello",
+  "name": "GET /hello/:name",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "GET", "path": "/hello/:name", "cors": true } },
+    { "id": "msg", "op": "core.string.template", "config": { "template": "Hello, {{ name }}!" } },
+    { "id": "body", "op": "core.object.build", "config": { "keys": ["message"] } },
+    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "params" }, "to": { "node": "msg", "port": "data" } },
+    { "from": { "node": "msg", "port": "out" }, "to": { "node": "body", "port": "message" } },
+    { "from": { "node": "body", "port": "out" }, "to": { "node": "out", "port": "body" } }
+  ]
+}

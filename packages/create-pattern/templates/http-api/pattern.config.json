@@ -1,0 +1,6 @@
+{
+  "$schema": "pattern/config/v1",
+  "mods": ["./mods/uppercase.mjs"],
+  "workflows": "./workflows",
+  "http": { "port": 3000 }
+}

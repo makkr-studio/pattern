@@ -10,6 +10,9 @@ pulse named control-outs. Higher-order array/stream ops (`map`/`filter`/`reduce`
 apply it per element (the sub-workflow receives `{ item, index }` — `reduce` also
 `{ acc }` — and returns `{ value }`).
 
+> Note: dynamic-arity ops (e.g. `boundary.http.request`, `core.stream.split`)
+> compute their ports from config; the table shows their default shape.
+
 See [authoring-ops.md](./authoring-ops.md) to add your own.
 
 _Auto-generated from the registry — 158 ops._

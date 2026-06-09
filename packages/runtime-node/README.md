@@ -8,23 +8,37 @@ lives here so `@pattern/core` stays runtime-neutral.
 npm install @pattern/core @pattern/runtime-node
 ```
 
+## Project loader (recommended)
+
+```ts
+import { loadProject } from "@pattern/runtime-node";
+
+const { engine, start } = await loadProject();  // reads pattern.config.json
+const { ports } = await start();                // derives routes from workflows
+```
+
+`loadProject` installs mods, loads workflow `.json` files, and returns a ready
+HTTP host. See [projects & mods](../../docs/projects-and-mods.md).
+
 ## Hosts
+
+Routing is **declarative**: the HTTP host derives routes from the
+`boundary.http.request` nodes of registered workflows (method/path/port/cors/
+body+query JSON-Schema all in config). No programmatic route table.
 
 ```ts
 import { Engine } from "@pattern/core";
-import { createHttpHost, runCli, createWsHost, createScheduleHost } from "@pattern/runtime-node";
+import { createHttpHost } from "@pattern/runtime-node";
 
 const engine = new Engine();
-engine.registerWorkflow(api);
-
-// HTTP — buffered / SSE / chunked, :param routing, auth enforcement
-const host = createHttpHost(engine, { routes: [{ method: "GET", path: "/hello/:name", workflow: "api" }] });
-const { port } = await host.listen(3000);
+engine.registerWorkflow(api);                 // route declared inside the workflow
+const host = createHttpHost(engine, { defaultPort: 3000 });
+const { ports } = await host.start();         // re-derives live as workflows change
 ```
 
 | Host | Binds | Out-gate |
 |------|-------|----------|
-| `createHttpHost` | `boundary.http.request` | `boundary.http.response` (`buffered`/`sse`/`chunked`) |
+| `createHttpHost` | `boundary.http.request` (declarative routes) | `boundary.http.response` (`buffered`/`sse`/`chunked`) |
 | `createWsHost` | `boundary.ws.message` / `open` / `close` | `boundary.ws.send` |
 | `runCli` | `boundary.cli` | `boundary.cli.exit` |
 | `createScheduleHost` | `boundary.schedule` (interval or 5-field cron) | result discarded/traced |

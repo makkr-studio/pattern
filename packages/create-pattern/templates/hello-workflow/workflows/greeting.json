@@ -1,0 +1,14 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "greeting",
+  "name": "Hello, Pattern",
+  "nodes": [
+    { "id": "in", "op": "boundary.manual", "config": { "outputs": ["name"] } },
+    { "id": "greet", "op": "core.string.template", "config": { "template": "Hello, {{ name }}! 👋" } },
+    { "id": "out", "op": "boundary.return" }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "name" }, "to": { "node": "greet", "port": "data" } },
+    { "from": { "node": "greet", "port": "out" }, "to": { "node": "out", "port": "value" } }
+  ]
+}
