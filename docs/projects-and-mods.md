@@ -63,6 +63,13 @@ valid (and coerced) values flow out of the trigger's `body`/`query` ports — an
 because the port schemas are derived from the same JSON Schema, downstream value
 edges are type-checked too.
 
+**Ports.** A route binds to its op `config.port` if set, otherwise the host
+default. The default resolves as `defaultPort` (e.g. `pattern.config.json`'s
+`http.port`, or the `HttpHost` option) → the `PORT` env var → `3000`. Routes are
+grouped by resolved port, so `start()` opens **one server per distinct port** —
+a public API and an admin/metrics endpoint can live on different ports just by
+declaring `port` on the latter.
+
 The JSON-Schema subset → Zod compiler is `jsonSchemaToZod` (in core); it's
 runtime-neutral, so it serves both request validation and graph typing.
 

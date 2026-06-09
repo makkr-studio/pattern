@@ -171,6 +171,50 @@ describe("HTTP host — declarative routing", () => {
   });
 });
 
+describe("HTTP host — port resolution", () => {
+  const route = (id: string, path: string, msg: string, port?: number): Workflow => ({
+    id,
+    nodes: [
+      { id: "in", op: "boundary.http.request", config: port ? { path, port } : { path } },
+      { id: "k", op: "core.const.string", config: { value: msg } },
+      { id: "out", op: "boundary.http.response" },
+    ],
+    edges: [
+      { from: { node: "in", port: "out" }, to: { node: "out", port: "in" } },
+      { from: { node: "k", port: "out" }, to: { node: "out", port: "body" } },
+    ],
+  });
+
+  it("opens a server per declared port (op config.port wins)", async () => {
+    const engine = new Engine();
+    engine.registerWorkflow(route("main", "/main", "on-default")); // host default
+    engine.registerWorkflow(route("admin", "/admin", "on-3001", 4831)); // explicit port
+    const host = createHttpHost(engine, { defaultPort: 4830 });
+    const { ports, close } = await host.start();
+    closer = close;
+    expect(ports.sort()).toEqual([4830, 4831]);
+    expect(await (await fetch("http://localhost:4830/main")).text()).toBe("on-default");
+    expect(await (await fetch("http://localhost:4831/admin")).text()).toBe("on-3001");
+  });
+
+  it("falls back to the PORT env var when no default is given", async () => {
+    const prev = process.env.PORT;
+    process.env.PORT = "4832";
+    try {
+      const engine = new Engine();
+      engine.registerWorkflow(route("p", "/p", "via-env"));
+      const host = createHttpHost(engine); // no defaultPort → uses PORT
+      const { ports, close } = await host.start();
+      closer = close;
+      expect(ports).toEqual([4832]);
+      expect(await (await fetch("http://localhost:4832/p")).text()).toBe("via-env");
+    } finally {
+      if (prev === undefined) delete process.env.PORT;
+      else process.env.PORT = prev;
+    }
+  });
+});
+
 describe("HTTP host — runtime workflow changes", () => {
   it("adds and removes routes live as workflows change", async () => {
     const engine = new Engine();
