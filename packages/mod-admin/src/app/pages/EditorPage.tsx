@@ -21,6 +21,8 @@ import { RunPanel } from "../editor/RunPanel";
 import { buildFlow, edgeStyle, outputKind, toDoc, type OpMap, type OpNodeData } from "../editor/graph";
 import { Badge, GlassPanel, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson } from "../components/FormFromSchema";
+import { Markdown } from "../components/Markdown";
+import { tip } from "../components/Tooltip";
 import { Rocket, Play } from "../components/icon";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 
@@ -93,7 +95,7 @@ function EditorInner() {
       id,
       type: "op",
       position: { x: 120 + nodes.length * 20, y: 120 + nodes.length * 20 },
-      data: { op: op.type, config: {}, inputs: op.inputs, outputs: op.outputs, boundary: op.boundary },
+      data: { op: op.type, config: {}, description: op.description, inputs: op.inputs, outputs: op.outputs, boundary: op.boundary },
     };
     setNodes((ns) => [...ns, node]);
     setSelected(id);
@@ -177,8 +179,16 @@ function EditorInner() {
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={20} color="rgba(255,255,255,0.06)" />
-            <Controls className="!shadow-none" />
-            <MiniMap pannable zoomable className="!bg-transparent" maskColor="rgba(0,0,0,0.4)" />
+            <Controls />
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={(n) => {
+                const d = n.data as OpNodeData;
+                return d?.boundary ? "#22d3ee" : categoryStyle(categoryOfType(d.op)).color;
+              }}
+              nodeStrokeWidth={0}
+            />
           </ReactFlow>
         </GlassPanel>
 
@@ -192,6 +202,9 @@ function EditorInner() {
               op={opMap.get(selectedNode.data.op)}
               onChange={(config) =>
                 setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)))
+              }
+              onMeta={(meta) =>
+                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...meta } } : n)))
               }
             />
           ) : (
@@ -215,21 +228,55 @@ function EditorInner() {
   );
 }
 
-function Inspector({ node, op, onChange }: { node: RFNode<OpNodeData>; op?: OpInfo; onChange: (config: Record<string, unknown>) => void }) {
+function Inspector({
+  node,
+  op,
+  onChange,
+  onMeta,
+}: {
+  node: RFNode<OpNodeData>;
+  op?: OpInfo;
+  onChange: (config: Record<string, unknown>) => void;
+  onMeta: (meta: { title?: string; comment?: string }) => void;
+}) {
   const [raw, setRaw] = useState(false);
   const cat = categoryStyle(categoryOfType(node.data.op));
   const config = (node.data.config ?? {}) as Record<string, unknown>;
   const { Icon } = cat;
   const hasSchema = op?.configSchema != null && (op.configSchema as { type?: string }).type === "object";
+  const inputCls = "glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]";
 
   return (
     <div>
       <div className="flex items-center gap-2">
-        <Icon size={15} style={{ color: cat.color }} />
-        <span className="font-medium">{node.data.title ?? humanizeOp(node.data.op)}</span>
+        <Icon size={15} style={{ color: cat.color }} className="shrink-0" />
+        <span className="font-mono text-[11px]" style={{ color: cat.color }}>
+          {node.data.op}
+        </span>
       </div>
-      <div className="text-muted mt-0.5 font-mono text-[11px]">{node.data.op}</div>
-      {op?.description && <p className="text-muted mt-2 text-xs leading-relaxed">{op.description}</p>}
+      {op?.description && <div className="text-muted mt-2 text-xs"><Markdown text={op.description} /></div>}
+
+      {/* Author-set node identity */}
+      <div className="mt-4 space-y-2">
+        <div>
+          <div className="text-muted mb-1 text-xs">Name</div>
+          <input
+            className={inputCls}
+            value={node.data.title ?? ""}
+            placeholder={humanizeOp(node.data.op)}
+            onChange={(e) => onMeta({ title: e.target.value || undefined })}
+          />
+        </div>
+        <div>
+          <div className="text-muted mb-1 text-xs">Comment (markdown)</div>
+          <textarea
+            className="glass h-16 w-full rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+            value={node.data.comment ?? ""}
+            placeholder="What does this step do?"
+            onChange={(e) => onMeta({ comment: e.target.value || undefined })}
+          />
+        </div>
+      </div>
 
       <div className="mt-4 mb-2 flex items-center justify-between">
         <span className="text-muted text-xs font-semibold uppercase tracking-wider">Config</span>
@@ -268,7 +315,12 @@ function OpItem({ op, onAdd }: { op: OpInfo; onAdd: (op: OpInfo) => void }) {
   return (
     <button
       onClick={() => onAdd(op)}
-      title={op.type}
+      {...tip(
+        <div className="space-y-1">
+          <div className="font-mono text-[11px] opacity-70">{op.type}</div>
+          {op.description && <Markdown text={op.description} />}
+        </div>,
+      )}
       className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-white/5"
     >
       <Icon size={12} style={{ color: cat.color }} className="shrink-0" />

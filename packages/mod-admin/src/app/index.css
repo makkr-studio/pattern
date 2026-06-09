@@ -108,6 +108,43 @@ body {
   scrollbar-color: var(--glass-border) transparent;
 }
 
+/* xyflow surfaces themed to match the glass UI (dark/light), with real contrast. */
+.react-flow__controls {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+}
+.react-flow__controls-button {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  border-bottom: 1px solid var(--hairline);
+  width: 26px;
+  height: 26px;
+}
+.react-flow__controls-button:hover {
+  background: rgba(127, 199, 255, 0.18);
+}
+.react-flow__controls-button svg {
+  fill: var(--fg);
+  max-width: 14px;
+  max-height: 14px;
+}
+.react-flow__minimap {
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.react-flow__attribution {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

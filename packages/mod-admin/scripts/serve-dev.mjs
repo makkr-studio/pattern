@@ -26,9 +26,9 @@ await cp.store.saveVersion(
     name: "Greeting endpoint",
     description: "Returns a templated greeting for GET /hello/:name.",
     nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/hello/:name" }, ui: { x: 40, y: 120 } },
-      { id: "msg", op: "core.string.template", config: { template: "Hello, {{ name }}! 👋" }, ui: { x: 360, y: 120 } },
-      { id: "out", op: "boundary.http.response", ui: { x: 680, y: 120 } },
+      { id: "in", op: "boundary.http.request", title: "Incoming request", comment: "Public endpoint. The `:name` path segment is captured into **params**.", config: { method: "GET", path: "/hello/:name" }, ui: { x: 40, y: 120 } },
+      { id: "msg", op: "core.string.template", title: "Build greeting", comment: "Interpolates `{{ name }}` from the request params.", config: { template: "Hello, {{ name }}! 👋" }, ui: { x: 360, y: 120 } },
+      { id: "out", op: "boundary.http.response", title: "Reply", comment: "Writes the greeting as the HTTP response body.", ui: { x: 680, y: 120 } },
     ],
     edges: [
       { from: { node: "in", port: "params" }, to: { node: "msg", port: "data" } },

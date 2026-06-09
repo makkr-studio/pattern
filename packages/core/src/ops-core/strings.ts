@@ -15,12 +15,14 @@ const str = z.string();
 export const stringOps: OpDefinition[] = [
   pureOp({
     type: "core.string.concat",
+    description: "Concatenates an array of strings into one. Input `{ values }`.",
     inputs: { values: required(z.array(z.string())) },
     output: str,
     compute: ({ values }) => (values as string[]).join(""),
   }),
   pureOp({
     type: "core.string.join",
+    description: "Joins array elements into a string with a `separator`. Input `{ values }`.",
     inputs: { values: required(z.array(z.unknown())) },
     output: str,
     config: z.object({ separator: z.string().default(",") }),
@@ -28,6 +30,7 @@ export const stringOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.string.split",
+    description: "Splits a string by `separator` into an array. Input `{ value }`.",
     inputs: { value: required(str) },
     output: z.array(str),
     config: z.object({ separator: z.string().default(""), limit: z.number().int().optional() }),
@@ -58,11 +61,12 @@ export const stringOps: OpDefinition[] = [
       return String(v).replace(pattern, replacement);
     },
   }),
-  pureOp({ type: "core.string.trim", inputs: { value: required(str) }, output: str, compute: ({ value: v }) => String(v).trim() }),
-  pureOp({ type: "core.string.lower", inputs: { value: required(str) }, output: str, compute: ({ value: v }) => String(v).toLowerCase() }),
-  pureOp({ type: "core.string.upper", inputs: { value: required(str) }, output: str, compute: ({ value: v }) => String(v).toUpperCase() }),
+  pureOp({ type: "core.string.trim", description: "Trims leading and trailing whitespace from a string. Input `{ value }`.", inputs: { value: required(str) }, output: str, compute: ({ value: v }) => String(v).trim() }),
+  pureOp({ type: "core.string.lower", description: "Lowercases a string. Input `{ value }`.", inputs: { value: required(str) }, output: str, compute: ({ value: v }) => String(v).toLowerCase() }),
+  pureOp({ type: "core.string.upper", description: "Uppercases a string. Input `{ value }`.", inputs: { value: required(str) }, output: str, compute: ({ value: v }) => String(v).toUpperCase() }),
   pureOp({
     type: "core.string.slice",
+    description: "Extracts a substring between `start` and `end` indices. Input `{ value }`.",
     inputs: { value: required(str) },
     output: str,
     config: z.object({ start: z.number().int().default(0), end: z.number().int().optional() }),
@@ -71,21 +75,24 @@ export const stringOps: OpDefinition[] = [
       return String(v).slice(start, end);
     },
   }),
-  pureOp({ type: "core.string.length", inputs: { value: required(str) }, output: z.number(), compute: ({ value: v }) => String(v).length }),
+  pureOp({ type: "core.string.length", description: "Returns the character length of a string. Input `{ value }`.", inputs: { value: required(str) }, output: z.number(), compute: ({ value: v }) => String(v).length }),
   pureOp({
     type: "core.string.includes",
+    description: "Tests whether a string contains `search`. Input `{ value, search }`.",
     inputs: { value: required(str), search: required(str) },
     output: z.boolean(),
     compute: ({ value: v, search }) => String(v).includes(String(search)),
   }),
   pureOp({
     type: "core.string.startsWith",
+    description: "Tests whether a string starts with `search`. Input `{ value, search }`.",
     inputs: { value: required(str), search: required(str) },
     output: z.boolean(),
     compute: ({ value: v, search }) => String(v).startsWith(String(search)),
   }),
   pureOp({
     type: "core.string.endsWith",
+    description: "Tests whether a string ends with `search`. Input `{ value, search }`.",
     inputs: { value: required(str), search: required(str) },
     output: z.boolean(),
     compute: ({ value: v, search }) => String(v).endsWith(String(search)),
@@ -104,6 +111,7 @@ export const stringOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.string.pad",
+    description: "Pads a string to `length` on the `start` or `end` side with `fill`. Input `{ value }`.",
     inputs: { value: required(str) },
     output: str,
     config: z.object({

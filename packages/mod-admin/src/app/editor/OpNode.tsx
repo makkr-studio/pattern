@@ -1,7 +1,10 @@
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { MessageSquare } from "lucide-react";
 import type { OpNodeData } from "./graph";
 import { portColor } from "../lib/format";
 import { categoryOfType, categoryStyle, humanizeOp } from "../lib/categories";
+import { tip } from "../components/Tooltip";
+import { Markdown } from "../components/Markdown";
 
 const HANDLE_GAP = 22;
 const HEADER = 40;
@@ -22,9 +25,18 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
       className="glass-strong overflow-hidden rounded-xl"
       style={{ width: 196, minHeight: height, borderColor: selected ? "var(--color-neon-cyan)" : accent, borderWidth: selected ? 2 : 1 }}
     >
-      <div className="flex items-center gap-2 border-b hairline px-3 py-2" style={{ background: cat.soft }}>
-        <Icon size={14} style={{ color: cat.color }} />
+      <div
+        className="flex items-center gap-2 border-b hairline px-3 py-2"
+        style={{ background: cat.soft }}
+        {...tip(data.description ? <Markdown text={data.description} /> : null)}
+      >
+        <Icon size={14} style={{ color: cat.color }} className="shrink-0" />
         <span className="truncate text-sm font-medium">{name}</span>
+        {data.comment && (
+          <span {...tip(<Markdown text={data.comment} />)} className="shrink-0 text-[var(--color-neon-amber)]">
+            <MessageSquare size={12} />
+          </span>
+        )}
         {data.boundary && (
           <span className="ml-auto rounded px-1 py-0.5 text-[9px] uppercase tracking-wide" style={{ background: "var(--color-neon-cyan)", color: "#000" }}>
             {data.boundary === "trigger" ? "trig" : "out"}

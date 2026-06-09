@@ -63,17 +63,19 @@ function higherOrder(
 }
 
 export const arrayOps: OpDefinition[] = [
-  pureOp({ type: "core.array.length", inputs: { values: required(arr) }, output: z.number(), compute: ({ values }) => (values as unknown[]).length }),
+  pureOp({ type: "core.array.length", description: "Returns the number of items in `values`.", inputs: { values: required(arr) }, output: z.number(), compute: ({ values }) => (values as unknown[]).length }),
   pureOp({
     type: "core.array.at",
+    description: "Returns the item at `config.index` (negative counts from the end).",
     inputs: { values: required(arr) },
     config: z.object({ index: z.number().int() }),
     compute: ({ values }, ctx) => (values as unknown[]).at((ctx.config as { index: number }).index),
   }),
-  pureOp({ type: "core.array.first", inputs: { values: required(arr) }, compute: ({ values }) => (values as unknown[])[0] }),
-  pureOp({ type: "core.array.last", inputs: { values: required(arr) }, compute: ({ values }) => (values as unknown[]).at(-1) }),
+  pureOp({ type: "core.array.first", description: "Returns the first item of `values` (or `undefined` if empty).", inputs: { values: required(arr) }, compute: ({ values }) => (values as unknown[])[0] }),
+  pureOp({ type: "core.array.last", description: "Returns the last item of `values` (or `undefined` if empty).", inputs: { values: required(arr) }, compute: ({ values }) => (values as unknown[]).at(-1) }),
   pureOp({
     type: "core.array.slice",
+    description: "Returns a sub-array from `config.start` to `config.end` (end exclusive).",
     inputs: { values: required(arr) },
     output: arr,
     config: z.object({ start: z.number().int().default(0), end: z.number().int().optional() }),
@@ -82,11 +84,12 @@ export const arrayOps: OpDefinition[] = [
       return (values as unknown[]).slice(start, end);
     },
   }),
-  pureOp({ type: "core.array.concat", inputs: { a: required(arr), b: required(arr) }, output: arr, compute: ({ a, b }) => [...(a as unknown[]), ...(b as unknown[])] }),
-  pureOp({ type: "core.array.append", inputs: { values: required(arr), item: required() }, output: arr, compute: ({ values, item }) => [...(values as unknown[]), item] }),
-  pureOp({ type: "core.array.prepend", inputs: { values: required(arr), item: required() }, output: arr, compute: ({ values, item }) => [item, ...(values as unknown[])] }),
+  pureOp({ type: "core.array.concat", description: "Concatenates arrays `a` and `b` into one array.", inputs: { a: required(arr), b: required(arr) }, output: arr, compute: ({ a, b }) => [...(a as unknown[]), ...(b as unknown[])] }),
+  pureOp({ type: "core.array.append", description: "Returns `values` with `item` added to the end.", inputs: { values: required(arr), item: required() }, output: arr, compute: ({ values, item }) => [...(values as unknown[]), item] }),
+  pureOp({ type: "core.array.prepend", description: "Returns `values` with `item` added to the front.", inputs: { values: required(arr), item: required() }, output: arr, compute: ({ values, item }) => [item, ...(values as unknown[])] }),
   pureOp({
     type: "core.array.flatten",
+    description: "Flattens nested arrays up to `config.depth` levels.",
     inputs: { values: required(arr) },
     output: arr,
     config: z.object({ depth: z.number().int().default(1) }),
@@ -94,6 +97,7 @@ export const arrayOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.array.unique",
+    description: "Returns `values` with deep-equal duplicates removed, keeping first occurrence.",
     inputs: { values: required(arr) },
     output: arr,
     compute: ({ values }) => {
@@ -120,11 +124,12 @@ export const arrayOps: OpDefinition[] = [
       });
     },
   }),
-  pureOp({ type: "core.array.reverse", inputs: { values: required(arr) }, output: arr, compute: ({ values }) => [...(values as unknown[])].reverse() }),
-  pureOp({ type: "core.array.includes", inputs: { values: required(arr), value: required() }, output: z.boolean(), compute: ({ values, value: v }) => (values as unknown[]).some((x) => deepEqual(x, v)) }),
-  pureOp({ type: "core.array.indexOf", inputs: { values: required(arr), value: required() }, output: z.number(), compute: ({ values, value: v }) => (values as unknown[]).findIndex((x) => deepEqual(x, v)) }),
+  pureOp({ type: "core.array.reverse", description: "Returns a new array with `values` in reverse order.", inputs: { values: required(arr) }, output: arr, compute: ({ values }) => [...(values as unknown[])].reverse() }),
+  pureOp({ type: "core.array.includes", description: "Returns `true` if `values` contains a deep-equal `value`.", inputs: { values: required(arr), value: required() }, output: z.boolean(), compute: ({ values, value: v }) => (values as unknown[]).some((x) => deepEqual(x, v)) }),
+  pureOp({ type: "core.array.indexOf", description: "Returns the index of the first deep-equal `value`, or `-1` if absent.", inputs: { values: required(arr), value: required() }, output: z.number(), compute: ({ values, value: v }) => (values as unknown[]).findIndex((x) => deepEqual(x, v)) }),
   pureOp({
     type: "core.array.join",
+    description: "Joins `values` into a string using `config.separator`.",
     inputs: { values: required(arr) },
     output: z.string(),
     config: z.object({ separator: z.string().default(",") }),
@@ -132,6 +137,7 @@ export const arrayOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.array.chunk",
+    description: "Splits `values` into sub-arrays of length `config.size`.",
     inputs: { values: required(arr) },
     output: z.array(arr),
     config: z.object({ size: z.number().int().positive() }),
@@ -145,6 +151,7 @@ export const arrayOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.array.zip",
+    description: "Pairs items of `a` and `b` into `[a, b]` tuples, truncated to the shorter length.",
     inputs: { a: required(arr), b: required(arr) },
     output: z.array(z.tuple([z.unknown(), z.unknown()])),
     compute: ({ a, b }) => {

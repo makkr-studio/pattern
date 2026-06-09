@@ -94,12 +94,14 @@ const pathConfig = z.object({ path: z.string() });
 export const objectOps: OpDefinition[] = [
   pureOp({
     type: "core.object.get",
+    description: "Reads `config.path` (dot/bracket path) from the input `object`, or `undefined` if missing.",
     inputs: { object: required(obj) },
     config: pathConfig,
     compute: ({ object }, ctx) => getPath(object, (ctx.config as { path: string }).path),
   }),
   pureOp({
     type: "core.object.set",
+    description: "Returns a clone of `object` with `config.path` (dot/bracket path) set to `value` (immutable).",
     inputs: { object: required(obj), value: required() },
     output: obj,
     config: pathConfig,
@@ -107,6 +109,7 @@ export const objectOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.object.has",
+    description: "Returns `true` if `config.path` (dot/bracket path) exists in `object`.",
     inputs: { object: required(obj) },
     output: z.boolean(),
     config: pathConfig,
@@ -114,6 +117,7 @@ export const objectOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.object.delete",
+    description: "Returns a clone of `object` with `config.path` (dot/bracket path) removed (immutable).",
     inputs: { object: required(obj) },
     output: obj,
     config: pathConfig,
@@ -121,6 +125,7 @@ export const objectOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.object.pick",
+    description: "Returns a new object keeping only `config.keys` present in `object`.",
     inputs: { object: required(obj) },
     output: obj,
     config: z.object({ keys: z.array(z.string()) }),
@@ -133,6 +138,7 @@ export const objectOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.object.omit",
+    description: "Returns a new object dropping `config.keys` from `object`.",
     inputs: { object: required(obj) },
     output: obj,
     config: z.object({ keys: z.array(z.string()) }),
@@ -151,20 +157,22 @@ export const objectOps: OpDefinition[] = [
   }),
   pureOp({
     type: "core.object.mergeDeep",
+    description: "Recursively merges `b` into `a` (arrays concatenate, nested objects merge, scalars from `b` win).",
     inputs: { a: required(obj), b: required(obj) },
     output: obj,
     compute: ({ a, b }) => mergeDeep(a, b),
   }),
-  pureOp({ type: "core.object.keys", inputs: { object: required(obj) }, output: z.array(z.string()), compute: ({ object }) => Object.keys(object as object) }),
-  pureOp({ type: "core.object.values", inputs: { object: required(obj) }, output: z.array(z.unknown()), compute: ({ object }) => Object.values(object as object) }),
-  pureOp({ type: "core.object.entries", inputs: { object: required(obj) }, output: z.array(z.tuple([z.string(), z.unknown()])), compute: ({ object }) => Object.entries(object as object) }),
+  pureOp({ type: "core.object.keys", description: "Returns the own enumerable keys of `object` as a string array.", inputs: { object: required(obj) }, output: z.array(z.string()), compute: ({ object }) => Object.keys(object as object) }),
+  pureOp({ type: "core.object.values", description: "Returns the own enumerable values of `object` as an array.", inputs: { object: required(obj) }, output: z.array(z.unknown()), compute: ({ object }) => Object.values(object as object) }),
+  pureOp({ type: "core.object.entries", description: "Returns the own enumerable `[key, value]` pairs of `object`.", inputs: { object: required(obj) }, output: z.array(z.tuple([z.string(), z.unknown()])), compute: ({ object }) => Object.entries(object as object) }),
   pureOp({
     type: "core.object.fromEntries",
+    description: "Builds an object from an array of `[key, value]` `entries`.",
     inputs: { entries: required(z.array(z.tuple([z.string(), z.unknown()]))) },
     output: obj,
     compute: ({ entries }) => Object.fromEntries(entries as [string, unknown][]),
   }),
-  pureOp({ type: "core.object.clone", inputs: { object: required() }, compute: ({ object }) => structuredClone(object) }),
+  pureOp({ type: "core.object.clone", description: "Returns a deep clone of `object` via `structuredClone`.", inputs: { object: required() }, compute: ({ object }) => structuredClone(object) }),
   defineOp({
     type: "core.object.mapValues",
     title: "core.object.mapValues",
