@@ -115,7 +115,7 @@ pattern dev [entry]              # run an entry with file-watch hot-reload
 ```bash
 pnpm install
 pnpm build         # build all packages
-pnpm test          # 55 tests across scheduler, streams, boundaries, hooks, auth, workers, projects
+pnpm test          # scheduler, streams, boundaries, hooks, auth, workers, projects, admin, SPA, security
 pnpm typecheck
 ```
 
@@ -141,10 +141,14 @@ pnpm local:test-create                           # scaffold + install + run agai
 
 ## Status
 
-v1 of the **execution engine**, its **Node adapter**, and the **scaffolder** — the
-whole spec implemented. Designed-for-but-not-built (no architectural blockers):
-durable/resumable runs, distributed execution behind the same `RunTransport`, and
-the admin-UI mod. See [§13 of the spec](./pattern-engine-spec.md).
+v1 of the **execution engine**, its **Node adapter**, the **scaffolder**, and the
+**admin mod** (control plane, versioned store, glassmorphism SPA with graph
+editor, run replay-on-canvas, undo/redo, and the Tier-1/Tier-2 extension
+surface). Storage sits on [flystorage](https://flystorage.dev), so S3/GCS/Azure
+adapters drop in. The worker pool loads mods via `WorkerPoolTransport({ mods })`.
+Designed-for-but-not-built (no architectural blockers): durable/resumable runs
+and distributed execution behind the same `RunTransport`. See
+[§13 of the spec](./pattern-engine-spec.md).
 
 ## License
 

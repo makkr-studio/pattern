@@ -1,0 +1,17 @@
+{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pattern dev src/index.ts",
+    "start": "node src/index.ts"
+  },
+  "dependencies": {
+    "@pattern/core": "^0.1.0",
+    "@pattern/runtime-node": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
