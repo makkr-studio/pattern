@@ -88,11 +88,16 @@ export function ReplayPage() {
   const decorated = useMemo(() => {
     if (!flow) return null;
     const now = t0 + t;
-    const stateByNode = new Map<string, ReplayState>();
-    for (const s of nodeSpans) stateByNode.set(nodeIdOf(s)!, stateAt(s, now));
+    const spanState = new Map<string, ReplayState>();
+    for (const s of nodeSpans) spanState.set(nodeIdOf(s)!, stateAt(s, now));
+    // Triggers never execute (the engine seeds their outputs), so they have no
+    // span — but the run existing means they fired: show them ok from t0.
+    const stateByNode = new Map<string, ReplayState>(
+      flow.nodes.map((n) => [n.id, spanState.get(n.id) ?? (n.data.boundary === "trigger" ? "ok" : "pending")]),
+    );
     const nodes = flow.nodes.map((n) => ({
       ...n,
-      data: { ...n.data, replay: stateByNode.get(n.id) ?? "pending" },
+      data: { ...n.data, replay: stateByNode.get(n.id) },
     }));
     const edges = flow.edges.map((e) => {
       const srcState = stateByNode.get(e.source);
