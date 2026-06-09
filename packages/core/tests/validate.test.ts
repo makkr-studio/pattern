@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, collectIssues, type PatternMod, type Workflow } from "@pattern/core";
+import { Engine, collectIssues, formatGraph, type PatternMod, type Workflow } from "@pattern/core";
 
 function issues(wf: unknown) {
   const engine = new Engine();
@@ -67,6 +67,41 @@ describe("validation (§6)", () => {
   it("requires at least one trigger", () => {
     const wf = { id: "nt", nodes: [{ id: "c", op: "core.const.number", config: { value: 1 } }], edges: [] };
     expect(issues(wf)).toContain("no_trigger");
+  });
+});
+
+describe("node comments", () => {
+  const wf: Workflow = {
+    id: "documented",
+    nodes: [
+      { id: "t", op: "boundary.manual", config: { outputs: ["a"] }, comment: "entry point — caller passes `a`" },
+      { id: "double", op: "core.math.multiply", title: "x2", comment: "multiply by two\n(the educational step)" },
+      { id: "two", op: "core.const.number", config: { value: 2 } },
+      { id: "out", op: "boundary.return" },
+    ],
+    edges: [
+      { from: { node: "t", port: "a" }, to: { node: "double", port: "a" } },
+      { from: { node: "two", port: "out" }, to: { node: "double", port: "b" } },
+      { from: { node: "double", port: "out" }, to: { node: "out", port: "value" } },
+    ],
+  };
+
+  it("validate accepts comments and they don't affect execution", async () => {
+    const engine = new Engine();
+    expect(collectIssues(wf, engine.ops).ok).toBe(true);
+    engine.registerWorkflow(wf);
+    const res = await engine.run(wf, { input: { a: 21 } });
+    expect(Object.values(res.outputs)[0]).toEqual({ value: 42 });
+    // Comments survive registration (carried as data).
+    expect(engine.workflows.get("documented")!.nodes[0]!.comment).toContain("entry point");
+  });
+
+  it("renders comments in `pattern graph` output", () => {
+    const engine = new Engine();
+    const out = formatGraph(wf, engine.ops);
+    expect(out).toContain("entry point — caller passes `a`");
+    expect(out).toContain("the educational step"); // multi-line comment
+    expect(out).toContain("double — x2"); // title shown inline
   });
 });
 

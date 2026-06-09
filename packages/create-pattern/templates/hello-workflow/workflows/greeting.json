@@ -3,9 +3,23 @@
   "id": "greeting",
   "name": "Hello, Pattern",
   "nodes": [
-    { "id": "in", "op": "boundary.manual", "config": { "outputs": ["name"] } },
-    { "id": "greet", "op": "core.string.template", "config": { "template": "Hello, {{ name }}! 👋" } },
-    { "id": "out", "op": "boundary.return" }
+    {
+      "id": "in",
+      "op": "boundary.manual",
+      "config": { "outputs": ["name"] },
+      "comment": "Trigger: a manual run. Its outputs ARE the external input — here a single `name` value passed by the caller."
+    },
+    {
+      "id": "greet",
+      "op": "core.string.template",
+      "config": { "template": "Hello, {{ name }}! 👋" },
+      "comment": "Interpolate {{ name }} from the incoming `data` object. Value edges are barriers, so this waits for `name` to resolve."
+    },
+    {
+      "id": "out",
+      "op": "boundary.return",
+      "comment": "Out-gate: its resolved inputs become the run's result."
+    }
   ],
   "edges": [
     { "from": { "node": "in", "port": "name" }, "to": { "node": "greet", "port": "data" } },

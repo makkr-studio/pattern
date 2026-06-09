@@ -322,7 +322,13 @@ export const EdgeSchema = z.object({
 export const WorkflowNodeSchema = z.object({
   id: z.string(),
   op: z.string(),
+  /** A short human label for the node. */
   title: z.string().optional(),
+  /**
+   * A free-form note explaining this step — for educational, self-documenting,
+   * and "thought-keeping" workflows. Carried as data; never affects execution.
+   */
+  comment: z.string().optional(),
   config: z.unknown().optional(),
 });
 

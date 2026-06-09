@@ -3,10 +3,28 @@
   "id": "shout",
   "name": "GET /shout/:text (uses the app-local mod op)",
   "nodes": [
-    { "id": "in", "op": "boundary.http.request", "config": { "method": "GET", "path": "/shout/:text" } },
-    { "id": "text", "op": "core.object.get", "config": { "path": "text" } },
-    { "id": "shout", "op": "app.shout" },
-    { "id": "out", "op": "boundary.http.response" }
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": { "method": "GET", "path": "/shout/:text" },
+      "comment": "Declarative route. The :text segment becomes params.text."
+    },
+    {
+      "id": "text",
+      "op": "core.object.get",
+      "config": { "path": "text" },
+      "comment": "Pull `text` out of the params object."
+    },
+    {
+      "id": "shout",
+      "op": "app.shout",
+      "comment": "An op from the app-local mod (mods/uppercase.mjs): UPPERCASE + '!'. Swap the mod, swap the behavior — the graph stays the same."
+    },
+    {
+      "id": "out",
+      "op": "boundary.http.response",
+      "comment": "Out-gate: writes the result as the HTTP response body."
+    }
   ],
   "edges": [
     { "from": { "node": "in", "port": "params" }, "to": { "node": "text", "port": "object" } },
