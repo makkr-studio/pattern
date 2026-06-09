@@ -105,6 +105,19 @@ describe("hooks (§8)", () => {
     // in a NodeExecutionError, whose message preserves the guard text.
     await expect(engine.invokeHook("rec", {})).rejects.toThrow(/maxDepth/);
   });
+
+  it("tracks recursion depth per call chain — concurrency never trips the guard", async () => {
+    const engine = new Engine();
+    engine.registerOp(tagOp);
+    // maxDepth 2 with 8 *parallel* invocations: a shared counter would read
+    // depth ≥ 2 and throw spuriously; per-chain tracking must not.
+    engine.declareHook({ name: "par", maxDepth: 2 });
+    engine.registerWorkflow(listener("l-par", "par", 10, "x"));
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => engine.invokeHook("par", { order: [] }) as Promise<{ order: string[] }>),
+    );
+    for (const r of results) expect(r.order).toEqual(["x"]);
+  });
 });
 
 describe("events (§8)", () => {

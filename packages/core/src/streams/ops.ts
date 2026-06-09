@@ -123,19 +123,31 @@ function interleaveStreams(streams: ReadableStream<unknown>[]): ReadableStream<u
     start(controller) {
       const readers = streams.map((s) => s.getReader());
       let open = readers.length;
+      // Once any branch errors the controller, surviving branches must stop:
+      // enqueueing on an errored controller throws, and those throws would
+      // escape the void-ed IIFEs as unhandled rejections.
+      let errored = false;
       if (open === 0) return controller.close();
       for (const reader of readers) {
         void (async () => {
           try {
             for (;;) {
               const { done, value: v } = await reader.read();
-              if (done) break;
+              if (done || errored) break;
               controller.enqueue(v);
             }
           } catch (err) {
-            controller.error(err);
+            if (!errored) {
+              errored = true;
+              try {
+                controller.error(err);
+              } catch {
+                /* consumer already cancelled */
+              }
+            }
           } finally {
-            if (--open === 0) {
+            reader.releaseLock();
+            if (--open === 0 && !errored) {
               try {
                 controller.close();
               } catch {

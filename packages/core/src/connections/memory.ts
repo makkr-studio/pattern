@@ -73,9 +73,14 @@ export class InMemoryConnectionRegistry implements ConnectionRegistry {
     this.rooms.get(room)?.delete(idOf(connection));
   }
 
-  async close(connection: ConnectionRef | string): Promise<void> {
-    this.detach(idOf(connection));
+  async close(connection: ConnectionRef | string, code?: number, reason?: string): Promise<void> {
+    const id = idOf(connection);
+    if (code !== undefined || reason !== undefined) this.closures.set(id, { code, reason });
+    this.detach(id);
   }
+
+  /** Test/inspection helper: close code/reason captured per connection. */
+  readonly closures = new Map<string, { code?: number; reason?: string }>();
 
   /** Members of a room (inspection). */
   members(room: string): string[] {

@@ -7,6 +7,11 @@
  * cancellation crosses the seam. It is a drop-in for `InProcessTransport` — the
  * scheduler never knows the difference — and the same interface later allows a
  * queue + remote workers (distribution).
+ *
+ * Workers register the base op catalog plus any `mods` passed in options (each
+ * a module specifier the worker `import()`s and `engine.use()`s), so workflows
+ * using mod-contributed ops can run on the pool too. A crashed worker rejects
+ * its in-flight runs and is respawned in place.
  */
 
 import { Worker } from "node:worker_threads";
@@ -28,12 +33,17 @@ class WorkerWrapper {
   readonly pending = new Map<string, Pending>();
   inflight = 0;
 
-  constructor() {
-    this.worker = new Worker(WORKER_URL);
+  constructor(mods: string[], onFatal: (w: WorkerWrapper, err: unknown) => void) {
+    this.worker = new Worker(WORKER_URL, { workerData: { mods } });
     this.worker.on("message", (msg: any) => this.onMessage(msg));
     this.worker.on("error", (err) => {
+      // The thread is dead: fail every in-flight run and hand the slot back to
+      // the pool for a respawn. Resetting `inflight` matters — a leaked count
+      // would silently remove this slot from least-inflight selection forever.
       for (const p of this.pending.values()) if (!p.settled) p.reject(err);
       this.pending.clear();
+      this.inflight = 0;
+      onFatal(this, err);
     });
   }
 
@@ -104,6 +114,8 @@ class WorkerWrapper {
         input: req.input,
         principal: req.principal,
         params: req.params,
+        sampleIo: req.sampleIo,
+        hookDepth: req.hookDepth,
       });
     });
   }
@@ -120,22 +132,52 @@ class WorkerWrapper {
 export interface WorkerPoolOptions {
   /** Number of workers (default: available parallelism − 1, min 1). */
   size?: number;
+  /**
+   * Mod module specifiers each worker loads at startup (same resolution as
+   * `loadMods`: bare npm/workspace specifiers, or absolute paths/file URLs).
+   * Without this, workers have only the base op catalog and a workflow using a
+   * mod-contributed op fails with "unknown op".
+   */
+  mods?: string[];
 }
 
 export class WorkerPoolTransport implements RunTransport {
   private workers: WorkerWrapper[];
   private rr = 0;
+  private closed = false;
+  private readonly mods: string[];
 
   constructor(opts: WorkerPoolOptions = {}) {
     const size = Math.max(1, opts.size ?? availableParallelism() - 1);
-    this.workers = Array.from({ length: size }, () => new WorkerWrapper());
+    this.mods = opts.mods ?? [];
+    this.workers = Array.from({ length: size }, () => this.spawn());
+  }
+
+  private spawn(): WorkerWrapper {
+    return new WorkerWrapper(this.mods, (dead) => this.respawn(dead));
+  }
+
+  /** Replace a crashed worker so the pool keeps its capacity. */
+  private respawn(dead: WorkerWrapper): void {
+    void dead.terminate().catch(() => {});
+    if (this.closed) return;
+    const i = this.workers.indexOf(dead);
+    if (i >= 0) this.workers[i] = this.spawn();
   }
 
   dispatch(req: RunRequest): RunHandle {
-    // Least-inflight selection, falling back to round-robin.
-    const worker =
-      this.workers.reduce((a, b) => (b.inflight < a.inflight ? b : a), this.workers[this.rr++ % this.workers.length]!) ??
-      this.workers[0]!;
+    if (this.closed || this.workers.length === 0) {
+      throw new Error("WorkerPoolTransport is closed");
+    }
+    // Least-inflight selection; the rotating scan start breaks ties fairly.
+    const n = this.workers.length;
+    let worker = this.workers[this.rr % n]!;
+    for (let i = 1; i < n; i++) {
+      const w = this.workers[(this.rr + i) % n]!;
+      if (w.inflight < worker.inflight) worker = w;
+    }
+    this.rr = (this.rr + 1) % n;
+
     const runId = crypto.randomUUID();
     const result = worker.run(req, runId);
     return {
@@ -146,7 +188,9 @@ export class WorkerPoolTransport implements RunTransport {
   }
 
   async close(): Promise<void> {
-    await Promise.all(this.workers.map((w) => w.terminate()));
+    this.closed = true;
+    const workers = this.workers;
     this.workers = [];
+    await Promise.all(workers.map((w) => w.terminate()));
   }
 }
