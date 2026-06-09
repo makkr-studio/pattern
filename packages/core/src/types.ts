@@ -265,6 +265,8 @@ export interface OpContext {
   readonly workflowId: string;
   /** Run-scoped parameters (read by `core.input`); serializable. */
   readonly params: Record<string, unknown>;
+  /** Injected environment map (read by `core.env`); runtime-neutral. */
+  readonly env: Record<string, string | undefined>;
   /** Run a referenced sub-workflow to completion; returns its out-gate result. */
   invoke(ref: SubworkflowRef, input?: Record<string, unknown>): Promise<Record<string, unknown>>;
   services: OpServices;
@@ -287,6 +289,13 @@ export interface OpDefinition {
   description?: string;
   inputs: PortsDef;
   outputs: PortsDef;
+  /**
+   * Registration-time config ports (boundary ops). A value edge into one of
+   * these feeds the op's config field of the same name; the engine evaluates the
+   * feeding sub-graph once at registration (the "resolve phase") and freezes the
+   * result into config. Distinct from `inputs` (per-run) — see §7.
+   */
+  configInputs?: PortsDef;
   /** Extra named control-outs (control-flow ops). The implicit `in`/`out` are always present. */
   controlOut?: string[] | ((config: any) => string[]);
   /** Validated against the node's `config`. */

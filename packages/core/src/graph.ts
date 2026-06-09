@@ -29,6 +29,25 @@ export function resolveControlOuts(op: OpDefinition, config: unknown): string[] 
   return typeof op.controlOut === "function" ? op.controlOut(config ?? {}) : op.controlOut;
 }
 
+/** Resolve an op's registration-time config-input ports against parsed config. */
+export function resolveConfigInputs(op: OpDefinition, config: unknown): Ports {
+  return op.configInputs ? resolvePorts(op.configInputs, config) : {};
+}
+
+/**
+ * Edges that feed a boundary op's config-input port (the "resolve phase" inputs).
+ * These are evaluated at registration and removed from the runtime workflow.
+ */
+export function configInputEdges(workflow: Workflow, ops: OpRegistry): Edge[] {
+  const byId = nodeMap(workflow);
+  return workflow.edges.filter((e) => {
+    const node = byId.get(e.to.node);
+    const op = node && ops.get(node.op);
+    if (!op) return false;
+    return Object.keys(resolveConfigInputs(op, node!.config)).includes(e.to.port);
+  });
+}
+
 /** Index nodes by id. */
 export function nodeMap(workflow: Workflow): Map<string, WorkflowNode> {
   const m = new Map<string, WorkflowNode>();
@@ -54,6 +73,11 @@ export function portKindOf(
   if (dir === "in") {
     const declared = resolvePorts(op.inputs, config)[port]?.kind;
     if (declared) return declared;
+    // Registration-time config ports (boundary ops) also accept value edges.
+    if (op.configInputs) {
+      const cfg = resolvePorts(op.configInputs, config)[port]?.kind;
+      if (cfg) return cfg;
+    }
     if (port === CONTROL_IN) return "control";
     return undefined;
   }

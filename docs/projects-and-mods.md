@@ -101,6 +101,38 @@ For a non-string value use the object form. Resolving manually (e.g. for a custo
 loader): `resolveWorkflowEnv(workflow, env)` or, on the engine, pass
 `new Engine({ env: process.env })`.
 
+## Config ports (the resolve phase)
+
+`$env` covers the common case, but a boundary's config can also be **fed by
+ops** — for fully computed configuration. A boundary op exposes *config ports*
+(`boundary.http.request` → `method`, `path`, `port`); wire an op into one and the
+engine evaluates the feeding sub-graph **once at registration** (the "resolve
+phase"), freezes the result into config, and drops the edge. The remaining graph
+is the per-request runtime graph.
+
+```jsonc
+// the route's port comes from an env var, cast to a number, default 3000
+{ "from": { "node": "p",  "port": "out" }, "to": { "node": "in", "port": "port" } }
+// where "p" is:
+{ "id": "p", "op": "core.env", "config": { "name": "SVC_PORT", "type": "number", "default": 3000 } }
+```
+
+Because it's just ops, config can be *computed* — e.g. an env var → a
+`core.string.template` → the `path`. `core.env` reads the injected `ctx.env`
+(same map as `$env`), with type casting + default.
+
+Rules and mechanics:
+
+- **Two clocks.** Config ports resolve at registration; the rest runs per request.
+- **Purity.** The config sub-graph must be pure sources/transforms — **no
+  triggers, nothing reachable from a trigger** (config can't depend on the
+  request). Violations are a clear error.
+- **Async registration.** Resolving runs ops, so use
+  `await engine.registerWorkflowAsync(wf)` (what `loadProject` calls). Plain
+  `engine.registerWorkflow(wf)` stays synchronous for static / `$env` config and
+  throws a helpful error if a workflow uses config ports.
+- **`$env` is the sugar**, config ports are the composable form — keep both.
+
 ## Workflows are modifiable at runtime
 
 The workflow registry is observable and mutable. Add, replace, or remove a

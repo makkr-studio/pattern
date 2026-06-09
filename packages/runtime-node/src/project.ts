@@ -86,7 +86,9 @@ export async function loadProject(
 
   const wfDir = resolve(baseDir, config.workflows ?? "workflows");
   for (const wf of await loadWorkflowDir(wfDir)) {
-    engine.registerWorkflow(wf);
+    // Async: runs the resolve phase for any boundary config ports (e.g. a route
+    // port fed by core.env). Plain `$env` config still works synchronously.
+    await engine.registerWorkflowAsync(wf);
   }
 
   const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host });

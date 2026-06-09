@@ -10,12 +10,13 @@
 
 import { resolvePrincipal, type AuthRequirement, meetsRequirement } from "./auth/resolve.js";
 import { resolveWorkflowEnv } from "./env-config.js";
+import { resolveBoundaryConfig, hasConfigPorts } from "./resolve-config.js";
 import { registerCoreOps } from "./ops-core/index.js";
 import { InMemoryConnectionRegistry } from "./connections/memory.js";
 import { InProcessEventBus } from "./events/bus.js";
 import { findTriggerNodes } from "./graph.js";
 import { HookChainRunner } from "./hooks/chain.js";
-import { MultiTraceSink } from "./observability/span.js";
+import { MultiTraceSink, noopTraceSink } from "./observability/span.js";
 import {
   InMemoryAuthProviderRegistry,
   InMemoryHookRegistry,
@@ -132,8 +133,14 @@ export class Engine {
       ops: this.ops,
       services: this.services,
       traceSink: this.traceSink,
+      env: this.env,
       resolveWorkflow: (id) => this.workflows.get(id),
     };
+  }
+
+  /** Deps for the registration-time resolve phase (no trace noise). */
+  private resolveDeps(): RunDeps {
+    return { ...this.deps(), traceSink: noopTraceSink };
   }
 
   // ── Registration ──
@@ -163,6 +170,29 @@ export class Engine {
     // producing a concrete workflow *before* validation (so typed refs like a
     // port satisfy the op's config schema).
     const workflow = resolveWorkflowEnv(input, this.env);
+    if (hasConfigPorts(workflow, this.ops)) {
+      throw new Error(
+        `workflow "${workflow.id}" uses boundary config ports — register it with ` +
+          `\`await engine.registerWorkflowAsync(wf)\` (or via loadProject), which runs the resolve phase.`,
+      );
+    }
+    return this.finishRegister(workflow, opts);
+  }
+
+  /**
+   * Register a workflow, running the registration-time resolve phase for boundary
+   * config ports (e.g. an HTTP route's port fed by `core.env`). Use this (or
+   * `loadProject`) for workflows that wire ops into a boundary's config; plain
+   * `registerWorkflow` stays synchronous for static / `$env` config.
+   */
+  async registerWorkflowAsync(input: Workflow, opts: { validate?: boolean } = {}): Promise<this> {
+    const enved = resolveWorkflowEnv(input, this.env);
+    const resolved = await resolveBoundaryConfig(enved, this.ops, this.resolveDeps());
+    return this.finishRegister(resolved, opts);
+  }
+
+  /** Validate, wire hooks/events, and store an already-resolved workflow. */
+  private finishRegister(workflow: Workflow, opts: { validate?: boolean } = {}): this {
     if (opts.validate !== false) validateWorkflow(workflow, this.ops);
 
     // Upsert: tear down any prior wiring for this id first, so re-registering an

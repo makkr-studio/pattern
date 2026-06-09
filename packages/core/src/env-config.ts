@@ -33,7 +33,13 @@ export class EnvConfigError extends Error {
 }
 
 /** True when the env value should be treated as "unset" (missing or empty). */
-const unset = (v: string | undefined): boolean => v === undefined || v === "";
+export const isEnvUnset = (v: string | undefined): boolean => v === undefined || v === "";
+const unset = isEnvUnset;
+
+/** Cast a raw env string to the requested type (shared by `$env` and `core.env`). */
+export function castEnvValue(raw: string, type: EnvCastType, name: string): unknown {
+  return castEnv(raw, type, name);
+}
 
 function castEnv(raw: string, type: EnvCastType, name: string): unknown {
   switch (type) {

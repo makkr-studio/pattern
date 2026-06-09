@@ -67,6 +67,7 @@ export const lines = defineOp({
 | `ctx.signal` | `AbortSignal` — stop producing when aborted |
 | `ctx.trace` / `ctx.log` | the node's OTel-shaped span / structured logging |
 | `ctx.params` | run-scoped parameters (read by `core.input`) |
+| `ctx.env` | injected environment map (read by `core.env`) |
 | `ctx.invoke(ref, input)` | run a sub-workflow to completion (higher-order ops) |
 | `ctx.services` | capabilities: `events`, `hooks`, `connections` |
 

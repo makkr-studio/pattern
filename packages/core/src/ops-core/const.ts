@@ -6,6 +6,7 @@
  */
 
 import { defineOp, value, z } from "./helpers.js";
+import { castEnvValue, isEnvUnset, EnvConfigError } from "../env-config.js";
 import type { OpDefinition } from "../types.js";
 
 const literal = (type: string, schema: z.ZodType, configKey = "value"): OpDefinition =>
@@ -72,6 +73,34 @@ export const input = defineOp({
   },
 });
 
+export const env = defineOp({
+  type: "core.env",
+  title: "core.env",
+  description:
+    "Read an environment variable from ctx.env, with type casting and an optional default. " +
+    "The graph-level counterpart of the `$env` config sugar — wire it into a boundary's config port.",
+  inputs: {},
+  outputs: { out: value(z.unknown()) },
+  config: z.object({
+    name: z.string(),
+    type: z.enum(["string", "number", "integer", "boolean", "json"]).default("string"),
+    default: z.unknown().optional(),
+  }),
+  execute: (ctx) => {
+    const { name, type, default: dflt } = ctx.config as {
+      name: string;
+      type: "string" | "number" | "integer" | "boolean" | "json";
+      default?: unknown;
+    };
+    const raw = ctx.env[name];
+    if (isEnvUnset(raw)) {
+      if (dflt !== undefined) return { out: dflt };
+      throw new EnvConfigError(`missing required env var "${name}" (add a "default" to make it optional)`);
+    }
+    return { out: castEnvValue(raw as string, type, name) };
+  },
+});
+
 export const constOps: OpDefinition[] = [
   constString,
   constNumber,
@@ -81,4 +110,5 @@ export const constOps: OpDefinition[] = [
   constArray,
   constJson,
   input,
+  env,
 ];
