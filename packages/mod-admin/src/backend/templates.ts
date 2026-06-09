@@ -42,9 +42,20 @@ export const builtinTemplates: Template[] = [
       name: "New SSE stream",
       nodes: [
         { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/stream" }, ui: { x: 40, y: 80 } },
-        { id: "out", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 400, y: 80 } },
+        {
+          id: "vals",
+          op: "core.const.array",
+          config: { value: ["hello", "from", "an", "SSE", "stream"] },
+          comment: "Replace with your real producer (e.g. an agent's token stream).",
+          ui: { x: 300, y: 80 },
+        },
+        { id: "emit", op: "core.stream.emit", ui: { x: 560, y: 80 } },
+        { id: "out", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 820, y: 80 } },
       ],
-      edges: [{ from: { node: "in", port: "out" }, to: { node: "out", port: "in" } }],
+      edges: [
+        { from: { node: "vals", port: "out" }, to: { node: "emit", port: "in" } },
+        { from: { node: "emit", port: "out" }, to: { node: "out", port: "stream" } },
+      ],
     },
   },
   {

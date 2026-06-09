@@ -11,6 +11,7 @@
  */
 
 export * from "./protocol.js";
+export type { PatternAdminGlobal, PatternAdminUi, UiComponent } from "./global.js";
 export {
   AdminClient,
   AdminApiError,
