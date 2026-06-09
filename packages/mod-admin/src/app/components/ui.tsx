@@ -150,12 +150,11 @@ export function JsonView({ value, className = "" }: { value: unknown; className?
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-xl" onClick={onClose}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, scale: 0.97, y: 6 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--bg)" }}
         className={`glass-strong w-full ${wide ? "max-w-4xl" : "max-w-lg"} rounded-2xl p-6`}
       >
         <div className="mb-4 flex items-center justify-between">
