@@ -77,7 +77,8 @@ export async function loadProject(
     baseDir = process.cwd();
   }
 
-  const engine = opts.engine ?? new Engine();
+  // Inject process.env so workflow config can use `$env` / `${VAR}` references.
+  const engine = opts.engine ?? new Engine({ env: process.env });
 
   if (config.mods?.length) {
     await loadMods(engine, config.mods, { baseDir });

@@ -9,6 +9,7 @@
  */
 
 import { resolvePrincipal, type AuthRequirement, meetsRequirement } from "./auth/resolve.js";
+import { resolveWorkflowEnv } from "./env-config.js";
 import { registerCoreOps } from "./ops-core/index.js";
 import { InMemoryConnectionRegistry } from "./connections/memory.js";
 import { InProcessEventBus } from "./events/bus.js";
@@ -69,6 +70,12 @@ export interface EngineOptions {
   transport?: RunTransport;
   /** Register the base op catalog (§12). Default true. */
   registerCoreOps?: boolean;
+  /**
+   * Environment map for resolving `$env` / `${VAR}` references in workflow config
+   * at registration time. Defaults to `{}` (object-form refs use their declared
+   * defaults). The Node adapter's `loadProject` injects `process.env`.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 export interface RunOptions {
@@ -95,6 +102,7 @@ export class Engine {
   private readonly traceSink = new MultiTraceSink();
   private readonly services: OpServices;
   private readonly transport: RunTransport;
+  private readonly env: Record<string, string | undefined>;
   /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
   private readonly eventUnsubs = new Map<string, Array<() => void>>();
 
@@ -105,6 +113,7 @@ export class Engine {
     this.auth = opts.auth ?? new InMemoryAuthProviderRegistry();
     this.workflows = opts.workflows ?? new InMemoryWorkflowRegistry();
     this.connections = opts.connections ?? new InMemoryConnectionRegistry();
+    this.env = opts.env ?? {};
 
     const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal) =>
       this.runFrom(wf, trig, input, principal),
@@ -149,7 +158,11 @@ export class Engine {
    * them into the hook chain) and `boundary.event` triggers (subscribing them to
    * the bus). Returns the engine for chaining.
    */
-  registerWorkflow(workflow: Workflow, opts: { validate?: boolean } = {}): this {
+  registerWorkflow(input: Workflow, opts: { validate?: boolean } = {}): this {
+    // Resolve `$env` / `${VAR}` config references against the engine's env map,
+    // producing a concrete workflow *before* validation (so typed refs like a
+    // port satisfy the op's config schema).
+    const workflow = resolveWorkflowEnv(input, this.env);
     if (opts.validate !== false) validateWorkflow(workflow, this.ops);
 
     // Upsert: tear down any prior wiring for this id first, so re-registering an

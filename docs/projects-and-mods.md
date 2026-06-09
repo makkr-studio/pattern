@@ -73,6 +73,34 @@ declaring `port` on the latter.
 The JSON-Schema subset → Zod compiler is `jsonSchemaToZod` (in core); it's
 runtime-neutral, so it serves both request validation and graph typing.
 
+## Environment interpolation in config
+
+Workflows are data, but a deployment needs to inject values (ports, hosts,
+secrets, flags). Config supports two forms, resolved when the workflow is
+registered — **before** validation, so typed refs satisfy the op's schema. `core`
+resolves against an injected env map (runtime-neutral); `loadProject` injects
+`process.env`.
+
+**Typed object form** — for scalars that need a real type:
+
+```jsonc
+{ "$env": "ADMIN_PORT", "type": "number", "default": 3001 }
+```
+
+- `type`: `string` (default) · `number` · `integer` · `boolean` · `json` — casts the env string.
+- `default`: used when the var is unset/empty. **No default + unset → a loud error** at registration (catches misconfig early).
+
+**String interpolation** — for building strings:
+
+```jsonc
+"redis://${REDIS_HOST}:${REDIS_PORT:-6379}"   // :-fallback; always a string
+```
+
+`${...}` is reserved in config strings; write `$${...}` for a literal `${...}`.
+For a non-string value use the object form. Resolving manually (e.g. for a custom
+loader): `resolveWorkflowEnv(workflow, env)` or, on the engine, pass
+`new Engine({ env: process.env })`.
+
 ## Workflows are modifiable at runtime
 
 The workflow registry is observable and mutable. Add, replace, or remove a

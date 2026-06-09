@@ -28,10 +28,18 @@ curl localhost:3001/health   # declared on a separate port
 Routes are **declared in the workflow**, not in code: the
 `boundary.http.request` op config holds the method, **path, port**, CORS policy,
 and JSON-Schema validation for body/query. A route uses its own `port` if set,
-otherwise the `PORT` env var, falling back to 3000 — so `/health` (port 3001)
-runs on its own server. Add a `.json` to `workflows/` and the route appears.
-Mods (here `mods/uppercase.mjs`, an app-local one) add ops; install 3rd-party
-mods from npm and list the package name in `pattern.config.json`.
+otherwise the `PORT` env var, falling back to 3000.
+
+**Env interpolation.** Config can reference environment variables, with type
+casting and fallbacks. `/health` declares its port as
+`{ "$env": "ADMIN_PORT", "type": "number", "default": 3001 }` — so
+`ADMIN_PORT=9000 npm run dev` moves it to 9000, otherwise it's 3001. Strings
+support `${VAR}` / `${VAR:-fallback}` too. References resolve when the workflow is
+registered.
+
+Add a `.json` to `workflows/` and the route appears. Mods (here
+`mods/uppercase.mjs`, an app-local one) add ops; install 3rd-party mods from npm
+and list the package name in `pattern.config.json`.
 
 Inspect any workflow's graph:
 

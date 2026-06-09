@@ -27,6 +27,15 @@ export { formatGraph } from "./graph-format.js";
 // JSON-Schema → Zod (declarative request validation / port typing)
 export { jsonSchemaToZod, type JsonSchema } from "./json-schema.js";
 
+// Environment interpolation for workflow config
+export {
+  interpolateValue,
+  resolveWorkflowEnv,
+  EnvConfigError,
+  type EnvMap,
+  type EnvCastType,
+} from "./env-config.js";
+
 // Type contracts
 export * from "./types.js";
 
