@@ -49,12 +49,14 @@ function outgate(opts: {
   description: string;
   inputs: Ports;
   config?: z.ZodType;
+  reusable?: boolean;
 }): OpDefinition {
   return {
     type: opts.type,
     title: opts.type,
     description: opts.description,
     boundary: "outgate",
+    reusable: opts.reusable,
     inputs: opts.inputs,
     outputs: {},
     config: opts.config,
@@ -111,6 +113,7 @@ export const returnGateConfigurable: OpDefinition = {
   title: "boundary.return.named",
   description: "Out-gate with configurable input ports. config: { inputs: string[] }.",
   boundary: "outgate",
+  reusable: false,
   inputs: (config: { inputs?: string[] }): Ports =>
     Object.fromEntries((config.inputs ?? ["value"]).map((p) => [p, value()])),
   outputs: {},
@@ -305,6 +308,7 @@ export const hookReturn = outgate({
   type: "boundary.hook.return",
   description: "Hook member out-gate: returns { payload, stop? } to thread/short-circuit the chain (§8).",
   inputs: { payload: required(), stop: value(z.boolean()) },
+  reusable: false,
 });
 
 export const eventTrigger: OpDefinition = {

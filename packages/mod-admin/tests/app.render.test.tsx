@@ -42,7 +42,8 @@ function seeded(): QueryClient {
     { slug: "greeting", name: "Greeting", source: "file", enabled: true, live: "v1", route: { method: "GET", path: "/hello/:name" }, versions: [{ id: "v1", hash: "x", createdAt: "" }], audit: [] },
   ]);
   qc.setQueryData(["ops"], [
-    { type: "core.math.add", title: "add", category: "math", inputs: [{ name: "a", kind: "value" }, { name: "b", kind: "value" }], outputs: [{ name: "out", kind: "value" }], controlOut: [], usedBy: 2 },
+    { type: "core.math.add", title: "add", category: "math", inputs: [{ name: "a", kind: "value" }, { name: "b", kind: "value" }], outputs: [{ name: "out", kind: "value" }], controlOut: [], usedBy: 2, reusable: true },
+    { type: "admin.workflow.list", title: "admin.workflow.list", category: "admin", inputs: [], outputs: [{ name: "out", kind: "value" }], controlOut: [], usedBy: 1, reusable: false },
   ]);
   qc.setQueryData(["mods"], [{ name: "@pattern/mod-admin", ops: ["admin.workflow.list"], workflows: ["admin.api.ops.list"], frontend: { menu: 5, pages: 0, commands: 2 } }]);
   qc.setQueryData(["system"], { routes: [{ method: "GET", path: "/hello/:name", workflow: "greeting", conflict: false }], apps: [], schedules: [], hooks: [], events: [], ws: [], ports: [3000] });
@@ -100,11 +101,12 @@ describe("SPA pages render", () => {
     expect(screen.getByText("greeting")).toBeTruthy();
   });
 
-  it("Editor mounts with categorized palette + canvas", () => {
+  it("Editor mounts with categorized palette + Advanced section", () => {
     mount(<EditorPage />, "/editor", "/editor");
     expect(screen.getByText("New workflow")).toBeTruthy();
-    expect(screen.getByText("math")).toBeTruthy(); // category section from the seeded op
+    expect(screen.getByText("math")).toBeTruthy(); // reusable category section
     expect(screen.getByText("Add")).toBeTruthy(); // disambiguated palette label
+    expect(screen.getByText("Advanced")).toBeTruthy(); // non-reusable ops collapsed here
   });
 
   it("ManifestPage renders a mod's Tier-1 declarative table (M10)", () => {

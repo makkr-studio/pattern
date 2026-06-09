@@ -102,6 +102,7 @@ export interface OpInfo {
   controlOut: string[];
   configSchema?: unknown;
   usedBy: number;
+  reusable: boolean;
 }
 
 export interface ModInfo {
