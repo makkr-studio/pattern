@@ -138,6 +138,8 @@ export class AdminClient {
   templates = (): Promise<Template[]> => this.request("GET", "/templates");
   uiManifest = (): Promise<UiManifest> => this.request("GET", "/ui/manifest");
   systemMap = (): Promise<SystemMap> => this.request("GET", "/system");
+  /** Run a source op once and return its output (declarative-page data source). */
+  invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
 
   /** Consume the SSE tail endpoint as parsed `SpanData` events. */
   private async *tailSpans(workflow?: string): AsyncIterable<SpanData> {

@@ -1,0 +1,68 @@
+/**
+ * mod-admin-spec M10 — the thesis proof: a sample mod extends the admin (Tier-1
+ * declarative page + ⌘K command + menu + a self-served Tier-2 ESM remote) with
+ * **zero admin-core changes**. We only `engine.use` the sample mod.
+ */
+
+import { describe, it, expect, afterEach } from "vitest";
+import { Engine } from "@pattern/core";
+import { createHttpHost, memoryFs } from "@pattern/runtime-node";
+import { adminMod } from "@pattern/mod-admin";
+import sampleMod from "@pattern/mod-sample";
+import { createAdminClient } from "@pattern/admin-sdk";
+
+let closer: (() => Promise<void>) | undefined;
+afterEach(async () => {
+  await closer?.();
+  closer = undefined;
+});
+
+let port = 4990;
+async function start() {
+  const p = ++port;
+  const engine = new Engine();
+  await engine.useAsync(adminMod({ storage: memoryFs() }));
+  await engine.useAsync(sampleMod); // ← the only extension point
+  const host = createHttpHost(engine, { defaultPort: p });
+  const { close } = await host.start();
+  closer = close;
+  return { api: createAdminClient({ baseUrl: `http://localhost:${p}/admin` }), p };
+}
+
+describe("M10 — sample mod extends the admin with zero core changes", () => {
+  it("aggregates the mod's menu, command, and pages into the UI manifest", async () => {
+    const { api } = await start();
+    const manifest = await api.uiManifest();
+
+    expect(manifest.menu.some((m) => m.path === "/x/greetings" && m.category === "Examples")).toBe(true);
+    expect(manifest.commands.some((c) => c.id === "sample.greet")).toBe(true);
+
+    const tier1 = manifest.pages.find((p) => p.path === "/x/greetings");
+    expect(tier1?.view).toMatchObject({ kind: "table", source: "sample.greetings.list" });
+
+    const tier2 = manifest.pages.find((p) => p.path === "/x/studio");
+    expect(tier2?.remote).toBe("/ext/sample-studio.js");
+  });
+
+  it("runs the mod's data-source op via admin.invoke (declarative-page data)", async () => {
+    const { api } = await start();
+    const rows = await api.invoke<Array<{ id: string }>>("sample.greetings.list");
+    expect(rows.map((r) => r.id)).toEqual(["ada", "linus", "yukihiro"]);
+  });
+
+  it("serves the mod's Tier-2 ESM remote bundle", async () => {
+    const { p } = await start();
+    const res = await fetch(`http://localhost:${p}/ext/sample-studio.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("javascript");
+    expect(await res.text()).toContain("SampleStudio");
+  });
+
+  it("lists the sample mod in the catalog of mods", async () => {
+    const { api } = await start();
+    const mods = await api.mods();
+    const sample = mods.find((m) => m.name === "@pattern/mod-sample");
+    expect(sample?.ops).toContain("sample.greetings.list");
+    expect(sample?.frontend?.pages).toBe(2);
+  });
+});

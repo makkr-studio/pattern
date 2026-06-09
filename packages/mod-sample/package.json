@@ -1,0 +1,28 @@
+{
+  "name": "@pattern/mod-sample",
+  "version": "0.1.0",
+  "description": "A throwaway sample mod that extends the admin (Tier-1 page + ⌘K command + Tier-2 ESM remote) with zero admin-core changes — the mod-admin-spec M10 proof.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pattern/core": "workspace:*",
+    "@pattern/runtime-node": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

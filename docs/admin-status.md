@@ -59,12 +59,21 @@ default (placeholder until built). Pages:
 xyflow editor) against a seeded cache, plus the SDK integration tests that hit the
 live backend. Pixel-level visuals still want a real browser pass.
 
-### Remaining
-- **M10 Tier-2 extension proof** — a sample mod adds a Tier-1 declarative page +
-  a ⌘K command + a Tier-2 ESM-remote page with zero admin-core changes. The seams
-  exist (`admin.ui.manifest`, `PageDef.remote`, menu aggregation); needs the
-  SPA's declarative-page renderer + dynamic route mounting + the sample mod.
-- A real browser pass for visual polish; `pattern dev` spawning engine + Vite.
+### Milestone 10 — extension proof ✅
+`@pattern/mod-sample` extends the admin with **zero admin-core changes**: an op
+(`sample.greetings.list`), a **Tier-1** declarative table page, a ⌘K command, a
+menu entry, and a **Tier-2** ESM-remote page whose bundle the mod serves itself
+via a `boundary.http.app` mount at `/ext`. The SPA renders all of it: nav from the
+aggregated manifest, declarative pages via `DeclarativeView` (data through
+`admin.invoke`), and Tier-2 remotes via a runtime `import()` with React shared on
+`window.__PATTERN_ADMIN__`. Proven by `extension.test.ts` + a render test + live
+curl checks (manifest aggregation, `admin.invoke`, the served remote bundle).
+
+### Remaining (polish, not blocking)
+- A real browser pass for pixel-level visual polish (needs the Chrome extension
+  connected — unavailable in the build environment; verified via jsdom + build instead).
+- `pattern dev` spawning engine + Vite together (today: `vite build` → `dist-app`,
+  served by the mod; `scripts/serve-dev.mjs` runs a seeded dev instance).
 
 ## Decisions of record (engine-side)
 - **Storage = flystorage.** `@pattern/runtime-node` uses flystorage's `FileStorage`
