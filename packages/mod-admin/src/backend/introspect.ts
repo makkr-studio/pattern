@@ -44,6 +44,8 @@ export interface OpInfo {
   configSchema?: unknown;
   /** How many registered workflows use this op. */
   usedBy: number;
+  /** Meant for general authoring/reuse (default true; false = de-emphasized). */
+  reusable: boolean;
 }
 
 export interface ModInfo {
@@ -106,6 +108,7 @@ export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
     controlOut: resolveControlOuts(op, {}),
     configSchema: jsonSchema(op.config),
     usedBy: usageCount(engine, op.type),
+    reusable: op.reusable !== false,
   };
 }
 

@@ -43,6 +43,8 @@ function adminOp(type: string, description: string, handler: Handler): OpDefinit
     type,
     title: type,
     description,
+    // Control-plane internals — usable, but de-emphasized in the authoring palette.
+    reusable: false,
     inputs: {
       params: value(recordSchema),
       query: value(recordSchema),
@@ -180,6 +182,7 @@ const runTail: OpDefinition = {
   type: "admin.run.tail",
   title: "admin.run.tail",
   description: "Stream live node spans, optionally filtered to a workflow (SSE).",
+  reusable: false,
   inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
   outputs: { out: stream() },
   execute: async (ctx) => {

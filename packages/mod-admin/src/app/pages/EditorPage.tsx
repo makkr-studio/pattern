@@ -21,7 +21,7 @@ import { RunPanel } from "../editor/RunPanel";
 import { buildFlow, edgeStyle, outputKind, toDoc, type OpMap, type OpNodeData } from "../editor/graph";
 import { Badge, GlassPanel, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson } from "../components/FormFromSchema";
-import { Rocket, Plus, Play } from "../components/icon";
+import { Rocket, Play } from "../components/icon";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 
 const nodeTypes = { op: OpNode };
@@ -249,54 +249,96 @@ function Inspector({ node, op, onChange }: { node: RFNode<OpNodeData>; op?: OpIn
   );
 }
 
-/** The op palette: collapsible category sections, color + icon coded. */
+function groupByCategory(ops: OpInfo[]): [string, OpInfo[]][] {
+  const m = new Map<string, OpInfo[]>();
+  for (const op of ops) {
+    const c = categoryOfType(op.type);
+    const list = m.get(c) ?? [];
+    list.push(op);
+    m.set(c, list);
+  }
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+/** One palette op: category icon + color + a disambiguated label. */
+function OpItem({ op, onAdd }: { op: OpInfo; onAdd: (op: OpInfo) => void }) {
+  const category = categoryOfType(op.type);
+  const cat = categoryStyle(category);
+  const { Icon } = cat;
+  return (
+    <button
+      onClick={() => onAdd(op)}
+      title={op.type}
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-white/5"
+    >
+      <Icon size={12} style={{ color: cat.color }} className="shrink-0" />
+      <span className="truncate">{paletteLabel(op.type, category)}</span>
+    </button>
+  );
+}
+
+/** A collapsible category section with colored header + op items. */
+function CategorySection({ category, ops, open, onToggle, onAdd }: { category: string; ops: OpInfo[]; open: boolean; onToggle: () => void; onAdd: (op: OpInfo) => void }) {
+  const cat = categoryStyle(category);
+  const { Icon } = cat;
+  return (
+    <div className="mb-0.5">
+      <button onClick={onToggle} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
+        <Icon size={14} style={{ color: cat.color }} />
+        <span className="text-xs font-semibold capitalize">{category}</span>
+        <span className="text-muted ml-auto text-[10px]">{ops.length}</span>
+      </button>
+      {open && (
+        <div className="ml-1 border-l pl-2" style={{ borderColor: cat.border }}>
+          {ops.map((op) => (
+            <OpItem key={op.type} op={op} onAdd={onAdd} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The op palette: reusable ops grouped by category (color + icon coded), with a
+ *  collapsed-by-default "Advanced" section holding non-reusable/internal ops. */
 function Palette({ ops, onAdd }: { ops: OpInfo[]; onAdd: (op: OpInfo) => void }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const groups = useMemo(() => {
-    const m = new Map<string, OpInfo[]>();
-    for (const op of ops) {
-      const c = categoryOfType(op.type);
-      const list = m.get(c) ?? [];
-      list.push(op);
-      m.set(c, list);
-    }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [ops]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const toggle = (k: string) => setCollapsed((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  const reusable = useMemo(() => groupByCategory(ops.filter((o) => o.reusable !== false)), [ops]);
+  const advanced = useMemo(() => ops.filter((o) => o.reusable === false), [ops]);
+  const advancedGroups = useMemo(() => groupByCategory(advanced), [advanced]);
 
   return (
     <GlassPanel className="overflow-y-auto p-2">
-      {groups.map(([category, list]) => {
-        const cat = categoryStyle(category);
-        const isOpen = !collapsed.has(category);
-        const { Icon } = cat;
-        return (
-          <div key={category} className="mb-1">
-            <button
-              onClick={() => setCollapsed((s) => { const n = new Set(s); n.has(category) ? n.delete(category) : n.add(category); return n; })}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5"
-            >
-              <Icon size={14} style={{ color: cat.color }} />
-              <span className="text-xs font-semibold capitalize">{category}</span>
-              <span className="text-muted ml-auto text-[10px]">{list.length}</span>
-            </button>
-            {isOpen && (
-              <div className="ml-1 border-l pl-2" style={{ borderColor: cat.border }}>
-                {list.map((op) => (
-                  <button
-                    key={op.type}
-                    onClick={() => onAdd(op)}
-                    title={op.type}
-                    className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs hover:bg-white/5"
-                  >
-                    <Plus size={10} className="text-muted shrink-0" />
-                    <span className="truncate">{paletteLabel(op.type, category)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {reusable.map(([category, list]) => (
+        <CategorySection key={category} category={category} ops={list} open={!collapsed.has(category)} onToggle={() => toggle(category)} onAdd={onAdd} />
+      ))}
+
+      {advanced.length > 0 && (
+        <div className="mt-2 border-t hairline pt-2">
+          <button onClick={() => setAdvancedOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
+            <span className="text-muted text-[10px]">{advancedOpen ? "▾" : "▸"}</span>
+            <span className="text-muted text-xs font-semibold uppercase tracking-wider">Advanced</span>
+            <span className="text-muted ml-auto text-[10px]">{advanced.length}</span>
+          </button>
+          {advancedOpen && (
+            <div className="mt-1 opacity-80">
+              {advancedGroups.map(([category, list]) => (
+                <div key={category} className="mb-1">
+                  <div className="text-muted px-2 py-1 text-[10px] font-semibold capitalize">{category}</div>
+                  <div className="ml-1 border-l hairline pl-2">
+                    {list.map((op) => (
+                      <OpItem key={op.type} op={op} onAdd={onAdd} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </GlassPanel>
   );
 }

@@ -334,6 +334,13 @@ export interface OpDefinition {
   execute: OpExecute;
   /** Marks boundary ops (§7). */
   boundary?: "trigger" | "outgate";
+  /**
+   * Whether this op is meant for general authoring/reuse. Default `true`.
+   * Set `false` for internal/control-plane ops (e.g. `admin.*`, internal
+   * boundary helpers): authoring UIs de-emphasize them (a collapsed "Advanced"
+   * section) but never block their use.
+   */
+  reusable?: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
