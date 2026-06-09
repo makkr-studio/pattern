@@ -34,8 +34,8 @@ export function VersionsPage() {
         <GlassPanel className="overflow-hidden">
           {(versions ?? []).map((v) => (
             <div key={v.id} className="flex items-center gap-2 border-b hairline px-4 py-3 last:border-0">
-              <button onClick={() => setA(v.id)} className={`rounded px-1.5 text-xs ${a === v.id ? "bg-[var(--color-neon-cyan)] text-black" : "text-muted"}`}>A</button>
-              <button onClick={() => setB(v.id)} className={`rounded px-1.5 text-xs ${b === v.id ? "bg-[var(--color-neon-violet)] text-black" : "text-muted"}`}>B</button>
+              <button type="button" aria-label={`Set ${v.id} as diff side A`} onClick={() => setA(v.id)} className={`rounded px-1.5 text-xs ${a === v.id ? "bg-[var(--color-neon-cyan)] text-black" : "text-muted"}`}>A</button>
+              <button type="button" aria-label={`Set ${v.id} as diff side B`} onClick={() => setB(v.id)} className={`rounded px-1.5 text-xs ${b === v.id ? "bg-[var(--color-neon-violet)] text-black" : "text-muted"}`}>B</button>
               <div className="flex flex-col">
                 <span className="font-mono text-sm">
                   {v.id} {v.id === live && <Badge hue={150}>live</Badge>}
@@ -43,7 +43,13 @@ export function VersionsPage() {
                 <span className="text-muted text-xs">{v.note || "—"} · {v.createdAt ? ago(Date.parse(v.createdAt)) : ""}</span>
               </div>
               {v.id !== live && slug && (
-                <NeonButton variant="ghost" className="ml-auto !px-2 !py-1" onClick={() => deploy.mutate({ slug, version: v.id })}>
+                <NeonButton
+                  variant="ghost"
+                  className="ml-auto !px-2 !py-1"
+                  aria-label={`Deploy ${v.id}`}
+                  title={`Deploy ${v.id}`}
+                  onClick={() => deploy.mutate({ slug, version: v.id })}
+                >
                   <Rocket size={12} />
                 </NeonButton>
               )}

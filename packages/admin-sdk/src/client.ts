@@ -130,8 +130,10 @@ export class AdminClient {
   readonly runs = {
     list: (filter: RunListFilter = {}): Promise<RunSummary[]> => this.request("GET", `/runs${qs({ ...filter })}`),
     get: (runId: string): Promise<RunDetail | null> => this.request("GET", `/runs/${encodeURIComponent(runId)}`),
-    /** Stream live node spans (SSE) as an async iterable. */
-    tail: (workflow?: string): AsyncIterable<SpanData> => this.tailSpans(workflow),
+    /** Stream live node spans (SSE). Typed as a generator (not just
+     *  AsyncIterable) so consumers can `.return()` to cancel — that runs the
+     *  finally and closes the underlying SSE connection. */
+    tail: (workflow?: string): AsyncGenerator<SpanData, void, undefined> => this.tailSpans(workflow),
   };
   metrics = (minutes?: number): Promise<MetricsSummary> => this.request("GET", `/metrics${qs({ window: minutes })}`);
 
@@ -146,7 +148,7 @@ export class AdminClient {
   run = (req: RunInput): Promise<RunResult> => this.request("POST", "/run", req);
 
   /** Consume the SSE tail endpoint as parsed `SpanData` events. */
-  private async *tailSpans(workflow?: string): AsyncIterable<SpanData> {
+  private async *tailSpans(workflow?: string): AsyncGenerator<SpanData, void, undefined> {
     const res = await this.fetchImpl(`${this.api}/runs/tail${qs({ workflow })}`, {
       headers: { accept: "text/event-stream", ...this.headers },
     });

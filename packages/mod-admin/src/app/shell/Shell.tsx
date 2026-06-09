@@ -75,12 +75,15 @@ export function Shell() {
           ))}
         </nav>
 
+        {/* The toggle advertises the mode it switches TO, not the current one. */}
         <button
+          type="button"
           onClick={toggle}
+          aria-label={mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
           className="glass text-muted mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
         >
-          {mode === "dark" ? <Moon size={14} /> : <Sun size={14} />}
-          <span>{mode === "dark" ? "Dark" : "Light"}</span>
+          {mode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          <span>{mode === "dark" ? "Light" : "Dark"}</span>
         </button>
       </aside>
 

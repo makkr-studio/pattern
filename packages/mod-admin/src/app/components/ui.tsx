@@ -1,4 +1,4 @@
-import type { ReactNode, HTMLAttributes, ButtonHTMLAttributes } from "react";
+import { useEffect, useRef, type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes } from "react";
 import { motion } from "motion/react";
 import { hashHue } from "../lib/format";
 
@@ -148,18 +148,41 @@ export function JsonView({ value, className = "" }: { value: unknown; className?
 }
 
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
+  // Escape closes; focus moves into the dialog and returns on close.
+  useEffect(() => {
+    if (!open) return;
+    restoreRef.current = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      restoreRef.current?.focus?.();
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-xl" onClick={onClose}>
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.97, y: 6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className={`glass-strong w-full ${wide ? "max-w-4xl" : "max-w-lg"} rounded-2xl p-6`}
+        className={`glass-strong w-full ${wide ? "max-w-4xl" : "max-w-lg"} rounded-2xl p-6 outline-none`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button className="text-muted hover:text-[var(--fg)]" onClick={onClose}>
+          <button type="button" aria-label="Close dialog" className="text-muted hover:text-[var(--fg)]" onClick={onClose}>
             ✕
           </button>
         </div>

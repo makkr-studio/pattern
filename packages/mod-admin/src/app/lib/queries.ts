@@ -47,7 +47,14 @@ export function useDeploy() {
   return useMutation({
     mutationFn: ({ slug, version, swap }: { slug: string; version: string; swap?: boolean }) =>
       api.deploy(slug, version, swap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+    // Deploy moves the live pointer — the workflow detail (meta.live, liveDoc),
+    // its version list, and the system map all read it.
+    onSuccess: (_r, v) => {
+      void qc.invalidateQueries({ queryKey: ["workflows"] });
+      void qc.invalidateQueries({ queryKey: ["workflow", v.slug] });
+      void qc.invalidateQueries({ queryKey: ["versions", v.slug] });
+      void qc.invalidateQueries({ queryKey: ["system"] });
+    },
   });
 }
 
@@ -55,7 +62,11 @@ export function useSetEnabled() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ slug, enabled }: { slug: string; enabled: boolean }) => api.workflows.setEnabled(slug, enabled),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+    onSuccess: (_r, v) => {
+      void qc.invalidateQueries({ queryKey: ["workflows"] });
+      void qc.invalidateQueries({ queryKey: ["workflow", v.slug] });
+      void qc.invalidateQueries({ queryKey: ["system"] });
+    },
   });
 }
 
@@ -63,6 +74,11 @@ export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) => api.workflows.delete(slug),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
+    onSuccess: (_r, slug) => {
+      void qc.invalidateQueries({ queryKey: ["workflows"] });
+      void qc.removeQueries({ queryKey: ["workflow", slug] });
+      void qc.removeQueries({ queryKey: ["versions", slug] });
+      void qc.invalidateQueries({ queryKey: ["system"] });
+    },
   });
 }

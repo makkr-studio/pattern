@@ -9,7 +9,7 @@ import { create } from "zustand";
  */
 interface TipState {
   content: ReactNode | null;
-  rect: { left: number; bottom: number; right: number } | null;
+  rect: { left: number; top: number; bottom: number; right: number } | null;
   open: (content: ReactNode, rect: DOMRect) => void;
   close: () => void;
 }
@@ -17,7 +17,7 @@ interface TipState {
 const useTipStore = create<TipState>((set) => ({
   content: null,
   rect: null,
-  open: (content, r) => set({ content, rect: { left: r.left, bottom: r.bottom, right: r.right } }),
+  open: (content, r) => set({ content, rect: { left: r.left, top: r.top, bottom: r.bottom, right: r.right } }),
   close: () => set({ content: null, rect: null }),
 }));
 
@@ -44,12 +44,18 @@ export function TooltipHost() {
   }, [content, close]);
 
   if (!content || !rect) return null;
-  // Clamp to viewport width.
+  // Clamp to viewport width; flip above the anchor when too close to the
+  // bottom edge (palette ops near the bottom would otherwise clip offscreen).
   const left = Math.min(rect.left, window.innerWidth - 340);
+  const flip = rect.bottom + 8 > window.innerHeight - 160;
+  const pos = flip
+    ? { bottom: window.innerHeight - rect.top + 8 }
+    : { top: rect.bottom + 8 };
   return createPortal(
     <div
       ref={ref}
-      style={{ position: "fixed", left: Math.max(8, left), top: rect.bottom + 8, maxWidth: 320, zIndex: 200 }}
+      role="tooltip"
+      style={{ position: "fixed", left: Math.max(8, left), maxWidth: 320, zIndex: 200, ...pos }}
       className="tip-surface pointer-events-none rounded-lg px-3 py-2 text-xs"
     >
       {content}
