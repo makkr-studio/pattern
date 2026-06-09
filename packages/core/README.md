@@ -33,6 +33,7 @@ Subpath exports: `@pattern/core` (everything), `@pattern/core/ops`, `@pattern/co
 |---|---|
 | `new Engine(opts?)` | the façade: registries, services, transport, trace fan-out |
 | `engine.registerWorkflow(wf)` | validate + register (auto-wires `boundary.hook` / `boundary.event`) |
+| `await engine.registerWorkflowAsync(wf)` | same, but runs the resolve phase for boundary config ports |
 | `engine.run(wf, { trigger?, input?, params?, principal? })` | run; returns `RunResult` |
 | `engine.registerOp(op)` / `engine.use(mod)` | extend with ops / a plugin mod |
 | `engine.onTrace(sink)` | subscribe to telemetry |

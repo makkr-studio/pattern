@@ -11,11 +11,13 @@ apply it per element (the sub-workflow receives `{ item, index }` — `reduce` a
 `{ acc }` — and returns `{ value }`).
 
 > Note: dynamic-arity ops (e.g. `boundary.http.request`, `core.stream.split`)
-> compute their ports from config; the table shows their default shape.
+> compute their ports from config; the table shows their default shape. Boundary
+> ops may also expose registration-time **config ports** (not shown) — see
+> [projects-and-mods.md](./projects-and-mods.md).
 
 See [authoring-ops.md](./authoring-ops.md) to add your own.
 
-_Auto-generated from the registry — 158 ops._
+_Auto-generated from the registry — 159 ops._
 
 ### boundary
 
@@ -132,6 +134,12 @@ _Auto-generated from the registry — 158 ops._
 |----|----|----|----|
 | `core.encode.base64` | ◆value | ◆out | — |
 | `core.encode.url` | ◆value | ◆out | — |
+
+### core.env
+
+| Op | In | Out | Control-out |
+|----|----|----|----|
+| `core.env` | — | ◆out | — |
 
 ### core.event
 

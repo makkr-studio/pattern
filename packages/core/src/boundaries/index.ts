@@ -136,6 +136,13 @@ export const httpRequest: OpDefinition = {
     "headers, query, params, body }.",
   boundary: "trigger",
   inputs: {},
+  // Registration-time config ports: wire an op (e.g. core.env) into method/path/
+  // port and the engine resolves it once at registration (the resolve phase).
+  configInputs: {
+    method: value(z.string()),
+    path: value(z.string()),
+    port: value(z.number().int().positive()),
+  },
   // Output port schemas are derived from the declared body/query schemas, so the
   // graph is typed end-to-end and downstream value edges are checked.
   outputs: (config: { bodyMode?: string; body?: unknown; query?: unknown }): Ports => ({

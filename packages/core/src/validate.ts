@@ -25,6 +25,7 @@ import {
   findTriggerNodes,
   portKindOf,
   reachableFrom,
+  resolveConfigInputs,
   resolvePorts,
 } from "./graph.js";
 import { schemasCompatible } from "./schema-compat.js";
@@ -208,9 +209,12 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
     const op = ops.get(node.op);
     if (!op) continue;
     if (op.boundary === "trigger") {
-      const dataIn = edgesInto(workflow, node.id, CONTROL_IN).length === 0
-        ? workflow.edges.filter((e) => e.to.node === node.id)
-        : workflow.edges.filter((e) => e.to.node === node.id && e.to.port !== CONTROL_IN);
+      // Config-input edges (registration-time, e.g. http port ← core.env) and the
+      // implicit control-in are allowed; any other incoming edge is not.
+      const configIns = new Set(Object.keys(resolveConfigInputs(op, parsedConfig.get(node.id))));
+      const dataIn = workflow.edges.filter(
+        (e) => e.to.node === node.id && e.to.port !== CONTROL_IN && !configIns.has(e.to.port),
+      );
       if (dataIn.length) {
         issues.push({
           nodeId: node.id,

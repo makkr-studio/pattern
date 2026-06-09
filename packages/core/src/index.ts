@@ -71,7 +71,12 @@ export {
   incomingEdges,
   outgoingEdges,
   nodeMap,
+  resolveConfigInputs,
+  configInputEdges,
 } from "./graph.js";
+
+// Boundary config resolve phase
+export { resolveBoundaryConfig, hasConfigPorts } from "./resolve-config.js";
 export { schemasCompatible, isWildcard } from "./schema-compat.js";
 
 // Scheduler primitives & runner (for advanced/embedding use)

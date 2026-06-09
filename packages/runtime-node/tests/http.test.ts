@@ -197,6 +197,30 @@ describe("HTTP host — port resolution", () => {
     expect(await (await fetch("http://localhost:4831/admin")).text()).toBe("on-3001");
   });
 
+  it("serves on a port fed by a core.env config port (resolve phase)", async () => {
+    const engine = new Engine({ env: { SVC_PORT: "4833" } });
+    const wf: Workflow = {
+      id: "envport",
+      nodes: [
+        { id: "p", op: "core.env", config: { name: "SVC_PORT", type: "number", default: 3000 } },
+        { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/ping" } },
+        { id: "k", op: "core.const.string", config: { value: "pong" } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "p", port: "out" }, to: { node: "in", port: "port" } }, // config port
+        { from: { node: "in", port: "out" }, to: { node: "out", port: "in" } },
+        { from: { node: "k", port: "out" }, to: { node: "out", port: "body" } },
+      ],
+    };
+    await engine.registerWorkflowAsync(wf);
+    const host = createHttpHost(engine);
+    const { ports, close } = await host.start();
+    closer = close;
+    expect(ports).toEqual([4833]);
+    expect(await (await fetch("http://localhost:4833/ping")).text()).toBe("pong");
+  });
+
   it("falls back to the PORT env var when no default is given", async () => {
     const prev = process.env.PORT;
     process.env.PORT = "4832";
