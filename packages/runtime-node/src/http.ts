@@ -417,13 +417,16 @@ export class HttpHost {
     let rel = pathname.slice(app.mount.length).replace(/^\/+/, "");
     if (rel === "") rel = app.spaFallback || "index.html";
 
-    let bytes = await fs.read(rel);
+    const readIfExists = async (p: string): Promise<Uint8Array | null> =>
+      (await fs.fileExists(p)) ? fs.readToUint8Array(p) : null;
+
+    let bytes = await readIfExists(rel);
     let servedFallback = false;
     if (bytes == null && app.spaFallback) {
       // Client-side routing: serve the fallback for HTML navigations only.
       const accept = String(req.headers["accept"] ?? "");
       if (accept.includes("text/html")) {
-        bytes = await fs.read(app.spaFallback);
+        bytes = await readIfExists(app.spaFallback);
         servedFallback = true;
         rel = app.spaFallback;
       }

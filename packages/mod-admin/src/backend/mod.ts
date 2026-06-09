@@ -14,8 +14,9 @@
 
 import { defineMod, type Engine, type PatternMod, type Workflow } from "@pattern/core";
 import {
-  LocalFilesystem,
-  MemoryFilesystem,
+  localFs,
+  memoryFs,
+  toFilesystem,
   provideFilesystem,
   type Filesystem,
 } from "@pattern/runtime-node";
@@ -45,14 +46,13 @@ export interface AdminModOptions {
 /** Name of the filesystem the SPA assets are served from. */
 const ASSETS_FS = "admin-assets";
 
-function toFilesystem(fs: Filesystem | string | undefined, fallback: () => Filesystem): Filesystem {
-  if (!fs) return fallback();
-  return typeof fs === "string" ? new LocalFilesystem(fs) : fs;
+function resolveFs(fs: Filesystem | string | undefined, fallback: () => Filesystem): Filesystem {
+  return fs ? toFilesystem(fs) : fallback();
 }
 
 /** A tiny placeholder SPA so `/admin` shows something before the UI is built. */
 function placeholderAssets(mount: string): Filesystem {
-  const fs = new MemoryFilesystem();
+  const fs = memoryFs();
   void fs.write(
     "index.html",
     `<!doctype html><html><head><meta charset="utf-8"><title>Pattern Admin</title>
@@ -95,8 +95,8 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     workflows: [...endpointWorkflows(auth), spaWorkflow(mount)],
     frontend: adminFrontend(mount),
     setup: async (engine: Engine) => {
-      const storageFs = toFilesystem(options.storage, () => new LocalFilesystem("./.pattern"));
-      const assetsFs = toFilesystem(options.assets, () => placeholderAssets(mount));
+      const storageFs = resolveFs(options.storage, () => localFs("./.pattern"));
+      const assetsFs = resolveFs(options.assets, () => placeholderAssets(mount));
       provideFilesystem(engine, ASSETS_FS, assetsFs);
 
       const store = new FlystorageWorkflowStore(storageFs, { prefix: options.storePrefix });

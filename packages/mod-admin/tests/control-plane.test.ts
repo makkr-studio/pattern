@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { Engine, type Workflow } from "@pattern/core";
-import { MemoryFilesystem } from "@pattern/runtime-node";
+import { memoryFs } from "@pattern/runtime-node";
 import {
   DefaultControlPlane,
   FlystorageWorkflowStore,
@@ -30,7 +30,7 @@ function httpWorkflow(id: string, path: string, body = "ok"): Workflow {
 
 function setup() {
   const engine = new Engine();
-  const store = new FlystorageWorkflowStore(new MemoryFilesystem());
+  const store = new FlystorageWorkflowStore(memoryFs());
   const cp = new DefaultControlPlane(engine, store);
   return { engine, store, cp };
 }
@@ -100,7 +100,7 @@ describe("M2 — route-conflict on activation", () => {
 
 describe("M2 — bootstrap registers enabled workflows", () => {
   it("registers enabled file workflows on boot, skips disabled", async () => {
-    const fs = new MemoryFilesystem();
+    const fs = memoryFs();
     {
       const engine = new Engine();
       const store = new FlystorageWorkflowStore(fs);

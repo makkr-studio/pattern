@@ -71,10 +71,11 @@ can be built and verified interactively.
   a Tier-2 ESM-remote page with zero admin-core changes.
 
 ## Decisions of record (engine-side)
-- **flystorage → `Filesystem` interface.** A small swappable interface
-  (`LocalFilesystem`, `MemoryFilesystem` ship) shared by the app boundary and the
-  store, instead of a hard flystorage dependency. A flystorage adapter drops in
-  behind it unchanged. Keeps core/runtime lightweight (a project value).
+- **Storage = flystorage.** `@pattern/runtime-node` uses flystorage's `FileStorage`
+  as the storage handle (`localFs(dir)` / `memoryFs()` constructors ship; the
+  app boundary + workflow store share it). Swapping in S3 / GCS / Azure later is a
+  one-line adapter change with no consumer edits — the reason we went with
+  flystorage over a bespoke interface.
 - **Env-derived secrets** are tracked by config *path* at registration and masked
   by `redactConfig`; schema-tagged `secret()` fields are masked structurally.
   (Config-port values resolved from `core.env` are a narrower, documented follow-up.)

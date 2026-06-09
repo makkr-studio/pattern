@@ -9,14 +9,17 @@
 
 export { HttpHost, createHttpHost, type HttpHostOptions } from "./http.js";
 export {
-  LocalFilesystem,
-  MemoryFilesystem,
+  FileStorage,
+  localFs,
+  memoryFs,
+  toFilesystem,
   FilesystemRegistry,
   filesystems,
   provideFilesystem,
   FILESYSTEMS_SERVICE,
   type Filesystem,
-  type FileStat,
+  type StatEntry,
+  type FileInfo,
 } from "./filesystem.js";
 export { runCli, type CliHostOptions } from "./cli.js";
 export { WsHost, createWsHost, type WsBinding, type WsHostOptions } from "./ws.js";

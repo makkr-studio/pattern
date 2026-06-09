@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Engine, type Workflow } from "@pattern/core";
-import { createHttpHost, MemoryFilesystem, provideFilesystem } from "@pattern/runtime-node";
+import { createHttpHost, memoryFs, provideFilesystem } from "@pattern/runtime-node";
 
 let closer: (() => Promise<void>) | undefined;
 afterEach(async () => {
@@ -38,7 +38,7 @@ describe("boundary.http.app — static asset serving (P1)", () => {
 
   it("serves assets, SPA-fallback, and 404s under a mount", async () => {
     const engine = new Engine();
-    const fs = new MemoryFilesystem();
+    const fs = memoryFs();
     await fs.write("index.html", "<!doctype html><title>App</title>");
     await fs.write("assets/app.js", "console.log('hi')");
     provideFilesystem(engine, "assets", fs);
@@ -72,7 +72,7 @@ describe("boundary.http.app — static asset serving (P1)", () => {
 
   it("lets API routes win over the static mount on the same port", async () => {
     const engine = new Engine();
-    const fs = new MemoryFilesystem();
+    const fs = memoryFs();
     await fs.write("index.html", "<html>spa</html>");
     provideFilesystem(engine, "assets", fs);
     engine.registerWorkflow(appWorkflow("/admin"));
@@ -98,7 +98,7 @@ describe("boundary.http.app — static asset serving (P1)", () => {
 
   it("reacts to a workflow added at runtime (live re-derive opens the server)", async () => {
     const engine = new Engine();
-    const fs = new MemoryFilesystem();
+    const fs = memoryFs();
     await fs.write("index.html", "<html>late</html>");
     provideFilesystem(engine, "assets", fs);
     // Seed an existing mount so a server is already listening on 4903; adding a
