@@ -43,8 +43,11 @@ function EditorInner() {
   const loadedFor = useRef<string | null>(null);
 
   // Initialize the canvas from the live doc (once per slug, after ops load).
+  // Wait for the workflow query too, so we don't lock in an empty doc when
+  // `useOps` happens to resolve before `useWorkflow`.
   useEffect(() => {
     if (!opMap.size) return;
+    if (!isNew && !wfData) return;
     const key = slug ?? "__new__";
     if (loadedFor.current === key) return;
     loadedFor.current = key;
@@ -53,7 +56,7 @@ function EditorInner() {
     const flow = buildFlow(doc, opMap);
     setNodes(flow.nodes);
     setEdges(flow.edges);
-  }, [opMap, slug, wfData, setNodes, setEdges]);
+  }, [opMap, slug, wfData, isNew, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (c: Connection) => {
