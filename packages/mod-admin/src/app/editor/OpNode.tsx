@@ -9,6 +9,15 @@ import { Markdown } from "../components/Markdown";
 const HANDLE_GAP = 22;
 const HEADER = 40;
 
+/** Replay-state visual treatment (mod-admin-spec §15.1). */
+const REPLAY: Record<string, { color: string; dim: boolean; pulse: boolean }> = {
+  pending: { color: "var(--color-port-control)", dim: true, pulse: false },
+  running: { color: "var(--color-neon-cyan)", dim: false, pulse: true },
+  ok: { color: "var(--color-neon-lime)", dim: false, pulse: false },
+  error: { color: "var(--color-neon-pink)", dim: false, pulse: false },
+  skipped: { color: "var(--color-port-control)", dim: true, pulse: false },
+};
+
 /** A workflow node rendered from its op's ports (mod-admin-spec §12). Shows a
  *  friendly name + category icon/accent — the technical op type lives in the
  *  inspector. Handles are colored by kind (cyan value, violet stream, grey control). */
@@ -19,11 +28,19 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
   const rows = Math.max(data.inputs.length, data.outputs.length, 1);
   const height = HEADER + rows * HANDLE_GAP + 12;
   const { Icon } = cat;
+  const replay = data.replay ? REPLAY[data.replay] : undefined;
 
   return (
     <div
-      className="glass-strong overflow-hidden rounded-xl"
-      style={{ width: 196, minHeight: height, borderColor: selected ? "var(--color-neon-cyan)" : accent, borderWidth: selected ? 2 : 1 }}
+      className={`glass-strong overflow-hidden rounded-xl ${replay?.pulse ? "animate-pulse" : ""}`}
+      style={{
+        width: 196,
+        minHeight: height,
+        borderColor: replay ? replay.color : selected ? "var(--color-neon-cyan)" : accent,
+        borderWidth: replay || selected ? 2 : 1,
+        opacity: replay?.dim ? 0.45 : 1,
+        boxShadow: replay && !replay.dim ? `0 0 18px ${replay.color}55` : undefined,
+      }}
     >
       <div
         className="flex items-center gap-2 border-b hairline px-3 py-2"
