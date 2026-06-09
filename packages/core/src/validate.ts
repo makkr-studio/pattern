@@ -257,9 +257,10 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
     });
   }
   for (const t of triggers) {
-    // Event subscribers legitimately have no out-gate (fire-and-forget, §8).
+    // Event subscribers (fire-and-forget, §8) and schedules (result discarded,
+    // §7) legitimately have no out-gate.
     const op = ops.get(t.op)!;
-    const noOutgateExpected = t.op === "boundary.event";
+    const noOutgateExpected = t.op === "boundary.event" || t.op === "boundary.schedule";
     if (noOutgateExpected) continue;
     const reach = reachableFrom(workflow, t.id);
     const reachesOutgate = outgates.some((g) => reach.nodes.has(g.id));
