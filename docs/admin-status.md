@@ -33,42 +33,38 @@ every endpoint (incl. the SSE run tail as an async iterable), and the extension
 helpers (`buildNav`, `MenuRegistry`, `CommandRegistry`, `defineDeclarativePage`).
 Verified end-to-end against the live backend.
 
-## Next — the SPA (M4 shell → M10)
+### Milestone 4–9 — the SPA (`packages/mod-admin/src/app`)
+Built with React 19 + Vite 8 + Tailwind v4 (glass theme) + `@xyflow/react` +
+Motion + Zustand + TanStack Query + React Router, on `@pattern/admin-sdk`. Built
+to `dist-app/`, served via `boundary.http.app`; `adminMod()` serves the bundle by
+default (placeholder until built). Pages:
 
-The remaining milestones are the React app. The backend + SDK contract it needs
-are **done and stable**, so this is greenfield UI work with a fixed API.
+- **M4 Shell** — glass nav from the UI manifest (`buildNav`), dark/light theme,
+  deep links, ⌘K palette, empty states.
+- **M5 Catalog + Op browser** — render purely from `api.workflows.list()` /
+  `api.ops.list()` (self-reflection); source badges, enable toggle; op ports +
+  config schema + usage.
+- **M6 Graph editor** — `@xyflow/react`; nodes rendered from `OpInfo` with
+  kind-colored handles/edges; palette add; drag-connect with `api.portsCompatible`
+  assist; JSON config inspector; save → version → deploy; validation problems panel.
+- **M7 Runs** — list from the sink; span waterfall + I/O peek (T1); live SSE tail;
+  metrics strip (`api.metrics`).
+- **M8 Versions** — history, structural JSON diff (`api.versions.diff`),
+  one-click promote/rollback.
+- **M9 System map** — routes (+conflict flags), apps, schedules, hooks (priority
+  order), events, WS — from `admin.system.map`.
 
-**Why it wasn't built here:** it needs the full frontend toolchain (React 19,
-Vite 6, `@xyflow/react`, Tailwind v4, Motion, Zustand, TanStack Query) and visual
-verification in a browser — neither available in this autonomous session. Shipping
-unverified UI would break the "all green" bar. The contract is locked so the UI
-can be built and verified interactively.
+**Verification (no live browser in this environment):** strict app type-check +
+`vite build` (2.4k modules) + jsdom render tests mounting every page (incl. the
+xyflow editor) against a seeded cache, plus the SDK integration tests that hit the
+live backend. Pixel-level visuals still want a real browser pass.
 
-### Recommended setup
-- New source root `packages/mod-admin/src/app/` (already excluded from the
-  package `tsconfig`), built by Vite → `packages/mod-admin/dist-app/`, served via
-  the existing `boundary.http.app` mount. Point the mod's `assets` option at
-  `dist-app` (a `LocalFilesystem`) instead of the placeholder.
-- Dev: run the engine (mod-admin loaded) + Vite dev server; proxy
-  `/admin/api/*` → the engine port. `pattern dev` can spawn both (§16).
-- Stack + layout: §7 / §8 of the spec. Build all data access on
-  `@pattern/admin-sdk`'s `createAdminClient()` (don't hand-roll fetch).
-
-### Milestone map (acceptance in §17)
-- **M4** App shell — glass nav from `engine.frontend()` / `buildNav`, dark/light,
-  deep links, ⌘K (`CommandRegistry`), empty states.
-- **M5** Catalog + op browser — render purely from `api.workflows.list()` /
-  `api.ops.list()` (proves self-reflection).
-- **M6** Graph editor — `@xyflow/react`; nodes rendered from `OpInfo` (ports from
-  `inputs`/`outputs`/`controlOut`); edges per kind; config forms from
-  `configSchema`; live validation; connection assist via `api.portsCompatible`.
-- **M7** Test & Runs — trigger runs; replay over the graph from `api.runs.get`
-  spans (+ I/O samples, T1); live tail via `api.runs.tail`; metrics strip from
-  `api.metrics`.
-- **M8** Versioning UI — history, JSON diff (`api.versions.diff`), promote/rollback.
-- **M9** System map — routes (+conflicts), schedules, hooks, events, WS.
-- **M10** Tier-2 extension proof — a sample mod adds a Tier-1 page + ⌘K command +
-  a Tier-2 ESM-remote page with zero admin-core changes.
+### Remaining
+- **M10 Tier-2 extension proof** — a sample mod adds a Tier-1 declarative page +
+  a ⌘K command + a Tier-2 ESM-remote page with zero admin-core changes. The seams
+  exist (`admin.ui.manifest`, `PageDef.remote`, menu aggregation); needs the
+  SPA's declarative-page renderer + dynamic route mounting + the sample mod.
+- A real browser pass for visual polish; `pattern dev` spawning engine + Vite.
 
 ## Decisions of record (engine-side)
 - **Storage = flystorage.** `@pattern/runtime-node` uses flystorage's `FileStorage`

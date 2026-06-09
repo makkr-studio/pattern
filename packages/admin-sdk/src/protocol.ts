@@ -7,7 +7,23 @@
  * them; richer engine types come from `@pattern/core`.
  */
 
-import type { PortKind } from "@pattern/core";
+import type { PortKind, MenuEntry, CommandDef, DeclarativeView } from "@pattern/core";
+
+export type { MenuEntry, CommandDef, DeclarativeView } from "@pattern/core";
+
+export interface UiManifestPage {
+  path: string;
+  view?: DeclarativeView;
+  remote?: string;
+  tier2?: boolean;
+}
+
+export interface UiManifest {
+  menu: MenuEntry[];
+  commands: CommandDef[];
+  assets: Array<{ mod: string; assets: string }>;
+  pages: UiManifestPage[];
+}
 
 export type Source = "code" | "file" | "db";
 export type VersionId = string;
@@ -192,6 +208,16 @@ export interface Template {
   name: string;
   description: string;
   doc: WorkflowDoc;
+}
+
+export interface SystemMap {
+  routes: Array<{ method: string; path: string; port?: number; workflow: string; conflict: boolean }>;
+  apps: Array<{ mount: string; port?: number; workflow: string; filesystem: string }>;
+  schedules: Array<{ workflow: string; node: string; cron?: string; intervalMs?: number }>;
+  hooks: Array<{ hook: string; workflow: string; node: string; priority: number }>;
+  events: Array<{ event: string; workflow: string; node: string }>;
+  ws: Array<{ workflow: string; node: string; kind: string }>;
+  ports: number[];
 }
 
 export interface WorkflowGetResult {

@@ -18,7 +18,7 @@ import {
   type Workflow,
 } from "@pattern/core";
 import { adminServices } from "../services.js";
-import { catalog, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs } from "../introspect.js";
+import { catalog, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";
 import { diffWorkflows } from "../control-plane/versioning.js";
 import { builtinTemplates } from "../templates.js";
 
@@ -191,6 +191,18 @@ const runTail: OpDefinition = {
 // ── Mods / templates ──
 
 const modListOp = adminOp("admin.mod.list", "List installed mods + their contributions.", (_args, { engine }) => modList(engine));
+const systemMapOp = adminOp("admin.system.map", "Routes, schedules, hooks, events, WS across registered workflows.", (_args, { engine }) => systemMap(engine));
+
+/** The aggregated frontend manifest (serializable) the shell builds its nav from. */
+const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", (_args, { engine }) => {
+  const fe = engine.frontend();
+  const pages = (fe.pages ?? []).map((p) => {
+    if ("view" in p) return { path: p.path, view: p.view };
+    if ("remote" in p) return { path: p.path, remote: p.remote };
+    return { path: p.path, tier2: true }; // function-loaded; not serializable over HTTP
+  });
+  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages };
+});
 const templateList = adminOp("admin.template.list", "List built-in workflow templates.", () =>
   builtinTemplates.map((t) => ({ id: t.id, name: t.name, description: t.description, doc: t.doc })),
 );
@@ -234,6 +246,8 @@ export const adminOps: OpDefinition[] = [
   runTail,
   metricsSummary,
   modListOp,
+  systemMapOp,
+  uiManifest,
   templateList,
   fixtureList,
   fixtureGet,

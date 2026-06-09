@@ -17,8 +17,13 @@ export default defineConfig({
       // JS to spawn workers); its own @pattern/core imports still alias above.
     },
   },
+  esbuild: { jsx: "automatic" },
   test: {
-    include: ["packages/*/src/**/*.test.ts", "packages/*/tests/**/*.test.ts"],
+    include: [
+      "packages/*/src/**/*.test.ts",
+      "packages/*/tests/**/*.test.ts",
+      "packages/*/tests/**/*.test.tsx",
+    ],
     environment: "node",
     pool: "threads",
     testTimeout: 15_000,

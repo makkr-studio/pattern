@@ -12,6 +12,8 @@
  * so `setup` — which is async — completes before you start the host.
  */
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineMod, type Engine, type PatternMod, type Workflow } from "@pattern/core";
 import {
   localFs,
@@ -48,6 +50,17 @@ const ASSETS_FS = "admin-assets";
 
 function resolveFs(fs: Filesystem | string | undefined, fallback: () => Filesystem): Filesystem {
   return fs ? toFilesystem(fs) : fallback();
+}
+
+/** The mod's built SPA at dist-app/ (relative to the compiled dist/backend/mod.js). */
+function bundledAssets(mount: string): Filesystem {
+  try {
+    const distApp = fileURLToPath(new URL("../../dist-app", import.meta.url));
+    if (existsSync(`${distApp}/index.html`)) return localFs(distApp);
+  } catch {
+    /* fall through to placeholder */
+  }
+  return placeholderAssets(mount);
 }
 
 /** A tiny placeholder SPA so `/admin` shows something before the UI is built. */
@@ -96,7 +109,7 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     frontend: adminFrontend(mount),
     setup: async (engine: Engine) => {
       const storageFs = resolveFs(options.storage, () => localFs("./.pattern"));
-      const assetsFs = resolveFs(options.assets, () => placeholderAssets(mount));
+      const assetsFs = resolveFs(options.assets, () => bundledAssets(mount));
       provideFilesystem(engine, ASSETS_FS, assetsFs);
 
       const store = new FlystorageWorkflowStore(storageFs, { prefix: options.storePrefix });
