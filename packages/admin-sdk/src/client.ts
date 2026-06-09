@@ -18,6 +18,8 @@ import type {
   PortCompatibility,
   PortRef,
   RunDetail,
+  RunInput,
+  RunResult,
   RunSummary,
   SaveResult,
   SpanData,
@@ -140,6 +142,8 @@ export class AdminClient {
   systemMap = (): Promise<SystemMap> => this.request("GET", "/system");
   /** Run a source op once and return its output (declarative-page data source). */
   invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
+  /** Run a workflow (draft doc or live slug) from a trigger; records the run. */
+  run = (req: RunInput): Promise<RunResult> => this.request("POST", "/run", req);
 
   /** Consume the SSE tail endpoint as parsed `SpanData` events. */
   private async *tailSpans(workflow?: string): AsyncIterable<SpanData> {

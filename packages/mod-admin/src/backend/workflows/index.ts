@@ -75,6 +75,7 @@ export const endpointSpecs: EndpointSpec[] = [
   { id: "admin.api.system", method: "GET", path: `${API}/system`, op: "admin.system.map" },
   { id: "admin.api.ui.manifest", method: "GET", path: `${API}/ui/manifest`, op: "admin.ui.manifest" },
   { id: "admin.api.invoke", method: "POST", path: `${API}/invoke`, op: "admin.invoke" },
+  { id: "admin.api.run", method: "POST", path: `${API}/run`, op: "admin.run" },
   { id: "admin.api.templates", method: "GET", path: `${API}/templates`, op: "admin.template.list" },
 ];
 
