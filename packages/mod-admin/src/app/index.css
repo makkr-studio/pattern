@@ -39,6 +39,8 @@
   --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.12);
   --glass-blur: 14px;
   --hairline: rgba(15, 23, 42, 0.08);
+  /* Tooltips float over busy content, so their surface is near-opaque. */
+  --tip-bg: rgba(255, 255, 255, 0.92);
 }
 
 .dark {
@@ -54,6 +56,17 @@
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   --glass-blur: 16px;
   --hairline: rgba(255, 255, 255, 0.08);
+  --tip-bg: rgba(14, 18, 27, 0.88);
+}
+
+/* A tooltip surface: near-opaque + heavy blur so text is always legible over
+   busy content (graph nodes, etc.). */
+@utility tip-surface {
+  background: var(--tip-bg);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
 html,

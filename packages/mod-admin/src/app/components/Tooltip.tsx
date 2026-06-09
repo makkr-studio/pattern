@@ -50,7 +50,7 @@ export function TooltipHost() {
     <div
       ref={ref}
       style={{ position: "fixed", left: Math.max(8, left), top: rect.bottom + 8, maxWidth: 320, zIndex: 200 }}
-      className="glass-strong pointer-events-none rounded-lg px-3 py-2 text-xs shadow-2xl"
+      className="tip-surface pointer-events-none rounded-lg px-3 py-2 text-xs"
     >
       {content}
     </div>,
