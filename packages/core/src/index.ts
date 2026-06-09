@@ -49,8 +49,8 @@ export {
   type EnvCastType,
 } from "./env-config.js";
 
-// Secret-safe config (admin-spec P4)
-export { secret, redactConfig, REDACTED } from "./redact.js";
+// Secret-safe config (admin-spec P4) + I/O sample masking (T1)
+export { secret, redactConfig, collectSecretValues, maskSecretValues, REDACTED } from "./redact.js";
 
 // Type contracts
 export * from "./types.js";

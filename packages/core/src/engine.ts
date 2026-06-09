@@ -10,7 +10,7 @@
 
 import { resolvePrincipal, type AuthRequirement, meetsRequirement } from "./auth/resolve.js";
 import { resolveWorkflowEnvTracked } from "./env-config.js";
-import { redactConfig } from "./redact.js";
+import { collectSecretValues, maskSecretValues, redactConfig } from "./redact.js";
 import { resolveBoundaryConfig, hasConfigPorts } from "./resolve-config.js";
 import { registerCoreOps } from "./ops-core/index.js";
 import { InMemoryConnectionRegistry } from "./connections/memory.js";
@@ -137,6 +137,13 @@ export class Engine {
   private readonly mods: InstalledMod[] = [];
   /** Per-workflow, per-node config paths resolved from the environment (P4). */
   private readonly secretPaths = new Map<string, Record<string, string[]>>();
+  /**
+   * Pooled secret *values* (schema-tagged + env-resolved config fields) across
+   * all registered workflows, fed to the I/O sampler so secrets that flow
+   * through run data are masked in span samples (T1). Values are only ever
+   * added — masking a value from a since-removed workflow is the safe direction.
+   */
+  private readonly secretValues = new Set<string>();
 
   constructor(opts: EngineOptions = {}) {
     this.ops = opts.ops ?? new InMemoryOpRegistry();
@@ -147,8 +154,8 @@ export class Engine {
     this.connections = opts.connections ?? new InMemoryConnectionRegistry();
     this.env = opts.env ?? {};
 
-    const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal) =>
-      this.runFrom(wf, trig, input, principal),
+    const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal, hookDepth) =>
+      this.runFrom(wf, trig, input, principal, undefined, undefined, undefined, hookDepth),
     );
     this.services = { events: this.events, hooks: hookRunner, connections: this.connections };
     this.transport = opts.transport ?? new InProcessTransport(this.deps());
@@ -166,6 +173,9 @@ export class Engine {
       traceSink: this.traceSink,
       env: this.env,
       resolveWorkflow: (id) => this.workflows.get(id),
+      // Mask known secret values out of sampled I/O (reads the live pool, so
+      // secrets from workflows registered after construction are covered too).
+      maskSample: (v) => maskSecretValues(v, this.secretValues),
     };
   }
 
@@ -266,6 +276,14 @@ export class Engine {
 
     if (Object.keys(secretPaths).length) this.secretPaths.set(workflow.id, secretPaths);
     else this.secretPaths.delete(workflow.id);
+
+    // Pool this workflow's concrete secret values for I/O-sample masking (T1).
+    for (const node of workflow.nodes) {
+      const op = this.ops.get(node.op);
+      for (const v of collectSecretValues(node.config, op?.config, secretPaths[node.id])) {
+        this.secretValues.add(v);
+      }
+    }
 
     // Store last so subscribers (HTTP/WS hosts) observe a fully-wired workflow.
     this.workflows.register(workflow);
@@ -474,8 +492,9 @@ export class Engine {
     signal?: AbortSignal,
     params?: Record<string, unknown>,
     sampleIo?: boolean,
+    hookDepth?: number,
   ): Promise<RunResult> {
-    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo });
+    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth });
     if (signal) {
       if (signal.aborted) handle.abort(signal.reason);
       else signal.addEventListener("abort", () => handle.abort(signal.reason), { once: true });

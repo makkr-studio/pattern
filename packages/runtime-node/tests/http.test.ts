@@ -144,6 +144,33 @@ describe("HTTP host — declarative routing", () => {
     expect(pre.headers.get("access-control-allow-methods")).toContain("POST");
   });
 
+  it("omits the CORS allow-origin header for origins outside an allowlist", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "cors-list",
+      nodes: [
+        {
+          id: "in",
+          op: "boundary.http.request",
+          config: { method: "POST", path: "/api", cors: { origin: ["https://app.example.com"] } },
+        },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [{ from: { node: "in", port: "body" }, to: { node: "out", port: "body" } }],
+    };
+    engine.registerWorkflow(wf);
+    await startOn(engine, 4815);
+
+    // Allowlisted origin is echoed back.
+    const ok = await fetch("http://localhost:4815/api", { method: "OPTIONS", headers: { origin: "https://app.example.com" } });
+    expect(ok.headers.get("access-control-allow-origin")).toBe("https://app.example.com");
+
+    // Unlisted origin gets NO allow-origin header (echoing any allowlisted
+    // value back would open CORS to everyone).
+    const evil = await fetch("http://localhost:4815/api", { method: "OPTIONS", headers: { origin: "https://evil.example" } });
+    expect(evil.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("streams an SSE response (agent → split → SSE + TTS)", async () => {
     const engine = new Engine();
     engine.registerOp(tokensOp);

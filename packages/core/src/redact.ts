@@ -123,4 +123,85 @@ export function redactConfig(
   return masked;
 }
 
+/** Read the value at a dotted path inside a plain object (best-effort). */
+function valueAtPath(root: unknown, path: string): unknown {
+  let cur: any = root;
+  for (const part of path.split(".")) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+/** Recursively collect schema-tagged secret field values from `value`. */
+function collectBySchema(value: unknown, schema: ZodAny | undefined, into: Set<string>): void {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return;
+  const shape = objectShape(schema);
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    const fieldSchema = shape?.[key];
+    if (isSecretSchema(fieldSchema)) {
+      if (typeof v === "string" && v.length >= MIN_SECRET_LENGTH) into.add(v);
+    } else if (v && typeof v === "object" && !Array.isArray(v)) {
+      collectBySchema(v, fieldSchema, into);
+    }
+  }
+}
+
+/**
+ * Secrets shorter than this are not value-masked at runtime: replacing every
+ * occurrence of a 1–3 char string in sampled I/O would mangle unrelated data.
+ * (They are still masked in *config* surfaces, which match by path, not value.)
+ */
+const MIN_SECRET_LENGTH = 4;
+
+/**
+ * Collect the concrete secret string **values** present in a node config —
+ * schema-tagged fields plus the env-resolved paths the engine tracked. The
+ * engine pools these so the I/O sampler can mask them wherever they reappear
+ * in run data (admin-spec T1: samples must be masked, not just configs).
+ */
+export function collectSecretValues(
+  config: unknown,
+  schema?: ZodAny,
+  extraPaths?: readonly string[],
+): Set<string> {
+  const values = new Set<string>();
+  if (config == null || typeof config !== "object") return values;
+  collectBySchema(config, schema, values);
+  for (const p of extraPaths ?? []) {
+    const v = valueAtPath(config, p);
+    if (typeof v === "string" && v.length >= MIN_SECRET_LENGTH) values.add(v);
+  }
+  return values;
+}
+
+/**
+ * Deep-copy `value`, replacing every occurrence of a known secret value with
+ * `"••••"` — full-string matches and substrings both (a token embedded in an
+ * "Authorization: Bearer …" header must not survive). Cycle-safe; non-JSON
+ * leaves (functions, streams) pass through untouched.
+ */
+export function maskSecretValues(value: unknown, secrets: ReadonlySet<string>): unknown {
+  if (secrets.size === 0) return value;
+  const seen = new WeakSet<object>();
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      let out = v;
+      for (const s of secrets) if (out.includes(s)) out = out.split(s).join(REDACTED);
+      return out;
+    }
+    if (v == null || typeof v !== "object") return v;
+    if (seen.has(v)) return v;
+    seen.add(v);
+    if (Array.isArray(v)) return v.map(walk);
+    if (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null) {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+      return out;
+    }
+    return v; // class instances / streams: not sampled structurally
+  };
+  return walk(value);
+}
+
 export const __testing = { isSecretSchema, objectShape, unwrap };

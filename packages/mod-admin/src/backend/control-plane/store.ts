@@ -47,9 +47,27 @@ export interface FlystorageWorkflowStoreOptions {
   now?: () => string;
 }
 
+/** A single safe path segment: letters/digits, then dots/dashes/underscores. */
+const SAFE_SEGMENT = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+
+/**
+ * Validate a user-supplied path segment (slug, version id, fixture name) before
+ * it is joined into a storage path. Slugs and names flow in from HTTP params and
+ * imported JSON; without this check a value like `../../etc/x` escapes the store
+ * root on the local-fs adapter (flystorage normalizes `..` without confining it).
+ */
+export function safeSegment(value: string, what: string): string {
+  if (!SAFE_SEGMENT.test(value) || value.includes("..")) {
+    throw new Error(`invalid ${what} "${value}" — use letters, digits, ".", "-", "_" (no path separators)`);
+  }
+  return value;
+}
+
 export class FlystorageWorkflowStore implements WorkflowStore {
   private readonly prefix: string;
   private readonly now: () => string;
+  /** Per-slug write queues — see `withSlugLock`. */
+  private readonly locks = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly fs: Filesystem,
@@ -59,14 +77,30 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     this.now = opts.now ?? (() => new Date().toISOString());
   }
 
+  /**
+   * Serialize read-modify-write cycles on one slug's `_meta.json`. Version ids
+   * are derived from `versions.length` — two concurrent saves reading the same
+   * meta would both mint "vN" and one snapshot would silently overwrite the
+   * other. (Single-process guard; a DB-backed store gets this transactionally.)
+   */
+  private withSlugLock<T>(slug: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(slug) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    this.locks.set(
+      slug,
+      next.catch(() => {}),
+    );
+    return next;
+  }
+
   private metaPath(slug: string): string {
-    return `${this.prefix}/${slug}/_meta.json`;
+    return `${this.prefix}/${safeSegment(slug, "slug")}/_meta.json`;
   }
   private versionPath(slug: string, v: string): string {
-    return `${this.prefix}/${slug}/${v}.json`;
+    return `${this.prefix}/${safeSegment(slug, "slug")}/${safeSegment(v, "version")}.json`;
   }
   private fixturePath(slug: string, name: string): string {
-    return `${this.prefix}/${slug}/fixtures/${name}.json`;
+    return `${this.prefix}/${safeSegment(slug, "slug")}/fixtures/${safeSegment(name, "fixture name")}.json`;
   }
 
   /** Read a file as text, or null if it does not exist. */
@@ -107,7 +141,11 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     return text == null ? null : (JSON.parse(text) as WorkflowDoc);
   }
 
-  async saveVersion(
+  saveVersion(slug: string, doc: WorkflowDoc, info: { note?: string; author?: string }): Promise<VersionInfo> {
+    return this.withSlugLock(slug, () => this.saveVersionLocked(slug, doc, info));
+  }
+
+  private async saveVersionLocked(
     slug: string,
     doc: WorkflowDoc,
     info: { note?: string; author?: string },
@@ -133,11 +171,16 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     // Content-addressed dedupe: an identical snapshot reuses its version id.
     const existing = meta.versions.find((v) => v.hash === hash);
     if (existing) {
-      // Keep catalog metadata fresh even when the body is unchanged.
+      // Keep catalog metadata fresh even when the body is unchanged — and leave
+      // an audit trace when it actually changed (the body didn't, the card did).
+      const before = JSON.stringify([meta.name, meta.description, meta.tags, meta.route]);
       meta.name = doc.name ?? meta.name;
       meta.description = doc.description ?? meta.description;
       meta.tags = doc.tags ?? meta.tags;
       meta.route = extractRoute(doc);
+      if (JSON.stringify([meta.name, meta.description, meta.tags, meta.route]) !== before) {
+        meta.audit.push({ at: this.now(), principal: { kind: "anonymous" }, action: "save", version: existing.id, note: "metadata update" });
+      }
       await this.saveMeta(meta);
       return existing;
     }
@@ -165,31 +208,37 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     return version;
   }
 
-  async setLive(slug: string, v: string): Promise<void> {
-    const meta = await this.requireMeta(slug);
-    if (!meta.versions.some((ver) => ver.id === v)) throw new Error(`version "${v}" not found for "${slug}"`);
-    meta.live = v;
-    await this.saveMeta(meta);
+  setLive(slug: string, v: string): Promise<void> {
+    return this.withSlugLock(slug, async () => {
+      const meta = await this.requireMeta(slug);
+      if (!meta.versions.some((ver) => ver.id === v)) throw new Error(`version "${v}" not found for "${slug}"`);
+      meta.live = v;
+      await this.saveMeta(meta);
+    });
   }
 
-  async setEnabled(slug: string, enabled: boolean): Promise<void> {
-    const meta = await this.requireMeta(slug);
-    meta.enabled = enabled;
-    await this.saveMeta(meta);
+  setEnabled(slug: string, enabled: boolean): Promise<void> {
+    return this.withSlugLock(slug, async () => {
+      const meta = await this.requireMeta(slug);
+      meta.enabled = enabled;
+      await this.saveMeta(meta);
+    });
   }
 
-  async appendAudit(slug: string, entry: AuditEntry): Promise<void> {
-    const meta = await this.requireMeta(slug);
-    meta.audit.push(entry);
-    await this.saveMeta(meta);
+  appendAudit(slug: string, entry: AuditEntry): Promise<void> {
+    return this.withSlugLock(slug, async () => {
+      const meta = await this.requireMeta(slug);
+      meta.audit.push(entry);
+      await this.saveMeta(meta);
+    });
   }
 
   async delete(slug: string): Promise<void> {
-    await this.fs.deleteDirectory(`${this.prefix}/${slug}`);
+    await this.fs.deleteDirectory(`${this.prefix}/${safeSegment(slug, "slug")}`);
   }
 
   async listFixtures(slug: string): Promise<string[]> {
-    const dir = `${this.prefix}/${slug}/fixtures`;
+    const dir = `${this.prefix}/${safeSegment(slug, "slug")}/fixtures`;
     if (!(await this.fs.directoryExists(dir))) return [];
     const entries = await this.fs.list(dir, { deep: false }).toArray();
     return entries

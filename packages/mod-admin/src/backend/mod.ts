@@ -26,7 +26,7 @@ import { DefaultControlPlane } from "./control-plane/control-plane.js";
 import { FlystorageWorkflowStore } from "./control-plane/store.js";
 import { MemoryTraceSink } from "./trace/memory-sink.js";
 import { adminOps } from "./ops/index.js";
-import { endpointWorkflows } from "./workflows/index.js";
+import { endpointWorkflows, stampRequireAuth } from "./workflows/index.js";
 import { registerAdminServices } from "./services.js";
 import { adminFrontend } from "./frontend.js";
 
@@ -102,10 +102,14 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
   const mount = (options.mount ?? "/admin").replace(/\/$/, "") || "/admin";
   const auth = options.auth === true ? true : typeof options.auth === "object" ? options.auth : undefined;
 
+  // The SPA workflow is auth-stamped like every API route — without this the
+  // admin UI itself would stay publicly reachable when `auth` is configured.
+  const spa = auth ? stampRequireAuth(spaWorkflow(mount), auth) : spaWorkflow(mount);
+
   return defineMod({
     name: "@pattern/mod-admin",
     ops: adminOps,
-    workflows: [...endpointWorkflows(auth), spaWorkflow(mount)],
+    workflows: [...endpointWorkflows(auth), spa],
     frontend: adminFrontend(mount),
     setup: async (engine: Engine) => {
       const storageFs = resolveFs(options.storage, () => localFs("./.pattern"));

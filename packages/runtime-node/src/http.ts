@@ -35,6 +35,20 @@ export interface HttpHostOptions {
   defaultPort?: number;
   /** Interface to bind. Default all interfaces. */
   host?: string;
+  /**
+   * Max buffered request-body size in bytes (413 beyond it). Default 10 MiB.
+   * Routes with `bodyMode: "stream"` are exempt — they never buffer.
+   */
+  maxBodyBytes?: number;
+}
+
+const DEFAULT_MAX_BODY = 10 * 1024 * 1024;
+
+/** Thrown by `readBody` when a buffered body exceeds the configured cap. */
+class BodyTooLargeError extends Error {
+  constructor(readonly limit: number) {
+    super(`request body exceeds ${limit} bytes`);
+  }
 }
 
 interface CorsPolicy {
@@ -171,8 +185,23 @@ export class HttpHost {
     return { ports: [...this.servers.keys()], close: () => this.close() };
   }
 
-  /** Scan workflows for `boundary.http.request` routes and reconcile servers. */
-  private async rebuild(): Promise<void> {
+  /** Tail of the rebuild queue — see `rebuild()`. */
+  private rebuilding: Promise<void> = Promise.resolve();
+
+  /**
+   * Scan workflows for `boundary.http.request` routes and reconcile servers.
+   * Rebuilds are serialized: workflow-change events can fire in rapid bursts
+   * (project load, admin batch deploys), and two interleaved reconciles would
+   * race `openServer` on the same port into EADDRINUSE.
+   */
+  private rebuild(): Promise<void> {
+    const next = this.rebuilding.then(() => this.rebuildNow());
+    // The queue itself never rejects (errors surface to each caller via `next`).
+    this.rebuilding = next.catch(() => {});
+    return next;
+  }
+
+  private async rebuildNow(): Promise<void> {
     this.routes = this.scanRoutes();
     this.apps = this.scanApps();
     const needed = new Set<number>([...this.routes.map((r) => r.port), ...this.apps.map((a) => a.port)]);
@@ -345,7 +374,15 @@ export class HttpHost {
     if (route.bodyMode === "stream") {
       body = Readable.toWeb(req);
     } else {
-      body = await readBody(req, headers.get("content-type"));
+      try {
+        body = await readBody(req, headers.get("content-type"), this.opts.maxBodyBytes ?? DEFAULT_MAX_BODY);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          res.writeHead(413, { "content-type": "application/json" }).end(JSON.stringify({ error: err.message }));
+          return;
+        }
+        throw err;
+      }
       if (route.bodySchema) {
         const parsed = route.bodySchema.safeParse(body);
         if (!parsed.success) return badRequest(res, "body", parsed.error);
@@ -480,15 +517,18 @@ function collectMethods(routes: CompiledRoute[], port: number, pathname: string)
 }
 
 function applyCors(res: ServerResponse, cors: CorsPolicy, reqOrigin?: string): void {
+  // With an array allowlist, a non-matching (or absent) request origin gets NO
+  // Access-Control-Allow-Origin header at all — echoing any allowlisted value
+  // back to an unlisted origin would effectively open CORS to everyone.
   const origin =
     cors.origin === "*"
       ? "*"
       : Array.isArray(cors.origin)
         ? reqOrigin && cors.origin.includes(reqOrigin)
           ? reqOrigin
-          : cors.origin[0] ?? "*"
+          : undefined
         : cors.origin;
-  res.setHeader("Access-Control-Allow-Origin", origin);
+  if (origin !== undefined) res.setHeader("Access-Control-Allow-Origin", origin);
   if (origin !== "*") res.setHeader("Vary", "Origin");
   if (cors.credentials) res.setHeader("Access-Control-Allow-Credentials", "true");
   if (cors.exposeHeaders?.length) res.setHeader("Access-Control-Expose-Headers", cors.exposeHeaders.join(", "));
@@ -503,9 +543,17 @@ function badRequest(res: ServerResponse, where: string, error: z.ZodError): void
   );
 }
 
-async function readBody(req: IncomingMessage, contentType: string | null): Promise<unknown> {
+async function readBody(req: IncomingMessage, contentType: string | null, maxBytes = DEFAULT_MAX_BODY): Promise<unknown> {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > maxBytes) {
+      req.destroy(); // stop the client from streaming the rest into memory
+      throw new BodyTooLargeError(maxBytes);
+    }
+    chunks.push(c as Buffer);
+  }
   const buf = Buffer.concat(chunks);
   if (buf.length === 0) return undefined;
   const ct = contentType ?? "";
