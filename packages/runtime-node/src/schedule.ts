@@ -51,22 +51,45 @@ function fieldMatcher(field: string, min: number, max: number): (v: number) => b
 }
 
 export class ScheduleHost {
-  private timers: ScheduledTimer[] = [];
+  /** Timers keyed by workflow id, so a redeploy/remove reconciles cleanly. */
+  private timers = new Map<string, ScheduledTimer[]>();
+  private unsubscribe?: () => void;
 
   constructor(private readonly engine: Engine) {}
 
-  /** Schedule every `boundary.schedule` trigger found in the given workflows. */
+  /**
+   * Schedule every `boundary.schedule` trigger. With no argument it watches the
+   * engine and **reacts to workflow changes at runtime** — a workflow deployed,
+   * updated, or removed (e.g. from an admin) re-reconciles its timers live.
+   * Passing an explicit list disables the live watch (one-shot scheduling).
+   */
   start(workflows?: Workflow[]): this {
-    const list = workflows ?? this.engine.workflows.list();
-    for (const wf of list) {
-      for (const node of wf.nodes) {
-        if (node.op !== "boundary.schedule") continue;
-        const cfg = (node.config ?? {}) as { intervalMs?: number; cron?: string };
-        if (cfg.intervalMs) this.everyInterval(wf, node.id, cfg.intervalMs);
-        else if (cfg.cron) this.everyCron(wf, node.id, cfg.cron);
-      }
+    if (workflows) {
+      for (const wf of workflows) this.scheduleWorkflow(wf);
+      return this;
     }
+    for (const wf of this.engine.workflows.list()) this.scheduleWorkflow(wf);
+    this.unsubscribe = this.engine.onWorkflowsChanged((change) => {
+      this.clearWorkflow(change.id);
+      if (change.type === "set" && change.workflow) this.scheduleWorkflow(change.workflow);
+    });
     return this;
+  }
+
+  private scheduleWorkflow(wf: Workflow): void {
+    const created: ScheduledTimer[] = [];
+    for (const node of wf.nodes) {
+      if (node.op !== "boundary.schedule") continue;
+      const cfg = (node.config ?? {}) as { intervalMs?: number; cron?: string };
+      if (cfg.intervalMs) created.push(this.everyInterval(wf, node.id, cfg.intervalMs));
+      else if (cfg.cron) created.push(this.everyCron(wf, node.id, cfg.cron));
+    }
+    if (created.length) this.timers.set(wf.id, created);
+  }
+
+  private clearWorkflow(id: string): void {
+    for (const t of this.timers.get(id) ?? []) t.stop();
+    this.timers.delete(id);
   }
 
   private fire(wf: Workflow, triggerId: string, scheduledFor: number): void {
@@ -75,13 +98,13 @@ export class ScheduleHost {
       .catch((err) => console.error(`[pattern] scheduled run "${wf.id}" failed:`, err));
   }
 
-  private everyInterval(wf: Workflow, triggerId: string, ms: number): void {
+  private everyInterval(wf: Workflow, triggerId: string, ms: number): ScheduledTimer {
     const handle = setInterval(() => this.fire(wf, triggerId, Date.now()), ms);
     handle.unref?.();
-    this.timers.push({ stop: () => clearInterval(handle) });
+    return { stop: () => clearInterval(handle) };
   }
 
-  private everyCron(wf: Workflow, triggerId: string, expr: string): void {
+  private everyCron(wf: Workflow, triggerId: string, expr: string): ScheduledTimer {
     const match = cronMatcher(expr);
     let last = "";
     const tick = () => {
@@ -94,12 +117,14 @@ export class ScheduleHost {
     };
     const handle = setInterval(tick, 30_000);
     handle.unref?.();
-    this.timers.push({ stop: () => clearInterval(handle) });
+    return { stop: () => clearInterval(handle) };
   }
 
   stop(): void {
-    for (const t of this.timers) t.stop();
-    this.timers = [];
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    for (const timers of this.timers.values()) for (const t of timers) t.stop();
+    this.timers.clear();
   }
 }
 
