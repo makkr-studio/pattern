@@ -18,6 +18,7 @@ import { MetricsPage } from "../src/app/pages/MetricsPage";
 import { ModsPage } from "../src/app/pages/ModsPage";
 import { RunsPage } from "../src/app/pages/RunsPage";
 import { EditorPage } from "../src/app/pages/EditorPage";
+import { ManifestPage } from "../src/app/pages/ManifestPage";
 
 // xyflow needs ResizeObserver + matchMedia in the DOM env.
 beforeAll(() => {
@@ -103,5 +104,27 @@ describe("SPA pages render", () => {
     mount(<EditorPage />, "/editor", "/editor");
     expect(screen.getByText("Palette")).toBeTruthy();
     expect(screen.getByText("New workflow")).toBeTruthy();
+  });
+
+  it("ManifestPage renders a mod's Tier-1 declarative table (M10)", () => {
+    const qc = seeded();
+    qc.setQueryData(["manifest"], {
+      menu: [{ category: "Examples", label: "Greetings", path: "/x/greetings" }],
+      commands: [],
+      assets: [],
+      pages: [{ path: "/x/greetings", view: { kind: "table", source: "sample.greetings.list", columns: [{ key: "id", label: "ID" }, { key: "text", label: "Greeting" }] } }],
+    });
+    qc.setQueryData(["invoke", "sample.greetings.list"], [{ id: "ada", text: "Hello, Ada!" }]);
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/x/greetings"]}>
+          <Routes>
+            <Route path="*" element={<ManifestPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Hello, Ada!")).toBeTruthy();
+    expect(screen.getByText("Tier-1 declarative page).", { exact: false })).toBeTruthy();
   });
 });

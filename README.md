@@ -89,8 +89,9 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 |---------|------|
 | [`@pattern/core`](./packages/core) | The runtime-neutral engine: types, validation, scheduler, streams, the [op catalog](./docs/op-catalog.md), hooks/events, auth, observability. One dependency: Zod. |
 | [`@pattern/runtime-node`](./packages/runtime-node) | Node adapter: HTTP/WebSocket/CLI/schedule hosts, `node:worker_threads` pool transport, socket-bound connection registry, JSONL/SQLite trace sinks, the `pattern` CLI. |
-| [`@pattern/mod-admin`](./packages/mod-admin) | The admin mod: an authorable, self-reflecting control surface (control plane, workflow store + versioning, run/metrics sink, the `admin.*` ops, and a workflow-backed HTTP API). Backend complete; SPA in progress. |
-| [`@pattern/admin-sdk`](./packages/admin-sdk) | The admin extension surface: a typed API client over the workflow-backed endpoints (incl. SSE tail) + nav/command helpers + shared protocol types. Framework-agnostic core done; React hooks/UI kit with the SPA. |
+| [`@pattern/mod-admin`](./packages/mod-admin) | The admin mod: an authorable, self-reflecting control surface — control plane, workflow store + versioning, run/metrics sink, the `admin.*` ops + workflow-backed HTTP API, and a React 19 / xyflow / Tailwind v4 glassmorphism **SPA** (catalog, graph editor, runs+replay, versions+diff, system map, metrics). |
+| [`@pattern/admin-sdk`](./packages/admin-sdk) | The admin extension surface: a typed API client over the workflow-backed endpoints (incl. SSE tail) + nav/command helpers + shared protocol types. |
+| [`@pattern/mod-sample`](./packages/mod-sample) | A sample mod proving the extension surface: a Tier-1 page + ⌘K command + a Tier-2 ESM remote, added with zero admin-core changes. |
 | [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Dev-time only, so it’s rich: prompts, banner, templates. |
 
 ## Docs

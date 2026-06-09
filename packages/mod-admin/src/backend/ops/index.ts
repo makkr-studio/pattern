@@ -10,6 +10,7 @@
 
 import {
   collectIssues,
+  resolvePorts,
   stream,
   value,
   z,
@@ -203,6 +204,35 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
   });
   return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages };
 });
+/**
+ * Run a "source" op one-shot and return its output — the data backend for
+ * declarative pages (§6). Wraps the op in a synthetic manual→op→return workflow
+ * so any catalog op can feed a table/chart/json view.
+ */
+const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", async (args, { engine }) => {
+  const source = str(args.source, "source");
+  const op = engine.ops.get(source);
+  if (!op) throw new Error(`unknown op "${source}"`);
+  const valueInputs = Object.entries(resolvePorts(op.inputs, {})).filter(([, s]) => s.kind === "value").map(([n]) => n);
+  const firstOut = Object.keys(resolvePorts(op.outputs, {}))[0] ?? "out";
+  const wf: Workflow = {
+    id: `__invoke_${source}`,
+    nodes: [
+      { id: "t", op: "boundary.manual", config: { outputs: ["input"] } },
+      { id: "s", op: source },
+      { id: "r", op: "boundary.return" },
+    ],
+    edges: [
+      { from: { node: "t", port: "out" }, to: { node: "s", port: "in" } },
+      ...valueInputs.map((p) => ({ from: { node: "t", port: "input" }, to: { node: "s", port: p } })),
+      { from: { node: "s", port: firstOut }, to: { node: "r", port: "value" } },
+    ],
+  };
+  const res = await engine.run(wf, { trigger: "t", input: { input: args.input } });
+  if (res.status === "error") throw res.error;
+  return (Object.values(res.outputs)[0] as { value?: unknown } | undefined)?.value ?? null;
+});
+
 const templateList = adminOp("admin.template.list", "List built-in workflow templates.", () =>
   builtinTemplates.map((t) => ({ id: t.id, name: t.name, description: t.description, doc: t.doc })),
 );
@@ -248,6 +278,7 @@ export const adminOps: OpDefinition[] = [
   modListOp,
   systemMapOp,
   uiManifest,
+  invokeOp,
   templateList,
   fixtureList,
   fixtureGet,

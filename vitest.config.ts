@@ -13,6 +13,7 @@ export default defineConfig({
       // mod-admin (backend) + admin-sdk resolve to TS source for build-free iteration.
       "@pattern/mod-admin": r("./packages/mod-admin/src/index.ts"),
       "@pattern/admin-sdk": r("./packages/admin-sdk/src/index.ts"),
+      "@pattern/mod-sample": r("./packages/mod-sample/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built
       // JS to spawn workers); its own @pattern/core imports still alias above.
     },

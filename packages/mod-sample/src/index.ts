@@ -1,0 +1,85 @@
+/**
+ * @pattern/mod-sample — the mod-admin-spec **M10** proof.
+ *
+ * Installing this mod extends the admin with **zero admin-core changes**:
+ *  - an op (`sample.greetings.list`) used as a declarative data source,
+ *  - a **Tier-1** declarative table page + a menu entry + a ⌘K command,
+ *  - a **Tier-2** ESM-remote page whose bundle the mod serves itself via a
+ *    `boundary.http.app` mount at `/ext`.
+ *
+ * If the admin renders all of this without being touched, the extension surface
+ * (mod-admin-spec §6) works.
+ */
+
+import { defineMod, value, z, type OpDefinition, type Workflow } from "@pattern/core";
+import { memoryFs, provideFilesystem } from "@pattern/runtime-node";
+
+const greetings = [
+  { id: "ada", language: "English", text: "Hello, Ada!" },
+  { id: "linus", language: "Swedish", text: "Hej, Linus!" },
+  { id: "yukihiro", language: "Japanese", text: "こんにちは、まつもとさん!" },
+];
+
+const greetingsList: OpDefinition = {
+  type: "sample.greetings.list",
+  title: "sample.greetings.list",
+  description: "Returns a static list of greetings (a declarative-page data source).",
+  inputs: {},
+  outputs: { out: value(z.array(z.object({ id: z.string(), language: z.string(), text: z.string() }))) },
+  execute: async () => ({ out: greetings }),
+};
+
+/** A plain ESM Tier-2 remote: default-exports a component using the admin's
+ *  shared React (no bundler needed; deps come from `window.__PATTERN_ADMIN__`). */
+const STUDIO_REMOTE = `
+const { React } = (globalThis).__PATTERN_ADMIN__;
+export default function SampleStudio() {
+  return React.createElement(
+    "div",
+    { className: "glass rounded-2xl p-8" },
+    React.createElement("h2", { className: "text-lg font-semibold" }, "Sample Studio"),
+    React.createElement("p", { className: "text-muted mt-2 text-sm" },
+      "This page is a Tier-2 ESM remote shipped by @pattern/mod-sample and loaded at runtime — the admin core was never touched."),
+  );
+}
+`;
+
+const appMount: Workflow = {
+  id: "sample.app",
+  name: "Sample · Tier-2 assets",
+  nodes: [{ id: "app", op: "boundary.http.app", config: { mount: "/ext", filesystem: "sample-assets", spaFallback: "" } }],
+  edges: [],
+};
+
+export default defineMod({
+  name: "@pattern/mod-sample",
+  ops: [greetingsList],
+  workflows: [appMount],
+  frontend: {
+    menu: [
+      { category: "Examples", label: "Greetings", icon: "boxes", path: "/x/greetings", order: 10 },
+      { category: "Examples", label: "Studio", icon: "package", path: "/x/studio", order: 20 },
+    ],
+    commands: [{ id: "sample.greet", label: "Sample: list greetings", group: "Examples", run: "sample.greetings.list" }],
+    pages: [
+      {
+        path: "/x/greetings",
+        view: {
+          kind: "table",
+          source: "sample.greetings.list",
+          columns: [
+            { key: "id", label: "ID" },
+            { key: "language", label: "Language" },
+            { key: "text", label: "Greeting" },
+          ],
+        },
+      },
+      { path: "/x/studio", remote: "/ext/sample-studio.js" },
+    ],
+  },
+  setup: (engine) => {
+    const fs = memoryFs();
+    void fs.write("sample-studio.js", STUDIO_REMOTE);
+    provideFilesystem(engine, "sample-assets", fs);
+  },
+});

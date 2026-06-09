@@ -13,6 +13,9 @@ import { ModsPage } from "./pages/ModsPage";
 import { SystemPage } from "./pages/SystemPage";
 import { MetricsPage } from "./pages/MetricsPage";
 import { VersionsPage } from "./pages/VersionsPage";
+import { ManifestPage } from "./pages/ManifestPage";
+import { api } from "./lib/api";
+import * as React from "react";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 2000, retry: 1 } },
@@ -35,11 +38,15 @@ const router = createBrowserRouter(
         { path: "system", element: <SystemPage /> },
         { path: "metrics", element: <MetricsPage /> },
         { path: "versions/:slug", element: <VersionsPage /> },
+        { path: "*", element: <ManifestPage /> },
       ],
     },
   ],
   { basename: "/admin" },
 );
+
+// Shared deps for Tier-2 ESM remotes (so mod bundles don't double-load React/SDK).
+(globalThis as Record<string, unknown>).__PATTERN_ADMIN__ = { React, api };
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

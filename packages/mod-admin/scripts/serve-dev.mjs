@@ -6,6 +6,7 @@
 import { Engine } from "@pattern/core";
 import { createHttpHost, memoryFs } from "@pattern/runtime-node";
 import { adminMod } from "@pattern/mod-admin";
+import sampleMod from "@pattern/mod-sample";
 import { fileURLToPath } from "node:url";
 
 const distApp = fileURLToPath(new URL("../dist-app", import.meta.url));
@@ -13,6 +14,8 @@ const engine = new Engine({ env: process.env });
 
 // In-memory store so the dev server is stateless between restarts.
 await engine.useAsync(adminMod({ storage: memoryFs(), assets: distApp }));
+// The M10 sample mod — extends the admin (Examples menu, Tier-1 + Tier-2 pages).
+await engine.useAsync(sampleMod);
 
 // A couple of sample user workflows for the catalog + editor + runs.
 const cp = engine.service("adminControlPlane");
