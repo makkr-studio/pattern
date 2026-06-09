@@ -254,6 +254,9 @@ export const wsClose: OpDefinition = {
   boundary: "trigger",
   inputs: {},
   outputs: { connection: value(connectionSchema), code: value(z.number()), reason: value(z.string()) },
+  // Same auth seam as open/message — a protected socket's close handler should
+  // be declarable as protected too.
+  config: z.object({ requireAuth }),
   execute: TRIGGER_EXECUTE,
 };
 

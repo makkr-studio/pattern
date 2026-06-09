@@ -430,6 +430,12 @@ export interface RunRequest {
   params?: Record<string, unknown>;
   /** Opt into bounded, masked per-node I/O sampling on spans (admin-spec T1). */
   sampleIo?: boolean;
+  /**
+   * Hook-chain depth this run executes at (§8). Set when a hook chain spawns the
+   * run, so a nested `core.hook.invoke` resumes the same chain's recursion guard
+   * — threaded explicitly (not a thread-local) so it survives transport seams.
+   */
+  hookDepth?: number;
 }
 
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */

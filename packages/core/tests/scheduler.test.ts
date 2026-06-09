@@ -102,6 +102,33 @@ describe("scheduler — control edges", () => {
     expect(await run(wf, { cond: true })).toEqual({ value: "yes" });
     expect(await run(wf, { cond: false })).toEqual({ value: "no" });
   });
+
+  it("gate(false) skips downstream value nodes and the run settles cleanly", async () => {
+    const wf: Workflow = {
+      id: "gated",
+      nodes: [
+        { id: "t", op: "boundary.manual", config: { outputs: ["cond"] } },
+        { id: "g", op: "core.flow.gate" },
+        { id: "v", op: "core.const.string", config: { value: "ran" } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "t", port: "cond" }, to: { node: "g", port: "condition" } },
+        { from: { node: "g", port: "out" }, to: { node: "v", port: "in" } }, // control
+        { from: { node: "v", port: "out" }, to: { node: "out", port: "value" } }, // value
+      ],
+    };
+    // Open gate: the value node runs and feeds the out-gate.
+    expect(await run(wf, { cond: true })).toEqual({ value: "ran" });
+
+    // Closed gate: the unpulsed control-out becomes a skip — the value node and
+    // the out-gate behind it settle as skipped instead of hanging the run.
+    const engine = new Engine();
+    engine.registerWorkflow(wf);
+    const res = await engine.run(wf, { input: { cond: false } });
+    expect(res.status).toBe("ok");
+    expect(res.outputs).toEqual({});
+  });
 });
 
 describe("scheduler — stream edges", () => {

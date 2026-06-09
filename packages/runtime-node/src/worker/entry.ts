@@ -6,17 +6,32 @@
  * out-gate results are forwarded chunk-by-chunk over the port and reconstructed
  * on the host. Cancellation crosses the seam via an `abort` message.
  *
- * v1 limitations (documented): the worker has only the base op catalog (mods are
- * not yet loaded here), and events/hooks fire in the worker's own engine — they
- * do not cross back to the host until a network backplane exists.
+ * The worker registers the base op catalog, then loads any mods named in
+ * `workerData.mods` (module specifiers) before processing runs — so workflows
+ * using mod-contributed ops work on the pool. Remaining v1 limitation: events/
+ * hooks fire in the worker's own engine — they do not cross back to the host
+ * until a network backplane exists.
  */
 
-import { parentPort } from "node:worker_threads";
+import { parentPort, workerData } from "node:worker_threads";
 import { Engine, type RunResult } from "@pattern/core";
+import { loadMods } from "../mods.js";
 
 const port = parentPort!;
 const engine = new Engine();
 const aborts = new Map<string, AbortController>();
+
+/** Mods install before the first run executes (messages queue behind this). */
+const ready: Promise<void> = (async () => {
+  const mods = (workerData as { mods?: string[] } | undefined)?.mods ?? [];
+  if (mods.length) await loadMods(engine, mods);
+})().catch((err) => {
+  // Surface mod-load failures on the first run instead of dying silently.
+  throw new Error(`worker failed to load mods: ${err instanceof Error ? err.message : String(err)}`);
+});
+// Mark handled so an idle worker doesn't crash on the rejection before the
+// first run awaits `ready` (awaits still observe the rejected state).
+void ready.catch(() => {});
 
 interface RunMessage {
   type: "run";
@@ -26,6 +41,8 @@ interface RunMessage {
   input: Record<string, unknown>;
   principal: any;
   params?: Record<string, unknown>;
+  sampleIo?: boolean;
+  hookDepth?: number;
 }
 
 port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
@@ -34,20 +51,25 @@ port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
 });
 
 async function handleRun(msg: RunMessage): Promise<void> {
-  const { id, workflow, triggerNodeId, input, principal, params } = msg;
-  try {
-    engine.registerWorkflow(workflow, { validate: false });
-  } catch {
-    /* already registered */
-  }
+  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth } = msg;
   const ac = new AbortController();
   aborts.set(id, ac);
 
   let result: RunResult;
   try {
-    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params);
+    await ready;
+    // Upsert so a re-dispatched workflow always runs its latest definition.
+    // (Throws only for boundary config ports, which need the async resolve
+    // phase — the run below still executes the passed definition directly.)
+    try {
+      engine.registerWorkflow(workflow, { validate: false });
+    } catch {
+      /* boundary config ports — resolved on the host, run directly here */
+    }
+    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth);
   } catch (err) {
     port.postMessage({ type: "result", id, status: "error", outputs: {}, error: serializeError(err) });
+    port.postMessage({ type: "done", id });
     aborts.delete(id);
     return;
   }

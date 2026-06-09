@@ -25,6 +25,7 @@ export class InProcessTransport implements RunTransport {
         principal: req.principal,
         params: req.params,
         sampleIo: req.sampleIo,
+        hookDepth: req.hookDepth,
         runId,
       },
       ac.signal,
