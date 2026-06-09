@@ -21,7 +21,9 @@ import type {
   RunSummary,
   SaveResult,
   SpanData,
+  SystemMap,
   Template,
+  UiManifest,
   VersionId,
   VersionInfo,
   WorkflowDoc,
@@ -131,9 +133,11 @@ export class AdminClient {
   };
   metrics = (minutes?: number): Promise<MetricsSummary> => this.request("GET", `/metrics${qs({ window: minutes })}`);
 
-  // ── Mods / templates ──
+  // ── Mods / templates / UI manifest ──
   mods = (): Promise<ModInfo[]> => this.request("GET", "/mods");
   templates = (): Promise<Template[]> => this.request("GET", "/templates");
+  uiManifest = (): Promise<UiManifest> => this.request("GET", "/ui/manifest");
+  systemMap = (): Promise<SystemMap> => this.request("GET", "/system");
 
   /** Consume the SSE tail endpoint as parsed `SpanData` events. */
   private async *tailSpans(workflow?: string): AsyncIterable<SpanData> {

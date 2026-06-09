@@ -67,7 +67,9 @@ export type DeclarativeView =
  */
 export type PageDef =
   | { path: string; view: DeclarativeView }
-  | { path: string; element: () => Promise<{ default: unknown }> };
+  | { path: string; element: () => Promise<{ default: unknown }> }
+  /** Tier-2 ESM remote by URL — serializable, so it survives the manifest endpoint. */
+  | { path: string; remote: string };
 
 /** A ⌘K command contributed by a mod (admin-spec §6, §15.2). */
 export interface CommandDef {

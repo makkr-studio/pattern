@@ -228,6 +228,60 @@ export function explain(engine: Engine, doc: Workflow): string {
   return lines.join("\n");
 }
 
+export interface SystemMap {
+  routes: Array<{ method: string; path: string; port?: number; workflow: string; conflict: boolean }>;
+  apps: Array<{ mount: string; port?: number; workflow: string; filesystem: string }>;
+  schedules: Array<{ workflow: string; node: string; cron?: string; intervalMs?: number }>;
+  hooks: Array<{ hook: string; workflow: string; node: string; priority: number }>;
+  events: Array<{ event: string; workflow: string; node: string }>;
+  ws: Array<{ workflow: string; node: string; kind: string }>;
+  ports: number[];
+}
+
+/** Build the System map from the engine's registered workflows (§13). */
+export function systemMap(engine: Engine): SystemMap {
+  const map: SystemMap = { routes: [], apps: [], schedules: [], hooks: [], events: [], ws: [], ports: [] };
+  const cfgOf = (node: { config?: unknown }) => (node.config ?? {}) as Record<string, any>;
+  for (const wf of engine.workflows.list()) {
+    for (const node of wf.nodes) {
+      const c = cfgOf(node);
+      switch (node.op) {
+        case "boundary.http.request":
+          if (c.path) map.routes.push({ method: String(c.method ?? "GET").toUpperCase(), path: c.path, port: c.port, workflow: wf.id, conflict: false });
+          break;
+        case "boundary.http.app":
+          if (c.filesystem) map.apps.push({ mount: c.mount ?? "/", port: c.port, workflow: wf.id, filesystem: c.filesystem });
+          break;
+        case "boundary.schedule":
+          map.schedules.push({ workflow: wf.id, node: node.id, cron: c.cron, intervalMs: c.intervalMs });
+          break;
+        case "boundary.hook":
+          if (c.hook) map.hooks.push({ hook: c.hook, workflow: wf.id, node: node.id, priority: c.priority ?? 100 });
+          break;
+        case "boundary.event":
+          if (c.event) map.events.push({ event: c.event, workflow: wf.id, node: node.id });
+          break;
+        case "boundary.ws.message":
+        case "boundary.ws.open":
+        case "boundary.ws.close":
+        case "boundary.ws.send":
+          map.ws.push({ workflow: wf.id, node: node.id, kind: node.op.replace("boundary.ws.", "") });
+          break;
+      }
+    }
+  }
+  // Flag route conflicts (same method+path+port).
+  const seen = new Map<string, number>();
+  for (const r of map.routes) {
+    const k = `${r.method} ${r.path} ${r.port ?? ""}`;
+    seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
+  for (const r of map.routes) if ((seen.get(`${r.method} ${r.path} ${r.port ?? ""}`) ?? 0) > 1) r.conflict = true;
+  map.hooks.sort((a, b) => a.hook.localeCompare(b.hook) || a.priority - b.priority);
+  map.ports = [...new Set([...map.routes.map((r) => r.port), ...map.apps.map((a) => a.port)].filter((p): p is number => typeof p === "number"))];
+  return map;
+}
+
 /** Redacted node config (delegates to the engine; safe to surface). */
 export function safeNodeConfigs(engine: Engine, workflowId: string): Record<string, unknown> {
   const wf = engine.workflows.get(workflowId);

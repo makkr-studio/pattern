@@ -72,6 +72,8 @@ export const endpointSpecs: EndpointSpec[] = [
   { id: "admin.api.runs.get", method: "GET", path: `${API}/runs/:runId`, op: "admin.run.get" },
   { id: "admin.api.metrics", method: "GET", path: `${API}/metrics`, op: "admin.metrics.summary" },
   { id: "admin.api.mods", method: "GET", path: `${API}/mods`, op: "admin.mod.list" },
+  { id: "admin.api.system", method: "GET", path: `${API}/system`, op: "admin.system.map" },
+  { id: "admin.api.ui.manifest", method: "GET", path: `${API}/ui/manifest`, op: "admin.ui.manifest" },
   { id: "admin.api.templates", method: "GET", path: `${API}/templates`, op: "admin.template.list" },
 ];
 

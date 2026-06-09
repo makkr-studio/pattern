@@ -1,0 +1,170 @@
+import type { ReactNode, HTMLAttributes, ButtonHTMLAttributes } from "react";
+import { motion } from "motion/react";
+import { hashHue } from "../lib/format";
+
+/** A frosted glass surface. The core surface language (mod-admin-spec §14). */
+export function GlassPanel({ className = "", children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={`glass rounded-2xl ${className}`} {...rest}>
+      {children}
+    </div>
+  );
+}
+
+/** A glass card with a soft neon glow on hover (for clickable tiles). */
+export function GlowCard({ className = "", children, onClick }: { className?: string; children: ReactNode; onClick?: () => void }) {
+  return (
+    <motion.div
+      whileHover={{ y: -2, boxShadow: "0 12px 40px rgba(34,211,238,0.18)" }}
+      transition={{ type: "spring", stiffness: 300, damping: 24 }}
+      onClick={onClick}
+      className={`glass rounded-2xl ${onClick ? "cursor-pointer" : ""} ${className}`}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+export function NeonButton({
+  className = "",
+  variant = "solid",
+  children,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "solid" | "ghost" | "danger" }) {
+  const base =
+    "inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed";
+  const styles = {
+    solid:
+      "text-black bg-[var(--color-neon-cyan)] hover:shadow-[0_0_24px_rgba(34,211,238,0.5)] hover:brightness-110",
+    ghost: "glass hover:bg-white/10 text-[var(--fg)]",
+    danger: "text-white bg-[var(--color-neon-pink)] hover:shadow-[0_0_24px_rgba(244,114,182,0.5)]",
+  }[variant];
+  return (
+    <button className={`${base} ${styles} ${className}`} {...rest}>
+      {children}
+    </button>
+  );
+}
+
+export function Badge({ children, hue, title }: { children: ReactNode; hue?: number; title?: string }) {
+  const h = hue ?? (typeof children === "string" ? hashHue(children) : 200);
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ background: `hsl(${h} 80% 60% / 0.16)`, color: `hsl(${h} 80% 75%)`, border: `1px solid hsl(${h} 80% 60% / 0.3)` }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function Dot({ color, pulse }: { color: string; pulse?: boolean }) {
+  return (
+    <span
+      className={`inline-block h-2 w-2 rounded-full ${pulse ? "animate-pulse" : ""}`}
+      style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+    />
+  );
+}
+
+export function Spinner() {
+  return (
+    <div className="flex items-center justify-center p-8 text-muted">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-neon-cyan)] border-t-transparent" />
+    </div>
+  );
+}
+
+export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
+  return (
+    <GlassPanel className="flex flex-col items-center gap-3 p-12 text-center">
+      {icon && <div className="text-[var(--color-neon-cyan)]">{icon}</div>}
+      <div className="text-lg font-medium">{title}</div>
+      {hint && <p className="text-muted max-w-md text-sm">{hint}</p>}
+      {action}
+    </GlassPanel>
+  );
+}
+
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  return (
+    <div className="mb-6 flex items-end justify-between gap-4">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {subtitle && <p className="text-muted mt-1 text-sm">{subtitle}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+export interface Column<T> {
+  key: string;
+  label: string;
+  render?: (row: T) => ReactNode;
+  width?: string;
+}
+
+export function Table<T>({ columns, rows, onRow, getKey }: { columns: Column<T>[]; rows: T[]; onRow?: (row: T) => void; getKey: (row: T) => string }) {
+  return (
+    <GlassPanel className="overflow-hidden">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b hairline text-left">
+            {columns.map((c) => (
+              <th key={c.key} className="text-muted px-4 py-3 font-medium" style={{ width: c.width }}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={getKey(row)}
+              onClick={() => onRow?.(row)}
+              className={`border-b hairline last:border-0 ${onRow ? "cursor-pointer hover:bg-white/5" : ""}`}
+            >
+              {columns.map((c) => (
+                <td key={c.key} className="px-4 py-3 align-middle">
+                  {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </GlassPanel>
+  );
+}
+
+export function JsonView({ value, className = "" }: { value: unknown; className?: string }) {
+  return (
+    <pre className={`glass overflow-auto rounded-xl p-4 font-mono text-xs leading-relaxed ${className}`}>
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  );
+}
+
+export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className={`glass-strong w-full ${wide ? "max-w-4xl" : "max-w-lg"} rounded-2xl p-6`}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button className="text-muted hover:text-[var(--fg)]" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        {children}
+      </motion.div>
+    </div>
+  );
+}

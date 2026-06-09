@@ -7,3 +7,6 @@ coverage/
 .vitest/
 .turbo/
 *.local
+dist-app/
+.pattern/
+.pattern-dev/

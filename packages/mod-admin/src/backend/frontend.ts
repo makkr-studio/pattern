@@ -23,29 +23,9 @@ export function adminFrontend(_mount: string): FrontendContribution {
       { category: "Catalog", label: "Mods", icon: "package", path: "/mods", order: 20 },
       { category: "System", label: "System map", icon: "network", path: "/system", order: 10 },
     ],
-    pages: [
-      {
-        path: "/ops",
-        view: {
-          kind: "table",
-          source: "admin.op.list",
-          columns: [
-            { key: "type", label: "Op" },
-            { key: "category", label: "Category" },
-            { key: "mod", label: "Mod" },
-            { key: "usedBy", label: "Used by" },
-          ],
-        },
-      },
-      {
-        path: "/mods",
-        view: { kind: "json", source: "admin.mod.list" },
-      },
-      {
-        path: "/metrics",
-        view: { kind: "chart", source: "admin.metrics.summary", spec: { kind: "latency" } },
-      },
-    ],
+    // The admin renders its own routes as bespoke React pages; mods contribute
+    // declarative `pages` through this same surface (rendered by the SDK kit).
+    pages: [],
     commands: [
       { id: "admin.new", label: "New workflow…", group: "Author", icon: "plus" },
       { id: "admin.deploy", label: "Deploy…", group: "Author", icon: "rocket" },
