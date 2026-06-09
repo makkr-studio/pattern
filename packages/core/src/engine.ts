@@ -9,7 +9,8 @@
  */
 
 import { resolvePrincipal, type AuthRequirement, meetsRequirement } from "./auth/resolve.js";
-import { resolveWorkflowEnv } from "./env-config.js";
+import { resolveWorkflowEnvTracked } from "./env-config.js";
+import { redactConfig } from "./redact.js";
 import { resolveBoundaryConfig, hasConfigPorts } from "./resolve-config.js";
 import { registerCoreOps } from "./ops-core/index.js";
 import { InMemoryConnectionRegistry } from "./connections/memory.js";
@@ -30,6 +31,7 @@ import {
 import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
 import { validateWorkflow } from "./validate.js";
+import type { FrontendContribution } from "./frontend.js";
 import {
   ANONYMOUS,
   type AuthContext,
@@ -49,7 +51,9 @@ import {
 
 /**
  * A mod (plugin): contributes ops, auth providers, hooks, and workflows, plus an
- * optional imperative `setup`. Loaded with `engine.use(mod)` (§13).
+ * optional imperative `setup`. Loaded with `engine.use(mod)` (sync; throws if any
+ * workflow uses boundary config ports) or `await engine.useAsync(mod)` (runs the
+ * resolve phase — used by `loadMods`/`loadProject`) (§13, admin-spec P3).
  */
 export interface PatternMod {
   name: string;
@@ -57,7 +61,23 @@ export interface PatternMod {
   authProviders?: AuthProvider[];
   hooks?: HookDefinition[];
   workflows?: Workflow[];
+  /**
+   * A frontend contribution (admin-spec P2): menu entries, pages, ⌘K commands,
+   * and an assets pointer. Aggregated by a frontend host (the admin) via
+   * `engine.frontend()`. Carried as data; ignored by the engine itself.
+   */
+  frontend?: FrontendContribution;
   setup?: (engine: Engine) => void | Promise<void>;
+}
+
+/** A mod paired with the metadata a frontend host needs to attribute its UI. */
+export interface InstalledMod {
+  name: string;
+  frontend?: FrontendContribution;
+  /** Op types the mod contributed (for `admin.mod.list`). */
+  opTypes: string[];
+  /** Workflow ids the mod contributed. */
+  workflowIds: string[];
 }
 
 export interface EngineOptions {
@@ -90,6 +110,8 @@ export interface RunOptions {
   /** Skip re-validation (use when the workflow was already validated). */
   validate?: boolean;
   signal?: AbortSignal;
+  /** Opt into bounded, masked per-node I/O sampling on spans (admin-spec T1). */
+  sampleIo?: boolean;
 }
 
 export class Engine {
@@ -101,11 +123,20 @@ export class Engine {
   readonly connections: ConnectionRegistry;
 
   private readonly traceSink = new MultiTraceSink();
+  /**
+   * The services bag handed to every run. A stable object reference: the
+   * transport captures it once, and `provideService` mutates it in place so
+   * later-registered services (e.g. a mod's control plane) are visible to runs.
+   */
   private readonly services: OpServices;
   private readonly transport: RunTransport;
   private readonly env: Record<string, string | undefined>;
   /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
   private readonly eventUnsubs = new Map<string, Array<() => void>>();
+  /** Installed mods, in load order (for frontend aggregation + `admin.mod.list`). */
+  private readonly mods: InstalledMod[] = [];
+  /** Per-workflow, per-node config paths resolved from the environment (P4). */
+  private readonly secretPaths = new Map<string, Record<string, string[]>>();
 
   constructor(opts: EngineOptions = {}) {
     this.ops = opts.ops ?? new InMemoryOpRegistry();
@@ -168,15 +199,15 @@ export class Engine {
   registerWorkflow(input: Workflow, opts: { validate?: boolean } = {}): this {
     // Resolve `$env` / `${VAR}` config references against the engine's env map,
     // producing a concrete workflow *before* validation (so typed refs like a
-    // port satisfy the op's config schema).
-    const workflow = resolveWorkflowEnv(input, this.env);
+    // port satisfy the op's config schema). Track env-derived paths as secrets (P4).
+    const { workflow, secretPaths } = resolveWorkflowEnvTracked(input, this.env);
     if (hasConfigPorts(workflow, this.ops)) {
       throw new Error(
         `workflow "${workflow.id}" uses boundary config ports — register it with ` +
           `\`await engine.registerWorkflowAsync(wf)\` (or via loadProject), which runs the resolve phase.`,
       );
     }
-    return this.finishRegister(workflow, opts);
+    return this.finishRegister(workflow, opts, secretPaths);
   }
 
   /**
@@ -186,13 +217,17 @@ export class Engine {
    * `registerWorkflow` stays synchronous for static / `$env` config.
    */
   async registerWorkflowAsync(input: Workflow, opts: { validate?: boolean } = {}): Promise<this> {
-    const enved = resolveWorkflowEnv(input, this.env);
+    const { workflow: enved, secretPaths } = resolveWorkflowEnvTracked(input, this.env);
     const resolved = await resolveBoundaryConfig(enved, this.ops, this.resolveDeps());
-    return this.finishRegister(resolved, opts);
+    return this.finishRegister(resolved, opts, secretPaths);
   }
 
   /** Validate, wire hooks/events, and store an already-resolved workflow. */
-  private finishRegister(workflow: Workflow, opts: { validate?: boolean } = {}): this {
+  private finishRegister(
+    workflow: Workflow,
+    opts: { validate?: boolean } = {},
+    secretPaths: Record<string, string[]> = {},
+  ): this {
     if (opts.validate !== false) validateWorkflow(workflow, this.ops);
 
     // Upsert: tear down any prior wiring for this id first, so re-registering an
@@ -229,9 +264,26 @@ export class Engine {
     }
     if (unsubs.length) this.eventUnsubs.set(workflow.id, unsubs);
 
+    if (Object.keys(secretPaths).length) this.secretPaths.set(workflow.id, secretPaths);
+    else this.secretPaths.delete(workflow.id);
+
     // Store last so subscribers (HTTP/WS hosts) observe a fully-wired workflow.
     this.workflows.register(workflow);
     return this;
+  }
+
+  /**
+   * The redacted config of a node — schema-tagged secrets and env-derived fields
+   * masked (P4). Use this anywhere a node's config is surfaced (introspection,
+   * the admin API) so raw secret values never leak.
+   */
+  redactedConfig(workflowId: string, nodeId: string): unknown {
+    const wf = this.workflows.get(workflowId);
+    const node = wf?.nodes.find((n) => n.id === nodeId);
+    if (!node) return undefined;
+    const op = this.ops.get(node.op);
+    const envPaths = this.secretPaths.get(workflowId)?.[nodeId];
+    return redactConfig(node.config, op?.config, envPaths);
   }
 
   /** Update a workflow at runtime (alias for the upserting `registerWorkflow`). */
@@ -253,6 +305,7 @@ export class Engine {
   /** Remove a workflow's hook registrations and event subscriptions. */
   private teardownWorkflow(id: string): void {
     this.hooks.unregisterWorkflow(id);
+    this.secretPaths.delete(id);
     const unsubs = this.eventUnsubs.get(id);
     if (unsubs) {
       for (const u of unsubs) u();
@@ -261,20 +314,108 @@ export class Engine {
   }
 
   /**
+   * Register a named capability service, reachable by ops as `ctx.services.<name>`
+   * (admin-spec P1/§3). Mods call this from `setup` to expose a control plane, a
+   * filesystem registry, etc. Mutates the shared services object so runs
+   * dispatched after registration see it. Throws on collision with a core
+   * capability (events/hooks/connections).
+   */
+  provideService(name: string, impl: unknown): this {
+    if (name === "events" || name === "hooks" || name === "connections") {
+      throw new Error(`service name "${name}" is reserved for a core capability`);
+    }
+    (this.services as Record<string, unknown>)[name] = impl;
+    return this;
+  }
+
+  /** Read a registered service by name (typed-loose; narrow at the call site). */
+  service<T = unknown>(name: string): T | undefined {
+    return (this.services as Record<string, unknown>)[name] as T | undefined;
+  }
+
+  /**
    * Install a mod (plugin): its ops, auth providers, hooks, and workflows are
    * registered, then its `setup` runs. This is the extension seam (§13, §16/14)
    * — mods contribute ops, boundaries, and auth providers via the registries.
+   *
+   * Synchronous: a mod whose workflows use boundary config ports must be loaded
+   * with `await engine.useAsync(mod)` instead (the error from `registerWorkflow`
+   * names the fix). `loadMods`/`loadProject` use the async path.
    */
   use(mod: PatternMod): this {
-    for (const op of mod.ops ?? []) {
-      if (!this.ops.has(op.type)) this.ops.register(op);
-    }
-    for (const p of mod.authProviders ?? []) this.auth.register(p);
-    for (const h of mod.hooks ?? []) this.hooks.declare(h);
-    for (const wf of mod.workflows ?? []) this.registerWorkflow(wf);
+    this.installMod(mod, (wf) => {
+      this.registerWorkflow(wf);
+    });
     const r = mod.setup?.(this);
     if (r instanceof Promise) r.catch((err) => console.error(`[pattern] mod "${mod.name}" setup failed:`, err));
     return this;
+  }
+
+  /**
+   * Install a mod, running the registration-time resolve phase for any workflow
+   * that uses boundary config ports, and awaiting an async `setup` (admin-spec P3).
+   * Use this whenever a mod's workflows may wire ops into a boundary's config.
+   */
+  async useAsync(mod: PatternMod): Promise<this> {
+    const pending: Array<Promise<unknown>> = [];
+    this.installMod(mod, (wf) => {
+      pending.push(this.registerWorkflowAsync(wf));
+    });
+    await Promise.all(pending);
+    await mod.setup?.(this);
+    return this;
+  }
+
+  /** Shared mod-install body: ops/providers/hooks/workflows + bookkeeping. */
+  private installMod(mod: PatternMod, registerWorkflow: (wf: Workflow) => void): void {
+    const opTypes: string[] = [];
+    for (const op of mod.ops ?? []) {
+      if (!this.ops.has(op.type)) {
+        this.ops.register(op);
+        opTypes.push(op.type);
+      }
+    }
+    for (const p of mod.authProviders ?? []) this.auth.register(p);
+    for (const h of mod.hooks ?? []) this.hooks.declare(h);
+    const workflowIds: string[] = [];
+    for (const wf of mod.workflows ?? []) {
+      registerWorkflow(wf);
+      workflowIds.push(wf.id);
+    }
+    this.mods.push({ name: mod.name, frontend: mod.frontend, opTypes, workflowIds });
+  }
+
+  /** Installed mods, in load order (for `admin.mod.list` and frontend aggregation). */
+  installedMods(): readonly InstalledMod[] {
+    return this.mods;
+  }
+
+  /**
+   * Aggregate the `frontend` contributions of every installed mod (admin-spec P2).
+   * A frontend host (the admin) builds its nav/pages/commands from this; menu
+   * categories are the union of `MenuEntry.category`, each sorted by `order`
+   * then label.
+   */
+  frontend(): {
+    assets: Array<{ mod: string; assets: string }>;
+    menu: FrontendContribution["menu"];
+    pages: FrontendContribution["pages"];
+    commands: FrontendContribution["commands"];
+  } {
+    const assets: Array<{ mod: string; assets: string }> = [];
+    const menu: NonNullable<FrontendContribution["menu"]> = [];
+    const pages: NonNullable<FrontendContribution["pages"]> = [];
+    const commands: NonNullable<FrontendContribution["commands"]> = [];
+    for (const mod of this.mods) {
+      const f = mod.frontend;
+      if (!f) continue;
+      if (f.assets) assets.push({ mod: mod.name, assets: f.assets });
+      if (f.menu) menu.push(...f.menu);
+      if (f.pages) pages.push(...f.pages);
+      if (f.commands) commands.push(...f.commands);
+    }
+    menu.sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label));
+    return { assets, menu, pages, commands };
   }
 
   // ── Observability ──
@@ -320,6 +461,7 @@ export class Engine {
       opts.principal ?? ANONYMOUS,
       opts.signal,
       opts.params,
+      opts.sampleIo,
     );
   }
 
@@ -331,8 +473,9 @@ export class Engine {
     principal: Principal,
     signal?: AbortSignal,
     params?: Record<string, unknown>,
+    sampleIo?: boolean,
   ): Promise<RunResult> {
-    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params });
+    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo });
     if (signal) {
       if (signal.aborted) handle.abort(signal.reason);
       else signal.addEventListener("abort", () => handle.abort(signal.reason), { once: true });
