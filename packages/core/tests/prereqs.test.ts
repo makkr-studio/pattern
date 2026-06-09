@@ -14,6 +14,7 @@ import {
   value,
   stream,
   z,
+  type OpDefinition,
   type PatternMod,
   type SpanData,
   type Workflow,
@@ -283,5 +284,50 @@ describe("T1 — opt-in trace I/O sampling", () => {
     expect(addSpan.io?.outputs?.out).toMatchObject({ kind: "value", preview: 5 });
     const outSpan = on.find((s) => s.attributes["pattern.node.id"] === "out")!;
     expect(outSpan.io?.outputs?.value).toMatchObject({ kind: "value", preview: 5 });
+  });
+
+  it("masks known secret values (schema-tagged + $env) out of sampled I/O", async () => {
+    // An op whose secret config value leaks into its runtime output — the
+    // sampler must mask it even though it appears in *data*, not config.
+    const leaky: OpDefinition = {
+      type: "test.leaky",
+      config: z.object({ token: secret(), greeting: z.string().default("hi") }),
+      inputs: {},
+      outputs: { out: value(z.string()) },
+      execute: (ctx) => {
+        const cfg = ctx.config as { token: string };
+        return { out: `Bearer ${cfg.token}` };
+      },
+    };
+    const wf: Workflow = {
+      id: "leaky-run",
+      nodes: [
+        { id: "t", op: "boundary.manual", config: { outputs: [] } },
+        { id: "s", op: "test.leaky", config: { token: { $env: "API_TOKEN_X" } } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "t", port: "out" }, to: { node: "s", port: "in" } },
+        { from: { node: "s", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    };
+
+    const engine = new Engine({ env: { API_TOKEN_X: "sk-supersecret-123" } });
+    engine.registerOp(leaky);
+    engine.registerWorkflow(wf);
+
+    const spans: SpanData[] = [];
+    engine.onTrace({ onSpanEnd: (s) => spans.push(s) });
+    // Run by id: the registered workflow has its `$env` refs resolved (the raw
+    // doc would fail validation — `token` is an object before resolution).
+    await engine.run("leaky-run", { sampleIo: true });
+
+    const sSpan = spans.find((s) => s.attributes["pattern.node.id"] === "s")!;
+    const preview = JSON.stringify(sSpan.io?.outputs?.out ?? {});
+    expect(preview).not.toContain("sk-supersecret-123");
+    expect(preview).toContain("••••");
+    // The downstream out-gate's *input* sample is masked too.
+    const outSpan = spans.find((s) => s.attributes["pattern.node.id"] === "out")!;
+    expect(JSON.stringify(outSpan.io ?? {})).not.toContain("sk-supersecret-123");
   });
 });

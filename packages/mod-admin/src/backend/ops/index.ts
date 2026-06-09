@@ -21,6 +21,7 @@ import {
 import { adminServices } from "../services.js";
 import { catalog, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";
 import { diffWorkflows } from "../control-plane/versioning.js";
+import { safeSegment } from "../control-plane/store.js";
 import { builtinTemplates } from "../templates.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
@@ -102,8 +103,10 @@ const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an im
 const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON → validate → new file workflow.", async (args, { controlPlane, engine }) => {
   const raw = typeof args.json === "string" ? (JSON.parse(args.json) as Workflow) : (args.json as Workflow);
   if (!raw || typeof raw !== "object" || !raw.id) throw new Error("invalid workflow JSON (needs an id)");
+  // The imported id becomes a storage path segment — reject path-like ids here
+  // with a friendly message (the store re-checks as a backstop).
+  const slug = safeSegment(raw.id, "workflow id");
   const issues = collectIssues(raw, engine.ops).issues;
-  const slug = raw.id;
   if (!issues.length) {
     await controlPlane.store.saveVersion(slug, { ...raw, source: "file" }, { note: "imported" });
   }
@@ -216,6 +219,13 @@ const invokeOp = adminOp("admin.invoke", "Run a source op once and return its ou
   const source = str(args.source, "source");
   const op = engine.ops.get(source);
   if (!op) throw new Error(`unknown op "${source}"`);
+  // ACL: this endpoint backs declarative-page *data sources*. Refuse control-plane
+  // internals (every `admin.*` op mutates or reads privileged state — the purpose-
+  // built routes own those), boundaries (meaningless to invoke), and any op an
+  // author marked `reusable: false` (declared "not meant to be wired arbitrarily").
+  if (source.startsWith("admin.") || source.startsWith("boundary.") || op.reusable === false) {
+    throw new Error(`op "${source}" cannot be invoked as a page data source`);
+  }
   const valueInputs = Object.entries(resolvePorts(op.inputs, {})).filter(([, s]) => s.kind === "value").map(([n]) => n);
   const firstOut = Object.keys(resolvePorts(op.outputs, {}))[0] ?? "out";
   const wf: Workflow = {
