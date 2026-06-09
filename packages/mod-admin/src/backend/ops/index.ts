@@ -233,6 +233,44 @@ const invokeOp = adminOp("admin.invoke", "Run a source op once and return its ou
   return (Object.values(res.outputs)[0] as { value?: unknown } | undefined)?.value ?? null;
 });
 
+/** Replace non-serializable run outputs (live streams) with a marker. */
+function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [node, payload] of Object.entries(outputs)) {
+    const p: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(payload)) p[k] = v instanceof ReadableStream ? "[stream]" : v;
+    out[node] = p;
+  }
+  return out;
+}
+
+/**
+ * Run a workflow (a draft doc, or a live slug) from a chosen trigger and record
+ * the run (§13). Powers "test from the editor". Validates first; runs in-process
+ * with I/O sampling so the run replays in the Runs view.
+ */
+const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigger; records the run.", async (args, { engine }) => {
+  const doc = args.doc as Workflow | undefined;
+  const slug = args.slug as string | undefined;
+  const wf = doc ?? (slug ? engine.workflows.get(slug) : undefined);
+  if (!wf) throw new Error("provide a `doc` or a known `slug`");
+  const issues = collectIssues(wf, engine.ops).issues;
+  if (issues.length) return { ok: false, issues };
+  const res = await engine.run(wf, {
+    trigger: args.trigger as string | undefined,
+    input: (args.input as Record<string, unknown>) ?? {},
+    params: (args.params as Record<string, unknown>) ?? {},
+    sampleIo: true,
+  });
+  return {
+    ok: true,
+    runId: res.runId,
+    status: res.status,
+    outputs: sanitizeOutputs(res.outputs),
+    error: res.error ? (res.error instanceof Error ? res.error.message : String(res.error)) : undefined,
+  };
+});
+
 const templateList = adminOp("admin.template.list", "List built-in workflow templates.", () =>
   builtinTemplates.map((t) => ({ id: t.id, name: t.name, description: t.description, doc: t.doc })),
 );
@@ -279,6 +317,7 @@ export const adminOps: OpDefinition[] = [
   systemMapOp,
   uiManifest,
   invokeOp,
+  runOp,
   templateList,
   fixtureList,
   fixtureGet,

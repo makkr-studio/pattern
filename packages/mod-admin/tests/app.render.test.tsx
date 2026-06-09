@@ -100,10 +100,11 @@ describe("SPA pages render", () => {
     expect(screen.getByText("greeting")).toBeTruthy();
   });
 
-  it("Editor mounts with palette + canvas", () => {
+  it("Editor mounts with categorized palette + canvas", () => {
     mount(<EditorPage />, "/editor", "/editor");
-    expect(screen.getByText("Palette")).toBeTruthy();
     expect(screen.getByText("New workflow")).toBeTruthy();
+    expect(screen.getByText("math")).toBeTruthy(); // category section from the seeded op
+    expect(screen.getByText("Add")).toBeTruthy(); // disambiguated palette label
   });
 
   it("ManifestPage renders a mod's Tier-1 declarative table (M10)", () => {

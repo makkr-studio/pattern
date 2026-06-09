@@ -17,9 +17,12 @@ import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useDeploy, useOps, useSaveWorkflow, useWorkflow } from "../lib/queries";
 import { OpNode } from "../editor/OpNode";
+import { RunPanel } from "../editor/RunPanel";
 import { buildFlow, edgeStyle, outputKind, toDoc, type OpMap, type OpNodeData } from "../editor/graph";
 import { Badge, GlassPanel, NeonButton, Spinner } from "../components/ui";
-import { Rocket, Plus } from "../components/icon";
+import { FormFromSchema, RawJson } from "../components/FormFromSchema";
+import { Rocket, Plus, Play } from "../components/icon";
+import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 
 const nodeTypes = { op: OpNode };
 
@@ -39,6 +42,7 @@ function EditorInner() {
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [newSlug, setNewSlug] = useState("");
+  const [runOpen, setRunOpen] = useState(false);
   const baseDoc = useRef<WorkflowDoc>({ id: slug ?? "untitled", nodes: [], edges: [] });
   const loadedFor = useRef<string | null>(null);
 
@@ -142,6 +146,9 @@ function EditorInner() {
         )}
         <div className="ml-auto flex items-center gap-2">
           {notice && <span className="text-muted max-w-md truncate text-xs">{notice}</span>}
+          <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
+            <Play size={14} /> Run
+          </NeonButton>
           <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending || wfData?.meta?.source === "code"}>
             Save
           </NeonButton>
@@ -152,20 +159,8 @@ function EditorInner() {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[14rem_1fr_18rem] gap-3">
-        {/* Palette */}
-        <GlassPanel className="overflow-y-auto p-3">
-          <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">Palette</div>
-          {(opsData ?? []).map((op) => (
-            <button
-              key={op.type}
-              onClick={() => addNode(op)}
-              className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left font-mono text-xs hover:bg-white/5"
-            >
-              <Plus size={11} className="text-muted shrink-0" />
-              <span className="truncate">{op.type}</span>
-            </button>
-          ))}
-        </GlassPanel>
+        {/* Palette — grouped by category, color + icon coded */}
+        <Palette ops={opsData ?? []} onAdd={addNode} />
 
         {/* Canvas */}
         <GlassPanel className="overflow-hidden">
@@ -214,40 +209,95 @@ function EditorInner() {
           )}
         </GlassPanel>
       </div>
+
+      {runOpen && <RunPanel open={runOpen} onClose={() => setRunOpen(false)} doc={currentDoc()} opMap={opMap} />}
     </div>
   );
 }
 
 function Inspector({ node, op, onChange }: { node: RFNode<OpNodeData>; op?: OpInfo; onChange: (config: Record<string, unknown>) => void }) {
-  const [text, setText] = useState(JSON.stringify(node.data.config ?? {}, null, 2));
-  const [err, setErr] = useState<string | null>(null);
+  const [raw, setRaw] = useState(false);
+  const cat = categoryStyle(categoryOfType(node.data.op));
+  const config = (node.data.config ?? {}) as Record<string, unknown>;
+  const { Icon } = cat;
+  const hasSchema = op?.configSchema != null && (op.configSchema as { type?: string }).type === "object";
+
   return (
     <div>
-      <div className="font-mono text-sm">{node.data.op}</div>
-      {op?.description && <p className="text-muted mt-1 text-xs">{op.description}</p>}
-      <div className="text-muted mt-4 mb-1 text-xs">config (JSON)</div>
-      <textarea
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          try {
-            onChange(e.target.value.trim() ? JSON.parse(e.target.value) : {});
-            setErr(null);
-          } catch {
-            setErr("invalid JSON");
-          }
-        }}
-        spellCheck={false}
-        className="glass h-48 w-full rounded-lg p-2 font-mono text-xs outline-none"
-      />
-      {err && <div className="text-[var(--color-neon-pink)] mt-1 text-xs">{err}</div>}
-      {op?.configSchema != null && (
-        <details className="mt-3">
-          <summary className="text-muted cursor-pointer text-xs">config schema</summary>
-          <pre className="glass mt-1 max-h-40 overflow-auto rounded-lg p-2 font-mono text-[10px]">{JSON.stringify(op.configSchema, null, 2)}</pre>
-        </details>
+      <div className="flex items-center gap-2">
+        <Icon size={15} style={{ color: cat.color }} />
+        <span className="font-medium">{node.data.title ?? humanizeOp(node.data.op)}</span>
+      </div>
+      <div className="text-muted mt-0.5 font-mono text-[11px]">{node.data.op}</div>
+      {op?.description && <p className="text-muted mt-2 text-xs leading-relaxed">{op.description}</p>}
+
+      <div className="mt-4 mb-2 flex items-center justify-between">
+        <span className="text-muted text-xs font-semibold uppercase tracking-wider">Config</span>
+        {hasSchema && (
+          <button className="text-muted text-[10px] underline" onClick={() => setRaw((r) => !r)}>
+            {raw ? "form" : "raw JSON"}
+          </button>
+        )}
+      </div>
+
+      {raw || !hasSchema ? (
+        <RawJson value={config} onChange={onChange} />
+      ) : (
+        <FormFromSchema schema={op!.configSchema as Record<string, unknown>} value={config} onChange={onChange} />
       )}
     </div>
+  );
+}
+
+/** The op palette: collapsible category sections, color + icon coded. */
+function Palette({ ops, onAdd }: { ops: OpInfo[]; onAdd: (op: OpInfo) => void }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const groups = useMemo(() => {
+    const m = new Map<string, OpInfo[]>();
+    for (const op of ops) {
+      const c = categoryOfType(op.type);
+      const list = m.get(c) ?? [];
+      list.push(op);
+      m.set(c, list);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [ops]);
+
+  return (
+    <GlassPanel className="overflow-y-auto p-2">
+      {groups.map(([category, list]) => {
+        const cat = categoryStyle(category);
+        const isOpen = !collapsed.has(category);
+        const { Icon } = cat;
+        return (
+          <div key={category} className="mb-1">
+            <button
+              onClick={() => setCollapsed((s) => { const n = new Set(s); n.has(category) ? n.delete(category) : n.add(category); return n; })}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5"
+            >
+              <Icon size={14} style={{ color: cat.color }} />
+              <span className="text-xs font-semibold capitalize">{category}</span>
+              <span className="text-muted ml-auto text-[10px]">{list.length}</span>
+            </button>
+            {isOpen && (
+              <div className="ml-1 border-l pl-2" style={{ borderColor: cat.border }}>
+                {list.map((op) => (
+                  <button
+                    key={op.type}
+                    onClick={() => onAdd(op)}
+                    title={op.type}
+                    className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs hover:bg-white/5"
+                  >
+                    <Plus size={10} className="text-muted shrink-0" />
+                    <span className="truncate">{paletteLabel(op.type, category)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </GlassPanel>
   );
 }
 

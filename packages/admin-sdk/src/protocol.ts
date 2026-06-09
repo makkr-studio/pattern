@@ -230,3 +230,15 @@ export interface SaveResult {
   version?: VersionInfo;
   issues: ValidationIssue[];
 }
+
+export type RunResult =
+  | { ok: false; issues: ValidationIssue[] }
+  | { ok: true; runId: string; status: "ok" | "error"; outputs: Record<string, Record<string, unknown>>; error?: string };
+
+export interface RunInput {
+  slug?: string;
+  doc?: WorkflowDoc;
+  trigger?: string;
+  input?: Record<string, unknown>;
+  params?: Record<string, unknown>;
+}
