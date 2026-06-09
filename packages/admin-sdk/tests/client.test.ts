@@ -5,7 +5,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { Engine, type Workflow } from "@pattern/core";
-import { createHttpHost, MemoryFilesystem } from "@pattern/runtime-node";
+import { createHttpHost, memoryFs } from "@pattern/runtime-node";
 import { adminMod } from "@pattern/mod-admin";
 import { createAdminClient, buildNav, CommandRegistry, type MenuEntry } from "@pattern/admin-sdk";
 
@@ -19,7 +19,7 @@ let port = 4970;
 async function start() {
   const p = ++port;
   const engine = new Engine();
-  await engine.useAsync(adminMod({ storage: new MemoryFilesystem() }));
+  await engine.useAsync(adminMod({ storage: memoryFs() }));
   const host = createHttpHost(engine, { defaultPort: p });
   const { close } = await host.start();
   closer = close;

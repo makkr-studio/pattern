@@ -5,7 +5,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { Engine, type Workflow } from "@pattern/core";
-import { createHttpHost, MemoryFilesystem } from "@pattern/runtime-node";
+import { createHttpHost, memoryFs } from "@pattern/runtime-node";
 import { adminMod } from "@pattern/mod-admin";
 
 let closer: (() => Promise<void>) | undefined;
@@ -24,7 +24,7 @@ async function startAdmin() {
   BASE = `http://localhost:${++port}`;
   const engine = new Engine();
   // Omit `assets` so the built-in placeholder SPA (with index.html) is used.
-  await engine.useAsync(adminMod({ storage: new MemoryFilesystem() }));
+  await engine.useAsync(adminMod({ storage: memoryFs() }));
   const host = createHttpHost(engine, { defaultPort: port });
   const { close } = await host.start();
   closer = close;

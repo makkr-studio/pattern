@@ -69,11 +69,18 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     return `${this.prefix}/${slug}/fixtures/${name}.json`;
   }
 
+  /** Read a file as text, or null if it does not exist. */
+  private async readText(path: string): Promise<string | null> {
+    return (await this.fs.fileExists(path)) ? this.fs.readToString(path) : null;
+  }
+
   async list(): Promise<WorkflowMeta[]> {
-    const files = await this.fs.list(this.prefix);
+    if (!(await this.fs.directoryExists(this.prefix))) return [];
+    const entries = await this.fs.list(this.prefix, { deep: true }).toArray();
     const slugs = new Set<string>();
-    for (const f of files) {
-      const rest = f.slice(this.prefix.length + 1); // "<slug>/..."
+    for (const e of entries) {
+      if (!e.isFile) continue;
+      const rest = e.path.slice(this.prefix.length + 1); // "<slug>/..."
       const slug = rest.split("/")[0];
       if (slug && rest.endsWith("_meta.json")) slugs.add(slug);
     }
@@ -87,7 +94,7 @@ export class FlystorageWorkflowStore implements WorkflowStore {
   }
 
   async getMeta(slug: string): Promise<WorkflowMeta | null> {
-    const text = await this.fs.readText(this.metaPath(slug));
+    const text = await this.readText(this.metaPath(slug));
     return text == null ? null : (JSON.parse(text) as WorkflowMeta);
   }
 
@@ -96,7 +103,7 @@ export class FlystorageWorkflowStore implements WorkflowStore {
   }
 
   async getVersion(slug: string, v: string): Promise<WorkflowDoc | null> {
-    const text = await this.fs.readText(this.versionPath(slug, v));
+    const text = await this.readText(this.versionPath(slug, v));
     return text == null ? null : (JSON.parse(text) as WorkflowDoc);
   }
 
@@ -178,19 +185,22 @@ export class FlystorageWorkflowStore implements WorkflowStore {
   }
 
   async delete(slug: string): Promise<void> {
-    await this.fs.delete(`${this.prefix}/${slug}`);
+    await this.fs.deleteDirectory(`${this.prefix}/${slug}`);
   }
 
   async listFixtures(slug: string): Promise<string[]> {
-    const files = await this.fs.list(`${this.prefix}/${slug}/fixtures`);
-    return files
-      .map((f) => f.split("/").pop() ?? "")
+    const dir = `${this.prefix}/${slug}/fixtures`;
+    if (!(await this.fs.directoryExists(dir))) return [];
+    const entries = await this.fs.list(dir, { deep: false }).toArray();
+    return entries
+      .filter((e) => e.isFile)
+      .map((e) => e.path.split("/").pop() ?? "")
       .filter((n) => n.endsWith(".json"))
       .map((n) => n.slice(0, -".json".length));
   }
 
   async getFixture(slug: string, name: string): Promise<Fixture | null> {
-    const text = await this.fs.readText(this.fixturePath(slug, name));
+    const text = await this.readText(this.fixturePath(slug, name));
     return text == null ? null : (JSON.parse(text) as Fixture);
   }
 
@@ -199,7 +209,7 @@ export class FlystorageWorkflowStore implements WorkflowStore {
   }
 
   async deleteFixture(slug: string, name: string): Promise<void> {
-    await this.fs.delete(this.fixturePath(slug, name));
+    await this.fs.deleteFile(this.fixturePath(slug, name));
   }
 
   private async requireMeta(slug: string): Promise<WorkflowMeta> {

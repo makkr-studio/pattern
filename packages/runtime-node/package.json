@@ -38,6 +38,9 @@
   },
   "dependencies": {
     "@pattern/core": "workspace:*",
+    "@flystorage/file-storage": "^1.2.2",
+    "@flystorage/local-fs": "^1.2.0",
+    "@flystorage/in-memory": "^1.1.0",
     "zod": "^4.0.0",
     "ws": "^8.18.0"
   },
