@@ -10,6 +10,8 @@ export default defineConfig({
       "@pattern/core/boundaries": r("./packages/core/src/boundaries/index.ts"),
       "@pattern/core/ops": r("./packages/core/src/ops-core/index.ts"),
       "@pattern/core": r("./packages/core/src/index.ts"),
+      // mod-admin (backend) resolves to TS source for build-free iteration.
+      "@pattern/mod-admin": r("./packages/mod-admin/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built
       // JS to spawn workers); its own @pattern/core imports still alias above.
     },

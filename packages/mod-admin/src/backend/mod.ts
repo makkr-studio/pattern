@@ -1,0 +1,113 @@
+/**
+ * @pattern/mod-admin — the mod (mod-admin-spec §1, §3, §16).
+ *
+ * `engine.use()`-able brick that adds the authorable, self-reflecting control
+ * surface: it contributes the `admin.*` ops, the endpoint workflows that expose
+ * them over HTTP, and a `boundary.http.app` workflow that serves the SPA. Its
+ * `setup` registers the in-process backend services (control plane, store, trace
+ * sink), subscribes the sink, registers the assets filesystem, and bootstraps
+ * the stored workflows.
+ *
+ * Install it with `await engine.useAsync(adminMod())` (or via loadMods/loadProject)
+ * so `setup` — which is async — completes before you start the host.
+ */
+
+import { defineMod, type Engine, type PatternMod, type Workflow } from "@pattern/core";
+import {
+  LocalFilesystem,
+  MemoryFilesystem,
+  provideFilesystem,
+  type Filesystem,
+} from "@pattern/runtime-node";
+import { DefaultControlPlane } from "./control-plane/control-plane.js";
+import { FlystorageWorkflowStore } from "./control-plane/store.js";
+import { MemoryTraceSink } from "./trace/memory-sink.js";
+import { adminOps } from "./ops/index.js";
+import { endpointWorkflows } from "./workflows/index.js";
+import { registerAdminServices } from "./services.js";
+import { adminFrontend } from "./frontend.js";
+
+export interface AdminModOptions {
+  /** Where to mount the admin (UI + API live under here). Default "/admin". */
+  mount?: string;
+  /** Workflow store filesystem (or a local dir path). Default "./.pattern". */
+  storage?: Filesystem | string;
+  /** Path prefix inside the store filesystem. Default "workflows". */
+  storePrefix?: string;
+  /** SPA assets filesystem (or a local dir path). Default a built-in placeholder. */
+  assets?: Filesystem | string;
+  /** Auth requirement stamped onto every admin endpoint (P6). Default false. */
+  auth?: boolean | { scopes: string[] };
+  /** Max runs retained in the in-memory trace sink. Default 500. */
+  traceCapacity?: number;
+}
+
+/** Name of the filesystem the SPA assets are served from. */
+const ASSETS_FS = "admin-assets";
+
+function toFilesystem(fs: Filesystem | string | undefined, fallback: () => Filesystem): Filesystem {
+  if (!fs) return fallback();
+  return typeof fs === "string" ? new LocalFilesystem(fs) : fs;
+}
+
+/** A tiny placeholder SPA so `/admin` shows something before the UI is built. */
+function placeholderAssets(mount: string): Filesystem {
+  const fs = new MemoryFilesystem();
+  void fs.write(
+    "index.html",
+    `<!doctype html><html><head><meta charset="utf-8"><title>Pattern Admin</title>
+<style>body{font:16px system-ui;margin:0;display:grid;place-items:center;height:100vh;background:#0b0d12;color:#e6e9ef}
+.card{padding:2rem 2.5rem;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px)}
+code{color:#7cf}</style></head>
+<body><div class="card"><h1>Pattern Admin</h1>
+<p>The control plane is live. API is under <code>${mount}/api</code>.</p>
+<p>Build the SPA into the mod's <code>dist-app/</code> to replace this page.</p></div></body></html>`,
+  );
+  return fs;
+}
+
+/** The workflow that mounts the SPA via the app boundary (admin-spec §11). */
+function spaWorkflow(mount: string): Workflow {
+  return {
+    id: "admin.app",
+    name: "Admin · SPA",
+    source: "code",
+    nodes: [
+      {
+        id: "app",
+        op: "boundary.http.app",
+        config: { mount, filesystem: ASSETS_FS, spaFallback: "index.html", immutableAssets: true },
+        comment: "Serves the admin SPA; API routes under /admin/api win on the same port.",
+      },
+    ],
+    edges: [],
+  };
+}
+
+/** Create the admin mod (a configured `PatternMod`). */
+export function adminMod(options: AdminModOptions = {}): PatternMod {
+  const mount = (options.mount ?? "/admin").replace(/\/$/, "") || "/admin";
+  const auth = options.auth === true ? true : typeof options.auth === "object" ? options.auth : undefined;
+
+  return defineMod({
+    name: "@pattern/mod-admin",
+    ops: adminOps,
+    workflows: [...endpointWorkflows(auth), spaWorkflow(mount)],
+    frontend: adminFrontend(mount),
+    setup: async (engine: Engine) => {
+      const storageFs = toFilesystem(options.storage, () => new LocalFilesystem("./.pattern"));
+      const assetsFs = toFilesystem(options.assets, () => placeholderAssets(mount));
+      provideFilesystem(engine, ASSETS_FS, assetsFs);
+
+      const store = new FlystorageWorkflowStore(storageFs, { prefix: options.storePrefix });
+      const sink = new MemoryTraceSink({ capacity: options.traceCapacity });
+      const controlPlane = new DefaultControlPlane(engine, store);
+      registerAdminServices(engine, { controlPlane, sink, engine });
+      engine.onTrace(sink);
+      await controlPlane.bootstrap();
+    },
+  });
+}
+
+/** A ready-to-use admin mod with defaults (for `loadMods`/`engine.use`). */
+export default adminMod();
