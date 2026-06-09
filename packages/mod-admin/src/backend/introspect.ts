@@ -1,0 +1,238 @@
+/**
+ * @pattern/mod-admin — engine introspection (mod-admin-spec §10, §13).
+ *
+ * Pure helpers that turn the live engine into the data the admin renders: the
+ * op/node browser, the catalog (merging code + stored workflows), the mod view,
+ * port-compatibility checks, and a deterministic "explain this workflow". Every
+ * config surfaced here is run through the engine's redaction so secrets never
+ * leak (P4).
+ */
+
+import {
+  portCompatibility,
+  redactConfig,
+  resolveControlOuts,
+  resolvePorts,
+  z,
+  type Engine,
+  type OpDefinition,
+  type PortSpec,
+  type Workflow,
+} from "@pattern/core";
+import type { WorkflowMeta, WorkflowStore } from "./control-plane/types.js";
+import { extractRoute } from "./control-plane/store.js";
+
+export interface PortInfo {
+  name: string;
+  kind: PortSpec["kind"];
+  required?: boolean;
+  description?: string;
+  schema?: unknown;
+}
+
+export interface OpInfo {
+  type: string;
+  title?: string;
+  description?: string;
+  category: string;
+  boundary?: "trigger" | "outgate";
+  /** The mod that contributed this op (undefined = base catalog). */
+  mod?: string;
+  inputs: PortInfo[];
+  outputs: PortInfo[];
+  controlOut: string[];
+  configSchema?: unknown;
+  /** How many registered workflows use this op. */
+  usedBy: number;
+}
+
+export interface ModInfo {
+  name: string;
+  ops: string[];
+  workflows: string[];
+  frontend?: { menu: number; pages: number; commands: number; assets?: string };
+}
+
+/** Derive a display category from an op type id. */
+function categoryOf(type: string): string {
+  const parts = type.split(".");
+  if (parts[0] === "core") return parts[1] ?? "core";
+  if (parts[0] === "boundary") return "boundary";
+  return parts[0] ?? "misc";
+}
+
+function jsonSchema(schema: z.ZodType | undefined): unknown {
+  if (!schema) return undefined;
+  try {
+    return z.toJSONSchema(schema, { unrepresentable: "any" } as never);
+  } catch {
+    return undefined;
+  }
+}
+
+function portInfos(def: OpDefinition["inputs"], config: unknown): PortInfo[] {
+  return Object.entries(resolvePorts(def, config)).map(([name, spec]) => ({
+    name,
+    kind: spec.kind,
+    required: spec.required,
+    description: spec.description,
+    schema: jsonSchema(spec.schema),
+  }));
+}
+
+/** Count registered workflows referencing an op type. */
+function usageCount(engine: Engine, type: string): number {
+  let n = 0;
+  for (const wf of engine.workflows.list()) if (wf.nodes.some((node) => node.op === type)) n++;
+  return n;
+}
+
+/** The mod that contributed an op type, if any. */
+function modOf(engine: Engine, type: string): string | undefined {
+  for (const m of engine.installedMods()) if (m.opTypes.includes(type)) return m.name;
+  return undefined;
+}
+
+export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
+  return {
+    type: op.type,
+    title: op.title,
+    description: op.description,
+    category: categoryOf(op.type),
+    boundary: op.boundary,
+    mod: modOf(engine, op.type),
+    inputs: portInfos(op.inputs, {}),
+    outputs: portInfos(op.outputs, {}),
+    controlOut: resolveControlOuts(op, {}),
+    configSchema: jsonSchema(op.config),
+    usedBy: usageCount(engine, op.type),
+  };
+}
+
+export function opList(engine: Engine): OpInfo[] {
+  return engine.ops
+    .list()
+    .map((op) => opInfo(engine, op))
+    .sort((a, b) => a.category.localeCompare(b.category) || a.type.localeCompare(b.type));
+}
+
+export function opGet(engine: Engine, type: string): OpInfo | null {
+  const op = engine.ops.get(type);
+  return op ? opInfo(engine, op) : null;
+}
+
+export function modList(engine: Engine): ModInfo[] {
+  return engine.installedMods().map((m) => ({
+    name: m.name,
+    ops: m.opTypes,
+    workflows: m.workflowIds,
+    frontend: m.frontend
+      ? {
+          menu: m.frontend.menu?.length ?? 0,
+          pages: m.frontend.pages?.length ?? 0,
+          commands: m.frontend.commands?.length ?? 0,
+          assets: m.frontend.assets,
+        }
+      : undefined,
+  }));
+}
+
+/**
+ * The full workflow catalog: every stored (file/db) workflow plus every
+ * engine-registered workflow not in the store, synthesized as `source: "code"`.
+ * Code workflows are read-only/forkable; file workflows are authorable.
+ */
+export async function catalog(engine: Engine, store: WorkflowStore): Promise<WorkflowMeta[]> {
+  const metas = await store.list();
+  const known = new Set(metas.map((m) => m.slug));
+  for (const wf of engine.workflows.list()) {
+    if (known.has(wf.id)) continue;
+    metas.push({
+      slug: wf.id,
+      name: wf.name ?? wf.id,
+      description: wf.description,
+      source: "code",
+      enabled: true,
+      live: "code",
+      route: extractRoute(wf),
+      tags: wf.tags,
+      versions: [{ id: "code", hash: "code", createdAt: "" }],
+      audit: [],
+    });
+  }
+  metas.sort((a, b) => a.slug.localeCompare(b.slug));
+  return metas;
+}
+
+/** Resolve a port reference {op, port, dir} to its PortSpec for compat checks. */
+function resolvePortRef(engine: Engine, ref: { op: string; port: string; dir: "in" | "out" }): PortSpec | undefined {
+  const op = engine.ops.get(ref.op);
+  if (!op) return undefined;
+  const ports = resolvePorts(ref.dir === "in" ? op.inputs : op.outputs, {});
+  return ports[ref.port];
+}
+
+export interface PortRef {
+  op: string;
+  port: string;
+  dir: "in" | "out";
+}
+
+/** Port-compatibility for the editor's connection assist (T2). */
+export function portsCompatible(engine: Engine, from: PortRef, to: PortRef) {
+  const fromSpec = resolvePortRef(engine, from);
+  const toSpec = resolvePortRef(engine, to);
+  if (!fromSpec) return { ok: false, reason: `unknown output port ${from.op}.${from.port}` };
+  if (!toSpec) return { ok: false, reason: `unknown input port ${to.op}.${to.port}` };
+  return portCompatibility(fromSpec, toSpec);
+}
+
+/**
+ * A deterministic, offline structural summary of a workflow (§15.7). Walks
+ * trigger → ops → out-gate using each node's title/op + branch structure. No AI.
+ */
+export function explain(engine: Engine, doc: Workflow): string {
+  const byId = new Map(doc.nodes.map((n) => [n.id, n] as const));
+  const lines: string[] = [];
+  lines.push(`Workflow "${doc.name ?? doc.id}"${doc.description ? `: ${doc.description}` : ""}.`);
+
+  const triggers = doc.nodes.filter((n) => engine.ops.get(n.op)?.boundary === "trigger");
+  const outgates = doc.nodes.filter((n) => engine.ops.get(n.op)?.boundary === "outgate");
+  const describe = (id: string): string => {
+    const n = byId.get(id);
+    if (!n) return id;
+    const op = engine.ops.get(n.op);
+    return n.title ?? op?.title ?? n.op;
+  };
+
+  for (const t of triggers) {
+    const op = engine.ops.get(t.op);
+    lines.push(`• Triggered by ${describe(t.id)} (${t.op})${t.comment ? ` — ${t.comment}` : ""}.`);
+    // Walk forward in BFS order, naming each step once.
+    const seen = new Set<string>([t.id]);
+    const queue = doc.edges.filter((e) => e.from.node === t.id).map((e) => e.to.node);
+    const steps: string[] = [];
+    while (queue.length) {
+      const id = queue.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const node = byId.get(id);
+      if (node && engine.ops.get(node.op)?.boundary !== "outgate") steps.push(describe(id));
+      for (const e of doc.edges.filter((e) => e.from.node === id)) queue.push(e.to.node);
+    }
+    if (steps.length) lines.push(`  → ${steps.join(" → ")}`);
+  }
+  if (outgates.length) {
+    lines.push(`• Result delivered by ${outgates.map((g) => `${describe(g.id)} (${g.op})`).join(", ")}.`);
+  }
+  return lines.join("\n");
+}
+
+/** Redacted node config (delegates to the engine; safe to surface). */
+export function safeNodeConfigs(engine: Engine, workflowId: string): Record<string, unknown> {
+  const wf = engine.workflows.get(workflowId);
+  if (!wf) return {};
+  const out: Record<string, unknown> = {};
+  for (const node of wf.nodes) out[node.id] = engine.redactedConfig(workflowId, node.id);
+  return out;
+}

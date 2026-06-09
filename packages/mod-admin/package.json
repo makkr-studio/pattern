@@ -1,0 +1,41 @@
+{
+  "name": "@pattern/mod-admin",
+  "version": "0.1.0",
+  "description": "Pattern admin mod — authorable, self-reflecting control surface (control plane, workflow store, run inspection).",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pattern",
+    "mod",
+    "admin",
+    "workflow",
+    "control-plane"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "dist-app",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@pattern/core": "workspace:*",
+    "@pattern/runtime-node": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

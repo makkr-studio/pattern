@@ -89,6 +89,7 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 |---------|------|
 | [`@pattern/core`](./packages/core) | The runtime-neutral engine: types, validation, scheduler, streams, the [op catalog](./docs/op-catalog.md), hooks/events, auth, observability. One dependency: Zod. |
 | [`@pattern/runtime-node`](./packages/runtime-node) | Node adapter: HTTP/WebSocket/CLI/schedule hosts, `node:worker_threads` pool transport, socket-bound connection registry, JSONL/SQLite trace sinks, the `pattern` CLI. |
+| [`@pattern/mod-admin`](./packages/mod-admin) | The admin mod: an authorable, self-reflecting control surface (control plane, workflow store + versioning, run/metrics sink, the `admin.*` ops, and a workflow-backed HTTP API). Backend complete; SPA in progress. |
 | [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Dev-time only, so it’s rich: prompts, banner, templates. |
 
 ## Docs

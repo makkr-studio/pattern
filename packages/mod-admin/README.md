@@ -1,0 +1,74 @@
+# @pattern/mod-admin
+
+An authorable, self-reflecting **control surface** for a Pattern engine — workflow
+authoring, live deploy, run inspection, versioning, and a catalog of everything
+in the system. It is a **mod**: a brick you `engine.use()`, with no privileged
+position.
+
+> **Status:** backend complete (control plane, store, versioning, the `admin.*`
+> ops, the self-reflecting HTTP API, the in-memory run/metrics sink). The SPA
+> (React 19 + `@xyflow/react` + Tailwind v4) is the next milestone; until it is
+> built, the app boundary serves a placeholder page and the API is fully usable.
+
+## Install
+
+```ts
+import { Engine } from "@pattern/core";
+import { createHttpHost } from "@pattern/runtime-node";
+import { adminMod } from "@pattern/mod-admin";
+
+const engine = new Engine();
+// useAsync so the mod's async setup (services + bootstrap) completes first.
+await engine.useAsync(adminMod({ mount: "/admin", storage: "./.pattern" }));
+
+const host = createHttpHost(engine);
+await host.start(); // serves /admin (UI) + /admin/api/* (the workflow-backed API)
+```
+
+`adminMod(options)`:
+
+| option | default | meaning |
+|--------|---------|---------|
+| `mount` | `"/admin"` | URL prefix for the UI + API |
+| `storage` | `"./.pattern"` | workflow store (a dir path or a `Filesystem`) |
+| `storePrefix` | `"workflows"` | path prefix inside the store |
+| `assets` | placeholder | SPA assets (a dir path or a `Filesystem`) |
+| `auth` | `false` | stamp `requireAuth` (+ scopes) onto every endpoint (P6) |
+| `traceCapacity` | `500` | runs retained in the in-memory sink |
+
+## How it self-reflects
+
+The admin's **backend is authored in the same primitives it edits**. Every API
+route is a workflow `http.request → admin.<op> → http.response`; the HTTP host
+derives its routes by scanning them, so the admin's own control plane appears in
+its catalog and is editable inside itself. The only HTTP surface is workflows;
+persistence/versioning/enable-state live behind an internal `ControlPlane`
+service (`ctx.services.adminControlPlane`) with a `Filesystem` inside.
+
+```
+GET  /admin/api/workflows            admin.workflow.list
+GET  /admin/api/workflows/:slug      admin.workflow.get
+POST /admin/api/workflows/:slug      admin.workflow.save        (validate + snapshot)
+POST /admin/api/deploy/:slug         admin.workflow.deploy      (route-conflict checked)
+GET  /admin/api/ops[/:type]          admin.op.list / .get
+POST /admin/api/ports/compatible     admin.ports.compatible
+GET  /admin/api/runs[/:id|/tail]     admin.run.list / .get / .tail (SSE)
+GET  /admin/api/metrics              admin.metrics.summary
+GET  /admin/api/versions…/diff       admin.version.list / .get / .diff
+GET  /admin/api/mods | /templates    admin.mod.list / admin.template.list
+GET  /admin/*                        boundary.http.app (SPA, served by the host)
+```
+
+## Lifecycle & provenance
+
+- **Provenance** `code | file | db`. Code workflows (registered by a mod at boot)
+  are read-only/forkable; file workflows are authorable; db is reserved.
+- **Versioning** — one live version per slug; immutable, content-addressed
+  snapshots; promote/rollback is a one-click pointer move; structural JSON diff
+  between any two versions.
+- **Enable/disable** is control-plane state: enabled + live → registered under
+  the slug's stable id; otherwise stored-but-unregistered. Route conflicts on
+  activation return `{ ok: false, conflicts }` (the UI offers cancel/swap).
+
+See [`mod-admin-spec.md`](../../mod-admin-spec.md) for the full design and
+[`docs/admin-prereqs.md`](../../docs/admin-prereqs.md) for the engine seams it builds on.
