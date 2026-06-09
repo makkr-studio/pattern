@@ -1,0 +1,25 @@
+{
+  "name": "create-pattern",
+  "version": "0.1.0",
+  "description": "Scaffolder for Pattern projects — npm create pattern@latest.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pattern", "scaffold", "create", "cli", "workflow"],
+  "bin": {
+    "create-pattern": "./dist/index.js"
+  },
+  "files": ["dist", "templates", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "picocolors": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
