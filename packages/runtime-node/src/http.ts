@@ -24,7 +24,10 @@ import {
 } from "@pattern/core";
 
 export interface HttpHostOptions {
-  /** Port for routes that don't declare their own. Default 3000. */
+  /**
+   * Default port for routes that don't declare their own `port`. If omitted,
+   * the host uses the `PORT` env var, then falls back to 3000.
+   */
   defaultPort?: number;
   /** Interface to bind. Default all interfaces. */
   host?: string;
@@ -52,6 +55,14 @@ interface CompiledRoute {
   bodySchema?: z.ZodType;
   querySchema?: z.ZodType;
   requireAuth?: unknown;
+}
+
+/** Read a positive integer port from the PORT env var, if valid. */
+function envPort(): number | undefined {
+  const raw = process.env.PORT;
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 function compilePath(path: string): { regex: RegExp; paramNames: string[] } {
@@ -84,7 +95,10 @@ export class HttpHost {
     private readonly engine: Engine,
     private readonly opts: HttpHostOptions = {},
   ) {
-    this.defaultPort = opts.defaultPort ?? 3000;
+    // Port resolution for a route: its op `config.port`, else this default.
+    // Default = explicit `defaultPort` (e.g. from pattern.config.json http.port),
+    // else the PORT env var, else 3000.
+    this.defaultPort = opts.defaultPort ?? envPort() ?? 3000;
   }
 
   /** Derive routes from registered workflows, open servers, and watch for changes. */

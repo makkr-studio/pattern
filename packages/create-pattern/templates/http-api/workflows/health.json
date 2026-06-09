@@ -1,0 +1,14 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "health",
+  "name": "GET /health on a separate admin port (3001)",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "GET", "path": "/health", "port": 3001 } },
+    { "id": "body", "op": "core.const.object", "config": { "value": { "status": "ok" } } },
+    { "id": "out", "op": "boundary.http.response" }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "out" }, "to": { "node": "out", "port": "in" } },
+    { "from": { "node": "body", "port": "out" }, "to": { "node": "out", "port": "body" } }
+  ]
+}
