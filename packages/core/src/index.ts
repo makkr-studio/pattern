@@ -12,10 +12,20 @@
 export { z } from "zod";
 
 // Engine & high-level API
-export { Engine, createEngine, type EngineOptions, type RunOptions, type PatternMod } from "./engine.js";
+export {
+  Engine,
+  createEngine,
+  defineMod,
+  type EngineOptions,
+  type RunOptions,
+  type PatternMod,
+} from "./engine.js";
 
 // Terminal graph rendering (for `pattern graph`)
 export { formatGraph } from "./graph-format.js";
+
+// JSON-Schema → Zod (declarative request validation / port typing)
+export { jsonSchemaToZod, type JsonSchema } from "./json-schema.js";
 
 // Type contracts
 export * from "./types.js";
@@ -33,6 +43,7 @@ export {
   type AuthProviderRegistry,
   type HookRegistry,
   type WorkflowRegistry,
+  type WorkflowChange,
 } from "./registry.js";
 
 // Validation & graph utilities

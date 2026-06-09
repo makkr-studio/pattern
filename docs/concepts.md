@@ -82,6 +82,12 @@ the **hosts** that bind them (HTTP, WebSocket, CLI, schedule) live in
 [`@pattern/runtime-node`](../packages/runtime-node). This keeps core
 runtime-neutral and serves distribution.
 
+Boundary configuration is **declarative** — e.g. an HTTP route's method, path,
+port, CORS, and body/query JSON-Schema all live in the `boundary.http.request`
+node's config, and the host derives its routes by scanning registered workflows
+(no programmatic route table). Workflows are modifiable at runtime and the host
+re-derives live. See [projects-and-mods.md](./projects-and-mods.md).
+
 ## Hooks vs events
 
 Two distinct extensibility primitives — keep both:

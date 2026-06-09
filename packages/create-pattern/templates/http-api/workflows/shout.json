@@ -1,0 +1,16 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "shout",
+  "name": "GET /shout/:text (uses the app-local mod op)",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "GET", "path": "/shout/:text" } },
+    { "id": "text", "op": "core.object.get", "config": { "path": "text" } },
+    { "id": "shout", "op": "app.shout" },
+    { "id": "out", "op": "boundary.http.response" }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "params" }, "to": { "node": "text", "port": "object" } },
+    { "from": { "node": "text", "port": "out" }, "to": { "node": "shout", "port": "value" } },
+    { "from": { "node": "shout", "port": "out" }, "to": { "node": "out", "port": "body" } }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "mods": ["./mods/upper.mjs"],
+  "workflows": "./workflows",
+  "http": { "port": 3000 }
+}

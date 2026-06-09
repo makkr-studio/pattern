@@ -1,0 +1,23 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "echo",
+  "name": "POST /echo (body validated by JSON Schema)",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": {
+        "method": "POST",
+        "path": "/echo",
+        "cors": true,
+        "body": {
+          "type": "object",
+          "properties": { "message": { "type": "string" } },
+          "required": ["message"]
+        }
+      }
+    },
+    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" } }
+  ],
+  "edges": [{ "from": { "node": "in", "port": "body" }, "to": { "node": "out", "port": "body" } }]
+}

@@ -95,7 +95,8 @@ export class Engine {
   private readonly traceSink = new MultiTraceSink();
   private readonly services: OpServices;
   private readonly transport: RunTransport;
-  private readonly eventUnsubs = new Map<string, () => void>();
+  /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
+  private readonly eventUnsubs = new Map<string, Array<() => void>>();
 
   constructor(opts: EngineOptions = {}) {
     this.ops = opts.ops ?? new InMemoryOpRegistry();
@@ -150,8 +151,13 @@ export class Engine {
    */
   registerWorkflow(workflow: Workflow, opts: { validate?: boolean } = {}): this {
     if (opts.validate !== false) validateWorkflow(workflow, this.ops);
-    this.workflows.register(workflow);
 
+    // Upsert: tear down any prior wiring for this id first, so re-registering an
+    // updated definition (e.g. reloaded from a DB) doesn't leave stale hook
+    // registrations or event subscriptions behind.
+    if (this.workflows.has(workflow.id)) this.teardownWorkflow(workflow.id);
+
+    const unsubs: Array<() => void> = [];
     for (const node of workflow.nodes) {
       const op = this.ops.get(node.op);
       if (op?.type === "boundary.hook") {
@@ -168,16 +174,47 @@ export class Engine {
       } else if (op?.type === "boundary.event") {
         const cfg = (node.config ?? {}) as { event?: string };
         if (cfg.event) {
-          const unsub = this.events.subscribe(cfg.event, (payload) => {
-            void this.runFrom(workflow, node.id, { payload }, ANONYMOUS).catch((err) => {
-              console.error(`[pattern] event workflow "${workflow.id}" failed:`, err);
-            });
-          });
-          this.eventUnsubs.set(`${workflow.id} ${node.id}`, unsub);
+          unsubs.push(
+            this.events.subscribe(cfg.event, (payload) => {
+              void this.runFrom(workflow, node.id, { payload }, ANONYMOUS).catch((err) => {
+                console.error(`[pattern] event workflow "${workflow.id}" failed:`, err);
+              });
+            }),
+          );
         }
       }
     }
+    if (unsubs.length) this.eventUnsubs.set(workflow.id, unsubs);
+
+    // Store last so subscribers (HTTP/WS hosts) observe a fully-wired workflow.
+    this.workflows.register(workflow);
     return this;
+  }
+
+  /** Update a workflow at runtime (alias for the upserting `registerWorkflow`). */
+  updateWorkflow(workflow: Workflow, opts?: { validate?: boolean }): this {
+    return this.registerWorkflow(workflow, opts);
+  }
+
+  /** Remove a workflow at runtime, tearing down its hook/event wiring. */
+  unregisterWorkflow(id: string): boolean {
+    this.teardownWorkflow(id);
+    return this.workflows.delete(id);
+  }
+
+  /** Subscribe to workflow add/update/remove (hosts use this to re-derive routes). */
+  onWorkflowsChanged(listener: Parameters<WorkflowRegistry["subscribe"]>[0]): () => void {
+    return this.workflows.subscribe(listener);
+  }
+
+  /** Remove a workflow's hook registrations and event subscriptions. */
+  private teardownWorkflow(id: string): void {
+    this.hooks.unregisterWorkflow(id);
+    const unsubs = this.eventUnsubs.get(id);
+    if (unsubs) {
+      for (const u of unsubs) u();
+      this.eventUnsubs.delete(id);
+    }
   }
 
   /**
@@ -285,7 +322,7 @@ export class Engine {
 
   /** Release resources (worker pools, event subscriptions). */
   async close(): Promise<void> {
-    for (const unsub of this.eventUnsubs.values()) unsub();
+    for (const unsubs of this.eventUnsubs.values()) for (const u of unsubs) u();
     this.eventUnsubs.clear();
     await this.transport.close?.();
   }
@@ -294,4 +331,9 @@ export class Engine {
 /** Convenience: a ready-to-use engine with the base op catalog registered. */
 export function createEngine(opts?: EngineOptions): Engine {
   return new Engine(opts);
+}
+
+/** Identity helper for authoring a mod with full type-checking & inference. */
+export function defineMod(mod: PatternMod): PatternMod {
+  return mod;
 }

@@ -1,0 +1,14 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "greet",
+  "name": "Greet (uses an app-local mod op)",
+  "nodes": [
+    { "id": "t", "op": "boundary.manual", "config": { "outputs": ["value"] } },
+    { "id": "u", "op": "app.upper" },
+    { "id": "out", "op": "boundary.return" }
+  ],
+  "edges": [
+    { "from": { "node": "t", "port": "value" }, "to": { "node": "u", "port": "value" } },
+    { "from": { "node": "u", "port": "out" }, "to": { "node": "out", "port": "value" } }
+  ]
+}

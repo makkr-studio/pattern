@@ -16,5 +16,5 @@ Initial implementation of the Pattern execution engine.
   schedule hosts; `node:worker_threads` pool transport with streamed results and
   cancellation; socket-bound connection registry; JSONL/SQLite trace sinks; the
   `pattern` dev CLI (graph/validate/dev); mod loading.
-- **create-pattern** — interactive scaffolder with non-TTY degradation and three
-  templates (hello-workflow, http-api, agent-sse-tts).
+- **create-pattern** — interactive scaffolder with non-TTY degradation and the
+  hello-workflow / http-api templates (JSON workflows, declarative HTTP, mods).
