@@ -59,7 +59,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center bg-black/40 p-4 pt-[12vh]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-start justify-center bg-black/30 p-4 pt-[12vh] backdrop-blur-xl" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
