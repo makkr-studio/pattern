@@ -1,0 +1,39 @@
+{
+  "name": "@pattern/runtime-node",
+  "version": "0.1.0",
+  "description": "Pattern runtime adapter for Node — HTTP/WS host, worker-thread pool, connection registry, sqlite trace sink.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pattern", "workflow", "node", "runtime", "http", "websocket"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker/entry.d.ts",
+      "import": "./dist/worker/entry.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "pattern": "./dist/bin/pattern.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@pattern/core": "workspace:*",
+    "zod": "^4.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
