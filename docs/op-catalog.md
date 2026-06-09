@@ -17,7 +17,8 @@ apply it per element (the sub-workflow receives `{ item, index }` — `reduce` a
 
 See [authoring-ops.md](./authoring-ops.md) to add your own.
 
-_Auto-generated from the registry — 159 ops._
+_Auto-generated from the registry — 160 ops (`boundary.http.app` serves a static
+asset bundle; see [admin-prereqs.md](./admin-prereqs.md))._
 
 ### boundary
 
@@ -28,6 +29,7 @@ _Auto-generated from the registry — 159 ops._
 | `boundary.event` | — | ◆payload | — |
 | `boundary.hook` | — | ◆payload | — |
 | `boundary.hook.return` | ◆payload ◆stop | — | — |
+| `boundary.http.app` | — | — | — |
 | `boundary.http.request` | — | ◆method ◆url ◆path ◆headers ◆query ◆params ◆body | — |
 | `boundary.http.response` | ◆status ◆headers ◆body ≋stream | — | — |
 | `boundary.manual` | — | ◆value | — |
