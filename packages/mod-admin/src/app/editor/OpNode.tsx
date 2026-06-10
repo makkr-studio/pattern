@@ -70,11 +70,16 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
   const borderColor = replay ? replay.color : selected ? "var(--color-neon-cyan)" : accent;
 
   /** The run tabs grow out of the node frame: same surface, same border, a
-   *  control-grey dot in the middle — a notch, not a floating pill. */
+   *  control-grey dot in the middle — a notch, not a floating pill. Position
+   *  is pinned explicitly (xyflow's default handle transform centers on the
+   *  edge, which would float the tab off the frame); 1px overlaps the node
+   *  border so the two read as one piece. */
   const runTab = (side: "top" | "bottom"): React.CSSProperties => ({
     width: 26,
     height: 10,
-    [side]: -10,
+    [side]: -9,
+    left: "50%",
+    transform: "translateX(-50%)",
     borderRadius: side === "top" ? "7px 7px 0 0" : "0 0 7px 7px",
     background: "var(--node-surface)",
     border: `1px solid ${borderColor}`,

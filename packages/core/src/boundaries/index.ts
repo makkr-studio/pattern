@@ -153,11 +153,14 @@ export const httpRequest: OpDefinition = {
   pair: "boundary.http.response",
   inputs: {},
   // Registration-time config ports: wire an op (e.g. core.env) into method/path/
-  // port and the engine resolves it once at registration (the resolve phase).
+  // port — or a `core.schema.define` node into body/query — and the engine
+  // resolves it once at registration (the resolve phase).
   configInputs: {
     method: value(z.string()),
     path: value(z.string()),
     port: value(z.number().int().positive()),
+    body: value(jsonSchema),
+    query: value(jsonSchema),
   },
   // Output port schemas are derived from the declared body/query schemas, so the
   // graph is typed end-to-end and downstream value edges are checked.
@@ -272,12 +275,26 @@ export const httpAppServe = outgate({
 export const wsMessage: OpDefinition = {
   type: "boundary.ws.message",
   title: "boundary.ws.message",
-  description: "Fires a run per inbound WS message. Outputs { message, connection, room? }.",
+  description:
+    "Fires a run per inbound WS message. Outputs { message, connection, room? }. config.message " +
+    "(JSON Schema — wire a core.schema.define node into the config port) validates inbound " +
+    "messages; invalid ones are refused with an error reply instead of firing the run.",
   boundary: "trigger",
   pair: "boundary.ws.send",
   inputs: {},
-  outputs: { message: value(), connection: value(connectionSchema), room: value(z.string()) },
-  config: z.object({ requireAuth }),
+  // Wire a schema node in to validate inbound messages (resolve phase).
+  configInputs: { message: value(jsonSchema) },
+  // The message output is typed by the declared schema, like http.request's body.
+  outputs: (config: { message?: unknown }): Ports => ({
+    message: config.message ? value(jsonSchemaToZod(config.message as never)) : value(),
+    connection: value(connectionSchema),
+    room: value(z.string()),
+  }),
+  config: z.object({
+    /** JSON Schema validating inbound messages (invalid → error reply, no run). */
+    message: jsonSchema.optional(),
+    requireAuth,
+  }),
   execute: TRIGGER_EXECUTE,
 };
 

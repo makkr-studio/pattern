@@ -6,10 +6,10 @@ import { useManifest } from "../lib/queries";
 import { useTheme } from "../lib/theme";
 import { sfx } from "../lib/sfx";
 import { Icon } from "../components/icon";
-import { Sun, Moon, Search, Volume2, VolumeX } from "../components/icon";
+import { Sun, Moon, Search, Volume2, VolumeX, PanelLeftClose, PanelLeftOpen } from "../components/icon";
 import { PatternLogo } from "../components/logo";
 import { CommandPalette, useCommandHotkey } from "./CommandPalette";
-import { TooltipHost } from "../components/Tooltip";
+import { TooltipHost, tip } from "../components/Tooltip";
 
 /** A sensible default nav if the manifest hasn't loaded yet (the admin's own). */
 const FALLBACK_MENU: MenuEntry[] = [
@@ -21,11 +21,20 @@ const FALLBACK_MENU: MenuEntry[] = [
   { category: "System", label: "System map", icon: "network", path: "/system", order: 10 },
 ];
 
+const SIDEBAR_KEY = "pattern.admin.sidebar";
+
 export function Shell() {
   const { data: manifest } = useManifest();
   const { mode, toggle } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [sfxMuted, setSfxMuted] = useState(sfx.muted());
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === "collapsed";
+    } catch {
+      return false;
+    }
+  });
   const location = useLocation();
   useCommandHotkey(() => {
     sfx.play("open");
@@ -33,13 +42,35 @@ export function Shell() {
   });
   const sections = buildNav(manifest?.menu?.length ? manifest.menu : FALLBACK_MENU);
 
+  const toggleSidebar = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(SIDEBAR_KEY, next ? "collapsed" : "open");
+      } catch {
+        /* best-effort */
+      }
+      return next;
+    });
+    sfx.play("toggle");
+  };
+
   return (
     <div className="flex h-full">
-      {/* Sidebar */}
-      <aside className="glass m-3 flex w-60 shrink-0 flex-col rounded-2xl p-4">
-        <div className="mb-6 flex items-center gap-2.5 px-2">
+      {/* Sidebar — collapses to an icon rail to free canvas space */}
+      <aside className={`glass m-3 flex shrink-0 flex-col rounded-2xl transition-[width] duration-200 ${collapsed ? "w-[4.25rem] p-2" : "w-60 p-4"}`}>
+        <div className={`mb-6 flex items-center ${collapsed ? "flex-col gap-2 px-0 pt-1" : "gap-2.5 px-2"}`}>
           <PatternLogo size={30} />
-          <span className="text-lg font-semibold tracking-tight">Pattern</span>
+          {!collapsed && <span className="text-lg font-semibold tracking-tight">Pattern</span>}
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            {...tip(collapsed ? "Expand sidebar" : "Collapse sidebar")}
+            className={`text-muted rounded-lg p-1.5 hover:bg-white/10 hover:text-[var(--fg)] ${collapsed ? "" : "ml-auto"}`}
+          >
+            {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+          </button>
         </div>
 
         <button
@@ -47,26 +78,36 @@ export function Shell() {
             sfx.play("open");
             setPaletteOpen(true);
           }}
-          className="glass text-muted mb-5 flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
+          aria-label="Search (⌘K)"
+          {...(collapsed ? tip("Search (⌘K)") : {})}
+          className={`glass text-muted mb-5 flex items-center rounded-xl text-sm hover:bg-white/5 ${collapsed ? "justify-center p-2" : "gap-2 px-3 py-2"}`}
         >
           <Search size={14} />
-          <span>Search…</span>
-          <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 text-xs">⌘K</kbd>
+          {!collapsed && (
+            <>
+              <span>Search…</span>
+              <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 text-xs">⌘K</kbd>
+            </>
+          )}
         </button>
 
-        <nav className="flex-1 space-y-5 overflow-y-auto">
+        <nav className={`flex-1 overflow-y-auto ${collapsed ? "space-y-1" : "space-y-5"}`}>
           {sections.map((section) => (
             <div key={section.category}>
-              <div className="text-muted mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider opacity-70">
-                {section.category}
-              </div>
+              {!collapsed && (
+                <div className="text-muted mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider opacity-70">
+                  {section.category}
+                </div>
+              )}
               {section.items.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   onClick={() => sfx.play("nav")}
+                  {...(collapsed ? tip(item.label) : {})}
+                  aria-label={item.label}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                    `flex items-center rounded-lg text-sm transition-colors ${collapsed ? "justify-center p-2.5" : "gap-2.5 px-2.5 py-2"} ${
                       isActive ? "bg-white/10 text-[var(--fg)]" : "text-muted hover:bg-white/5 hover:text-[var(--fg)]"
                     }`
                   }
@@ -74,7 +115,7 @@ export function Shell() {
                   {({ isActive }) => (
                     <>
                       <Icon name={item.icon} className={isActive ? "text-[var(--color-neon-cyan)]" : ""} />
-                      <span>{item.label}</span>
+                      {!collapsed && <span>{item.label}</span>}
                     </>
                   )}
                 </NavLink>
@@ -84,7 +125,7 @@ export function Shell() {
         </nav>
 
         {/* Footer toggles: sound + theme (both advertise what they switch TO). */}
-        <div className="mt-4 flex gap-2">
+        <div className={`mt-4 flex gap-2 ${collapsed ? "flex-col" : ""}`}>
           <button
             type="button"
             onClick={() => {
@@ -94,11 +135,11 @@ export function Shell() {
               if (!next) sfx.play("toggle"); // audible confirmation on unmute
             }}
             aria-label={sfxMuted ? "Enable sound effects" : "Mute sound effects"}
-            title={sfxMuted ? "Enable sound effects" : "Mute sound effects"}
-            className="glass text-muted flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
+            {...tip(sfxMuted ? "Enable sound effects" : "Mute sound effects")}
+            className={`glass text-muted flex flex-1 items-center justify-center rounded-xl text-sm hover:bg-white/5 ${collapsed ? "p-2" : "gap-2 px-3 py-2"}`}
           >
             {sfxMuted ? <Volume2 size={14} /> : <VolumeX size={14} />}
-            <span>{sfxMuted ? "Sound" : "Mute"}</span>
+            {!collapsed && <span>{sfxMuted ? "Sound" : "Mute"}</span>}
           </button>
           <button
             type="button"
@@ -107,10 +148,11 @@ export function Shell() {
               toggle();
             }}
             aria-label={mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            className="glass text-muted flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
+            {...tip(mode === "dark" ? "Light theme" : "Dark theme")}
+            className={`glass text-muted flex flex-1 items-center justify-center rounded-xl text-sm hover:bg-white/5 ${collapsed ? "p-2" : "gap-2 px-3 py-2"}`}
           >
             {mode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-            <span>{mode === "dark" ? "Light" : "Dark"}</span>
+            {!collapsed && <span>{mode === "dark" ? "Light" : "Dark"}</span>}
           </button>
         </div>
       </aside>
