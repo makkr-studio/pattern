@@ -103,7 +103,7 @@ describe("admin.invoke ACL", () => {
 describe("SPA auth stamping (P6)", () => {
   it("stamps requireAuth onto the SPA app workflow when auth is configured", () => {
     const mod = adminMod({ auth: true, storage: memoryFs() });
-    const spa = mod.workflows?.find((w) => w.id === "admin.app");
+    const spa = mod.workflows?.find((w) => w.id === "admin.spa");
     expect(spa).toBeDefined();
     const app = spa!.nodes.find((n) => n.op === "boundary.http.app");
     expect((app?.config as { requireAuth?: unknown })?.requireAuth).toBe(true);
@@ -111,7 +111,7 @@ describe("SPA auth stamping (P6)", () => {
 
   it("leaves the SPA anonymous by default", () => {
     const mod = adminMod({ storage: memoryFs() });
-    const spa = mod.workflows?.find((w) => w.id === "admin.app");
+    const spa = mod.workflows?.find((w) => w.id === "admin.spa");
     const app = spa!.nodes.find((n) => n.op === "boundary.http.app");
     expect((app?.config as { requireAuth?: unknown })?.requireAuth).toBeUndefined();
   });

@@ -50,6 +50,8 @@ function outgate(opts: {
   inputs: Ports;
   config?: z.ZodType;
   reusable?: boolean;
+  /** The trigger op this out-gate canonically pairs with (§7). */
+  pair?: string;
 }): OpDefinition {
   return {
     type: opts.type,
@@ -57,6 +59,7 @@ function outgate(opts: {
     description: opts.description,
     boundary: "outgate",
     reusable: opts.reusable,
+    pair: opts.pair,
     inputs: opts.inputs,
     outputs: {},
     config: opts.config,
@@ -83,6 +86,7 @@ export const manual: OpDefinition = {
   title: "boundary.manual",
   description: "Programmatic trigger. config.outputs declares the output ports seeded from the run input.",
   boundary: "trigger",
+  pair: "boundary.return",
   inputs: {},
   outputs: (config: { outputs?: string[] }): Ports =>
     Object.fromEntries((config.outputs ?? ["value"]).map((p) => [p, value()])),
@@ -95,6 +99,7 @@ export const schedule: OpDefinition = {
   title: "boundary.schedule",
   description: "Cron/interval trigger. Outputs { timestamp }. config: { cron? | intervalMs? }.",
   boundary: "trigger",
+  pair: "boundary.return",
   inputs: {},
   outputs: { timestamp: value(z.number()), scheduledFor: value(z.number()) },
   config: z.object({ cron: z.string().optional(), intervalMs: z.number().int().positive().optional(), requireAuth }),
@@ -105,6 +110,7 @@ export const returnGate = outgate({
   type: "boundary.return",
   description: "Generic out-gate: returns its resolved inputs as the run result. config.inputs declares the ports.",
   inputs: { value: value() },
+  pair: "boundary.manual",
 });
 
 /** A `boundary.return` whose input ports are configurable (for sub-workflows). */
@@ -114,6 +120,7 @@ export const returnGateConfigurable: OpDefinition = {
   description: "Out-gate with configurable input ports. config: { inputs: string[] }.",
   boundary: "outgate",
   reusable: false,
+  pair: "boundary.manual",
   inputs: (config: { inputs?: string[] }): Ports =>
     Object.fromEntries((config.inputs ?? ["value"]).map((p) => [p, value()])),
   outputs: {},
@@ -138,6 +145,7 @@ export const httpRequest: OpDefinition = {
     "cors, and JSON-Schema validation of body/query. Outputs { method, url, path, " +
     "headers, query, params, body }.",
   boundary: "trigger",
+  pair: "boundary.http.response",
   inputs: {},
   // Registration-time config ports: wire an op (e.g. core.env) into method/path/
   // port and the engine resolves it once at registration (the resolve phase).
@@ -185,33 +193,55 @@ export const httpResponse = outgate({
   description: "HTTP response out-gate. mode: buffered | sse | chunked. Inputs { status?, headers?, body }.",
   inputs: { status: value(z.number()), headers: value(stringRecord), body: value(), stream: stream() },
   config: z.object({ mode: z.enum(["buffered", "sse", "chunked"]).default("buffered") }),
+  pair: "boundary.http.request",
 });
 
 /**
- * App-serving boundary (admin-spec P1). Serves a built static asset bundle (e.g.
- * an SPA) from a *registered filesystem* under `mount`. It is served entirely by
- * the host — there is **no downstream graph and no execute**; declaring this node
- * in a workflow tells the HTTP host to mount static serving. On a miss with an
- * HTML `Accept`, the host serves `spaFallback` (client-side routing); otherwise 404.
+ * What an app workflow's out-gate delivers to the host: a serveable app — the
+ * filesystem its assets live on plus serving hints. Produced by app ops
+ * (`core.app.static`, a mod's own app node like `admin.app`); consumed by
+ * `boundary.http.app.serve`. `.loose()` so richer app objects can flow through.
+ */
+export const appDescriptorSchema = z
+  .object({
+    /** Name of a filesystem registered on the engine (host resolves it). */
+    filesystem: z.string(),
+    /** Served on a miss when the client accepts HTML (client-side routing). "" disables. */
+    spaFallback: z.string().optional(),
+    /** Send long-lived immutable cache headers (use with hashed filenames). */
+    immutableAssets: z.boolean().optional(),
+  })
+  .loose();
+
+export type AppDescriptor = z.infer<typeof appDescriptorSchema>;
+
+/**
+ * App-serving boundary (admin-spec P1) — the HTTP side of an app workflow.
+ * The trigger declares the route-ish things (mount, port, CORS, auth); the app
+ * itself (which filesystem, SPA fallback…) is produced by an app op downstream
+ * (e.g. `core.app.static`, or a mod-provided node like `admin.app`) and handed
+ * to the paired `boundary.http.app.serve` out-gate. The host runs the workflow
+ * once at registration to resolve the app, then serves it statically.
  */
 export const httpApp: OpDefinition = {
   type: "boundary.http.app",
   title: "boundary.http.app",
   description:
-    "Serves a static asset bundle (SPA) from a registered filesystem under `mount`, with SPA " +
-    "fallback. Served entirely by the host; no downstream graph.",
+    "App mount trigger: declares where an app is served (mount, port, cors, auth). Wire it to an " +
+    "app op (e.g. core.app.static) feeding the paired boundary.http.app.serve out-gate; the host " +
+    "resolves the app once at registration and serves it statically.",
   boundary: "trigger",
+  pair: "boundary.http.app.serve",
   inputs: {},
-  outputs: {},
+  // Registration-time config ports (like http.request): wire env/const values in.
+  configInputs: {
+    mount: value(z.string()),
+    port: value(z.number().int().positive()),
+  },
+  outputs: { mount: value(z.string()) },
   config: z.object({
     /** URL prefix the assets are served under, e.g. "/admin". */
     mount: z.string().default("/"),
-    /** Name of a filesystem registered on the engine (host resolves it). */
-    filesystem: z.string(),
-    /** Served on a miss when the client accepts HTML (client-side routing). "" disables. */
-    spaFallback: z.string().default("index.html"),
-    /** Send long-lived immutable cache headers (use with hashed filenames). */
-    immutableAssets: z.boolean().default(false),
     /** Port to serve on (defaults to the host's default port, like routes). */
     port: z.number().int().positive().optional(),
     /** CORS policy for the asset routes. */
@@ -220,6 +250,15 @@ export const httpApp: OpDefinition = {
   }),
   execute: TRIGGER_EXECUTE,
 };
+
+export const httpAppServe = outgate({
+  type: "boundary.http.app.serve",
+  description:
+    "App out-gate: receives the app object (filesystem + serving hints) the host mounts under " +
+    "the paired boundary.http.app trigger's mount.",
+  inputs: { app: { kind: "value", schema: appDescriptorSchema, required: true } },
+  pair: "boundary.http.app",
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 // WebSocket
@@ -230,6 +269,7 @@ export const wsMessage: OpDefinition = {
   title: "boundary.ws.message",
   description: "Fires a run per inbound WS message. Outputs { message, connection, room? }.",
   boundary: "trigger",
+  pair: "boundary.ws.send",
   inputs: {},
   outputs: { message: value(), connection: value(connectionSchema), room: value(z.string()) },
   config: z.object({ requireAuth }),
@@ -241,6 +281,7 @@ export const wsOpen: OpDefinition = {
   title: "boundary.ws.open",
   description: "Connection-opened trigger. Outputs { connection }.",
   boundary: "trigger",
+  pair: "boundary.ws.send",
   inputs: {},
   outputs: { connection: value(connectionSchema) },
   config: z.object({ requireAuth }),
@@ -252,6 +293,8 @@ export const wsClose: OpDefinition = {
   title: "boundary.ws.close",
   description: "Connection-closed trigger. Outputs { connection, code?, reason? }.",
   boundary: "trigger",
+  // The socket is already gone — the run's outcome is just its recorded result.
+  pair: "boundary.return",
   inputs: {},
   outputs: { connection: value(connectionSchema), code: value(z.number()), reason: value(z.string()) },
   // Same auth seam as open/message — a protected socket's close handler should
@@ -264,6 +307,7 @@ export const wsSend = outgate({
   type: "boundary.ws.send",
   description: "Sends the run's result back on the connection (value, or `stream` for chunked sends).",
   inputs: { message: value(), stream: stream() },
+  pair: "boundary.ws.message",
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -275,6 +319,7 @@ export const cli: OpDefinition = {
   title: "boundary.cli",
   description: "CLI process trigger. Outputs { args, parsed, stdin, env }.",
   boundary: "trigger",
+  pair: "boundary.cli.exit",
   inputs: {},
   outputs: {
     args: value(z.array(z.string())),
@@ -290,6 +335,7 @@ export const cliExit = outgate({
   type: "boundary.cli.exit",
   description: "CLI exit out-gate. Inputs { stdout (value/stream), stderr, code }.",
   inputs: { stdout: value(), stdoutStream: stream(), stderr: value(z.string()), code: value(z.number()) },
+  pair: "boundary.cli",
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -301,6 +347,7 @@ export const hookTrigger: OpDefinition = {
   title: "boundary.hook",
   description: "Filter-chain member (§8). config: { hook, priority? }. Outputs { payload }.",
   boundary: "trigger",
+  pair: "boundary.hook.return",
   inputs: {},
   outputs: { payload: value() },
   config: z.object({ hook: z.string(), priority: z.number().default(100) }),
@@ -312,13 +359,17 @@ export const hookReturn = outgate({
   description: "Hook member out-gate: returns { payload, stop? } to thread/short-circuit the chain (§8).",
   inputs: { payload: required(), stop: value(z.boolean()) },
   reusable: false,
+  pair: "boundary.hook",
 });
 
 export const eventTrigger: OpDefinition = {
   type: "boundary.event",
   title: "boundary.event",
-  description: "Fire-and-forget subscriber (§8). config: { event }. Outputs { payload }. No out-gate.",
+  description:
+    "Fire-and-forget subscriber (§8). config: { event }. Outputs { payload }. The emitter never " +
+    "reads the result — pair with boundary.return to record an outcome on the run.",
   boundary: "trigger",
+  pair: "boundary.return",
   inputs: {},
   outputs: { payload: value() },
   config: z.object({ event: z.string() }),
@@ -333,6 +384,7 @@ export const boundaryOps: OpDefinition[] = [
   httpRequest,
   httpResponse,
   httpApp,
+  httpAppServe,
   wsMessage,
   wsOpen,
   wsClose,

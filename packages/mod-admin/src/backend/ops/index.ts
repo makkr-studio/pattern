@@ -9,6 +9,7 @@
  */
 
 import {
+  boundaries,
   collectIssues,
   resolvePorts,
   stream,
@@ -18,7 +19,7 @@ import {
   type OpDefinition,
   type Workflow,
 } from "@pattern/core";
-import { adminServices } from "../services.js";
+import { adminServices, ASSETS_FS } from "../services.js";
 import { catalog, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";
 import { diffWorkflows } from "../control-plane/versioning.js";
 import { safeSegment } from "../control-plane/store.js";
@@ -301,6 +302,35 @@ const fixtureDelete = adminOp("admin.fixture.delete", "Delete a test fixture.", 
   return { ok: true };
 });
 
+// ── The admin app node ──
+
+/**
+ * The Pattern Admin application as a graph node (§11): outputs the admin SPA
+ * bundle as an app object for `boundary.http.app.serve`. This is "the app the
+ * admin mod brings" — drop it on a canvas, wire a `boundary.http.app` trigger
+ * in front and the serve out-gate behind, and the host mounts the admin UI.
+ */
+const adminApp: OpDefinition = {
+  type: "admin.app",
+  title: "Pattern Admin app",
+  description:
+    "The Pattern Admin SPA as an app object. Wire `app` into `boundary.http.app.serve` under a " +
+    "`boundary.http.app` mount to serve the admin UI.",
+  // The one admin op that IS meant for authoring: it represents the app itself.
+  reusable: true,
+  inputs: {},
+  outputs: { app: value(boundaries.appDescriptorSchema) },
+  config: z.object({
+    /** The filesystem the mod registered its built bundle on. */
+    filesystem: z.string().default(ASSETS_FS),
+    /** Served on a miss when the client accepts HTML (client-side routing). */
+    spaFallback: z.string().default("index.html"),
+    /** The admin bundle uses hashed filenames — immutable caching is safe. */
+    immutableAssets: z.boolean().default(true),
+  }),
+  execute: (ctx) => ({ app: { ...(ctx.config as object) } }),
+};
+
 async function loadLive(controlPlane: ReturnType<typeof adminServices>["controlPlane"], slug: string): Promise<Workflow | null> {
   const meta = await controlPlane.store.getMeta(slug);
   return meta?.live ? controlPlane.store.getVersion(slug, meta.live) : null;
@@ -336,4 +366,5 @@ export const adminOps: OpDefinition[] = [
   fixtureGet,
   fixtureSave,
   fixtureDelete,
+  adminApp,
 ];

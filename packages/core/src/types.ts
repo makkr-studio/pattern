@@ -335,6 +335,13 @@ export interface OpDefinition {
   /** Marks boundary ops (§7). */
   boundary?: "trigger" | "outgate";
   /**
+   * Boundary ops only: the op type of this boundary's canonical partner — every
+   * trigger names its out-gate and vice versa (§7: boundaries come in pairs).
+   * Authoring UIs create and delete the pair together; a trigger whose partner
+   * is the generic `boundary.return` simply returns its run result.
+   */
+  pair?: string;
+  /**
    * Whether this op is meant for general authoring/reuse. Default `true`.
    * Set `false` for internal/control-plane ops (e.g. `admin.*`, internal
    * boundary helpers): authoring UIs de-emphasize them (a collapsed "Advanced"

@@ -36,10 +36,14 @@ export interface OpInfo {
   description?: string;
   category: string;
   boundary?: "trigger" | "outgate";
+  /** Boundary ops: the op type of the canonical partner (trigger ↔ out-gate). */
+  pair?: string;
   /** The mod that contributed this op (undefined = base catalog). */
   mod?: string;
   inputs: PortInfo[];
   outputs: PortInfo[];
+  /** Registration-time config ports (boundary ops) — wired like value inputs. */
+  configInputs: PortInfo[];
   controlOut: string[];
   configSchema?: unknown;
   /** How many registered workflows use this op. */
@@ -102,9 +106,11 @@ export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
     description: op.description,
     category: categoryOf(op.type),
     boundary: op.boundary,
+    pair: op.pair,
     mod: modOf(engine, op.type),
     inputs: portInfos(op.inputs, {}),
     outputs: portInfos(op.outputs, {}),
+    configInputs: op.configInputs ? portInfos(op.configInputs, {}) : [],
     controlOut: resolveControlOuts(op, {}),
     configSchema: jsonSchema(op.config),
     usedBy: usageCount(engine, op.type),
@@ -244,7 +250,16 @@ export interface SystemMap {
 /** Build the System map from the engine's registered workflows (§13). */
 export function systemMap(engine: Engine): SystemMap {
   const map: SystemMap = { routes: [], apps: [], schedules: [], hooks: [], events: [], ws: [], ports: [] };
-  const cfgOf = (node: { config?: unknown }) => (node.config ?? {}) as Record<string, any>;
+  // Parse through the op's config schema when it has one, so defaults (e.g. an
+  // app op's bundled filesystem) surface here without re-running the workflow.
+  const cfgOf = (node: { op: string; config?: unknown }): Record<string, any> => {
+    const schema = engine.ops.get(node.op)?.config;
+    if (schema) {
+      const parsed = schema.safeParse(node.config ?? {});
+      if (parsed.success) return parsed.data as Record<string, any>;
+    }
+    return (node.config ?? {}) as Record<string, any>;
+  };
   for (const wf of engine.workflows.list()) {
     for (const node of wf.nodes) {
       const c = cfgOf(node);
@@ -252,9 +267,15 @@ export function systemMap(engine: Engine): SystemMap {
         case "boundary.http.request":
           if (c.path) map.routes.push({ method: String(c.method ?? "GET").toUpperCase(), path: c.path, port: c.port, workflow: wf.id, conflict: false });
           break;
-        case "boundary.http.app":
-          if (c.filesystem) map.apps.push({ mount: c.mount ?? "/", port: c.port, workflow: wf.id, filesystem: c.filesystem });
+        case "boundary.http.app": {
+          // The app descriptor is produced by the app op downstream (e.g.
+          // core.app.static / admin.app); statically, its parsed config carries
+          // the filesystem. The host resolves the real thing by running once.
+          const appNode = wf.nodes.find((n) => n !== node && typeof cfgOf(n).filesystem === "string");
+          const fsImpl = appNode ? cfgOf(appNode).filesystem : "(run-resolved)";
+          map.apps.push({ mount: c.mount ?? "/", port: c.port, workflow: wf.id, filesystem: fsImpl });
           break;
+        }
         case "boundary.schedule":
           map.schedules.push({ workflow: wf.id, node: node.id, cron: c.cron, intervalMs: c.intervalMs });
           break;

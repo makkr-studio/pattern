@@ -62,8 +62,16 @@ export default function SampleStudio() {
 const appMount: Workflow = {
   id: "sample.app",
   name: "Sample · Tier-2 assets",
-  nodes: [{ id: "app", op: "boundary.http.app", config: { mount: "/ext", filesystem: "sample-assets", spaFallback: "" } }],
-  edges: [],
+  // The canonical app trio (§7): mount trigger → app op → serve out-gate.
+  nodes: [
+    { id: "mount", op: "boundary.http.app", config: { mount: "/ext" }, ui: { x: 60, y: 60, pair: "serve" } },
+    { id: "assets", op: "core.app.static", config: { filesystem: "sample-assets", spaFallback: "" }, ui: { x: 340, y: 60 } },
+    { id: "serve", op: "boundary.http.app.serve", ui: { x: 620, y: 60, pair: "mount" } },
+  ],
+  edges: [
+    { from: { node: "mount", port: "out" }, to: { node: "assets", port: "in" } },
+    { from: { node: "assets", port: "app" }, to: { node: "serve", port: "app" } },
+  ],
 };
 
 export default defineMod({

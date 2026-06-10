@@ -16,6 +16,9 @@ import type { MemoryTraceSink } from "./trace/memory-sink.js";
 export const ADMIN_TRACE_SINK = "adminTraceSink";
 export const ADMIN_ENGINE = "adminEngine";
 
+/** Name of the filesystem the admin SPA assets are served from. */
+export const ASSETS_FS = "admin-assets";
+
 export interface AdminBackend {
   controlPlane: ControlPlane;
   sink: MemoryTraceSink;

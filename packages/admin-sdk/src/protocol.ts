@@ -109,9 +109,13 @@ export interface OpInfo {
   description?: string;
   category: string;
   boundary?: "trigger" | "outgate";
+  /** Boundary ops: the op type of the canonical partner (trigger ↔ out-gate). */
+  pair?: string;
   mod?: string;
   inputs: PortInfo[];
   outputs: PortInfo[];
+  /** Registration-time config ports (boundary ops) — wired like value inputs. */
+  configInputs: PortInfo[];
   controlOut: string[];
   configSchema?: unknown;
   usedBy: number;
