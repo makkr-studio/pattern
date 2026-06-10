@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { JsonCode } from "./JsonCode";
 
 /**
  * A config form generated from a JSON Schema (mod-admin-spec §12) — the
@@ -162,10 +163,10 @@ function Field({ name, schema, required, value, onChange }: { name: string; sche
 }
 
 /**
- * A JSON textarea that owns its text while the user types (controlled, so
- * nothing is silently dropped) and reports parse state visibly. Only valid
- * JSON propagates via `onChange`; invalid text shows an amber ring + note so
- * the user knows a Save now would use the last valid value.
+ * A JSON field that owns its text while the user types (controlled, so nothing
+ * is silently dropped). Only valid JSON propagates via `onChange`; the
+ * underlying `JsonCode` shows syntax highlighting + live parse status with
+ * line/column, so the user always knows what a Save would use.
  */
 function JsonTextarea({
   value,
@@ -184,43 +185,32 @@ function JsonTextarea({
   // External value changed and the user isn't mid-edit → resync.
   if (!dirty && text !== serialized) setText(serialized);
 
-  let invalid = false;
-  if (dirty && text.trim()) {
-    try {
-      JSON.parse(text);
-    } catch {
-      invalid = true;
-    }
-  }
-
   return (
     <div>
       {label && <div className="text-muted mb-1 text-xs">{label}</div>}
-      <textarea
-        value={text}
-        spellCheck={false}
-        onChange={(e) => {
-          setText(e.target.value);
+      <JsonCode
+        text={text}
+        height={rows}
+        ariaLabel={label ?? "JSON value"}
+        onText={(t) => {
+          setText(t);
           setDirty(true);
           try {
-            onChange(e.target.value.trim() ? JSON.parse(e.target.value) : undefined);
+            onChange(t.trim() ? JSON.parse(t) : undefined);
           } catch {
-            /* surfaced via the invalid indicator below */
+            /* surfaced by JsonCode's live status */
           }
         }}
+        // After blur, external changes (undo/redo) may resync the text.
         onBlur={() => {
-          if (!invalid) setDirty(false);
+          try {
+            if (text.trim()) JSON.parse(text);
+            setDirty(false);
+          } catch {
+            /* keep the user's invalid text on screen */
+          }
         }}
-        aria-invalid={invalid}
-        className={`glass ${rows} w-full rounded-lg p-2 font-mono text-xs outline-none ${
-          invalid ? "ring-1 ring-[var(--color-neon-amber)]" : ""
-        }`}
       />
-      {invalid && (
-        <div className="mt-1 text-[10px] text-[var(--color-neon-amber)]">
-          Invalid JSON — the last valid value is what saves.
-        </div>
-      )}
     </div>
   );
 }

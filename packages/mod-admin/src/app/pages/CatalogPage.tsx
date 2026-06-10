@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Template, WorkflowMeta } from "@pattern/admin-sdk";
 import { useDeleteWorkflow, useMods, useSetEnabled, useTemplates, useWorkflows } from "../lib/queries";
 import { Badge, Dot, EmptyState, Modal, NeonButton, PageHeader, Spinner, Table, type Column } from "../components/ui";
-import { Icon, Plus, Search, Trash2 } from "../components/icon";
+import { History, Icon, Plus, Search, Trash2 } from "../components/icon";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
 
@@ -162,22 +162,40 @@ export function CatalogPage() {
     {
       key: "actions",
       label: "",
-      width: "3rem",
-      render: (w) =>
-        w.source === "code" ? null : (
-          <button
-            type="button"
-            aria-label={`Delete workflow ${w.slug}`}
-            title="Delete workflow"
-            onClick={(e) => {
-              e.stopPropagation();
-              setConfirmDelete(w);
-            }}
-            className="text-muted rounded p-1 hover:text-[var(--color-neon-pink)]"
-          >
-            <Trash2 size={14} />
-          </button>
-        ),
+      width: "5rem",
+      render: (w) => (
+        <div className="flex items-center justify-end gap-0.5">
+          {w.source !== "code" && (
+            <button
+              type="button"
+              aria-label={`Versions of ${w.slug}`}
+              title={`Versions & history (${w.versions.length})`}
+              onClick={(e) => {
+                e.stopPropagation();
+                sfx.play("nav");
+                navigate(`/versions/${w.slug}`);
+              }}
+              className="text-muted rounded p-1 hover:text-[var(--color-neon-cyan)]"
+            >
+              <History size={14} />
+            </button>
+          )}
+          {w.source !== "code" && (
+            <button
+              type="button"
+              aria-label={`Delete workflow ${w.slug}`}
+              title="Delete workflow"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDelete(w);
+              }}
+              className="text-muted rounded p-1 hover:text-[var(--color-neon-pink)]"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      ),
     },
   ];
 

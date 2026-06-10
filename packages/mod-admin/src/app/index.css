@@ -36,6 +36,9 @@
 
 :root {
   --bg: #f4f6fb;
+  /* Node surface: opaque enough that overlapping nodes stay legible even where
+     backdrop-filter can't sample (inside the transformed RF viewport). */
+  --node-surface: color-mix(in srgb, #ffffff 86%, transparent);
   --bg-mesh-1: rgba(34, 211, 238, 0.18);
   --bg-mesh-2: rgba(167, 139, 250, 0.16);
   --bg-mesh-3: rgba(244, 114, 182, 0.12);
@@ -53,6 +56,7 @@
 
 .dark {
   --bg: #070910;
+  --node-surface: color-mix(in srgb, #0c101a 88%, transparent);
   --bg-mesh-1: rgba(34, 211, 238, 0.16);
   --bg-mesh-2: rgba(167, 139, 250, 0.18);
   --bg-mesh-3: rgba(244, 114, 182, 0.1);
@@ -104,6 +108,15 @@ body {
   backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Graph-node surface: near-opaque + blurred so overlapping nodes never bleed
+   into each other (backdrop-filter is best-effort inside the RF transform). */
+@utility node-surface {
+  background: var(--node-surface);
+  backdrop-filter: blur(12px) saturate(1.35);
+  -webkit-backdrop-filter: blur(12px) saturate(1.35);
   box-shadow: var(--glass-shadow);
 }
 
