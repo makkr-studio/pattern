@@ -50,6 +50,8 @@ export interface OpInfo {
   configSchema?: unknown;
   /** How many registered workflows use this op. */
   usedBy: number;
+  /** The ids of those workflows (clickable in the catalog). */
+  usedByWorkflows: string[];
   /** Meant for general authoring/reuse (default true; false = de-emphasized). */
   reusable: boolean;
 }
@@ -88,11 +90,11 @@ function portInfos(def: OpDefinition["inputs"], config: unknown): PortInfo[] {
   }));
 }
 
-/** Count registered workflows referencing an op type. */
-function usageCount(engine: Engine, type: string): number {
-  let n = 0;
-  for (const wf of engine.workflows.list()) if (wf.nodes.some((node) => node.op === type)) n++;
-  return n;
+/** Registered workflows referencing an op type (ids, for clickable usage). */
+function usedByWorkflows(engine: Engine, type: string): string[] {
+  const ids: string[] = [];
+  for (const wf of engine.workflows.list()) if (wf.nodes.some((node) => node.op === type)) ids.push(wf.id);
+  return ids.sort();
 }
 
 /** The mod that contributed an op type, if any. */
@@ -115,7 +117,8 @@ export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
     configInputs: op.configInputs ? portInfos(op.configInputs, {}) : [],
     controlOut: resolveControlOuts(op, {}),
     configSchema: jsonSchema(op.config),
-    usedBy: usageCount(engine, op.type),
+    usedBy: usedByWorkflows(engine, op.type).length,
+    usedByWorkflows: usedByWorkflows(engine, op.type),
     reusable: op.reusable !== false,
   };
 }
