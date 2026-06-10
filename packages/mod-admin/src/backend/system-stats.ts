@@ -171,7 +171,7 @@ async function measure(dispatch: () => Promise<unknown>): Promise<BenchPhase> {
  * Run the fib workload `runs`× concurrently — first inline on this event loop,
  * then on a fresh worker pool — and report wall time + loop stalls for each.
  */
-export async function workerBench(opts: { n?: number; runs?: number } = {}): Promise<BenchResult> {
+export async function workerBench(opts: { n?: number; runs?: number; workers?: number } = {}): Promise<BenchResult> {
   const n = Math.min(40, Math.max(20, Math.floor(opts.n ?? 34)));
   const runs = Math.min(16, Math.max(1, Math.floor(opts.runs ?? 4)));
   const wf = benchWorkflow(n);
@@ -185,7 +185,7 @@ export async function workerBench(opts: { n?: number; runs?: number } = {}): Pro
 
   // Phase 2 — pool: same dispatch on worker threads. Spawn cost reported
   // separately (a real deployment pays it once, not per request).
-  const size = Math.max(1, Math.min(runs, os.availableParallelism() - 1));
+  const size = Math.max(1, Math.min(opts.workers ?? Math.min(runs, os.availableParallelism() - 1), os.availableParallelism()));
   const spawn0 = performance.now();
   const pool = new WorkerPoolTransport({ size });
   const poolEngine = new Engine({ transport: pool });

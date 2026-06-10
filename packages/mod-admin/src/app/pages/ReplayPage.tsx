@@ -17,8 +17,14 @@ function nodeIdOf(span: SpanData): string | undefined {
   return typeof id === "string" ? id : undefined;
 }
 
+/** When the node actually started WORKING — every node launches at t≈0 and
+ *  blocks on its inputs first, so raw startTime would light them all at once. */
+function effectiveStart(span: SpanData): number {
+  return span.startTime + Number(span.attributes["pattern.node.blockedMs"] ?? 0);
+}
+
 function stateAt(span: SpanData, t: number): ReplayState {
-  if (t < span.startTime) return "pending";
+  if (t < effectiveStart(span)) return "pending";
   if (t < span.endTime) return "running";
   if (span.events?.some((e) => e.name === "skipped")) return "skipped";
   return span.status === "error" ? "error" : "ok";
@@ -69,17 +75,38 @@ export function ReplayPage() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing, speed, total]);
 
-  // Span boundary instants (starts + ends) for step-back/forward.
+  // Step marks = every instant a node CHANGES state: when it starts working
+  // (effective start — raw span starts all collapse to t≈0, which made the
+  // step buttons jump straight to the end) and when it finishes. Marks closer
+  // than 2ms cluster into one step.
   const marks = useMemo(() => {
-    const set = new Set<number>([0, total]);
+    const raw = new Set<number>([0, total]);
     for (const s of nodeSpans) {
-      set.add(s.startTime - t0);
-      set.add(s.endTime - t0);
+      raw.add(Math.max(0, effectiveStart(s) - t0));
+      raw.add(Math.max(0, s.endTime - t0));
     }
-    return [...set].filter((m) => m >= 0).sort((a, b) => a - b);
+    const sorted = [...raw].sort((a, b) => a - b);
+    const clustered: number[] = [];
+    for (const m of sorted) {
+      if (clustered.length === 0 || m - clustered[clustered.length - 1]! > 2) clustered.push(m);
+    }
+    return clustered;
   }, [nodeSpans, t0, total]);
-  const stepBack = () => setT((cur) => marks.filter((m) => m < cur - 1).pop() ?? 0);
-  const stepForward = () => setT((cur) => marks.find((m) => m > cur + 1) ?? total);
+  // Land just PAST the mark (+1ms) so the state flip is visible; stepping pauses.
+  const stepBack = () => {
+    setPlaying(false);
+    setT((cur) => {
+      const prev = marks.filter((m) => m < cur - 2).pop();
+      return prev === undefined ? 0 : Math.min(prev + 1, total);
+    });
+  };
+  const stepForward = () => {
+    setPlaying(false);
+    setT((cur) => {
+      const next = marks.find((m) => m > cur + 1);
+      return next === undefined ? total : Math.min(next + 1, total);
+    });
+  };
 
   const doc = wfData?.liveDoc;
   const flow = useMemo(() => (doc && opMap.size ? buildFlow(doc, opMap) : null), [doc, opMap]);
@@ -173,7 +200,7 @@ export function ReplayPage() {
 
       {/* Transport bar */}
       <GlassPanel className="mt-3 flex items-center gap-3 px-4 py-3">
-        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Step back" title="Step back" onClick={stepBack}>
+        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Previous node event" title="Step back — previous node event" onClick={stepBack}>
           <SkipBack size={14} />
         </NeonButton>
         <NeonButton
@@ -188,7 +215,7 @@ export function ReplayPage() {
         >
           {playing ? <Pause size={14} /> : <Play size={14} />}
         </NeonButton>
-        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Step forward" title="Step forward" onClick={stepForward}>
+        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Next node event" title="Step forward — next node event" onClick={stepForward}>
           <SkipForward size={14} />
         </NeonButton>
 

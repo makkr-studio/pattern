@@ -3,10 +3,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "motion/react";
 import type { RunSummary, SpanData } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
-import { useRun, useRuns } from "../lib/queries";
-import { Badge, Dot, GlassPanel, JsonView, PageHeader, Spinner } from "../components/ui";
+import { useRun, useRunControl, useRuns } from "../lib/queries";
+import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { ago, ms, statusColor } from "../lib/format";
-import { Play } from "../components/icon";
+import { Pause, Play } from "../components/icon";
+import { Square } from "lucide-react";
+import { sfx } from "../lib/sfx";
 
 function nodeOf(span: SpanData): string {
   return String(span.attributes["pattern.node.id"] ?? span.name);
@@ -96,17 +98,23 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
 
 function RunDetail({ runId }: { runId: string }) {
   const { data, isLoading } = useRun(runId);
+  const control = useRunControl(runId);
   if (isLoading) return <Spinner />;
   if (!data) return <GlassPanel className="text-muted p-8 text-sm">Run not found (it may have been evicted from the ring buffer).</GlassPanel>;
-  const { summary, spans } = data;
+  const { summary, spans, inflight, paused } = data;
   const runStart = Math.min(...spans.map((s) => s.startTime), summary.startTime);
   const runEnd = Math.max(...spans.map((s) => s.endTime), summary.endTime ?? summary.startTime);
+  const act = (action: "cancel" | "pause" | "resume") => {
+    sfx.play(action === "cancel" ? "error" : "toggle");
+    control.mutate(action);
+  };
   return (
     <GlassPanel className="p-5">
       <div className="mb-4 flex items-center gap-3">
-        <Dot color={statusColor(summary.status)} pulse={summary.status === "running"} />
+        <Dot color={paused ? "var(--color-neon-amber)" : statusColor(summary.status)} pulse={summary.status === "running" && !paused} />
         <span className="font-mono text-sm font-semibold">{summary.workflowId}</span>
         <Badge hue={summary.status === "error" ? 340 : 150}>{summary.status}</Badge>
+        {paused && <Badge hue={45}>paused</Badge>}
         <span className="text-muted text-xs">{ms(summary.durationMs)}</span>
         <Link
           to={`/runs/${summary.runId}/replay`}
@@ -114,7 +122,32 @@ function RunDetail({ runId }: { runId: string }) {
         >
           <Play size={12} /> replay on graph
         </Link>
-        <span className="text-muted ml-auto font-mono text-xs">{summary.runId.slice(0, 8)}</span>
+        {/* In-flight controls: pause holds new node starts; stop aborts. */}
+        {inflight && (
+          <span className="ml-auto flex items-center gap-1">
+            <NeonButton
+              variant="ghost"
+              className="!px-2 !py-1"
+              aria-label={paused ? "Resume run" : "Pause run"}
+              title={paused ? "Resume — held nodes proceed" : "Pause — no new node starts; running ops finish"}
+              disabled={control.isPending}
+              onClick={() => act(paused ? "resume" : "pause")}
+            >
+              {paused ? <Play size={12} /> : <Pause size={12} />}
+            </NeonButton>
+            <NeonButton
+              variant="danger"
+              className="!px-2 !py-1"
+              aria-label="Stop run"
+              title="Stop — abort this run"
+              disabled={control.isPending}
+              onClick={() => act("cancel")}
+            >
+              <Square size={12} />
+            </NeonButton>
+          </span>
+        )}
+        <span className={`text-muted font-mono text-xs ${inflight ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
       </div>
       <Waterfall spans={spans} runStart={runStart} total={runEnd - runStart} />
     </GlassPanel>

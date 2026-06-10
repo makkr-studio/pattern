@@ -42,6 +42,7 @@ import {
   type OpDefinition,
   type OpServices,
   type Principal,
+  type RunHandle,
   type RunResult,
   type RunTransport,
   type TraceSink,
@@ -507,11 +508,49 @@ export class Engine {
     hookDepth?: number,
   ): Promise<RunResult> {
     const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth });
+    // Track every in-flight run (whatever the entry path) so the admin can
+    // cancel / pause it by runId while it executes.
+    this.inflightRuns.set(handle.runId, handle);
+    void handle.result.catch(() => {}).finally(() => this.inflightRuns.delete(handle.runId));
     if (signal) {
       if (signal.aborted) handle.abort(signal.reason);
       else signal.addEventListener("abort", () => handle.abort(signal.reason), { once: true });
     }
     return handle.result;
+  }
+
+  // ── In-flight run control (any entry path: hosts, admin, invoke) ──
+
+  private readonly inflightRuns = new Map<string, RunHandle>();
+
+  /** Abort a run in flight. False = unknown/already settled. */
+  cancelRun(runId: string, reason?: unknown): boolean {
+    const h = this.inflightRuns.get(runId);
+    if (!h) return false;
+    h.abort(reason ?? new Error("cancelled from admin"));
+    return true;
+  }
+
+  /** Pause node scheduling for a run (in-flight node executions finish).
+   *  False = unknown run, or the transport can't pause (e.g. worker pool). */
+  pauseRun(runId: string): boolean {
+    return this.inflightRuns.get(runId)?.pause?.() ?? false;
+  }
+
+  /** Release a paused run. */
+  resumeRun(runId: string): boolean {
+    return this.inflightRuns.get(runId)?.resume?.() ?? false;
+  }
+
+  /** Is this in-flight run currently paused? (undefined = not in flight) */
+  runPaused(runId: string): boolean | undefined {
+    const h = this.inflightRuns.get(runId);
+    return h ? (h.paused?.() ?? false) : undefined;
+  }
+
+  /** Ids of runs currently executing. */
+  inflightRunIds(): string[] {
+    return [...this.inflightRuns.keys()];
   }
 
   private inferTrigger(workflow: Workflow): string {

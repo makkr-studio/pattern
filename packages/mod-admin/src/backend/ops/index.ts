@@ -212,7 +212,25 @@ const portsCompatibleOp = adminOp("admin.ports.compatible", "Check whether two p
 const runList = adminOp("admin.run.list", "Recent runs from the in-memory sink.", (args, { sink }) =>
   sink.list({ workflow: args.workflow as string | undefined, status: args.status as string | undefined, limit: args.limit ? Number(args.limit) : undefined }),
 );
-const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captured).", (args, { sink }) => sink.get(str(args.runId, "runId")));
+const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captured).", (args, { sink, engine }) => {
+  const detail = sink.get(str(args.runId, "runId"));
+  if (!detail) return detail;
+  // Live control state: is the run still in flight, and is it paused?
+  const paused = engine.runPaused(str(args.runId, "runId"));
+  return { ...detail, inflight: paused !== undefined, paused: paused ?? false };
+});
+
+// ── In-flight run control (cancel works on any entry path; pause needs the
+// in-process transport — a worker pool has no pause channel yet) ──
+const runCancel = adminOp("admin.run.cancel", "Abort an in-flight run.", (args, { engine }) => ({
+  ok: engine.cancelRun(str(args.runId, "runId")),
+}));
+const runPause = adminOp("admin.run.pause", "Pause an in-flight run: no new node starts; running ops finish.", (args, { engine }) => ({
+  ok: engine.pauseRun(str(args.runId, "runId")),
+}));
+const runResume = adminOp("admin.run.resume", "Resume a paused run.", (args, { engine }) => ({
+  ok: engine.resumeRun(str(args.runId, "runId")),
+}));
 const metricsSummary = adminOp("admin.metrics.summary", "Windowed run/error counters + per-workflow latency.", (args, { sink }) =>
   sink.metrics(args.window ? { minutes: Number((args.window as { minutes?: number }).minutes ?? args.window) } : undefined),
 );
@@ -240,7 +258,11 @@ const systemStatsOp = adminOp("admin.system.stats", "Host/process/event-loop/tra
   processStats(engine),
 );
 const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark: the same CPU-bound workload inline vs on a worker pool.", (args) =>
-  workerBench({ n: args.n != null ? Number(args.n) : undefined, runs: args.runs != null ? Number(args.runs) : undefined }),
+  workerBench({
+    n: args.n != null ? Number(args.n) : undefined,
+    runs: args.runs != null ? Number(args.runs) : undefined,
+    workers: args.workers != null ? Number(args.workers) : undefined,
+  }),
 );
 
 /** The aggregated frontend manifest (serializable) the shell builds its nav from. */
@@ -400,6 +422,9 @@ export const adminOps: OpDefinition[] = [
   portsCompatibleOp,
   runList,
   runGet,
+  runCancel,
+  runPause,
+  runResume,
   runTail,
   metricsSummary,
   modListOp,

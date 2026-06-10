@@ -20,6 +20,7 @@ const FALLBACK_MENU: MenuEntry[] = [
   { category: "Catalog", label: "Ops", icon: "boxes", path: "/ops", order: 10 },
   { category: "Catalog", label: "Mods", icon: "package", path: "/mods", order: 20 },
   { category: "System", label: "System map", icon: "network", path: "/system", order: 10 },
+  { category: "System", label: "Settings", icon: "settings", path: "/settings", order: 20 },
 ];
 
 const SIDEBAR_KEY = "pattern.admin.sidebar";

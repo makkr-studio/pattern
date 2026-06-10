@@ -36,6 +36,7 @@ import {
   SunMoon,
   Cpu,
   Gauge,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -57,6 +58,7 @@ const MAP: Record<string, LucideIcon> = {
   moon: Moon,
   cpu: Cpu,
   gauge: Gauge,
+  settings: Settings,
 };
 
 /** Render a lucide icon by its kebab name (from menu/command manifests). */
@@ -65,4 +67,4 @@ export function Icon({ name, size = 16, className }: { name?: string; size?: num
   return <C size={size} className={className} />;
 }
 
-export { ChevronRight, CircleDot, Sun, Moon, SunMoon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward, Download, Upload, Volume2, VolumeX, Wand2, History, GitFork, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Cpu, Gauge };
+export { ChevronRight, CircleDot, Sun, Moon, SunMoon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward, Download, Upload, Volume2, VolumeX, Wand2, History, GitFork, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Cpu, Gauge, Settings };

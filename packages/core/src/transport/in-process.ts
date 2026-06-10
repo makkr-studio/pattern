@@ -8,7 +8,7 @@
  */
 
 import { runWorkflow, type RunDeps } from "../scheduler/run.js";
-import type { RunHandle, RunRequest, RunTransport } from "../types.js";
+import type { RunControl, RunHandle, RunRequest, RunTransport } from "../types.js";
 
 export class InProcessTransport implements RunTransport {
   constructor(private readonly deps: RunDeps) {}
@@ -20,6 +20,9 @@ export class InProcessTransport implements RunTransport {
   dispatch(req: RunRequest): RunHandle {
     const ac = new AbortController();
     const runId = crypto.randomUUID();
+    // The scheduler assigns its pause/resume controls onto this (out-param) —
+    // in-process we can reach the gate directly, so the handle exposes it.
+    const control: RunControl = {};
     const result = runWorkflow(
       this.deps,
       {
@@ -31,6 +34,7 @@ export class InProcessTransport implements RunTransport {
         sampleIo: req.sampleIo,
         hookDepth: req.hookDepth,
         runId,
+        control,
       },
       ac.signal,
     );
@@ -38,6 +42,17 @@ export class InProcessTransport implements RunTransport {
       runId,
       result,
       abort: (reason?: unknown) => ac.abort(reason),
+      pause: () => {
+        if (!control.pause) return false;
+        control.pause();
+        return true;
+      },
+      resume: () => {
+        if (!control.resume) return false;
+        control.resume();
+        return true;
+      },
+      paused: () => control.paused?.() ?? false,
     };
   }
 }

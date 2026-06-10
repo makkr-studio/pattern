@@ -1,4 +1,4 @@
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Handle, Position, useNodeConnections, type NodeProps, type Node } from "@xyflow/react";
 import { MessageSquare, Settings2 } from "lucide-react";
 import type { PortInfo } from "@pattern/admin-sdk";
 import { CONTROL_IN, CONTROL_OUT, type OpNodeData } from "./graph";
@@ -63,24 +63,45 @@ function portTip(p: PortInfo, extra?: string) {
   );
 }
 
-/** A required input: amber asterisk right after the port name (the dot also
- *  wears a white ring; hover the row for the full contract). */
-const RequiredMark = () => (
-  <span aria-label="required" className="-ml-1 font-semibold text-[var(--color-neon-amber)]">
+/** A required input's marker: loud amber while the port is unwired ("this
+ *  still needs a wire"), calm once satisfied. */
+const RequiredMark = ({ satisfied }: { satisfied: boolean }) => (
+  <span
+    aria-label={satisfied ? "required (wired)" : "required (unwired)"}
+    className={`-ml-1 font-semibold ${satisfied ? "text-muted" : "text-[var(--color-neon-amber)]"}`}
+  >
     *
   </span>
 );
 
-const dotStyle = (p: PortInfo, side: "left" | "right", square = false): React.CSSProperties => ({
+const dotStyle = (p: PortInfo, side: "left" | "right", square = false, wired?: boolean): React.CSSProperties => ({
   position: "relative",
   [side]: -2,
   transform: "none",
   width: 10,
   height: 10,
   background: portFill(p),
-  border: p.required ? "1.5px solid rgba(255,255,255,0.85)" : "none",
+  // Required inputs ring their dot — AMBER + glow while unwired, quiet white
+  // once a wire satisfies them.
+  border: p.required ? (wired ? "1.5px solid rgba(255,255,255,0.85)" : "1.5px solid var(--color-neon-amber)") : "none",
+  boxShadow: p.required && !wired ? "0 0 7px var(--color-neon-amber)" : undefined,
   borderRadius: square ? 2 : "50%",
 });
+
+/** One input-port row — a component so it can watch its own connections:
+ *  required ports flip from amber (unwired) to calm the moment a wire lands. */
+function InputRow({ p, top, config }: { p: PortInfo; top: number; config?: boolean }) {
+  const connections = useNodeConnections({ handleType: "target", handleId: p.name });
+  const wired = connections.length > 0;
+  return (
+    <div className="absolute left-2.5 flex items-center gap-1.5 text-[10px]" style={{ top }} {...portTip(p, config ? "config — resolved once at registration" : undefined)}>
+      <Handle type="target" position={Position.Left} id={p.name} style={dotStyle(p, "left", config, wired)} />
+      {config && <Settings2 size={9} className="text-muted shrink-0" />}
+      <span className="text-muted font-mono">{p.name}</span>
+      {p.required && <RequiredMark satisfied={wired} />}
+    </div>
+  );
+}
 
 /** A workflow node rendered from its op's ports (mod-admin-spec §12). Shows a
  *  friendly name + category icon/accent; ports are colored by *data type* (hover
@@ -200,19 +221,10 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
 
       {/* config inputs (registration-time, square dots), then run inputs */}
       {data.configInputs.map((p, i) => (
-        <div key={`cfg-${p.name}`} className="absolute left-2.5 flex items-center gap-1.5 text-[10px]" style={{ top: HEADER + 8 + i * HANDLE_GAP }} {...portTip(p, "config — resolved once at registration")}>
-          <Handle type="target" position={Position.Left} id={p.name} style={dotStyle(p, "left", true)} />
-          <Settings2 size={9} className="text-muted shrink-0" />
-          <span className="text-muted font-mono">{p.name}</span>
-          {p.required && <RequiredMark />}
-        </div>
+        <InputRow key={`cfg-${p.name}`} p={p} top={HEADER + 8 + i * HANDLE_GAP} config />
       ))}
       {data.inputs.map((p, i) => (
-        <div key={`in-${p.name}`} className="absolute left-2.5 flex items-center gap-1.5 text-[10px]" style={{ top: HEADER + 8 + (data.configInputs.length + i) * HANDLE_GAP }} {...portTip(p)}>
-          <Handle type="target" position={Position.Left} id={p.name} style={dotStyle(p, "left")} />
-          <span className="text-muted font-mono">{p.name}</span>
-          {p.required && <RequiredMark />}
-        </div>
+        <InputRow key={`in-${p.name}`} p={p} top={HEADER + 8 + (data.configInputs.length + i) * HANDLE_GAP} />
       ))}
 
       {/* outputs, then declared control-outs (branch/switch paths) */}

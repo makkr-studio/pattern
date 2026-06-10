@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Badge, GlassPanel, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { Cpu, Gauge, Play } from "../components/icon";
+import { readSettings } from "../lib/settings";
 import { sfx } from "../lib/sfx";
 
 /* Mirrors backend/system-stats.ts (mod-admin owns both ends). */
@@ -107,14 +108,16 @@ export function ProcessPage() {
 
   const [benchBusy, setBenchBusy] = useState(false);
   const [bench, setBench] = useState<BenchResult | null>(null);
-  const [benchN, setBenchN] = useState(34);
-  const [benchRuns, setBenchRuns] = useState(4);
+  // Defaults come from Settings (persisted per browser).
+  const [benchN, setBenchN] = useState(() => readSettings().benchN);
+  const [benchRuns, setBenchRuns] = useState(() => readSettings().benchRuns);
+  const [benchWorkers, setBenchWorkers] = useState<number | null>(() => readSettings().benchWorkers);
 
   const runBench = async () => {
     setBenchBusy(true);
     sfx.play("run");
     try {
-      setBench(await api.systemBench<BenchResult>({ n: benchN, runs: benchRuns }));
+      setBench(await api.systemBench<BenchResult>({ n: benchN, runs: benchRuns, ...(benchWorkers != null ? { workers: benchWorkers } : {}) }));
       sfx.play("ok");
     } catch {
       sfx.play("error");
@@ -241,6 +244,17 @@ export function ProcessPage() {
                 onChange={(e) => setBenchRuns(Number(e.target.value))}
                 className="glass w-12 rounded px-1.5 py-1 font-mono outline-none"
                 aria-label="Concurrent runs"
+              />
+            </label>
+            <label className="text-muted flex items-center gap-1">
+              workers
+              <input
+                type="number" min={1} max={data.host.cpus} value={benchWorkers ?? ""}
+                placeholder="auto"
+                onChange={(e) => setBenchWorkers(e.target.value === "" ? null : Number(e.target.value))}
+                className="glass w-14 rounded px-1.5 py-1 font-mono outline-none"
+                aria-label="Pool size (blank = auto)"
+                title="Pool size — blank = min(runs, cores − 1)"
               />
             </label>
             <NeonButton onClick={() => void runBench()} disabled={benchBusy}>

@@ -134,6 +134,11 @@ export class AdminClient {
      *  AsyncIterable) so consumers can `.return()` to cancel — that runs the
      *  finally and closes the underlying SSE connection. */
     tail: (workflow?: string): AsyncGenerator<SpanData, void, undefined> => this.tailSpans(workflow),
+    /** Abort an in-flight run (any entry path). */
+    cancel: (runId: string): Promise<{ ok: boolean }> => this.request("POST", `/runs/${encodeURIComponent(runId)}/cancel`, {}),
+    /** Pause an in-flight run: no new node starts; running ops finish. */
+    pause: (runId: string): Promise<{ ok: boolean }> => this.request("POST", `/runs/${encodeURIComponent(runId)}/pause`, {}),
+    resume: (runId: string): Promise<{ ok: boolean }> => this.request("POST", `/runs/${encodeURIComponent(runId)}/resume`, {}),
   };
   metrics = (minutes?: number): Promise<MetricsSummary> => this.request("GET", `/metrics${qs({ window: minutes })}`);
 
@@ -145,7 +150,7 @@ export class AdminClient {
   /** Host/process/event-loop/transport snapshot (deltas since the last poll). */
   systemStats = <T = Record<string, unknown>>(): Promise<T> => this.request("GET", "/system/stats");
   /** Worker-efficiency benchmark: same workload inline vs on a worker pool. */
-  systemBench = <T = Record<string, unknown>>(opts?: { n?: number; runs?: number }): Promise<T> =>
+  systemBench = <T = Record<string, unknown>>(opts?: { n?: number; runs?: number; workers?: number }): Promise<T> =>
     this.request("POST", "/system/bench", opts ?? {});
   /** Run a source op once and return its output (declarative-page data source). */
   invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
