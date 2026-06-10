@@ -2,18 +2,34 @@
 /**
  * `pattern` — the dev CLI (§15).
  *
+ *   pattern ops [query]         List/inspect every op the project can use.
  *   pattern graph <file.json>   Validate a workflow and print its graph.
- *   pattern dev [entry]         Run an entry with file-watch hot-reload.
  *   pattern validate <file>     Validate a workflow document; report issues.
+ *   pattern dev [entry]         Run an entry with file-watch hot-reload.
+ *
+ * `ops`/`graph`/`validate` are **project-aware**: when a `pattern.config.json`
+ * is present in the cwd its mods are loaded first, so app-local and npm mod ops
+ * (`app.*`, `admin.*`, …) resolve exactly as they will at runtime. This is the
+ * terminal ground truth — coding agents are told to consult it instead of
+ * guessing op names (see the scaffolded AGENTS.md).
  *
  * `dev` shells out to `node --watch` (Node ≥20 runs .ts via type-stripping on
- * recent versions). The admin UI is a future mod; until then `graph` is how you
- * inspect a workflow in-terminal.
+ * recent versions).
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { Engine, formatGraph, collectIssues } from "@pattern/core";
+import {
+  Engine,
+  formatGraph,
+  collectIssues,
+  resolvePorts,
+  resolveControlOuts,
+  z,
+  type OpDefinition,
+  type PortSpec,
+} from "@pattern/core";
+import { loadMods } from "../mods.js";
 
 const pc = {
   bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
@@ -21,11 +37,15 @@ const pc = {
   red: (s: string) => `\x1b[31m${s}\x1b[0m`,
   green: (s: string) => `\x1b[32m${s}\x1b[0m`,
   cyan: (s: string) => `\x1b[36m${s}\x1b[0m`,
+  magenta: (s: string) => `\x1b[35m${s}\x1b[0m`,
+  yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
 };
 
-function main(): void {
+async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   switch (cmd) {
+    case "ops":
+      return cmdOps(rest[0]);
     case "graph":
       return cmdGraph(rest[0]);
     case "validate":
@@ -47,10 +67,30 @@ function main(): void {
 function usage(): void {
   console.log(`${pc.bold("pattern")} — workflow dev CLI
 
+  ${pc.cyan("pattern ops")}                   list every available op (project mods included)
+  ${pc.cyan("pattern ops")} <query>           filter by prefix, or full detail on an exact type
   ${pc.cyan("pattern graph")} <file.json>     print a workflow's graph
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
 `);
+}
+
+/**
+ * Build an engine the way the project will at runtime: core ops + every mod
+ * declared in `pattern.config.json` (when present). Workflows are *not*
+ * registered and no server starts — this is introspection only.
+ */
+async function projectEngine(): Promise<Engine> {
+  const engine = new Engine({ env: process.env });
+  if (existsSync("pattern.config.json")) {
+    try {
+      const config = JSON.parse(readFileSync("pattern.config.json", "utf8")) as { mods?: string[] };
+      if (config.mods?.length) await loadMods(engine, config.mods, { baseDir: process.cwd() });
+    } catch (err) {
+      console.error(pc.yellow(`! could not load project mods: ${(err as Error).message}`));
+    }
+  }
+  return engine;
 }
 
 function loadWorkflow(file: string | undefined): unknown {
@@ -65,9 +105,9 @@ function loadWorkflow(file: string | undefined): unknown {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-function cmdGraph(file: string | undefined): void {
+async function cmdGraph(file: string | undefined): Promise<void> {
   const doc = loadWorkflow(file);
-  const engine = new Engine();
+  const engine = await projectEngine();
   const { ok, workflow, issues } = collectIssues(doc, engine.ops);
   if (workflow) console.log(formatGraph(workflow, engine.ops));
   if (!ok) {
@@ -78,9 +118,9 @@ function cmdGraph(file: string | undefined): void {
   }
 }
 
-function cmdValidate(file: string | undefined): void {
+async function cmdValidate(file: string | undefined): Promise<void> {
   const doc = loadWorkflow(file);
-  const engine = new Engine();
+  const engine = await projectEngine();
   const { ok, issues } = collectIssues(doc, engine.ops);
   if (ok) {
     console.log(pc.green("✓ workflow is valid"));
@@ -92,6 +132,112 @@ function cmdValidate(file: string | undefined): void {
     console.log(`  ${pc.red("•")} ${i.message}${loc ? pc.dim(` (${loc})`) : ""}`);
   }
   process.exit(1);
+}
+
+// ── pattern ops ──────────────────────────────────────────────────────────────
+
+function firstLine(s: string | undefined): string {
+  return (s ?? "").split("\n")[0] ?? "";
+}
+
+/** "core.string.template" → "core.string"; "boundary.http.request" → "boundary"; "app.shout" → "app". */
+function groupOf(type: string): string {
+  const parts = type.split(".");
+  if (parts[0] === "core") return parts.slice(0, 2).join(".");
+  return parts[0] ?? "misc";
+}
+
+function portLine(name: string, spec: PortSpec, dir: "in" | "out"): string {
+  const arrow = dir === "in" ? pc.cyan("→") : pc.magenta("←");
+  const kind = spec.kind === "value" ? "value" : spec.kind === "stream" ? pc.magenta("stream") : pc.yellow("control");
+  const req = spec.required ? pc.yellow(" required") : "";
+  const desc = spec.description ? pc.dim(`  ${firstLine(spec.description)}`) : "";
+  return `    ${arrow} ${pc.bold(name)}  ${pc.dim(kind)}${req}${desc}`;
+}
+
+/** Render a zod config schema's top-level fields (type, default, required). */
+function configLines(schema: z.ZodType | undefined): string[] {
+  if (!schema) return [];
+  let json: { properties?: Record<string, Record<string, unknown>>; required?: string[] };
+  try {
+    json = z.toJSONSchema(schema, { unrepresentable: "any" } as never) as typeof json;
+  } catch {
+    return [pc.dim("    (config schema not representable as JSON Schema)")];
+  }
+  if (!json.properties) return [];
+  const requiredKeys = new Set(json.required ?? []);
+  return Object.entries(json.properties).map(([key, prop]) => {
+    const type = typeof prop.type === "string" ? prop.type : Array.isArray(prop.enum) ? `enum(${prop.enum.join("|")})` : "any";
+    const def = prop.default !== undefined ? pc.dim(` = ${JSON.stringify(prop.default)}`) : "";
+    const req = requiredKeys.has(key) && prop.default === undefined ? pc.yellow(" required") : "";
+    return `    ${pc.bold(key)}  ${pc.dim(type)}${def}${req}`;
+  });
+}
+
+function printOpDetail(engine: Engine, op: OpDefinition): void {
+  console.log("");
+  console.log(`  ${pc.bold(pc.cyan(op.type))}${op.boundary ? `  ${pc.yellow(`[${op.boundary}]`)}` : ""}`);
+  if (op.description) console.log(`  ${pc.dim(op.description)}`);
+  if (op.pair) console.log(`  ${pc.dim("pairs with")} ${pc.cyan(op.pair)}`);
+
+  const configInputs = op.configInputs ? Object.entries(resolvePorts(op.configInputs, {})) : [];
+  const inputs = Object.entries(resolvePorts(op.inputs, {}));
+  const outputs = Object.entries(resolvePorts(op.outputs, {}));
+  const controlOuts = resolveControlOuts(op, {});
+
+  if (inputs.length || configInputs.length) {
+    console.log(`  ${pc.dim("inputs:")}`);
+    for (const [name, spec] of configInputs) console.log(portLine(name, spec, "in") + pc.dim("  (config port)"));
+    for (const [name, spec] of inputs) console.log(portLine(name, spec, "in"));
+  }
+  if (outputs.length) {
+    console.log(`  ${pc.dim("outputs:")}`);
+    for (const [name, spec] of outputs) console.log(portLine(name, spec, "out"));
+  }
+  if (controlOuts.length) console.log(`  ${pc.dim("control-outs:")} ${controlOuts.map((c) => pc.yellow(c)).join(", ")}`);
+
+  const config = configLines(op.config as z.ZodType | undefined);
+  if (config.length) {
+    console.log(`  ${pc.dim("config:")}`);
+    for (const line of config) console.log(line);
+  }
+  console.log("");
+}
+
+async function cmdOps(query: string | undefined): Promise<void> {
+  const engine = await projectEngine();
+  const all = engine.ops.list().sort((a, b) => a.type.localeCompare(b.type));
+
+  // Exact type → full detail.
+  const exact = query && engine.ops.get(query);
+  if (exact) return printOpDetail(engine, exact);
+
+  const q = (query ?? "").toLowerCase();
+  const matched = q ? all.filter((op) => op.type.toLowerCase().includes(q)) : all;
+  if (!matched.length) {
+    console.error(pc.red(`no op matches "${query}"`));
+    process.exit(1);
+  }
+
+  // Single match on a fuzzy query → treat as detail too.
+  if (q && matched.length === 1) return printOpDetail(engine, matched[0]!);
+
+  const groups = new Map<string, OpDefinition[]>();
+  for (const op of matched) {
+    const g = groupOf(op.type);
+    groups.set(g, [...(groups.get(g) ?? []), op]);
+  }
+  const width = Math.max(...matched.map((op) => op.type.length)) + 2;
+  console.log("");
+  for (const [group, ops] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    console.log(`  ${pc.bold(group)} ${pc.dim(`(${ops.length})`)}`);
+    for (const op of ops) {
+      const badge = op.boundary === "trigger" ? pc.yellow("▸ ") : op.boundary === "outgate" ? pc.yellow("◂ ") : "  ";
+      console.log(`  ${badge}${pc.cyan(op.type.padEnd(width))}${pc.dim(firstLine(op.description))}`);
+    }
+    console.log("");
+  }
+  console.log(pc.dim(`  ${matched.length} ops — \`pattern ops <type>\` for ports + config.\n`));
 }
 
 function cmdDev(entryArg: string | undefined): void {
@@ -107,4 +253,4 @@ function cmdDev(entryArg: string | undefined): void {
   process.on("SIGINT", () => child.kill("SIGINT"));
 }
 
-main();
+void main();

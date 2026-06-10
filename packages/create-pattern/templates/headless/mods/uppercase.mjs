@@ -15,6 +15,7 @@ export default {
     {
       type: "app.shout",
       title: "app.shout",
+      description: "UPPERCASES a string and appends '!'.",
       inputs: { value: { kind: "value" } },
       outputs: { out: { kind: "value" } },
       execute: async (ctx) => ({ out: String(await ctx.input.value("value")).toUpperCase() + "!" }),

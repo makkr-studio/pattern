@@ -133,6 +133,7 @@ const mod: PatternMod = {
   authProviders: [/* … */],
   hooks: [{ name: "post.beforeSave" }],
   setup(engine) { /* anything imperative */ },
+  ready(engine) { /* after every mod of the install batch — cross-mod work */ },
 };
 
 export default mod;        // engine.use(mod)  — or loadMods(engine, ["my-mod"])

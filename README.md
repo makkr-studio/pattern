@@ -35,7 +35,7 @@ Four defining properties (see [the spec](./pattern-engine-spec.md)):
 
 ```bash
 npm create pattern@latest          # scaffold a project (interactive)
-# or: pnpm create pattern my-app --template agent-sse-tts
+# or: pnpm create pattern my-app --modpack studio   # engine + visual admin
 ```
 
 Or use the engine directly:
@@ -92,7 +92,7 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 | [`@pattern/mod-admin`](./packages/mod-admin) | The admin mod: an authorable, self-reflecting control surface — control plane, workflow store + versioning, run/metrics sink, the `admin.*` ops + workflow-backed HTTP API, and a React 19 / xyflow / Tailwind v4 glassmorphism **SPA** (catalog, graph editor, runs+replay, versions+diff, system map, metrics). |
 | [`@pattern/admin-sdk`](./packages/admin-sdk) | The admin extension surface: a typed API client over the workflow-backed endpoints (incl. SSE tail) + nav/command helpers + shared protocol types. |
 | [`@pattern/mod-sample`](./packages/mod-sample) | A sample mod proving the extension surface: a Tier-1 page + ⌘K command + a Tier-2 ESM remote, added with zero admin-core changes. |
-| [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Dev-time only, so it’s rich: prompts, banner, templates. |
+| [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Modpacks per use case — `studio` (admin), `headless`, `blank` — each shipping AGENTS.md/CLAUDE.md for coding agents. |
 
 ## Docs
 
@@ -128,11 +128,11 @@ exercise the scaffolder exactly as a user would.
 npx verdaccio                                    # start the registry (:4873)
 npm adduser --registry http://localhost:4873     # one-time login (any creds)
 
-pnpm local:publish                               # bump patch, build, publish all 3 packages
+pnpm local:publish                               # bump patch, build, publish all packages
 pnpm local:test-create                           # scaffold + install + run against Verdaccio
 ```
 
-- `pnpm local:publish` keeps the three packages in lockstep and bumps within
+- `pnpm local:publish` keeps the packages in lockstep and bumps within
   `0.1.x` so the templates' `^0.1.0` deps resolve to what you just published.
   Flags: `--set <version>`, `--no-bump`, `--dry-run`.
 - `pnpm local:test-create` scaffolds into a temp dir, installs the published

@@ -1,6 +1,7 @@
 # {{name}}
 
-An HTTP API built from declarative [Pattern](https://github.com/) workflows.
+A headless HTTP backend built from declarative [Pattern](https://github.com/)
+workflows — the **headless** modpack: routes as data, an app-local mod, no UI.
 
 ```bash
 npm run dev                # hot-reload server (pattern dev)
@@ -23,26 +24,32 @@ curl localhost:3001/health   # declared on a separate port
     shout.json            # GET  /shout/:text  (uses the mod op)
     health.json           # GET  /health             (port 3001)
   src/index.ts            # loadProject() → start()
+  AGENTS.md               # docs for your coding agent (CLAUDE.md points here)
 ```
 
 Routes are **declared in the workflow**, not in code: the
 `boundary.http.request` op config holds the method, **path, port**, CORS policy,
-and JSON-Schema validation for body/query. A route uses its own `port` if set,
-otherwise the `PORT` env var, falling back to 3000.
+and JSON-Schema validation for body/query/params. A route uses its own `port`
+if set, otherwise the `PORT` env var, falling back to 3000.
 
 **Env interpolation.** Config can reference environment variables, with type
 casting and fallbacks. `/health` declares its port as
 `{ "$env": "ADMIN_PORT", "type": "number", "default": 3001 }` — so
 `ADMIN_PORT=9000 npm run dev` moves it to 9000, otherwise it's 3001. Strings
-support `${VAR}` / `${VAR:-fallback}` too. References resolve when the workflow is
-registered.
+support `${VAR}` / `${VAR:-fallback}` too. References resolve when the workflow
+is registered.
 
 Add a `.json` to `workflows/` and the route appears. Mods (here
 `mods/uppercase.mjs`, an app-local one) add ops; install 3rd-party mods from npm
 and list the package name in `pattern.config.json`.
 
-Inspect any workflow's graph:
+Explore from the terminal:
 
 ```bash
+npx pattern ops                       # every op you can wire (mod ops included)
 npx pattern graph workflows/hello.json
 ```
+
+Working with a coding agent? `AGENTS.md` carries the route and op-authoring
+contracts. Want a visual control plane later? Add `@pattern/mod-admin` to the
+config — the admin appears at `/admin`.

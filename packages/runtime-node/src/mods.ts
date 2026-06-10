@@ -31,7 +31,7 @@ function resolveSpecifier(spec: string, baseDir: string): string {
   return spec; // bare npm/workspace specifier
 }
 
-/** Dynamically import each specifier and `engine.use()` the exported mod. */
+/** Dynamically import each specifier and install the exported mod. */
 export async function loadMods(
   engine: Engine,
   specifiers: string[],
@@ -45,8 +45,16 @@ export async function loadMods(
     if (!def || !def.name) {
       throw new Error(`"${spec}" does not export a PatternMod (default export or named "mod")`);
     }
-    engine.use(def);
+    // Await the mod's async `setup` — `start()` must observe installed mods.
+    // `ready` is deferred: it runs once ALL mods are in (see below).
+    await engine.useAsync(def, { deferReady: true });
     loaded.push(def);
+  }
+  // Second phase: every mod is installed (all ops registered) — now run the
+  // `ready` hooks. This is what lets the admin's control plane bootstrap
+  // stored workflows that use ops from mods listed *after* it in the config.
+  for (const def of loaded) {
+    await def.ready?.(engine);
   }
   return loaded;
 }
