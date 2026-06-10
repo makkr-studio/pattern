@@ -19,7 +19,35 @@ export function VersionsPage() {
   const [b, setB] = useState<string>();
   const [forkFrom, setForkFrom] = useState<string | null>(null);
   const [forkSlug, setForkSlug] = useState("");
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const { data: diff } = useDiff(slug, a, b);
+
+  /** Restore = deploy an older version. Surfaces the outcome inline — a
+   *  conflicting route refusal must be visible, not silent. */
+  const restore = (versionId: string) => {
+    if (!slug) return;
+    deploy.mutate(
+      { slug, version: versionId },
+      {
+        onSuccess: (res) => {
+          if (res.ok) {
+            setNotice({ kind: "ok", text: `Restored ${versionId} — it is live now.` });
+            sfx.play("deploy");
+          } else {
+            setNotice({
+              kind: "error",
+              text: `Cannot deploy ${versionId}: ${res.conflicts.map((c) => `${c.route.method} ${c.route.path} conflicts with ${c.conflictsWith}`).join("; ")}`,
+            });
+            sfx.play("error");
+          }
+        },
+        onError: (err) => {
+          setNotice({ kind: "error", text: `Deploy failed: ${err instanceof Error ? err.message : String(err)}` });
+          sfx.play("error");
+        },
+      },
+    );
+  };
 
   // Default the diff to previous-vs-live.
   useEffect(() => {
@@ -50,6 +78,8 @@ export function VersionsPage() {
     const id = forkSlug.trim();
     const res = await saveWf.mutateAsync({ slug: id, doc: { ...doc, id, name: id, source: undefined }, note: `forked from ${slug} ${forkFrom}` });
     if (res.issues.length) {
+      setForkFrom(null);
+      setNotice({ kind: "error", text: `Fork failed validation: ${res.issues.map((i) => i.message).join("; ")}` });
       sfx.play("invalid");
       return;
     }
@@ -69,6 +99,19 @@ export function VersionsPage() {
           </NeonButton>
         }
       />
+      {notice && (
+        <div
+          role={notice.kind === "error" ? "alert" : "status"}
+          className={`glass mb-4 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm ${
+            notice.kind === "error" ? "text-[var(--color-neon-pink)] ring-1 ring-[var(--color-neon-pink)]/40" : "text-[var(--color-neon-lime)]"
+          }`}
+        >
+          <span className="min-w-0 flex-1">{notice.text}</span>
+          <button type="button" aria-label="Dismiss" className="text-muted shrink-0" onClick={() => setNotice(null)}>
+            ✕
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-[24rem_1fr] gap-6">
         <GlassPanel className="self-start overflow-hidden">
           {[...(versions ?? [])].reverse().map((v) => (
@@ -111,7 +154,8 @@ export function VersionsPage() {
                     className="!px-2 !py-1"
                     aria-label={`Restore ${v.id}`}
                     title={`Restore: deploy ${v.id} (move the live pointer)`}
-                    onClick={() => deploy.mutate({ slug, version: v.id }, { onSuccess: () => sfx.play("deploy") })}
+                    disabled={deploy.isPending}
+                    onClick={() => restore(v.id)}
                   >
                     <Rocket size={12} />
                   </NeonButton>

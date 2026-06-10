@@ -10,7 +10,7 @@
 
 import type { Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { Engine, RunResult, Workflow } from "@pattern/core";
+import { jsonSchemaToZod, type Engine, type RunResult, type Workflow } from "@pattern/core";
 import { NodeConnectionRegistry } from "./ws-registry.js";
 
 export interface WsBinding {
@@ -105,6 +105,24 @@ export class WsHost {
   private async fireAndSend(binding: WsBinding, ref: { id: string }, input: Record<string, unknown>): Promise<void> {
     const r = this.resolve(binding, "boundary.ws.message");
     if (!r) return;
+
+    // Declarative message validation (§7): the trigger's `message` schema
+    // (often wired in from a `core.schema.define` node) gates the run — an
+    // invalid message gets an error reply instead of executing the graph.
+    const trigger = r.workflow.nodes.find((n) => n.id === r.trigger);
+    const schema = (trigger?.config as { message?: Record<string, unknown> } | undefined)?.message;
+    if (schema) {
+      const parsed = jsonSchemaToZod(schema as never).safeParse(input.message);
+      if (!parsed.success) {
+        await this.connections.send(ref, {
+          error: "invalid message",
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+        });
+        return;
+      }
+      input = { ...input, message: parsed.data };
+    }
+
     const result = await this.engine.runFrom(r.workflow, r.trigger, input, { kind: "anonymous" });
     if (result.status !== "ok") return;
     const payload = firstOutgate(result, r.workflow, "boundary.ws.send");

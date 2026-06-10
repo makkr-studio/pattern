@@ -33,10 +33,11 @@ import {
   type OpNodeData,
 } from "../editor/graph";
 import { Badge, GlassPanel, Modal, NeonButton, Spinner } from "../components/ui";
-import { FormFromSchema, RawJson } from "../components/FormFromSchema";
+import { FormFromSchema, RawJson, type FieldOverride } from "../components/FormFromSchema";
+import { SchemaBuilder } from "../components/SchemaBuilder";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
-import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork } from "../components/icon";
+import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2 } from "../components/icon";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -109,6 +110,8 @@ function EditorInner() {
   const [runOpen, setRunOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
   const [forkSlug, setForkSlug] = useState("");
+  /** Inspector stretched over the whole editor (focus mode for big configs). */
+  const [inspectorWide, setInspectorWide] = useState(false);
   /** A dirty draft for ANOTHER target blocks init until the user decides. */
   const [pendingDraft, setPendingDraft] = useState<EditorDraft | null>(null);
   const [initTick, setInitTick] = useState(0);
@@ -702,7 +705,7 @@ function EditorInner() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-0" style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px` }}>
+      <div className="relative grid min-h-0 flex-1 gap-0" style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px` }}>
         {/* Palette — searchable, drag onto the canvas */}
         <Palette ops={opsData ?? []} />
 
@@ -742,36 +745,57 @@ function EditorInner() {
 
         <PaneGrip onPointerDown={dragPane("r")} label="Resize inspector" />
 
-        {/* Inspector */}
-        <GlassPanel className="overflow-y-auto p-4">
-          <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">Inspector</div>
-          {selectedNode ? (
-            <Inspector
-              key={selectedNode.id}
-              node={selectedNode}
-              op={opMap.get(selectedNode.data.op)}
-              onChange={(config) => {
-                pushHistoryBurst();
-                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)));
+        {/* Inspector — stretches over the whole editor in focus mode */}
+        <GlassPanel className={`overflow-y-auto p-4 ${inspectorWide ? "absolute inset-0 z-20" : ""}`}>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-muted text-xs font-semibold uppercase tracking-wider">Inspector</span>
+            <button
+              type="button"
+              aria-label={inspectorWide ? "Shrink inspector" : "Stretch inspector over the canvas"}
+              title={inspectorWide ? "Back to the canvas" : "Stretch — more room for configs"}
+              className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)]"
+              onClick={() => {
+                setInspectorWide((w) => !w);
+                sfx.play(inspectorWide ? "close" : "open");
               }}
-              onMeta={(meta) => {
-                pushHistoryBurst();
-                setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...meta } } : n)));
-              }}
-            />
-          ) : (
-            <p className="text-muted text-sm">Select a node to edit its config. Drag an op from the palette onto the canvas to add it; drag between ports to connect (ports refuse incompatible types).</p>
-          )}
-          {issues.length > 0 && (
-            <div className="mt-5">
-              <div className="text-[var(--color-neon-pink)] mb-2 text-xs font-semibold uppercase tracking-wider">Problems</div>
-              {issues.map((iss, i) => (
-                <div key={i} className="mb-1.5 text-xs">
-                  <span className="font-mono text-[var(--color-neon-amber)]">{iss.nodeId ?? ""}</span> {iss.message}
-                </div>
-              ))}
-            </div>
-          )}
+            >
+              {inspectorWide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            </button>
+          </div>
+          <div className={inspectorWide ? "mx-auto max-w-3xl" : undefined}>
+            {inspectorWide && selectedNode && (
+              <div className="text-muted mb-3 text-xs">
+                Editing <span className="font-mono">{selectedNode.id}</span> in focus mode — the canvas is right behind this panel.
+              </div>
+            )}
+            {selectedNode ? (
+              <Inspector
+                key={selectedNode.id}
+                node={selectedNode}
+                op={opMap.get(selectedNode.data.op)}
+                onChange={(config) => {
+                  pushHistoryBurst();
+                  setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)));
+                }}
+                onMeta={(meta) => {
+                  pushHistoryBurst();
+                  setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...meta } } : n)));
+                }}
+              />
+            ) : (
+              <p className="text-muted text-sm">Select a node to edit its config. Drag an op from the palette onto the canvas to add it; drag between ports to connect (ports refuse incompatible types).</p>
+            )}
+            {issues.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[var(--color-neon-pink)] mb-2 text-xs font-semibold uppercase tracking-wider">Problems</div>
+                {issues.map((iss, i) => (
+                  <div key={i} className="mb-1.5 text-xs">
+                    <span className="font-mono text-[var(--color-neon-amber)]">{iss.nodeId ?? ""}</span> {iss.message}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </GlassPanel>
       </div>
 
@@ -852,6 +876,18 @@ function PaneGrip({ onPointerDown, label }: { onPointerDown: (e: ReactPointerEve
   );
 }
 
+/**
+ * Config fields that hold a JSON Schema get the visual builder instead of a
+ * raw JSON box. Keyed by op type — mods with schema-valued fields can be added
+ * here (or we promote this to op metadata later).
+ */
+const SCHEMA_FIELDS: Record<string, string[]> = {
+  "core.schema.define": ["schema"],
+  "core.schema.validate": ["schema"],
+  "boundary.http.request": ["body", "query"],
+  "boundary.ws.message": ["message"],
+};
+
 function Inspector({
   node,
   op,
@@ -869,6 +905,17 @@ function Inspector({
   const { Icon } = cat;
   const hasSchema = op?.configSchema != null && (op.configSchema as { type?: string }).type === "object";
   const inputCls = "glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]";
+  const schemaOverrides = useMemo(() => {
+    const fields = SCHEMA_FIELDS[node.data.op];
+    if (!fields) return undefined;
+    const o: Record<string, FieldOverride> = {};
+    for (const f of fields) {
+      o[f] = ({ value, onChange: set }) => (
+        <SchemaBuilder value={value as Record<string, unknown> | undefined} onChange={set} />
+      );
+    }
+    return o;
+  }, [node.data.op]);
 
   return (
     <div>
@@ -919,7 +966,7 @@ function Inspector({
       {raw || !hasSchema ? (
         <RawJson value={config} onChange={onChange} />
       ) : (
-        <FormFromSchema schema={op!.configSchema as Record<string, unknown>} value={config} onChange={onChange} />
+        <FormFromSchema schema={op!.configSchema as Record<string, unknown>} value={config} onChange={onChange} overrides={schemaOverrides} />
       )}
     </div>
   );

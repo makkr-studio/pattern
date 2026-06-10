@@ -10,7 +10,21 @@ import { JsonCode } from "./JsonCode";
 
 type Schema = Record<string, any> | undefined;
 
-export function FormFromSchema({ schema, value, onChange }: { schema: Schema; value: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+/** Replace a field's widget (e.g. the visual schema builder for JSON-Schema
+ *  valued config fields like http.request's `body`). */
+export type FieldOverride = (props: { value: unknown; onChange: (v: unknown) => void }) => React.ReactNode;
+
+export function FormFromSchema({
+  schema,
+  value,
+  onChange,
+  overrides,
+}: {
+  schema: Schema;
+  value: Record<string, unknown>;
+  onChange: (v: Record<string, unknown>) => void;
+  overrides?: Record<string, FieldOverride>;
+}) {
   const props: Record<string, Schema> = schema?.type === "object" ? (schema.properties ?? {}) : {};
   const required: string[] = schema?.required ?? [];
   const keys = Object.keys(props);
@@ -28,9 +42,21 @@ export function FormFromSchema({ schema, value, onChange }: { schema: Schema; va
 
   return (
     <div className="space-y-3">
-      {keys.map((key) => (
-        <Field key={key} name={key} schema={props[key]} required={required.includes(key)} value={value[key]} onChange={(v) => set(key, v)} />
-      ))}
+      {keys.map((key) => {
+        const override = overrides?.[key];
+        if (override) {
+          return (
+            <div key={key}>
+              <div className="text-muted mb-1 flex items-center gap-1.5 text-xs font-medium">
+                <span className="font-mono">{key}</span>
+                {required.includes(key) && <span className="text-[var(--color-neon-amber)]">*</span>}
+              </div>
+              {override({ value: value[key], onChange: (v) => set(key, v) })}
+            </div>
+          );
+        }
+        return <Field key={key} name={key} schema={props[key]} required={required.includes(key)} value={value[key]} onChange={(v) => set(key, v)} />;
+      })}
     </div>
   );
 }
