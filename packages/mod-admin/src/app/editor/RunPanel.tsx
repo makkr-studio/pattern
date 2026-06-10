@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { OpInfo, RunResult, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
@@ -157,6 +157,10 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
   const [form, setForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
+  const [stopNote, setStopNote] = useState<string | null>(null);
+  // Minted CLIENT-side so Stop can cancel by id immediately — the server's
+  // response (which carries the id) only arrives when the run is over.
+  const liveRunId = useRef<string | null>(null);
 
   const trigger = triggers.find((t) => t.id === triggerId) ?? triggers[0];
   const config = (doc.nodes.find((n) => n.id === trigger?.id)?.config ?? {}) as Record<string, any>;
@@ -165,17 +169,28 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
     if (!trigger) return;
     setBusy(true);
     setResult(null);
+    setStopNote(null);
     sfx.play("run");
+    liveRunId.current = crypto.randomUUID();
     try {
-      const res = await api.run({ doc, trigger: trigger.id, input: buildInput(trigger.op, config, form) });
+      const res = await api.run({ doc, trigger: trigger.id, input: buildInput(trigger.op, config, form), runId: liveRunId.current });
       setResult(res);
       sfx.play(res.ok && res.status === "ok" ? "ok" : res.ok ? "error" : "invalid");
     } catch (err) {
       sfx.play("error");
       throw err;
     } finally {
+      liveRunId.current = null;
       setBusy(false);
     }
+  };
+
+  const stop = async () => {
+    const id = liveRunId.current;
+    if (!id) return;
+    sfx.play("close");
+    const { ok } = await api.runs.cancel(id);
+    setStopNote(ok ? null : "Too late — the run had already finished.");
   };
 
   return (
@@ -203,21 +218,12 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
                 {busy ? "Running…" : "▶ Run"}
               </NeonButton>
               {busy && (
-                <NeonButton
-                  variant="danger"
-                  title="Stop — abort the in-flight run"
-                  onClick={async () => {
-                    // The runId only comes back when the run settles — find the
-                    // in-flight run(s) of THIS workflow and abort them.
-                    sfx.play("error");
-                    const running = await api.runs.list({ workflow: doc.id, status: "running" });
-                    await Promise.all(running.map((r) => api.runs.cancel(r.runId)));
-                  }}
-                >
+                <NeonButton variant="danger" title="Stop — abort the in-flight run" onClick={() => void stop()}>
                   ⏹ Stop
                 </NeonButton>
               )}
             </div>
+            {stopNote && <p className="text-muted mt-2 text-xs">{stopNote}</p>}
           </div>
 
           <div>

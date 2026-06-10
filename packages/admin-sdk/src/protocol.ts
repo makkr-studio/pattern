@@ -272,4 +272,7 @@ export interface RunInput {
   trigger?: string;
   input?: Record<string, unknown>;
   params?: Record<string, unknown>;
+  /** Caller-chosen run id (a UUID you mint) — lets you cancel/pause the run
+   *  you just started before its result (and server id) comes back. */
+  runId?: string;
 }

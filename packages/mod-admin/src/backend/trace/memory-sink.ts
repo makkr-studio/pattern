@@ -73,9 +73,14 @@ export interface MemoryTraceSinkOptions {
 }
 
 export class MemoryTraceSink implements TraceSink {
-  private readonly capacity: number;
+  private capacity: number;
   private readonly now: () => number;
   private readonly bootTime: number;
+  /** Runs whose workflowId matches are not retained (nor tailed). */
+  private exclude: RegExp | null = null;
+  private excludeSource: string | null = null;
+  /** traceIds currently in flight that matched `exclude` — drop their spans. */
+  private readonly excludedTraces = new Set<string>();
 
   /** traceId → accumulating run. */
   private readonly inProgress = new Map<string, InProgress>();
@@ -91,7 +96,40 @@ export class MemoryTraceSink implements TraceSink {
     this.bootTime = this.now();
   }
 
+  // ── Runtime-adjustable config (admin Settings → Observability) ──
+
+  /** Current retention/exclusion, for the settings UI. */
+  config(): { capacity: number; exclude: string | null } {
+    return { capacity: this.capacity, exclude: this.excludeSource };
+  }
+
+  /** Resize the ring buffer (trims oldest immediately). */
+  setCapacity(n: number): void {
+    this.capacity = Math.max(10, Math.min(10_000, Math.floor(n)));
+    while (this.runs.length > this.capacity) {
+      const evicted = this.runs.shift();
+      if (evicted) this.byRunId.delete(evicted.summary.runId);
+    }
+  }
+
+  /** Workflow-id exclusion regex (null/"" disables). Throws on a bad pattern.
+   *  Matching runs are neither retained nor tailed — e.g. `^admin\\.` silences
+   *  the admin's own API traffic. */
+  setExclude(pattern: string | null): void {
+    if (!pattern) {
+      this.exclude = null;
+      this.excludeSource = null;
+      return;
+    }
+    this.exclude = new RegExp(pattern); // may throw — caller surfaces it
+    this.excludeSource = pattern;
+  }
+
   onRunStart(run: { runId: string; traceId: string; workflowId: string; trigger: string; principal: Principal }): void {
+    if (this.exclude?.test(run.workflowId)) {
+      this.excludedTraces.add(run.traceId);
+      return;
+    }
     this.inProgress.set(run.traceId, {
       summary: {
         runId: run.runId,
@@ -108,6 +146,7 @@ export class MemoryTraceSink implements TraceSink {
   }
 
   onSpanEnd(span: SpanData): void {
+    if (this.excludedTraces.has(span.traceId)) return;
     const run = this.inProgress.get(span.traceId);
     if (run) {
       run.spans.push(span);
@@ -123,6 +162,7 @@ export class MemoryTraceSink implements TraceSink {
   }
 
   onRunEnd(run: { runId: string; traceId: string; status: "ok" | "error"; error?: unknown }): void {
+    if (this.excludedTraces.delete(run.traceId)) return;
     const rec = this.inProgress.get(run.traceId);
     if (!rec) return;
     this.inProgress.delete(run.traceId);

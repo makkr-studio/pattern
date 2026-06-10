@@ -152,6 +152,11 @@ export class AdminClient {
   /** Worker-efficiency benchmark: same workload inline vs on a worker pool. */
   systemBench = <T = Record<string, unknown>>(opts?: { n?: number; runs?: number; workers?: number }): Promise<T> =>
     this.request("POST", "/system/bench", opts ?? {});
+  /** Server-side admin settings (run retention/exclusion). */
+  readonly settings = {
+    get: <T = Record<string, unknown>>(): Promise<T> => this.request("GET", "/settings"),
+    set: <T = Record<string, unknown>>(patch: Record<string, unknown>): Promise<T> => this.request("POST", "/settings", patch),
+  };
   /** Run a source op once and return its output (declarative-page data source). */
   invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
   /** Run a workflow (draft doc or live slug) from a trigger; records the run. */

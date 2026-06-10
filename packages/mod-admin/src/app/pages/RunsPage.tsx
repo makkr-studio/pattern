@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "motion/react";
 import type { RunSummary, SpanData } from "@pattern/admin-sdk";
@@ -6,9 +6,14 @@ import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
 import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { ago, ms, statusColor } from "../lib/format";
-import { Pause, Play } from "../components/icon";
-import { Square } from "lucide-react";
+import { fuzzyFilter } from "../lib/fuzzy";
+import { Pause, Play, Search } from "../components/icon";
+import { ChevronLeft, ChevronRight, Square } from "lucide-react";
 import { sfx } from "../lib/sfx";
+
+const PAGE_SIZE = 25;
+/** How many recent runs we pull for client-side search/paging. */
+const FETCH_WINDOW = 500;
 
 function nodeOf(span: SpanData): string {
   return String(span.attributes["pattern.node.id"] ?? span.name);
@@ -205,9 +210,20 @@ function LiveTail() {
 export function RunsPage() {
   const navigate = useNavigate();
   const { runId } = useParams();
-  const { data, isLoading } = useRuns();
+  const { data, isLoading } = useRuns({ limit: FETCH_WINDOW });
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  // Fuzzy over workflow id + status + run id; searching resets to page 1.
+  const filtered = useMemo(
+    () => fuzzyFilter(data ?? [], query, (r) => `${r.workflowId} ${r.status} ${r.runId}`),
+    [data, query],
+  );
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const pageRuns = filtered.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+
   if (isLoading) return <Spinner />;
-  const runs = data ?? [];
 
   return (
     <>
@@ -217,9 +233,31 @@ export function RunsPage() {
       />
       <div className="grid grid-cols-[1fr_1.3fr] gap-6">
         <div className="space-y-4">
+          {/* Fuzzy search over the retained window */}
+          <div className="glass flex items-center gap-2 rounded-xl px-3 py-2">
+            <Search size={14} className="text-muted shrink-0" />
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Fuzzy search runs (workflow, status, id)…"
+              aria-label="Search runs"
+              className="w-full bg-transparent text-sm outline-none"
+            />
+            {query && (
+              <button type="button" aria-label="Clear search" className="text-muted text-xs" onClick={() => setQuery("")}>
+                ✕
+              </button>
+            )}
+          </div>
+
           <GlassPanel className="overflow-hidden">
-            {runs.length === 0 && <div className="text-muted p-6 text-sm">No runs yet — trigger a workflow.</div>}
-            {runs.map((r: RunSummary) => (
+            {pageRuns.length === 0 && (
+              <div className="text-muted p-6 text-sm">{query ? "No runs match." : "No runs yet — trigger a workflow."}</div>
+            )}
+            {pageRuns.map((r: RunSummary) => (
               <button
                 key={r.runId}
                 onClick={() => navigate(`/runs/${r.runId}`)}
@@ -233,6 +271,33 @@ export function RunsPage() {
                 <span className="text-muted w-16 text-right text-xs">{ago(r.startTime)}</span>
               </button>
             ))}
+            {/* Pagination over the retained window */}
+            {filtered.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between border-t hairline px-4 py-2">
+                <button
+                  type="button"
+                  aria-label="Previous page"
+                  className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-30"
+                  disabled={current === 0}
+                  onClick={() => setPage(current - 1)}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="text-muted text-xs">
+                  {current * PAGE_SIZE + 1}–{Math.min((current + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  {query && data ? ` (filtered from ${data.length})` : ""}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next page"
+                  className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-30"
+                  disabled={current >= pages - 1}
+                  onClick={() => setPage(current + 1)}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
           </GlassPanel>
           <LiveTail />
         </div>

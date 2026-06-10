@@ -19,7 +19,7 @@ export class InProcessTransport implements RunTransport {
 
   dispatch(req: RunRequest): RunHandle {
     const ac = new AbortController();
-    const runId = crypto.randomUUID();
+    const runId = req.runId ?? crypto.randomUUID();
     // The scheduler assigns its pause/resume controls onto this (out-param) —
     // in-process we can reach the gate directly, so the handle exposes it.
     const control: RunControl = {};

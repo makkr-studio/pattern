@@ -265,6 +265,36 @@ const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark
   }),
 );
 
+// ── Server-side admin settings (observability) ──
+
+const settingsGet = adminOp("admin.settings.get", "Server-side admin settings (run retention, exclusion).", (_args, { sink }) => ({
+  observability: sink.config(),
+}));
+
+const settingsSet = adminOp(
+  "admin.settings.set",
+  "Update server-side admin settings: { capacity?, exclude? }. Applies live; persisted with the workflow store.",
+  async (args, { sink, controlPlane }) => {
+    const obs = (args.observability ?? args) as { capacity?: unknown; exclude?: unknown };
+    if (obs.capacity != null) {
+      const n = Number(obs.capacity);
+      if (!Number.isFinite(n) || n < 10 || n > 10_000) throw new Error("capacity must be between 10 and 10000");
+      sink.setCapacity(n);
+    }
+    if (obs.exclude !== undefined) {
+      const pattern = obs.exclude === null || obs.exclude === "" ? null : String(obs.exclude);
+      try {
+        sink.setExclude(pattern);
+      } catch (err) {
+        throw new Error(`invalid exclude regex: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const applied = sink.config();
+    await controlPlane.store.saveAdminConfig({ observability: applied });
+    return { ok: true, observability: applied };
+  },
+);
+
 /** The aggregated frontend manifest (serializable) the shell builds its nav from. */
 const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", (_args, { engine }) => {
   const fe = engine.frontend();
@@ -338,11 +368,15 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
   // boundary config ports (e.g. a schema wired into http.request's `body`) are
   // frozen in and the run behaves exactly like its deployed self would.
   const wf = doc ? await engine.resolveWorkflowDoc(doc) : raw;
+  // A caller-chosen run id lets the UI cancel a run it JUST started (the
+  // result — and with it the server-minted id — only arrives at completion).
+  const runId = typeof args.runId === "string" && /^[a-zA-Z0-9-]{8,64}$/.test(args.runId) ? args.runId : undefined;
   const res = await engine.run(wf, {
     trigger: args.trigger as string | undefined,
     input: (args.input as Record<string, unknown>) ?? {},
     params: (args.params as Record<string, unknown>) ?? {},
     sampleIo: true,
+    runId,
   });
   return {
     ok: true,
@@ -431,6 +465,8 @@ export const adminOps: OpDefinition[] = [
   systemMapOp,
   systemStatsOp,
   systemBenchOp,
+  settingsGet,
+  settingsSet,
   uiManifest,
   invokeOp,
   runOp,

@@ -113,6 +113,9 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Opt into bounded, masked per-node I/O sampling on spans (admin-spec T1). */
   sampleIo?: boolean;
+  /** Caller-chosen run id — lets the caller cancel/pause a run it just
+   *  started without waiting for the result (see RunRequest.runId). */
+  runId?: string;
 }
 
 export class Engine {
@@ -493,6 +496,8 @@ export class Engine {
       opts.signal,
       opts.params,
       opts.sampleIo,
+      undefined,
+      opts.runId,
     );
   }
 
@@ -506,8 +511,9 @@ export class Engine {
     params?: Record<string, unknown>,
     sampleIo?: boolean,
     hookDepth?: number,
+    runId?: string,
   ): Promise<RunResult> {
-    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth });
+    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, runId });
     // Track every in-flight run (whatever the entry path) so the admin can
     // cancel / pause it by runId while it executes.
     this.inflightRuns.set(handle.runId, handle);

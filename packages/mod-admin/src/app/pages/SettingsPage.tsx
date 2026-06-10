@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import { sfx } from "../lib/sfx";
@@ -34,6 +34,91 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; Icon: typeof Sun }[] = [
   { mode: "dark", label: "Dark", Icon: Moon },
   { mode: "auto", label: "Auto", Icon: SunMoon },
 ];
+
+interface ObservabilityConfig {
+  capacity: number;
+  exclude: string | null;
+}
+
+/** Server-side knobs: run retention + workflow-id exclusion regex. */
+function ObservabilitySection({ flash }: { flash: (text: string) => void }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.settings.get<{ observability: ObservabilityConfig }>() });
+  const [capacity, setCapacity] = useState<number | null>(null);
+  const [exclude, setExclude] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Adopt server values once loaded (local edits win until saved).
+  useEffect(() => {
+    if (data && capacity === null && exclude === null) {
+      setCapacity(data.observability.capacity);
+      setExclude(data.observability.exclude ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const dirty = data && (capacity !== data.observability.capacity || (exclude || null) !== (data.observability.exclude || null));
+
+  const save = async () => {
+    setError(null);
+    // Validate the regex client-side first for an instant, friendly message.
+    if (exclude) {
+      try {
+        new RegExp(exclude);
+      } catch (err) {
+        setError(`Invalid regex: ${err instanceof Error ? err.message : String(err)}`);
+        sfx.play("invalid");
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      await api.settings.set({ observability: { capacity, exclude: exclude || null } });
+      await qc.invalidateQueries({ queryKey: ["admin-settings"] });
+      flash("Observability settings applied (and persisted with the workflow store).");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      sfx.play("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section
+      title="Observability (server)"
+      hint="Applies to the running process immediately and persists with the workflow store. Excluded runs are neither retained nor live-tailed."
+    >
+      <Row label="Runs retained in memory">
+        <input
+          type="number" min={10} max={10000} value={capacity ?? ""}
+          onChange={(e) => setCapacity(Number(e.target.value))}
+          className="glass w-24 rounded px-2 py-1 text-right font-mono text-xs outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+          aria-label="Run retention"
+        />
+      </Row>
+      <Row label="Exclude runs whose workflow id matches (regex)">
+        <input
+          value={exclude ?? ""}
+          onChange={(e) => setExclude(e.target.value)}
+          placeholder="^admin\."
+          className="glass w-48 rounded px-2 py-1 font-mono text-xs outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+          aria-label="Exclusion regex"
+        />
+      </Row>
+      {error && <p className="text-xs text-[var(--color-neon-pink)]">{error}</p>}
+      <Row label="">
+        <NeonButton onClick={() => void save()} disabled={!dirty || saving}>
+          {saving ? "Applying…" : "Apply"}
+        </NeonButton>
+      </Row>
+      <p className="text-muted text-[11px]">
+        Tip: <code className="font-mono">^admin\.</code> silences the admin's own API runs — the Runs page stops
+        narrating itself and retention is spent on YOUR workflows.
+      </p>
+    </Section>
+  );
+}
 
 export function SettingsPage() {
   const { mode, set } = useTheme();
@@ -148,6 +233,8 @@ export function SettingsPage() {
             </NeonButton>
           </Row>
         </Section>
+
+        <ObservabilitySection flash={flash} />
 
         <Section title="Runtime" hint="Read-only — these belong to the host process, not this browser.">
           <Row label="Node">

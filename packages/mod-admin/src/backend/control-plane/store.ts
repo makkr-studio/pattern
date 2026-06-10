@@ -268,6 +268,26 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     await this.fs.deleteFile(this.fixturePath(slug, name));
   }
 
+  // ── Admin-wide settings blob (not slug-scoped; "_" can't start a slug) ──
+
+  private adminConfigPath(): string {
+    return `${this.prefix}/_admin-config.json`;
+  }
+
+  async getAdminConfig(): Promise<Record<string, unknown> | null> {
+    const text = await this.readText(this.adminConfigPath());
+    if (text == null) return null;
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return null; // corrupt blob: behave like never-saved rather than crash
+    }
+  }
+
+  async saveAdminConfig(cfg: Record<string, unknown>): Promise<void> {
+    await this.fs.write(this.adminConfigPath(), `${JSON.stringify(cfg, null, 2)}\n`);
+  }
+
   private async requireMeta(slug: string): Promise<WorkflowMeta> {
     const meta = await this.getMeta(slug);
     if (!meta) throw new Error(`workflow "${slug}" not found`);
