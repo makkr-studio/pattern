@@ -17,8 +17,11 @@ apply it per element (the sub-workflow receives `{ item, index }` — `reduce` a
 
 See [authoring-ops.md](./authoring-ops.md) to add your own.
 
-_Auto-generated from the registry — 160 ops (`boundary.http.app` serves a static
-asset bundle; see [admin-prereqs.md](./admin-prereqs.md))._
+_Auto-generated from the registry — 162 ops. Boundaries come in **pairs**: every
+trigger names its out-gate partner (and vice versa) and editors create/delete
+them together. The app trio (`boundary.http.app` → `core.app.static` →
+`boundary.http.app.serve`) serves a static asset bundle; see
+[admin-prereqs.md](./admin-prereqs.md)._
 
 ### boundary
 
@@ -29,7 +32,8 @@ asset bundle; see [admin-prereqs.md](./admin-prereqs.md))._
 | `boundary.event` | — | ◆payload | — |
 | `boundary.hook` | — | ◆payload | — |
 | `boundary.hook.return` | ◆payload ◆stop | — | — |
-| `boundary.http.app` | — | — | — |
+| `boundary.http.app` | — | ◆mount | — |
+| `boundary.http.app.serve` | ◆app | — | — |
 | `boundary.http.request` | — | ◆method ◆url ◆path ◆headers ◆query ◆params ◆body | — |
 | `boundary.http.response` | ◆status ◆headers ◆body ≋stream | — | — |
 | `boundary.manual` | — | ◆value | — |
@@ -40,6 +44,12 @@ asset bundle; see [admin-prereqs.md](./admin-prereqs.md))._
 | `boundary.ws.message` | — | ◆message ◆connection ◆room | — |
 | `boundary.ws.open` | — | ◆connection | — |
 | `boundary.ws.send` | ◆message ≋stream | — | — |
+
+### core.app
+
+| Op | In | Out | Control-out |
+|----|----|----|----|
+| `core.app.static` | — | ◆app | — |
 
 ### core.array
 

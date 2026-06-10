@@ -39,13 +39,23 @@ const cp = ctx.services.adminControlPlane as ControlPlane;
 ### App boundary + filesystems
 
 ```jsonc
-// a workflow that serves an SPA — one node, no graph
+// a workflow that serves an SPA — the canonical boundary pair + an app op:
+// the trigger says WHERE (mount/port/cors/auth), the app op says WHAT
+// (filesystem + serving hints), the serve out-gate hands it to the host.
 { "id": "admin-ui", "nodes": [
-  { "id": "app", "op": "boundary.http.app",
-    "config": { "mount": "/admin", "filesystem": "admin-assets",
-                "spaFallback": "index.html", "immutableAssets": true } }
-], "edges": [] }
+  { "id": "mount",  "op": "boundary.http.app", "config": { "mount": "/admin" } },
+  { "id": "assets", "op": "core.app.static",
+    "config": { "filesystem": "admin-assets",
+                "spaFallback": "index.html", "immutableAssets": true } },
+  { "id": "serve",  "op": "boundary.http.app.serve" }
+], "edges": [
+  { "from": { "node": "mount",  "port": "out" }, "to": { "node": "assets", "port": "in"  } },
+  { "from": { "node": "assets", "port": "app" }, "to": { "node": "serve",  "port": "app" } }
+] }
 ```
+
+The host resolves each app mount by **running the workflow once at
+registration** — the run shows up in the admin's runs list like any other.
 
 ```ts
 import { provideFilesystem, LocalFilesystem } from "@pattern/runtime-node";

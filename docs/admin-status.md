@@ -111,8 +111,10 @@ A four-reviewer audit of the whole repo was triaged and fixed in one pass:
 - **Worker pool**: `sampleIo` crosses the seam; crashed workers respawn in place
   (in-flight runs reject, `inflight` resets); `mods: [...]` option loads mod ops
   in workers; error-path runs always post `done`.
-- **Hook recursion guard** is per-call-chain (`AsyncLocalStorage`), so concurrent
-  invocations can't trip it spuriously.
+- **Hook recursion guard** is per-call-chain — depth is threaded *explicitly*
+  (`invoke(name, payload, depth)` → `RunRequest.hookDepth`), so concurrent
+  invocations can't trip it spuriously and the guard survives the worker seam
+  (core stays runtime-neutral: no `AsyncLocalStorage`).
 - **`HttpHost.rebuild()` serialized** (burst workflow changes can't race
   `openServer` into EADDRINUSE); buffered bodies capped (413, default 10 MiB).
 - **Store writes per slug are queued** — concurrent saves can't mint duplicate
@@ -121,3 +123,35 @@ A four-reviewer audit of the whole repo was triaged and fixed in one pass:
   closes its connection on toggle/unmount; JSON config fields are controlled with
   a visible invalid state; tooltips flip at the viewport bottom; dialogs have
   roles/Escape/focus handling.
+
+## Boundary pairs + editor UX pass (2026-06-10)
+
+**Engine — boundaries come in pairs (§7).** Every boundary op now names its
+canonical partner via `OpDefinition.pair` (trigger ↔ out-gate, no exceptions;
+event/schedule/ws.close pair with the generic `boundary.return`).
+`boundary.http.app` was redesigned into the trio it always wanted to be:
+the **trigger** declares the HTTP side (mount/port/cors/auth, with
+mount/port as config-input ports), an **app op** produces the app object
+(`core.app.static` generically; `admin.app` is the admin's own SPA as a node),
+and the **`boundary.http.app.serve` out-gate** receives it. The HTTP host
+resolves each app *by running the workflow once at registration* — the mount is
+computed by the graph itself, and that run is visible in the runs list.
+Schedule/event/hook triggers also gained config-input ports (cron/intervalMs,
+event, hook/priority). `workflow.get` returns `latestDoc` so an undeployed save
+reopens on its newest version.
+
+**Editor.** Palette is drag-and-drop (fuzzy search + by-mod filter, scrolls
+independently); dropping a boundary op brings its partner, and pairs are
+deleted together (`ui.pair` persists the link). Nodes show the implicit control
+run ports (run-after on top, run-then on the bottom), config-input ports as
+square handles, and data-typed port colors with hover tooltips; connections
+refuse incompatible kinds/types live (and the server assist understands
+implicit control ports). Edges are fluid beziers, thicken on hover, and glow
+when selected. Workflow JSON imports/exports from the toolbar.
+
+**Chrome.** A real Pattern logo (a "P" drawn as a graph, port-colored nodes)
+plus a matching SVG favicon; fuzzy search + mod filters on the ops/workflow
+catalogs; and a zero-asset WebAudio soundboard across the whole admin (clicks,
+connect snaps, add/delete, save chime, deploy arpeggio, run/ok/error, undo/redo,
+modals) with a mute toggle in the shell — rises mean creation, falls mean
+removal, buzzes mean refusal. All verified live in Chrome.
