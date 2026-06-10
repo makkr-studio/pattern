@@ -65,6 +65,34 @@ export class NodeExecutionError extends Error {
   }
 }
 
+/** One mismatch between a trigger's declared schema and the seeded run input. */
+export interface TriggerInputIssue {
+  /** The trigger output port the value was seeded into (e.g. "body"). */
+  port: string;
+  /** Dotted path inside the value (from Zod). */
+  path: string;
+  message: string;
+}
+
+/**
+ * Raised when a run's external input fails the trigger's declared validation
+ * schemas (§7) — e.g. an http.request body schema. Enforced by the engine when
+ * seeding trigger outputs, so it holds for every entry path (hosts, editor
+ * runs, ctx.invoke), not just routes the HTTP host fronts.
+ */
+export class TriggerInputError extends Error {
+  readonly triggerNodeId: string;
+  readonly issues: TriggerInputIssue[];
+
+  constructor(triggerNodeId: string, issues: TriggerInputIssue[]) {
+    const detail = issues.map((i) => `${i.port}${i.path ? `.${i.path}` : ""} — ${i.message}`).join("; ");
+    super(`invalid trigger input: ${detail}`);
+    this.name = "TriggerInputError";
+    this.triggerNodeId = triggerNodeId;
+    this.issues = issues;
+  }
+}
+
 /** Raised by `core.flow.throw` / `core.flow.assert` and surfaced to an enclosing `try`. */
 export class WorkflowError extends Error {
   readonly data?: unknown;

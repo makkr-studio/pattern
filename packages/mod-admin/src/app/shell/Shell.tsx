@@ -6,7 +6,7 @@ import { useManifest } from "../lib/queries";
 import { useTheme } from "../lib/theme";
 import { sfx } from "../lib/sfx";
 import { Icon } from "../components/icon";
-import { Sun, Moon, Search, Volume2, VolumeX, PanelLeftClose, PanelLeftOpen } from "../components/icon";
+import { Sun, Moon, SunMoon, Search, Volume2, VolumeX, PanelLeftClose, PanelLeftOpen } from "../components/icon";
 import { PatternLogo } from "../components/logo";
 import { CommandPalette, useCommandHotkey } from "./CommandPalette";
 import { TooltipHost, tip } from "../components/Tooltip";
@@ -22,6 +22,9 @@ const FALLBACK_MENU: MenuEntry[] = [
 ];
 
 const SIDEBAR_KEY = "pattern.admin.sidebar";
+
+const THEME_LABEL = { light: "Light", dark: "Dark", auto: "Auto" } as const;
+const THEME_NEXT = { light: "dark", dark: "auto", auto: "light" } as const;
 
 export function Shell() {
   const { data: manifest } = useManifest();
@@ -124,7 +127,8 @@ export function Shell() {
           ))}
         </nav>
 
-        {/* Footer toggles: sound + theme (both advertise what they switch TO). */}
+        {/* Footer toggles. Sound advertises what it switches TO; the theme
+            button shows the CURRENT mode and cycles light → dark → auto. */}
         <div className={`mt-4 flex gap-2 ${collapsed ? "flex-col" : ""}`}>
           <button
             type="button"
@@ -147,12 +151,12 @@ export function Shell() {
               sfx.play("toggle");
               toggle();
             }}
-            aria-label={mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            {...tip(mode === "dark" ? "Light theme" : "Dark theme")}
+            aria-label={`Theme: ${mode} — switch to ${THEME_NEXT[mode]}`}
+            {...tip(`Theme: ${THEME_LABEL[mode]}${mode === "auto" ? " (follows the system)" : ""} — click for ${THEME_LABEL[THEME_NEXT[mode]]}`)}
             className={`glass text-muted flex flex-1 items-center justify-center rounded-xl text-sm hover:bg-white/5 ${collapsed ? "p-2" : "gap-2 px-3 py-2"}`}
           >
-            {mode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-            {!collapsed && <span>{mode === "dark" ? "Light" : "Dark"}</span>}
+            {mode === "light" ? <Sun size={14} /> : mode === "dark" ? <Moon size={14} /> : <SunMoon size={14} />}
+            {!collapsed && <span>{THEME_LABEL[mode]}</span>}
           </button>
         </div>
       </aside>

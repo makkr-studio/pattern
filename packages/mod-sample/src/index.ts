@@ -29,6 +29,52 @@ const greetingsList: OpDefinition = {
   execute: async () => ({ out: greetings }),
 };
 
+/** Deliberately CPU-bound (naive fibonacci) — a fat bar for the span waterfall. */
+const crunch: OpDefinition = {
+  type: "sample.crunch",
+  title: "sample.crunch",
+  description:
+    "Burns CPU on purpose: computes fibonacci(n) the naive recursive way (~hundreds of ms at n=36). " +
+    "Exists to put a visibly long node span on the Runs waterfall. Outputs { out, tookMs }.",
+  inputs: { n: value(z.number()) },
+  outputs: { out: value(z.number()), tookMs: value(z.number()) },
+  config: z.object({ n: z.number().int().min(1).max(40).default(36) }),
+  execute: async (ctx) => {
+    const n = (await ctx.input.value<number>("n")) ?? (ctx.config as { n: number }).n;
+    const fib = (k: number): number => (k < 2 ? k : fib(k - 1) + fib(k - 2));
+    const start = performance.now();
+    const out = fib(n);
+    return { out, tookMs: Math.round(performance.now() - start) };
+  },
+};
+
+/**
+ * The replay showcase: idle wait → CPU burn. On the Runs waterfall the delay
+ * node renders as a long bar that starts at t=0, the crunch as a fat bar that
+ * only begins after it — start offset vs duration, in one glance.
+ */
+const replayShowcase: Workflow = {
+  id: "sample.replay",
+  name: "Sample · Replay showcase",
+  description: "Run me, then open Runs: an 800ms await followed by a CPU-heavy fibonacci. The waterfall + graph replay tell the story.",
+  nodes: [
+    {
+      id: "go",
+      op: "boundary.manual",
+      config: { outputs: ["n"] },
+      ui: { x: 60, y: 80, pair: "done", comment: "Run from the editor ▶ — `n` is the fibonacci index (default 36 if empty)." },
+    },
+    { id: "wait", op: "core.time.delay", config: { ms: 800 }, ui: { x: 340, y: 80, comment: "Awaits 800ms — an **idle** span: long bar, no CPU." } },
+    { id: "fib", op: "sample.crunch", ui: { x: 620, y: 80, comment: "Naive fibonacci — a **busy** span: the CPU-bound bar." } },
+    { id: "done", op: "boundary.return", ui: { x: 900, y: 80, pair: "go" } },
+  ],
+  edges: [
+    { from: { node: "go", port: "n" }, to: { node: "wait", port: "value" } },
+    { from: { node: "wait", port: "out" }, to: { node: "fib", port: "n" } },
+    { from: { node: "fib", port: "out" }, to: { node: "done", port: "value" } },
+  ],
+};
+
 /** A plain ESM Tier-2 remote: default-exports a component using the admin's
  *  shared React, API client, and glass UI kit (no bundler needed; deps come
  *  from `window.__PATTERN_ADMIN__` — typed as `PatternAdminGlobal` in the SDK). */
@@ -76,8 +122,8 @@ const appMount: Workflow = {
 
 export default defineMod({
   name: "@pattern/mod-sample",
-  ops: [greetingsList],
-  workflows: [appMount],
+  ops: [greetingsList, crunch],
+  workflows: [appMount, replayShowcase],
   frontend: {
     menu: [
       { category: "Examples", label: "Greetings", icon: "boxes", path: "/x/greetings", order: 10 },

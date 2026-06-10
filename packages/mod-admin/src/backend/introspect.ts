@@ -153,23 +153,31 @@ export function modList(engine: Engine): ModInfo[] {
  * engine-registered workflow not in the store, synthesized as `source: "code"`.
  * Code workflows are read-only/forkable; file workflows are authorable.
  */
-export async function catalog(engine: Engine, store: WorkflowStore): Promise<WorkflowMeta[]> {
+export async function catalog(engine: Engine, store: WorkflowStore, parkedCode?: Map<string, Workflow>): Promise<WorkflowMeta[]> {
   const metas = await store.list();
   const known = new Set(metas.map((m) => m.slug));
+  const codeMeta = (wf: Workflow, enabled: boolean): WorkflowMeta => ({
+    slug: wf.id,
+    name: wf.name ?? wf.id,
+    description: wf.description,
+    source: "code",
+    enabled,
+    live: enabled ? "code" : null,
+    route: extractRoute(wf),
+    tags: wf.tags,
+    versions: [{ id: "code", hash: "code", createdAt: "" }],
+    audit: [],
+  });
   for (const wf of engine.workflows.list()) {
     if (known.has(wf.id)) continue;
-    metas.push({
-      slug: wf.id,
-      name: wf.name ?? wf.id,
-      description: wf.description,
-      source: "code",
-      enabled: true,
-      live: "code",
-      route: extractRoute(wf),
-      tags: wf.tags,
-      versions: [{ id: "code", hash: "code", createdAt: "" }],
-      audit: [],
-    });
+    known.add(wf.id);
+    metas.push(codeMeta(wf, true));
+  }
+  // Undeployed (parked) code workflows stay in the catalog, shown disabled.
+  for (const wf of parkedCode?.values() ?? []) {
+    if (known.has(wf.id)) continue;
+    known.add(wf.id);
+    metas.push(codeMeta(wf, false));
   }
   metas.sort((a, b) => a.slug.localeCompare(b.slug));
   return metas;

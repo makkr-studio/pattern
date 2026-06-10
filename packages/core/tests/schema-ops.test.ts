@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, TriggerInputError, type Workflow } from "@pattern/core";
 
 describe("core.schema.* — schemas as values (§12)", () => {
   it("core.schema.validate checks a value against a configured schema", async () => {
@@ -76,5 +76,54 @@ describe("core.schema.* — schemas as values (§12)", () => {
       required: ["name"],
     });
     expect(stored.edges.some((e) => e.to.node === "in" && e.to.port === "body")).toBe(false);
+  });
+
+  it("the ENGINE refuses runs whose seeded input fails the trigger's declared schemas", async () => {
+    // No host in sight: a direct engine.run (the editor's Run panel path) must
+    // fail when the body doesn't satisfy the schema the trigger declares.
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "engine-enforces",
+      nodes: [
+        {
+          id: "in",
+          op: "boundary.http.request",
+          config: {
+            method: "POST",
+            path: "/users/:id",
+            body: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+            params: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+          },
+        },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [{ from: { node: "in", port: "body" }, to: { node: "out", port: "body" } }],
+    };
+    engine.registerWorkflow(wf);
+
+    const seed = (body: unknown, params: Record<string, string>) => ({
+      input: { method: "POST", url: "/users/7", path: "/users/7", headers: {}, query: {}, params, body },
+    });
+
+    const bad = await engine.run("engine-enforces", seed({ name: 42 }, { id: "7" }));
+    expect(bad.status).toBe("error");
+    expect(bad.error).toBeInstanceOf(TriggerInputError);
+    expect((bad.error as TriggerInputError).issues).toEqual([
+      { port: "body", path: "name", message: expect.stringContaining("expected string") },
+    ]);
+
+    // Missing body entirely must fail too — the schema requires an object.
+    const empty = await engine.run("engine-enforces", seed(undefined, { id: "7" }));
+    expect(empty.status).toBe("error");
+    expect(empty.error).toBeInstanceOf(TriggerInputError);
+
+    // Params are URL strings: the params schema coerces "7" → 7.
+    const ok = await engine.run("engine-enforces", seed({ name: "ada" }, { id: "7" }));
+    expect(ok.status).toBe("ok");
+    expect(Object.values(ok.outputs)[0]).toMatchObject({ body: { name: "ada" } });
+
+    const badParam = await engine.run("engine-enforces", seed({ name: "ada" }, { id: "seven" }));
+    expect(badParam.status).toBe("error");
+    expect((badParam.error as TriggerInputError).issues[0]!.port).toBe("params");
   });
 });

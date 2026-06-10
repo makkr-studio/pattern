@@ -73,6 +73,7 @@ interface CompiledRoute {
   cors?: CorsPolicy;
   bodySchema?: z.ZodType;
   querySchema?: z.ZodType;
+  paramsSchema?: z.ZodType;
   requireAuth?: unknown;
 }
 
@@ -248,6 +249,7 @@ export class HttpHost {
           cors: normalizeCors(cfg.cors),
           bodySchema: cfg.body ? jsonSchemaToZod(cfg.body as any) : undefined,
           querySchema: cfg.query ? jsonSchemaToZod(cfg.query as any, { coerce: true }) : undefined,
+          paramsSchema: cfg.params ? jsonSchemaToZod(cfg.params as any, { coerce: true }) : undefined,
           requireAuth: cfg.requireAuth,
         });
       }
@@ -381,9 +383,15 @@ export class HttpHost {
       return;
     }
 
-    // ── Validate query & body against the declared JSON Schemas (§7) ──
+    // ── Validate params, query & body against the declared JSON Schemas (§7) ──
     const headersObj: Record<string, string> = {};
     headers.forEach((v, k) => (headersObj[k] = v));
+    let routeParams: unknown = params;
+    if (route.paramsSchema) {
+      const parsed = route.paramsSchema.safeParse(routeParams);
+      if (!parsed.success) return badRequest(res, "params", parsed.error);
+      routeParams = parsed.data;
+    }
     let query: unknown = Object.fromEntries(url.searchParams.entries());
     if (route.querySchema) {
       const parsed = route.querySchema.safeParse(query);
@@ -417,7 +425,7 @@ export class HttpHost {
       path: url.pathname,
       headers: headersObj,
       query,
-      params,
+      params: routeParams,
       body,
     };
 

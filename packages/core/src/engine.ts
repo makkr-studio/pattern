@@ -232,6 +232,18 @@ export class Engine {
     return this.finishRegister(resolved, opts, secretPaths);
   }
 
+  /**
+   * Run the registration-time resolve phase on a doc WITHOUT registering it:
+   * `$env` references + boundary config ports (a `core.schema.define` wired into
+   * an http.request's `body`, etc.) are frozen into node config. For ephemeral
+   * runs of unregistered docs — e.g. the admin editor's Run panel — so they
+   * honor the exact semantics a deployed copy would.
+   */
+  async resolveWorkflowDoc(input: Workflow): Promise<Workflow> {
+    const { workflow } = resolveWorkflowEnvTracked(input, this.env);
+    return resolveBoundaryConfig(workflow, this.ops, this.resolveDeps());
+  }
+
   /** Validate, wire hooks/events, and store an already-resolved workflow. */
   private finishRegister(
     workflow: Workflow,

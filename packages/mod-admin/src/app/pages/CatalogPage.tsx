@@ -54,6 +54,7 @@ export function CatalogPage() {
   const setEnabled = useSetEnabled();
   const del = useDeleteWorkflow();
   const [confirmDelete, setConfirmDelete] = useState<WorkflowMeta | null>(null);
+  const [confirmUndeploy, setConfirmUndeploy] = useState<WorkflowMeta | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [modFilter, setModFilter] = useState("");
@@ -148,14 +149,15 @@ export function CatalogPage() {
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            if (w.source !== "code") setEnabled.mutate({ slug: w.slug, enabled: !w.enabled });
+            // Undeploying a code workflow can break running features — confirm.
+            if (w.source === "code" && w.enabled) setConfirmUndeploy(w);
+            else setEnabled.mutate({ slug: w.slug, enabled: !w.enabled }, { onSuccess: () => sfx.play(w.enabled ? "toggle" : "deploy") });
           }}
           className="flex items-center gap-2 text-sm"
-          disabled={w.source === "code"}
-          title={w.source === "code" ? "Code workflows are always live" : "Toggle"}
+          title={w.enabled ? "Undeploy — unregister its routes/schedules" : "Deploy it again"}
         >
           <Dot color={w.enabled ? "var(--color-neon-lime)" : "var(--color-port-control)"} pulse={w.enabled} />
-          {w.enabled ? "enabled" : "disabled"}
+          {w.enabled ? "deployed" : "undeployed"}
         </button>
       ),
     },
@@ -254,6 +256,40 @@ export function CatalogPage() {
       )}
 
       <TemplatePicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
+
+      {/* Undeploying a CODE workflow is the one spicy toggle: it can take down
+          features the mod relies on (admin API routes included). */}
+      <Modal open={confirmUndeploy !== null} onClose={() => setConfirmUndeploy(null)} title="Undeploy code workflow">
+        {confirmUndeploy && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              <span className="font-mono">{confirmUndeploy.slug}</span> is shipped by a mod. Undeploying unregisters it
+              immediately{confirmUndeploy.route ? <> — <span className="font-mono">{confirmUndeploy.route.method} {confirmUndeploy.route.path}</span> stops serving</> : null}.
+            </p>
+            <p className="text-sm text-[var(--color-neon-amber)]">
+              ⚠ Anything depending on it may break (admin pages and APIs included). You can re-deploy it here any time;
+              a server restart also brings it back.
+            </p>
+            <div className="flex justify-end gap-2">
+              <NeonButton variant="ghost" onClick={() => setConfirmUndeploy(null)}>
+                Cancel
+              </NeonButton>
+              <NeonButton
+                variant="danger"
+                disabled={setEnabled.isPending}
+                onClick={() => {
+                  setEnabled.mutate(
+                    { slug: confirmUndeploy.slug, enabled: false },
+                    { onSuccess: () => sfx.play("toggle"), onSettled: () => setConfirmUndeploy(null) },
+                  );
+                }}
+              >
+                Undeploy
+              </NeonButton>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Delete workflow">
         {confirmDelete && (

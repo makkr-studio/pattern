@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { OpInfo, PortInfo } from "@pattern/admin-sdk";
 import { useOps } from "../lib/queries";
 import { Badge, GlassPanel, GlowCard, JsonView, PageHeader, Spinner } from "../components/ui";
+import { categoryStyle } from "../lib/categories";
 import { portFill, portTypeLabel } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
@@ -90,24 +91,41 @@ export function OpsPage() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
+  // Landing on /ops/<type> (link, ⌘K, reload): bring the current op into view
+  // in the list, so the highlight is actually visible.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!type || !data) return;
+    const el = listRef.current?.querySelector(`[data-op-type="${CSS.escape(type)}"]`);
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [type, data]);
+
   if (isLoading) return <Spinner />;
   const selected = (data ?? []).find((o) => o.type === type);
 
-  const opCard = (op: OpInfo) => (
-    <GlowCard
-      key={op.type}
-      onClick={() => {
-        sfx.play("nav");
-        navigate(`/ops/${op.type}`);
-      }}
-      className={`px-3 py-2 ${op.type === type ? "ring-1 ring-[var(--color-neon-cyan)]" : ""}`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-sm">{op.type}</span>
-        <span className="text-muted shrink-0 text-xs">{op.usedBy}×</span>
-      </div>
-    </GlowCard>
-  );
+  const opCard = (op: OpInfo) => {
+    const current = op.type === type;
+    const accent = current ? categoryStyle(op.category).color : undefined;
+    return (
+      <GlowCard
+        key={op.type}
+        // The list scrolls the current op into view (see the effect above) —
+        // landing on /ops/<type> from anywhere finds it highlighted in place.
+        data-op-type={op.type}
+        onClick={() => {
+          sfx.play("nav");
+          navigate(`/ops/${op.type}`);
+        }}
+        className="px-3 py-2"
+        style={current ? { boxShadow: `inset 0 0 0 1.5px ${accent}, 0 0 12px color-mix(in srgb, ${accent} 30%, transparent)` } : undefined}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate font-mono text-sm" style={current ? { color: accent } : undefined}>{op.type}</span>
+          <span className="text-muted shrink-0 text-xs">{op.usedBy}×</span>
+        </div>
+      </GlowCard>
+    );
+  };
 
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col">
@@ -146,7 +164,7 @@ export function OpsPage() {
             </select>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 pb-4">
+          <div ref={listRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 pb-4">
             {filtered.length === 0 && <GlassPanel className="text-muted p-8 text-center text-sm">No ops match.</GlassPanel>}
             {searching ? (
               // Ranked flat list while searching (best match first).

@@ -67,22 +67,26 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
   const hasControlOut = !data.outputs.some((p) => p.name === CONTROL_OUT);
   const controlSpec: PortInfo = { name: CONTROL_IN, kind: "control" };
 
-  const borderColor = replay ? replay.color : selected ? "var(--color-neon-cyan)" : accent;
+  // Selection emphasizes the node's OWN accent (brighter, with a light glow) —
+  // not a one-color-fits-all highlight. Replay states still take precedence.
+  const emphasized = `color-mix(in srgb, ${accent} 55%, white)`;
+  const borderColor = replay ? replay.color : selected ? emphasized : accent;
+  const borderWidth = replay || selected ? 2 : 1;
 
-  /** The run tabs grow out of the node frame: same surface, same border, a
-   *  control-grey dot in the middle — a notch, not a floating pill. Position
-   *  is pinned explicitly (xyflow's default handle transform centers on the
-   *  edge, which would float the tab off the frame); 1px overlaps the node
-   *  border so the two read as one piece. */
+  /** The run tabs grow out of the node frame: same border, no border on the
+   *  node-facing side (the mouth is open into the frame), an opaque surface
+   *  overlapping the node border by exactly its width so no line crosses the
+   *  mouth. Position is pinned explicitly (xyflow's default handle transform
+   *  centers on the edge, which would float the tab off the frame). */
   const runTab = (side: "top" | "bottom"): React.CSSProperties => ({
     width: 26,
-    height: 10,
-    [side]: -9,
+    height: 11,
+    [side]: -(11 - borderWidth),
     left: "50%",
     transform: "translateX(-50%)",
     borderRadius: side === "top" ? "7px 7px 0 0" : "0 0 7px 7px",
-    background: "var(--node-surface)",
-    border: `1px solid ${borderColor}`,
+    background: "var(--notch-surface)",
+    border: `${borderWidth}px solid ${borderColor}`,
     [side === "top" ? "borderBottom" : "borderTop"]: "none",
     display: "flex",
     alignItems: "center",
@@ -97,9 +101,14 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
         width: 196,
         minHeight: height,
         borderColor,
-        borderWidth: replay || selected ? 2 : 1,
+        borderWidth,
         opacity: replay?.dim ? 0.45 : 1,
-        boxShadow: replay && !replay.dim ? `0 0 18px ${replay.color}55` : undefined,
+        boxShadow:
+          replay && !replay.dim
+            ? `0 0 18px ${replay.color}55`
+            : selected
+              ? `var(--glass-shadow), 0 0 16px color-mix(in srgb, ${accent} 45%, transparent)`
+              : undefined,
       }}
     >
       {/* run-after: the implicit control-in (§2) — chain ops without data */}
