@@ -4,8 +4,10 @@ import { motion } from "motion/react";
 import { buildNav, type MenuEntry } from "@pattern/admin-sdk";
 import { useManifest } from "../lib/queries";
 import { useTheme } from "../lib/theme";
+import { sfx } from "../lib/sfx";
 import { Icon } from "../components/icon";
-import { Sun, Moon, Search } from "../components/icon";
+import { Sun, Moon, Search, Volume2, VolumeX } from "../components/icon";
+import { PatternLogo } from "../components/logo";
 import { CommandPalette, useCommandHotkey } from "./CommandPalette";
 import { TooltipHost } from "../components/Tooltip";
 
@@ -23,23 +25,28 @@ export function Shell() {
   const { data: manifest } = useManifest();
   const { mode, toggle } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sfxMuted, setSfxMuted] = useState(sfx.muted());
   const location = useLocation();
-  useCommandHotkey(() => setPaletteOpen(true));
+  useCommandHotkey(() => {
+    sfx.play("open");
+    setPaletteOpen(true);
+  });
   const sections = buildNav(manifest?.menu?.length ? manifest.menu : FALLBACK_MENU);
 
   return (
     <div className="flex h-full">
       {/* Sidebar */}
       <aside className="glass m-3 flex w-60 shrink-0 flex-col rounded-2xl p-4">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[var(--color-neon-cyan)] to-[var(--color-neon-violet)] font-bold text-black">
-            P
-          </div>
+        <div className="mb-6 flex items-center gap-2.5 px-2">
+          <PatternLogo size={30} />
           <span className="text-lg font-semibold tracking-tight">Pattern</span>
         </div>
 
         <button
-          onClick={() => setPaletteOpen(true)}
+          onClick={() => {
+            sfx.play("open");
+            setPaletteOpen(true);
+          }}
           className="glass text-muted mb-5 flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
         >
           <Search size={14} />
@@ -57,6 +64,7 @@ export function Shell() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  onClick={() => sfx.play("nav")}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
                       isActive ? "bg-white/10 text-[var(--fg)]" : "text-muted hover:bg-white/5 hover:text-[var(--fg)]"
@@ -75,16 +83,36 @@ export function Shell() {
           ))}
         </nav>
 
-        {/* The toggle advertises the mode it switches TO, not the current one. */}
-        <button
-          type="button"
-          onClick={toggle}
-          aria-label={mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          className="glass text-muted mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
-        >
-          {mode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-          <span>{mode === "dark" ? "Light" : "Dark"}</span>
-        </button>
+        {/* Footer toggles: sound + theme (both advertise what they switch TO). */}
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !sfxMuted;
+              sfx.setMuted(next);
+              setSfxMuted(next);
+              if (!next) sfx.play("toggle"); // audible confirmation on unmute
+            }}
+            aria-label={sfxMuted ? "Enable sound effects" : "Mute sound effects"}
+            title={sfxMuted ? "Enable sound effects" : "Mute sound effects"}
+            className="glass text-muted flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
+          >
+            {sfxMuted ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            <span>{sfxMuted ? "Sound" : "Mute"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              sfx.play("toggle");
+              toggle();
+            }}
+            aria-label={mode === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            className="glass text-muted flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
+          >
+            {mode === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+            <span>{mode === "dark" ? "Light" : "Dark"}</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main */}

@@ -23,6 +23,14 @@
   --color-port-stream: #a78bfa;
   --color-port-control: #94a3b8;
 
+  /* Port data types — value ports are colored by what flows through them. */
+  --color-type-string: #fbbf24;
+  --color-type-number: #38bdf8;
+  --color-type-boolean: #a3e635;
+  --color-type-object: #22d3ee;
+  --color-type-array: #2dd4bf;
+  --color-type-any: #e2e8f0;
+
   --radius-glass: 16px;
 }
 
@@ -156,6 +164,23 @@ body {
 }
 .react-flow__attribution {
   display: none;
+}
+
+/* Edges: fatter hit feedback on hover, unmistakable glow when selected. */
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge.selectable.selected .react-flow__edge-path {
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.55));
+}
+
+/* Connection-in-progress line matches the edge language. */
+.react-flow__connectionline path {
+  stroke: var(--color-neon-cyan);
+  stroke-width: 2.5;
+  stroke-dasharray: 6 4;
 }
 
 @media (prefers-reduced-motion: reduce) {

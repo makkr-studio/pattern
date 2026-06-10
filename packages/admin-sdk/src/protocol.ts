@@ -248,6 +248,8 @@ export interface SystemMap {
 export interface WorkflowGetResult {
   meta: WorkflowMeta | null;
   liveDoc: WorkflowDoc | null;
+  /** Newest saved version — what the editor opens (≥ liveDoc; null when none). */
+  latestDoc?: WorkflowDoc | null;
   safeConfigs?: Record<string, unknown>;
 }
 

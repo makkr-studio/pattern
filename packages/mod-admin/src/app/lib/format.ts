@@ -27,6 +27,47 @@ export function portColor(kind: PortInfo["kind"]): string {
       : "var(--color-port-control)";
 }
 
+/** The primary JSON-Schema type carried by a port ("any" when untyped). */
+export function schemaTypeOf(schema: unknown): string {
+  if (!schema || typeof schema !== "object") return "any";
+  const s = schema as { type?: string | string[]; anyOf?: unknown[]; enum?: unknown[] };
+  if (s.enum) return "enum";
+  const t = Array.isArray(s.type) ? s.type[0] : s.type;
+  if (t === "integer") return "number";
+  if (typeof t === "string") return t;
+  if (s.anyOf) return "union";
+  return "any";
+}
+
+/** Data-type colors for port dots — one hue per JSON type, shared everywhere. */
+const TYPE_COLORS: Record<string, string> = {
+  string: "var(--color-type-string)",
+  number: "var(--color-type-number)",
+  boolean: "var(--color-type-boolean)",
+  object: "var(--color-type-object)",
+  array: "var(--color-type-array)",
+  enum: "var(--color-type-string)",
+  union: "var(--color-type-any)",
+  null: "var(--color-port-control)",
+  any: "var(--color-type-any)",
+};
+
+/**
+ * The color of one specific port: control = grey, stream = violet (the kind is
+ * the headline for streams), value = colored by its data type.
+ */
+export function portFill(p: Pick<PortInfo, "kind" | "schema">): string {
+  if (p.kind === "control") return "var(--color-port-control)";
+  if (p.kind === "stream") return "var(--color-port-stream)";
+  return TYPE_COLORS[schemaTypeOf(p.schema)] ?? "var(--color-type-any)";
+}
+
+/** A short human type label for a port ("value<string>", "stream<any>", "control"). */
+export function portTypeLabel(p: Pick<PortInfo, "kind" | "schema">): string {
+  if (p.kind === "control") return "control";
+  return `${p.kind}<${schemaTypeOf(p.schema)}>`;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   ok: "var(--color-neon-lime)",
   error: "var(--color-neon-pink)",

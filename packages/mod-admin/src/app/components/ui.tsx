@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes } from "react";
 import { motion } from "motion/react";
 import { hashHue } from "../lib/format";
+import { sfx } from "../lib/sfx";
 
 /** A frosted glass surface. The core surface language (mod-admin-spec §14). */
 export function GlassPanel({ className = "", children, ...rest }: HTMLAttributes<HTMLDivElement>) {
@@ -29,6 +30,7 @@ export function NeonButton({
   className = "",
   variant = "solid",
   children,
+  onClick,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "solid" | "ghost" | "danger" }) {
   const base =
@@ -40,7 +42,14 @@ export function NeonButton({
     danger: "text-white bg-[var(--color-neon-pink)] hover:shadow-[0_0_24px_rgba(244,114,182,0.5)]",
   }[variant];
   return (
-    <button className={`${base} ${styles} ${className}`} {...rest}>
+    <button
+      className={`${base} ${styles} ${className}`}
+      onClick={(e) => {
+        sfx.play("click");
+        onClick?.(e);
+      }}
+      {...rest}
+    >
       {children}
     </button>
   );
@@ -154,6 +163,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   // Escape closes; focus moves into the dialog and returns on close.
   useEffect(() => {
     if (!open) return;
+    sfx.play("open");
     restoreRef.current = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -161,6 +171,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     };
     window.addEventListener("keydown", onKey);
     return () => {
+      sfx.play("close");
       window.removeEventListener("keydown", onKey);
       restoreRef.current?.focus?.();
     };

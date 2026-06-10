@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ReactFlow,
@@ -13,21 +13,38 @@ import {
   type Connection,
   type Edge as RFEdge,
   type Node as RFNode,
+  type OnBeforeDelete,
 } from "@xyflow/react";
 import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useDeploy, useOps, useSaveWorkflow, useWorkflow } from "../lib/queries";
 import { OpNode } from "../editor/OpNode";
 import { RunPanel } from "../editor/RunPanel";
-import { buildFlow, edgeStyle, outputKind, toDoc, type OpMap, type OpNodeData } from "../editor/graph";
+import {
+  buildFlow,
+  edgeStyle,
+  outputKind,
+  portOnNode,
+  toDoc,
+  CONTROL_IN,
+  CONTROL_OUT,
+  type OpMap,
+  type OpNodeData,
+} from "../editor/graph";
 import { Badge, GlassPanel, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson } from "../components/FormFromSchema";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
-import { Rocket, Play, Redo2, Undo2 } from "../components/icon";
+import { Rocket, Play, Redo2, Undo2, Download, Upload, Search } from "../components/icon";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
+import { schemaTypeOf } from "../lib/format";
+import { fuzzyFilter } from "../lib/fuzzy";
+import { sfx } from "../lib/sfx";
 
 const nodeTypes = { op: OpNode };
+
+/** MIME type carrying an op across the palette→canvas drag. */
+const DND_TYPE = "application/x-pattern-op";
 
 function EditorInner() {
   const { slug } = useParams();
@@ -53,6 +70,7 @@ function EditorInner() {
   const [runOpen, setRunOpen] = useState(false);
   const baseDoc = useRef<WorkflowDoc>({ id: slug ?? "untitled", nodes: [], edges: [] });
   const loadedFor = useRef<string | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
 
   // ── Undo/redo (spec §15.12): a snapshot stack over the canvas. Snapshots are
   // taken *before* each structural mutation (add/connect/delete/drag/config
@@ -84,6 +102,7 @@ function EditorInner() {
     setNodes(prev.nodes);
     setEdges(prev.edges);
     setHistVersion((v) => v + 1);
+    sfx.play("undo");
   }, [takeSnap, setNodes, setEdges]);
   const redo = useCallback(() => {
     const next = history.current.future.pop();
@@ -92,6 +111,7 @@ function EditorInner() {
     setNodes(next.nodes);
     setEdges(next.edges);
     setHistVersion((v) => v + 1);
+    sfx.play("redo");
   }, [takeSnap, setNodes, setEdges]);
 
   // ⌘Z / ⌘⇧Z — skipped while a text field has focus (native undo wins there).
@@ -117,14 +137,45 @@ function EditorInner() {
     const key = slug ?? "__new__";
     if (loadedFor.current === key) return;
     loadedFor.current = key;
+    // Open the newest saved version (a save without a deploy must not present
+    // an empty canvas); fall back to the live doc, then template/blank.
     const doc: WorkflowDoc =
-      wfData?.liveDoc ?? (isNew && template ? template : { id: slug ?? "untitled", name: slug, nodes: [], edges: [] });
+      wfData?.latestDoc ?? wfData?.liveDoc ?? (isNew && template ? template : { id: slug ?? "untitled", name: slug, nodes: [], edges: [] });
     baseDoc.current = doc;
     history.current = { past: [], future: [] };
     const flow = buildFlow(doc, opMap);
     setNodes(flow.nodes);
     setEdges(flow.edges);
   }, [opMap, slug, wfData, isNew, template, setNodes, setEdges]);
+
+  // ── Connection rules: ports must agree on kind AND data type (T2). Checked
+  // live while dragging, so an incompatible port simply refuses the link.
+  const isValidConnection = useCallback(
+    (c: Connection | RFEdge): boolean => {
+      if (!c.source || !c.target || c.source === c.target) return false;
+      const curNodes = rf.getNodes();
+      const src = curNodes.find((n) => n.id === c.source);
+      const tgt = curNodes.find((n) => n.id === c.target);
+      if (!src || !tgt) return false;
+      const out = portOnNode(src.data, c.sourceHandle ?? CONTROL_OUT, "out");
+      const inp = portOnNode(tgt.data, c.targetHandle ?? CONTROL_IN, "in");
+      if (!out || !inp) return false;
+      if (out.kind !== inp.kind) return false;
+      if (out.kind !== "control") {
+        const a = schemaTypeOf(out.schema);
+        const b = schemaTypeOf(inp.schema);
+        const loose = (t: string) => t === "any" || t === "union" || t === "enum";
+        if (!loose(a) && !loose(b) && a !== b) return false;
+      }
+      // Stream inputs are single-source (use core.stream.merge to combine).
+      if (inp.kind === "stream") {
+        const port = c.targetHandle ?? CONTROL_IN;
+        if (rf.getEdges().some((e) => e.target === c.target && (e.targetHandle ?? CONTROL_IN) === port)) return false;
+      }
+      return true;
+    },
+    [rf],
+  );
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -133,24 +184,33 @@ function EditorInner() {
       const curNodes = rf.getNodes();
       const curEdges = rf.getEdges();
       pushHistory();
-      const kind = outputKind(c.source!, c.sourceHandle ?? "out", toDoc(baseDoc.current, curNodes, curEdges), opMap);
-      setEdges((eds) => addEdge({ ...c, type: "smoothstep", animated: kind === "stream", style: edgeStyle(kind) }, eds));
-      // Connection assist (T2): verify and flag if incompatible.
+      const kind = outputKind(c.source!, c.sourceHandle ?? CONTROL_OUT, toDoc(baseDoc.current, curNodes, curEdges), opMap);
+      setEdges((eds) => addEdge({ ...c, type: "default", animated: kind === "stream", style: edgeStyle(kind) }, eds));
+      sfx.play("connect");
+      // Connection assist (T2): the engine double-checks schemas server-side.
       const fromNode = curNodes.find((n) => n.id === c.source);
       const toNode = curNodes.find((n) => n.id === c.target);
       if (fromNode && toNode) {
         void api
           .portsCompatible(
-            { op: fromNode.data.op, port: c.sourceHandle ?? "out", dir: "out" },
-            { op: toNode.data.op, port: c.targetHandle ?? "in", dir: "in" },
+            { op: fromNode.data.op, port: c.sourceHandle ?? CONTROL_OUT, dir: "out" },
+            { op: toNode.data.op, port: c.targetHandle ?? CONTROL_IN, dir: "in" },
           )
           .then((res) => {
-            if (!res.ok) setNotice(`⚠ ${c.sourceHandle} → ${c.targetHandle}: ${res.reason}${res.fix ? ` (insert core.stream.${res.fix})` : ""}`);
+            if (!res.ok) {
+              setNotice(`⚠ ${c.sourceHandle} → ${c.targetHandle}: ${res.reason}${res.fix ? ` (insert core.stream.${res.fix})` : ""}`);
+              sfx.play("invalid");
+            }
           });
       }
     },
     [rf, opMap, setEdges, pushHistory],
   );
+
+  /** A refused drop while connecting gets audible feedback (not just visual). */
+  const onConnectEnd = useCallback((_e: unknown, state: { isValid: boolean | null }) => {
+    if (state.isValid === false) sfx.play("invalid");
+  }, []);
 
   // Capture deletions (canvas ⌫) — other change kinds flow through untouched.
   const onNodesChangeTracked: typeof onNodesChange = useCallback(
@@ -168,22 +228,103 @@ function EditorInner() {
     [onEdgesChange, pushHistory],
   );
 
-  const addNode = (op: OpInfo) => {
-    pushHistory();
+  // ── Boundary pairing (§7): triggers and out-gates live and die together. A
+  // deletion that hits one half is expanded to its partner (and their edges).
+  const onBeforeDelete: OnBeforeDelete<RFNode<OpNodeData>, RFEdge> = useCallback(
+    async ({ nodes: delNodes, edges: delEdges }) => {
+      const all = rf.getNodes();
+      const ids = new Set(delNodes.map((n) => n.id));
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const n of all) {
+          const pid = n.data.pairId;
+          if (!pid) continue;
+          if (ids.has(n.id) && !ids.has(pid) && all.some((m) => m.id === pid)) {
+            ids.add(pid);
+            grew = true;
+          }
+          if (!ids.has(n.id) && ids.has(pid)) {
+            ids.add(n.id);
+            grew = true;
+          }
+        }
+      }
+      const expandedNodes = all.filter((n) => ids.has(n.id));
+      const edgeIds = new Set(delEdges.map((e) => e.id));
+      const expandedEdges = rf.getEdges().filter((e) => edgeIds.has(e.id) || ids.has(e.source) || ids.has(e.target));
+      if (expandedNodes.length || expandedEdges.length) sfx.play("delete");
+      return { nodes: expandedNodes, edges: expandedEdges };
+    },
+    [rf],
+  );
+
+  /** Materialize an op as a canvas node with a fresh id. */
+  const makeNode = useCallback((op: OpInfo, pos: { x: number; y: number }, ids: Set<string>): RFNode<OpNodeData> => {
     const base = op.type.split(".").slice(-1)[0]!;
     let id = base;
     let i = 1;
-    const ids = new Set(nodes.map((n) => n.id));
     while (ids.has(id)) id = `${base}${++i}`;
-    const node: RFNode<OpNodeData> = {
+    ids.add(id);
+    return {
       id,
       type: "op",
-      position: { x: 120 + nodes.length * 20, y: 120 + nodes.length * 20 },
-      data: { op: op.type, config: {}, description: op.description, inputs: op.inputs, outputs: op.outputs, boundary: op.boundary },
+      position: pos,
+      data: {
+        op: op.type,
+        config: {},
+        description: op.description,
+        inputs: op.inputs,
+        outputs: op.outputs,
+        configInputs: op.configInputs ?? [],
+        controlOuts: op.controlOut ?? [],
+        boundary: op.boundary,
+      },
     };
-    setNodes((ns) => [...ns, node]);
-    setSelected(id);
-  };
+  }, []);
+
+  /** Drop an op at a canvas position. Boundary ops bring their partner (§7):
+   *  adding a trigger always brings the paired out-gate, and vice versa. */
+  const addNodeAt = useCallback(
+    (op: OpInfo, pos: { x: number; y: number }) => {
+      pushHistory();
+      const ids = new Set(rf.getNodes().map((n) => n.id));
+      const node = makeNode(op, pos, ids);
+      const added = [node];
+      if (op.boundary && op.pair) {
+        const partnerOp = opMap.get(op.pair);
+        if (partnerOp?.boundary && partnerOp.boundary !== op.boundary) {
+          const dx = op.boundary === "trigger" ? 480 : -480;
+          const partner = makeNode(partnerOp, { x: pos.x + dx, y: pos.y }, ids);
+          node.data.pairId = partner.id;
+          partner.data.pairId = node.id;
+          added.push(partner);
+        }
+      }
+      setNodes((ns) => [...ns, ...added]);
+      setSelected(node.id);
+      sfx.play("add");
+    },
+    [rf, opMap, makeNode, setNodes, pushHistory],
+  );
+
+  // ── Palette → canvas drag-and-drop. ──
+  const onDragOver = useCallback((e: DragEvent) => {
+    if (e.dataTransfer.types.includes(DND_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+  const onDrop = useCallback(
+    (e: DragEvent) => {
+      const type = e.dataTransfer.getData(DND_TYPE);
+      const op = type ? opMap.get(type) : undefined;
+      if (!op) return;
+      e.preventDefault();
+      addNodeAt(op, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+    },
+    [rf, opMap, addNodeAt],
+  );
 
   const currentDoc = (): WorkflowDoc => {
     const targetSlug = slug ?? (newSlug || "untitled");
@@ -211,6 +352,7 @@ function EditorInner() {
     setIssues(res.issues);
     if (!res.issues.length) adoptSaved(doc);
     setNotice(res.issues.length ? `${res.issues.length} validation issue(s)` : `Saved ${res.version?.id}. Deploy to activate.`);
+    sfx.play(res.issues.length ? "invalid" : "save");
   };
 
   const onDeploy = async () => {
@@ -223,11 +365,44 @@ function EditorInner() {
     if (saved.issues.length) {
       setIssues(saved.issues);
       setNotice(`${saved.issues.length} validation issue(s) — fix before deploying.`);
+      sfx.play("invalid");
       return;
     }
     adoptSaved(doc);
     const res = await deploy.mutateAsync({ slug: doc.id, version: saved.version!.id, swap: false });
     setNotice(res.ok ? `Deployed ${doc.id} ${saved.version!.id} 🚀` : `Route conflict with: ${res.conflicts.map((c) => c.conflictsWith).join(", ")}`);
+    sfx.play(res.ok ? "deploy" : "error");
+  };
+
+  // ── Import / export: a workflow is a file — round-trip it like one (§15). ──
+  const onExport = () => {
+    const doc = currentDoc();
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${doc.id}.pattern.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setNotice(`Exported ${a.download}.`);
+    sfx.play("ok");
+  };
+  const onImportFile = async (file: File) => {
+    try {
+      const doc = JSON.parse(await file.text()) as WorkflowDoc;
+      if (!Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error("not a workflow document (missing nodes/edges)");
+      pushHistory();
+      const flow = buildFlow(doc, opMap);
+      setNodes(flow.nodes);
+      setEdges(flow.edges);
+      baseDoc.current = { ...doc, id: slug ?? doc.id };
+      if (isNew && !newSlug && doc.id) setNewSlug(doc.id.replace(/[^a-z0-9.\-_]/gi, ""));
+      setSelected(null);
+      setNotice(`Imported "${doc.id}" — Save to persist it.`);
+      sfx.play("add");
+    } catch (err) {
+      setNotice(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+      sfx.play("error");
+    }
   };
 
   const selectedNode = nodes.find((n) => n.id === selected);
@@ -270,6 +445,36 @@ function EditorInner() {
           >
             <Redo2 size={14} />
           </NeonButton>
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Import workflow JSON"
+            title="Import workflow JSON"
+            onClick={() => importInput.current?.click()}
+          >
+            <Upload size={14} />
+          </NeonButton>
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Export workflow JSON"
+            title="Export workflow JSON"
+            onClick={onExport}
+            disabled={nodes.length === 0}
+          >
+            <Download size={14} />
+          </NeonButton>
+          <input
+            ref={importInput}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onImportFile(f);
+              e.target.value = ""; // allow re-importing the same file
+            }}
+          />
           <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
             <Play size={14} /> Run
           </NeonButton>
@@ -282,18 +487,21 @@ function EditorInner() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[14rem_1fr_18rem] gap-3">
-        {/* Palette — grouped by category, color + icon coded */}
-        <Palette ops={opsData ?? []} onAdd={addNode} />
+      <div className="grid min-h-0 flex-1 grid-cols-[15rem_1fr_18rem] gap-3">
+        {/* Palette — searchable, drag onto the canvas */}
+        <Palette ops={opsData ?? []} />
 
         {/* Canvas */}
-        <GlassPanel className="overflow-hidden">
+        <GlassPanel className="overflow-hidden" onDragOver={onDragOver} onDrop={onDrop}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChangeTracked}
             onEdgesChange={onEdgesChangeTracked}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
+            onBeforeDelete={onBeforeDelete}
+            isValidConnection={isValidConnection}
             onNodeDragStart={() => pushHistory()}
             onNodeClick={(_e, n) => setSelected(n.id)}
             onPaneClick={() => setSelected(null)}
@@ -333,7 +541,7 @@ function EditorInner() {
               }}
             />
           ) : (
-            <p className="text-muted text-sm">Select a node to edit its config. Drag from a palette op to add a node; drag between handles to connect.</p>
+            <p className="text-muted text-sm">Select a node to edit its config. Drag an op from the palette onto the canvas to add it; drag between ports to connect (ports refuse incompatible types).</p>
           )}
           {issues.length > 0 && (
             <div className="mt-5">
@@ -380,6 +588,11 @@ function Inspector({
         </span>
       </div>
       {op?.description && <div className="text-muted mt-2 text-xs"><Markdown text={op.description} /></div>}
+      {node.data.pairId && (
+        <div className="text-muted mt-2 text-xs">
+          ⛓ Paired with <span className="font-mono">{node.data.pairId}</span> — boundary pairs are created and deleted together.
+        </div>
+      )}
 
       {/* Author-set node identity */}
       <div className="mt-4 space-y-2">
@@ -432,30 +645,36 @@ function groupByCategory(ops: OpInfo[]): [string, OpInfo[]][] {
   return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
-/** One palette op: category icon + color + a disambiguated label. */
-function OpItem({ op, onAdd }: { op: OpInfo; onAdd: (op: OpInfo) => void }) {
+/** One palette op: draggable onto the canvas (grab it!), tooltip with docs. */
+function OpItem({ op }: { op: OpInfo }) {
   const category = categoryOfType(op.type);
   const cat = categoryStyle(category);
   const { Icon } = cat;
   return (
-    <button
-      onClick={() => onAdd(op)}
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DND_TYPE, op.type);
+        e.dataTransfer.effectAllowed = "copy";
+        sfx.play("drag");
+      }}
       {...tip(
         <div className="space-y-1">
           <div className="font-mono text-[11px] opacity-70">{op.type}</div>
           {op.description && <Markdown text={op.description} />}
+          <div className="text-muted">Drag onto the canvas to add{op.boundary && op.pair ? ` (brings its ${op.boundary === "trigger" ? "out-gate" : "trigger"} partner)` : ""}.</div>
         </div>,
       )}
-      className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-white/5"
+      className="flex w-full cursor-grab items-center gap-2 rounded-lg px-2 py-1 text-left text-xs select-none hover:bg-white/5 active:cursor-grabbing"
     >
       <Icon size={12} style={{ color: cat.color }} className="shrink-0" />
       <span className="truncate">{paletteLabel(op.type, category)}</span>
-    </button>
+    </div>
   );
 }
 
 /** A collapsible category section with colored header + op items. */
-function CategorySection({ category, ops, open, onToggle, onAdd }: { category: string; ops: OpInfo[]; open: boolean; onToggle: () => void; onAdd: (op: OpInfo) => void }) {
+function CategorySection({ category, ops, open, onToggle }: { category: string; ops: OpInfo[]; open: boolean; onToggle: () => void }) {
   const cat = categoryStyle(category);
   const { Icon } = cat;
   return (
@@ -468,7 +687,7 @@ function CategorySection({ category, ops, open, onToggle, onAdd }: { category: s
       {open && (
         <div className="ml-1 border-l pl-2" style={{ borderColor: cat.border }}>
           {ops.map((op) => (
-            <OpItem key={op.type} op={op} onAdd={onAdd} />
+            <OpItem key={op.type} op={op} />
           ))}
         </div>
       )}
@@ -476,46 +695,104 @@ function CategorySection({ category, ops, open, onToggle, onAdd }: { category: s
   );
 }
 
-/** The op palette: reusable ops grouped by category (color + icon coded), with a
- *  collapsed-by-default "Advanced" section holding non-reusable/internal ops. */
-function Palette({ ops, onAdd }: { ops: OpInfo[]; onAdd: (op: OpInfo) => void }) {
+/** The op palette: fuzzy-searchable, filterable by mod, grouped by category
+ *  (color + icon coded), drag-to-add. Non-reusable ops live in a collapsed
+ *  "Advanced" section. Scrolls independently of the canvas. */
+function Palette({ ops }: { ops: OpInfo[] }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [mod, setMod] = useState<string>("");
   const toggle = (k: string) => setCollapsed((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
-  const reusable = useMemo(() => groupByCategory(ops.filter((o) => o.reusable !== false)), [ops]);
-  const advanced = useMemo(() => ops.filter((o) => o.reusable === false), [ops]);
+  const mods = useMemo(() => [...new Set(ops.map((o) => o.mod ?? "core"))].sort(), [ops]);
+  const filtered = useMemo(() => {
+    let list = ops;
+    if (mod) list = list.filter((o) => (o.mod ?? "core") === mod);
+    return fuzzyFilter(list, query, (o) => `${o.type} ${o.title ?? ""} ${humanizeOp(o.type)}`);
+  }, [ops, mod, query]);
+  const searching = query.trim().length > 0;
+
+  const reusable = useMemo(() => groupByCategory(filtered.filter((o) => o.reusable !== false)), [filtered]);
+  const advanced = useMemo(() => filtered.filter((o) => o.reusable === false), [filtered]);
   const advancedGroups = useMemo(() => groupByCategory(advanced), [advanced]);
 
   return (
-    <GlassPanel className="overflow-y-auto p-2">
-      {reusable.map(([category, list]) => (
-        <CategorySection key={category} category={category} ops={list} open={!collapsed.has(category)} onToggle={() => toggle(category)} onAdd={onAdd} />
-      ))}
-
-      {advanced.length > 0 && (
-        <div className="mt-2 border-t hairline pt-2">
-          <button onClick={() => setAdvancedOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
-            <span className="text-muted text-[10px]">{advancedOpen ? "▾" : "▸"}</span>
-            <span className="text-muted text-xs font-semibold uppercase tracking-wider">Advanced</span>
-            <span className="text-muted ml-auto text-[10px]">{advanced.length}</span>
-          </button>
-          {advancedOpen && (
-            <div className="mt-1 opacity-80">
-              {advancedGroups.map(([category, list]) => (
-                <div key={category} className="mb-1">
-                  <div className="text-muted px-2 py-1 text-[10px] font-semibold capitalize">{category}</div>
-                  <div className="ml-1 border-l hairline pl-2">
-                    {list.map((op) => (
-                      <OpItem key={op.type} op={op} onAdd={onAdd} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+    <GlassPanel className="flex min-h-0 flex-col p-2">
+      {/* Filter bar */}
+      <div className="mb-2 space-y-1.5 px-0.5">
+        <div className="glass flex items-center gap-1.5 rounded-lg px-2 py-1.5">
+          <Search size={12} className="text-muted shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search ops…"
+            aria-label="Search ops"
+            className="w-full bg-transparent text-xs outline-none"
+          />
+          {query && (
+            <button type="button" aria-label="Clear search" className="text-muted text-[10px]" onClick={() => setQuery("")}>
+              ✕
+            </button>
           )}
         </div>
-      )}
+        <select
+          value={mod}
+          onChange={(e) => setMod(e.target.value)}
+          aria-label="Filter by mod"
+          className="glass w-full rounded-lg px-2 py-1 text-xs outline-none [&>option]:bg-[var(--bg)]"
+        >
+          <option value="">All mods</option>
+          {mods.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Op list — its own scroll context */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {searching ? (
+          // Flat ranked list while searching (best match first).
+          <div>
+            {filtered.length === 0 && <div className="text-muted px-2 py-4 text-center text-xs">No ops match.</div>}
+            {filtered.map((op) => (
+              <OpItem key={op.type} op={op} />
+            ))}
+          </div>
+        ) : (
+          <>
+            {reusable.map(([category, list]) => (
+              <CategorySection key={category} category={category} ops={list} open={!collapsed.has(category)} onToggle={() => toggle(category)} />
+            ))}
+
+            {advanced.length > 0 && (
+              <div className="mt-2 border-t hairline pt-2">
+                <button onClick={() => setAdvancedOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
+                  <span className="text-muted text-[10px]">{advancedOpen ? "▾" : "▸"}</span>
+                  <span className="text-muted text-xs font-semibold uppercase tracking-wider">Advanced</span>
+                  <span className="text-muted ml-auto text-[10px]">{advanced.length}</span>
+                </button>
+                {advancedOpen && (
+                  <div className="mt-1 opacity-80">
+                    {advancedGroups.map(([category, list]) => (
+                      <div key={category} className="mb-1">
+                        <div className="text-muted px-2 py-1 text-[10px] font-semibold capitalize">{category}</div>
+                        <div className="ml-1 border-l hairline pl-2">
+                          {list.map((op) => (
+                            <OpItem key={op.type} op={op} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </GlassPanel>
   );
 }

@@ -35,12 +35,19 @@ export function TooltipHost() {
   const { content, rect, close } = useTipStore();
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on scroll so it never strands over moved content.
+  // Close on scroll/click/keys so it never strands over moved content — or
+  // floats orphaned after its anchor is deleted (no mouseleave fires then).
   useEffect(() => {
     if (!content) return;
     const onScroll = () => close();
     window.addEventListener("scroll", onScroll, true);
-    return () => window.removeEventListener("scroll", onScroll, true);
+    window.addEventListener("pointerdown", onScroll, true);
+    window.addEventListener("keydown", onScroll, true);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("pointerdown", onScroll, true);
+      window.removeEventListener("keydown", onScroll, true);
+    };
   }, [content, close]);
 
   if (!content || !rect) return null;
