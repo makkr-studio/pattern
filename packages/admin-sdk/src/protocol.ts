@@ -186,6 +186,10 @@ export interface SpanData {
 export interface RunDetail {
   summary: RunSummary;
   spans: SpanData[];
+  /** Still executing right now (cancellable / pausable). */
+  inflight?: boolean;
+  /** Currently held at the pause gate. */
+  paused?: boolean;
 }
 
 export interface LatencyStats {

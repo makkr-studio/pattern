@@ -468,6 +468,24 @@ export interface RunHandle {
   result: Promise<RunResult>;
   /** Cooperative cancellation. */
   abort(reason?: unknown): void;
+  /**
+   * Pause node scheduling: nodes that haven't started executing hold at the
+   * gate; in-flight node executions run to completion (an op can't be
+   * suspended mid-compute). Optional — transports that can't reach the
+   * scheduler (e.g. a worker pool without a pause channel) omit it.
+   */
+  pause?(): boolean;
+  /** Release a pause; held nodes proceed. */
+  resume?(): boolean;
+  /** Is the run currently paused? */
+  paused?(): boolean;
+}
+
+/** Out-param the scheduler fills with its pause controls (transport seam). */
+export interface RunControl {
+  pause?: () => void;
+  resume?: () => void;
+  paused?: () => boolean;
 }
 
 /**

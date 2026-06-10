@@ -16,7 +16,25 @@ export const useTemplates = () => useQuery({ queryKey: ["templates"], queryFn: (
 export const useRuns = (filter: RunListFilter = {}) =>
   useQuery({ queryKey: ["runs", filter], queryFn: () => api.runs.list(filter), refetchInterval: 4000 });
 export const useRun = (runId: string | undefined) =>
-  useQuery({ queryKey: ["run", runId], queryFn: () => api.runs.get(runId!), enabled: Boolean(runId) });
+  useQuery({
+    queryKey: ["run", runId],
+    queryFn: () => api.runs.get(runId!),
+    enabled: Boolean(runId),
+    // A live run keeps moving (and can be paused/cancelled) — poll while in flight.
+    refetchInterval: (q) => (q.state.data?.inflight || q.state.data?.summary.status === "running" ? 1000 : false),
+  });
+
+/** Cancel / pause / resume an in-flight run; refreshes the run + list. */
+export function useRunControl(runId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (action: "cancel" | "pause" | "resume") => api.runs[action](runId!),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["run", runId] });
+      void qc.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
+}
 export const useMetrics = () =>
   useQuery({ queryKey: ["metrics"], queryFn: () => api.metrics(), refetchInterval: 5000 });
 

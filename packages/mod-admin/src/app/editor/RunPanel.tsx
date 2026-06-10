@@ -198,9 +198,26 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
               </div>
             )}
             {trigger && <TriggerForm op={trigger.op} config={config} form={form} set={(k, v) => setForm((f) => ({ ...f, [k]: v }))} />}
-            <NeonButton className="mt-4 w-full justify-center" onClick={run} disabled={busy}>
-              {busy ? "Running…" : "▶ Run"}
-            </NeonButton>
+            <div className="mt-4 flex gap-2">
+              <NeonButton className="flex-1 justify-center" onClick={run} disabled={busy}>
+                {busy ? "Running…" : "▶ Run"}
+              </NeonButton>
+              {busy && (
+                <NeonButton
+                  variant="danger"
+                  title="Stop — abort the in-flight run"
+                  onClick={async () => {
+                    // The runId only comes back when the run settles — find the
+                    // in-flight run(s) of THIS workflow and abort them.
+                    sfx.play("error");
+                    const running = await api.runs.list({ workflow: doc.id, status: "running" });
+                    await Promise.all(running.map((r) => api.runs.cancel(r.runId)));
+                  }}
+                >
+                  ⏹ Stop
+                </NeonButton>
+              )}
+            </div>
           </div>
 
           <div>
