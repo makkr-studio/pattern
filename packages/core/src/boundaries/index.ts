@@ -101,6 +101,11 @@ export const schedule: OpDefinition = {
   boundary: "trigger",
   pair: "boundary.return",
   inputs: {},
+  // Registration-time config ports: wire env/const values into the timing.
+  configInputs: {
+    cron: value(z.string()),
+    intervalMs: value(z.number().int().positive()),
+  },
   outputs: { timestamp: value(z.number()), scheduledFor: value(z.number()) },
   config: z.object({ cron: z.string().optional(), intervalMs: z.number().int().positive().optional(), requireAuth }),
   execute: TRIGGER_EXECUTE,
@@ -349,6 +354,7 @@ export const hookTrigger: OpDefinition = {
   boundary: "trigger",
   pair: "boundary.hook.return",
   inputs: {},
+  configInputs: { hook: value(z.string()), priority: value(z.number()) },
   outputs: { payload: value() },
   config: z.object({ hook: z.string(), priority: z.number().default(100) }),
   execute: TRIGGER_EXECUTE,
@@ -371,6 +377,7 @@ export const eventTrigger: OpDefinition = {
   boundary: "trigger",
   pair: "boundary.return",
   inputs: {},
+  configInputs: { event: value(z.string()) },
   outputs: { payload: value() },
   config: z.object({ event: z.string() }),
   execute: TRIGGER_EXECUTE,
