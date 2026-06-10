@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import { useManifest, useOps, useWorkflows } from "../lib/queries";
 import { Search } from "../components/icon";
 import { JsonView } from "../components/ui";
+import { fuzzyFilter } from "../lib/fuzzy";
+import { sfx } from "../lib/sfx";
 
 interface Item {
   id: string;
@@ -47,9 +49,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   }, [workflows, ops, manifest]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items.slice(0, 12);
-    return items.filter((i) => `${i.label} ${i.group}`.toLowerCase().includes(q)).slice(0, 20);
+    if (!query.trim()) return items.slice(0, 12);
+    return fuzzyFilter(items, query, (i) => `${i.label} ${i.group}`).slice(0, 20);
   }, [items, query]);
 
   // Global ⌘K to open is handled by a window listener mounted once.
@@ -68,6 +69,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const choose = (item: Item | undefined) => {
     if (!item) return;
     if (item.go) {
+      sfx.play("nav");
       navigate(item.go);
       onClose();
       return;
@@ -75,11 +77,18 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (item.run) {
       // Run the command's source op and show its data inline (self-reflection:
       // the palette is wiring over the same invoke endpoint pages use).
+      sfx.play("run");
       setResult({ label: item.label, data: "…" });
       api
         .invoke(item.run)
-        .then((data) => setResult({ label: item.label, data }))
-        .catch((err: unknown) => setResult({ label: item.label, data: { error: err instanceof Error ? err.message : String(err) } }));
+        .then((data) => {
+          setResult({ label: item.label, data });
+          sfx.play("ok");
+        })
+        .catch((err: unknown) => {
+          setResult({ label: item.label, data: { error: err instanceof Error ? err.message : String(err) } });
+          sfx.play("error");
+        });
     }
   };
 

@@ -4,6 +4,7 @@ import type { OpInfo, RunResult, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { Badge, Dot, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
 import { statusColor } from "../lib/format";
+import { sfx } from "../lib/sfx";
 import type { OpMap } from "./graph";
 
 /** Coerce a free-text field to number / boolean / JSON when it looks like one. */
@@ -161,9 +162,14 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
     if (!trigger) return;
     setBusy(true);
     setResult(null);
+    sfx.play("run");
     try {
       const res = await api.run({ doc, trigger: trigger.id, input: buildInput(trigger.op, config, form) });
       setResult(res);
+      sfx.play(res.ok && res.status === "ok" ? "ok" : res.ok ? "error" : "invalid");
+    } catch (err) {
+      sfx.play("error");
+      throw err;
     } finally {
       setBusy(false);
     }

@@ -10,7 +10,9 @@
 
 import {
   portCompatibility,
+  portKindOf,
   redactConfig,
+  resolveConfigInputs,
   resolveControlOuts,
   resolvePorts,
   z,
@@ -173,12 +175,17 @@ export async function catalog(engine: Engine, store: WorkflowStore): Promise<Wor
   return metas;
 }
 
-/** Resolve a port reference {op, port, dir} to its PortSpec for compat checks. */
+/** Resolve a port reference {op, port, dir} to its PortSpec for compat checks.
+ *  Honors the implicit control ports (`in`/`out`), declared control-outs, and
+ *  registration-time config inputs — anything the editor renders as a handle. */
 function resolvePortRef(engine: Engine, ref: { op: string; port: string; dir: "in" | "out" }): PortSpec | undefined {
   const op = engine.ops.get(ref.op);
   if (!op) return undefined;
-  const ports = resolvePorts(ref.dir === "in" ? op.inputs : op.outputs, {});
-  return ports[ref.port];
+  const declared =
+    resolvePorts(ref.dir === "in" ? op.inputs : op.outputs, {})[ref.port] ??
+    (ref.dir === "in" ? resolveConfigInputs(op, {})[ref.port] : undefined);
+  if (declared) return declared;
+  return portKindOf(op, {}, ref.port, ref.dir) === "control" ? { kind: "control" } : undefined;
 }
 
 export interface PortRef {

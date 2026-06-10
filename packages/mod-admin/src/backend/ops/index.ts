@@ -76,7 +76,7 @@ const workflowList = adminOp("admin.workflow.list", "List all workflows (code + 
   catalog(engine, controlPlane.store),
 );
 
-const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live doc (+ draft).", async (args, { engine, controlPlane }) => {
+const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live doc (+ latest saved version).", async (args, { engine, controlPlane }) => {
   const slug = str(args.slug, "slug");
   const metas = await catalog(engine, controlPlane.store);
   const meta = metas.find((m) => m.slug === slug) ?? null;
@@ -86,9 +86,20 @@ const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live 
   } else if (meta?.live) {
     liveDoc = await controlPlane.store.getVersion(slug, meta.live);
   }
+  // The newest saved version — what the editor should reopen on a workflow
+  // that was saved but never deployed (live pointer still null).
+  const newest = meta?.versions[meta.versions.length - 1];
+  const latestDoc =
+    meta?.source === "code"
+      ? liveDoc
+      : newest
+        ? newest.id === meta?.live
+          ? liveDoc
+          : await controlPlane.store.getVersion(slug, newest.id)
+        : null;
   // Redact secrets in the live doc's node configs (P4) where it is registered.
   const safeConfigs = engine.workflows.has(slug) ? safeNodeConfigs(engine, slug) : undefined;
-  return { meta, liveDoc, safeConfigs };
+  return { meta, liveDoc, latestDoc, safeConfigs };
 });
 
 const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an immutable version snapshot.", async (args, { controlPlane, engine }) => {

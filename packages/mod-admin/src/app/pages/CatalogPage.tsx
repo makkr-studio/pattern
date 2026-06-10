@@ -1,11 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Template, WorkflowMeta } from "@pattern/admin-sdk";
-import { useDeleteWorkflow, useSetEnabled, useTemplates, useWorkflows } from "../lib/queries";
+import { useDeleteWorkflow, useMods, useSetEnabled, useTemplates, useWorkflows } from "../lib/queries";
 import { Badge, Dot, EmptyState, Modal, NeonButton, PageHeader, Spinner, Table, type Column } from "../components/ui";
-import { Icon, Plus, Trash2 } from "../components/icon";
+import { Icon, Plus, Search, Trash2 } from "../components/icon";
+import { fuzzyFilter } from "../lib/fuzzy";
+import { sfx } from "../lib/sfx";
 
 const SOURCE_HUE: Record<string, number> = { code: 200, file: 150, db: 280 };
+
+/** Workflows authored in the admin (file/db) rather than contributed by a mod. */
+const LOCAL = "(local)";
 
 /** Pick a starting point for a new workflow: blank canvas or a built-in template. */
 function TemplatePicker({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -45,10 +50,31 @@ function TemplatePicker({ open, onClose }: { open: boolean; onClose: () => void 
 export function CatalogPage() {
   const navigate = useNavigate();
   const { data, isLoading, isError, error, refetch } = useWorkflows();
+  const { data: mods } = useMods();
   const setEnabled = useSetEnabled();
   const del = useDeleteWorkflow();
   const [confirmDelete, setConfirmDelete] = useState<WorkflowMeta | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [modFilter, setModFilter] = useState("");
+
+  // Which mod contributed each workflow (admin-authored ones are "(local)").
+  const modOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const mod of mods ?? []) for (const wf of mod.workflows) m.set(wf, mod.name);
+    return m;
+  }, [mods]);
+  const modNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const w of data ?? []) names.add(modOf.get(w.slug) ?? LOCAL);
+    return [...names].sort();
+  }, [data, modOf]);
+
+  const filtered = useMemo(() => {
+    let list = data ?? [];
+    if (modFilter) list = list.filter((w) => (modOf.get(w.slug) ?? LOCAL) === modFilter);
+    return fuzzyFilter(list, query, (w) => `${w.slug} ${w.name} ${w.description ?? ""} ${(w.tags ?? []).join(" ")} ${w.route?.path ?? ""}`);
+  }, [data, query, modFilter, modOf]);
 
   if (isLoading) return <Spinner />;
   if (isError) {
@@ -63,7 +89,7 @@ export function CatalogPage() {
       </>
     );
   }
-  const rows = data ?? [];
+  const rows = filtered;
 
   const newButton = (
     <NeonButton onClick={() => setPickerOpen(true)}>
@@ -71,7 +97,7 @@ export function CatalogPage() {
     </NeonButton>
   );
 
-  if (rows.length === 0) {
+  if ((data ?? []).length === 0) {
     return (
       <>
         <PageHeader title="Workflows" subtitle="Author, deploy, and inspect workflows." />
@@ -98,6 +124,15 @@ export function CatalogPage() {
       ),
     },
     { key: "source", label: "Source", width: "8rem", render: (w) => <Badge hue={SOURCE_HUE[w.source]}>{w.source}</Badge> },
+    {
+      key: "mod",
+      label: "Mod",
+      width: "11rem",
+      render: (w) => {
+        const m = modOf.get(w.slug);
+        return m ? <span className="text-muted truncate font-mono text-xs">{m}</span> : <span className="text-muted">—</span>;
+      },
+    },
     {
       key: "route",
       label: "Route",
@@ -150,10 +185,55 @@ export function CatalogPage() {
     <>
       <PageHeader
         title="Workflows"
-        subtitle={`${rows.length} workflows — the catalog is rendered entirely from the self-reflecting API.`}
+        subtitle={`${rows.length}${rows.length !== (data ?? []).length ? ` of ${(data ?? []).length}` : ""} workflows — the catalog is rendered entirely from the self-reflecting API.`}
         actions={newButton}
       />
-      <Table columns={columns} rows={rows} getKey={(w) => w.slug} onRow={(w) => navigate(`/editor/${w.slug}`)} />
+
+      {/* Filter bar: fuzzy search + by mod */}
+      <div className="mb-4 flex gap-2">
+        <div className="glass flex max-w-md flex-1 items-center gap-2 rounded-xl px-3 py-2">
+          <Search size={14} className="text-muted shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Fuzzy search workflows…"
+            aria-label="Search workflows"
+            className="w-full bg-transparent text-sm outline-none"
+          />
+          {query && (
+            <button type="button" aria-label="Clear search" className="text-muted text-xs" onClick={() => setQuery("")}>
+              ✕
+            </button>
+          )}
+        </div>
+        <select
+          value={modFilter}
+          onChange={(e) => setModFilter(e.target.value)}
+          aria-label="Filter by mod"
+          className="glass rounded-xl px-3 py-2 text-sm outline-none [&>option]:bg-[var(--bg)]"
+        >
+          <option value="">All mods</option>
+          {modNames.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState title="No workflows match" hint="Loosen the search or pick another mod." />
+      ) : (
+        <Table
+          columns={columns}
+          rows={rows}
+          getKey={(w) => w.slug}
+          onRow={(w) => {
+            sfx.play("nav");
+            navigate(`/editor/${w.slug}`);
+          }}
+        />
+      )}
 
       <TemplatePicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
 

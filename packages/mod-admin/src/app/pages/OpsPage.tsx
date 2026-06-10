@@ -1,17 +1,24 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { OpInfo, PortInfo } from "@pattern/admin-sdk";
 import { useOps } from "../lib/queries";
 import { Badge, GlassPanel, GlowCard, JsonView, PageHeader, Spinner } from "../components/ui";
-import { portColor } from "../lib/format";
+import { portFill, portTypeLabel } from "../lib/format";
+import { fuzzyFilter } from "../lib/fuzzy";
+import { sfx } from "../lib/sfx";
+import { Search } from "../components/icon";
 
-function Port({ p }: { p: PortInfo }) {
+function Port({ p, config }: { p: PortInfo; config?: boolean }) {
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: portColor(p.kind) }} />
+      <span
+        className="inline-block h-2.5 w-2.5"
+        style={{ background: portFill(p), borderRadius: config ? 2 : "50%" }}
+      />
       <span className="font-mono">{p.name}</span>
-      <span className="text-muted text-xs">{p.kind}</span>
+      <span className="text-muted text-xs">{portTypeLabel(p)}</span>
       {p.required && <span className="text-[var(--color-neon-amber)] text-xs">required</span>}
+      {config && <span className="text-muted text-xs">config</span>}
     </div>
   );
 }
@@ -19,16 +26,24 @@ function Port({ p }: { p: PortInfo }) {
 function OpDetail({ op }: { op: OpInfo }) {
   return (
     <GlassPanel className="p-6">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-mono text-lg font-semibold">{op.type}</h2>
         {op.boundary && <Badge hue={40}>{op.boundary}</Badge>}
         {op.mod && <Badge hue={280}>{op.mod}</Badge>}
       </div>
       {op.description && <p className="text-muted mt-2 text-sm">{op.description}</p>}
+      {op.pair && (
+        <p className="text-muted mt-2 text-xs">
+          ⛓ Pairs with <span className="font-mono">{op.pair}</span> — boundary triggers and out-gates are added and removed together.
+        </p>
+      )}
       <div className="mt-5 grid grid-cols-2 gap-6">
         <div>
           <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">Inputs</div>
-          {op.inputs.length ? op.inputs.map((p) => <Port key={p.name} p={p} />) : <span className="text-muted text-sm">none</span>}
+          {(op.configInputs ?? []).map((p) => (
+            <Port key={`c-${p.name}`} p={p} config />
+          ))}
+          {op.inputs.length ? op.inputs.map((p) => <Port key={p.name} p={p} />) : (op.configInputs ?? []).length === 0 && <span className="text-muted text-sm">none</span>}
         </div>
         <div>
           <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">Outputs</div>
@@ -53,42 +68,102 @@ export function OpsPage() {
   const navigate = useNavigate();
   const { type } = useParams();
   const { data, isLoading } = useOps();
+  const [query, setQuery] = useState("");
+  const [mod, setMod] = useState("");
+
+  const mods = useMemo(() => [...new Set((data ?? []).map((o) => o.mod ?? "core"))].sort(), [data]);
+  const filtered = useMemo(() => {
+    let list = data ?? [];
+    if (mod) list = list.filter((o) => (o.mod ?? "core") === mod);
+    // Type + title only — descriptions are prose and drown the type ranking.
+    return fuzzyFilter(list, query, (o) => `${o.type} ${o.title ?? ""}`);
+  }, [data, query, mod]);
+  const searching = query.trim().length > 0;
 
   const byCategory = useMemo(() => {
     const m = new Map<string, OpInfo[]>();
-    for (const op of data ?? []) {
+    for (const op of filtered) {
       const list = m.get(op.category) ?? [];
       list.push(op);
       m.set(op.category, list);
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [data]);
+  }, [filtered]);
 
   if (isLoading) return <Spinner />;
   const selected = (data ?? []).find((o) => o.type === type);
 
+  const opCard = (op: OpInfo) => (
+    <GlowCard
+      key={op.type}
+      onClick={() => {
+        sfx.play("nav");
+        navigate(`/ops/${op.type}`);
+      }}
+      className={`px-3 py-2 ${op.type === type ? "ring-1 ring-[var(--color-neon-cyan)]" : ""}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate font-mono text-sm">{op.type}</span>
+        <span className="text-muted shrink-0 text-xs">{op.usedBy}×</span>
+      </div>
+    </GlowCard>
+  );
+
   return (
-    <>
+    <div className="flex h-[calc(100vh-3rem)] flex-col">
       <PageHeader title="Ops" subtitle={`${data?.length ?? 0} ops — base catalog + mod contributions. Living docs.`} />
-      <div className="grid grid-cols-[1fr_1.4fr] gap-6">
-        <div className="space-y-5">
-          {byCategory.map(([category, ops]) => (
-            <div key={category}>
-              <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">{category}</div>
-              <div className="grid gap-2">
-                {ops.map((op) => (
-                  <GlowCard key={op.type} onClick={() => navigate(`/ops/${op.type}`)} className={`px-3 py-2 ${op.type === type ? "ring-1 ring-[var(--color-neon-cyan)]" : ""}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-sm">{op.type}</span>
-                      <span className="text-muted text-xs">{op.usedBy}×</span>
-                    </div>
-                  </GlowCard>
-                ))}
-              </div>
+      <div className="grid min-h-0 flex-1 grid-cols-[1fr_1.4fr] gap-6">
+        {/* Left: filterable list, scrolls on its own */}
+        <div className="flex min-h-0 flex-col">
+          <div className="mb-3 flex gap-2">
+            <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2">
+              <Search size={14} className="text-muted shrink-0" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Fuzzy search ops…"
+                aria-label="Search ops"
+                className="w-full bg-transparent text-sm outline-none"
+              />
+              {query && (
+                <button type="button" aria-label="Clear search" className="text-muted text-xs" onClick={() => setQuery("")}>
+                  ✕
+                </button>
+              )}
             </div>
-          ))}
+            <select
+              value={mod}
+              onChange={(e) => setMod(e.target.value)}
+              aria-label="Filter by mod"
+              className="glass rounded-xl px-3 py-2 text-sm outline-none [&>option]:bg-[var(--bg)]"
+            >
+              <option value="">All mods</option>
+              {mods.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 pb-4">
+            {filtered.length === 0 && <GlassPanel className="text-muted p-8 text-center text-sm">No ops match.</GlassPanel>}
+            {searching ? (
+              // Ranked flat list while searching (best match first).
+              <div className="grid gap-2">{filtered.map(opCard)}</div>
+            ) : (
+              byCategory.map(([category, ops]) => (
+                <div key={category}>
+                  <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">{category}</div>
+                  <div className="grid gap-2">{ops.map(opCard)}</div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-        <div className="sticky top-0">
+
+        {/* Right: detail, scrolls on its own */}
+        <div className="min-h-0 overflow-y-auto pb-4">
           {selected ? (
             <OpDetail op={selected} />
           ) : (
@@ -96,6 +171,6 @@ export function OpsPage() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
