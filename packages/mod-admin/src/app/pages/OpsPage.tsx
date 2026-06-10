@@ -25,6 +25,7 @@ function Port({ p, config }: { p: PortInfo; config?: boolean }) {
 }
 
 function OpDetail({ op }: { op: OpInfo }) {
+  const navigate = useNavigate();
   return (
     <GlassPanel className="p-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -60,7 +61,32 @@ function OpDetail({ op }: { op: OpInfo }) {
           <JsonView value={op.configSchema} className="max-h-72" />
         </div>
       )}
-      <div className="text-muted mt-4 text-xs">Used by {op.usedBy} workflow(s).</div>
+      {/* Who uses this op — each chip opens that workflow in the editor. */}
+      <div className="mt-5">
+        <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">
+          Used by {op.usedBy} workflow{op.usedBy === 1 ? "" : "s"}
+        </div>
+        {(op.usedByWorkflows ?? []).length === 0 ? (
+          <span className="text-muted text-sm">No registered workflow uses it yet.</span>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {(op.usedByWorkflows ?? []).map((wf) => (
+              <button
+                key={wf}
+                type="button"
+                title={`Open ${wf} in the editor`}
+                onClick={() => {
+                  sfx.play("nav");
+                  navigate(`/editor/${wf}`);
+                }}
+                className="glass rounded-lg px-2.5 py-1 font-mono text-xs hover:bg-white/10 hover:text-[var(--color-neon-cyan)]"
+              >
+                {wf} ↗
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </GlassPanel>
   );
 }

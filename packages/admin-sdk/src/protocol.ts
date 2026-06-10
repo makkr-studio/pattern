@@ -119,6 +119,8 @@ export interface OpInfo {
   controlOut: string[];
   configSchema?: unknown;
   usedBy: number;
+  /** Ids of the workflows using this op (clickable in the catalog). */
+  usedByWorkflows?: string[];
   reusable: boolean;
 }
 
@@ -218,10 +220,21 @@ export interface NodeChange {
   after: { op: string; config?: unknown; title?: string; comment?: string };
 }
 
+export interface DiffNode {
+  id: string;
+  op: string;
+  [k: string]: unknown;
+}
+
+export interface DiffEdge {
+  from: { node: string; port: string };
+  to: { node: string; port: string };
+}
+
 export interface JsonDiff {
   equal: boolean;
-  nodes: { added: unknown[]; removed: unknown[]; changed: NodeChange[] };
-  edges: { added: unknown[]; removed: unknown[] };
+  nodes: { added: DiffNode[]; removed: DiffNode[]; changed: NodeChange[] };
+  edges: { added: DiffEdge[]; removed: DiffEdge[] };
   meta: { field: string; before: unknown; after: unknown }[];
 }
 

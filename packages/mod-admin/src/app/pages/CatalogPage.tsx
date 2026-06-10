@@ -12,6 +12,29 @@ const SOURCE_HUE: Record<string, number> = { code: 200, file: 150, db: 280 };
 /** Workflows authored in the admin (file/db) rather than contributed by a mod. */
 const LOCAL = "(local)";
 
+/** Persisted mod filter: the EXCLUDED mods (new mods default to visible).
+ *  First visit: the admin's own plumbing is hidden — your workflows first. */
+const EXCLUDED_MODS_KEY = "pattern.admin.catalog.excludedMods";
+const DEFAULT_EXCLUDED = ["@pattern/mod-admin"];
+
+function readExcludedMods(): Set<string> {
+  try {
+    const raw = localStorage.getItem(EXCLUDED_MODS_KEY);
+    if (raw == null) return new Set(DEFAULT_EXCLUDED);
+    const list = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(list) ? list : DEFAULT_EXCLUDED);
+  } catch {
+    return new Set(DEFAULT_EXCLUDED);
+  }
+}
+function writeExcludedMods(s: Set<string>): void {
+  try {
+    localStorage.setItem(EXCLUDED_MODS_KEY, JSON.stringify([...s]));
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Pick a starting point for a new workflow: blank canvas or a built-in template. */
 function TemplatePicker({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
@@ -57,7 +80,8 @@ export function CatalogPage() {
   const [confirmUndeploy, setConfirmUndeploy] = useState<WorkflowMeta | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [modFilter, setModFilter] = useState("");
+  const [modsOpen, setModsOpen] = useState(false);
+  const [excluded, setExcluded] = useState<Set<string>>(readExcludedMods);
 
   // Which mod contributed each workflow (admin-authored ones are "(local)").
   const modOf = useMemo(() => {
@@ -72,10 +96,19 @@ export function CatalogPage() {
   }, [data, modOf]);
 
   const filtered = useMemo(() => {
-    let list = data ?? [];
-    if (modFilter) list = list.filter((w) => (modOf.get(w.slug) ?? LOCAL) === modFilter);
+    const list = (data ?? []).filter((w) => !excluded.has(modOf.get(w.slug) ?? LOCAL));
     return fuzzyFilter(list, query, (w) => `${w.slug} ${w.name} ${w.description ?? ""} ${(w.tags ?? []).join(" ")} ${w.route?.path ?? ""}`);
-  }, [data, query, modFilter, modOf]);
+  }, [data, query, excluded, modOf]);
+
+  const toggleMod = (name: string) => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      writeExcludedMods(next);
+      return next;
+    });
+    sfx.play("toggle");
+  };
 
   if (isLoading) return <Spinner />;
   if (isError) {
@@ -226,20 +259,38 @@ export function CatalogPage() {
             </button>
           )}
         </div>
-        <select
-          value={modFilter}
-          onChange={(e) => setModFilter(e.target.value)}
-          aria-label="Filter by mod"
-          className="glass rounded-xl px-3 py-2 text-sm outline-none [&>option]:bg-[var(--bg)]"
+        <button
+          type="button"
+          onClick={() => setModsOpen(true)}
+          aria-label="Filter by mods"
+          className="glass flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
         >
-          <option value="">All mods</option>
-          {modNames.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+          Mods
+          <Badge hue={excluded.size ? 45 : 150}>
+            {modNames.filter((m) => !excluded.has(m)).length}/{modNames.length}
+          </Badge>
+        </button>
       </div>
+
+      {/* Mod visibility: tick = shown. The admin's plumbing hides by default. */}
+      <Modal open={modsOpen} onClose={() => setModsOpen(false)} title="Show workflows from…">
+        <div className="space-y-1">
+          {modNames.map((m) => {
+            const shown = !excluded.has(m);
+            const count = (data ?? []).filter((w) => (modOf.get(w.slug) ?? LOCAL) === m).length;
+            return (
+              <label key={m} className="glass flex cursor-pointer items-center gap-3 rounded-xl px-4 py-2.5 hover:bg-white/5">
+                <input type="checkbox" checked={shown} onChange={() => toggleMod(m)} className="accent-[var(--color-neon-cyan)]" />
+                <span className={`font-mono text-sm ${shown ? "" : "text-muted"}`}>{m}</span>
+                <span className="text-muted ml-auto text-xs">{count} workflow{count === 1 ? "" : "s"}</span>
+              </label>
+            );
+          })}
+          <p className="text-muted pt-2 text-[11px]">
+            Unticked mods are hidden from this list. The admin's own workflows start hidden so yours come first.
+          </p>
+        </div>
+      </Modal>
 
       {rows.length === 0 ? (
         <EmptyState title="No workflows match" hint="Loosen the search or pick another mod." />

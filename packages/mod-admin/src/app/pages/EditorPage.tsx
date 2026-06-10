@@ -32,13 +32,13 @@ import {
   type OpMap,
   type OpNodeData,
 } from "../editor/graph";
-import { Badge, GlassPanel, Modal, NeonButton, Spinner } from "../components/ui";
+import { Badge, GlassPanel, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson, type FieldOverride } from "../components/FormFromSchema";
 import { SchemaBuilder } from "../components/SchemaBuilder";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
 import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2 } from "../components/icon";
-import { Lock } from "lucide-react";
+import { Braces, Lock } from "lucide-react";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -49,13 +49,18 @@ const nodeTypes = { op: OpNode };
 /** MIME type carrying an op across the palette→canvas drag. */
 const DND_TYPE = "application/x-pattern-op";
 
-// ── Editor persistence (localStorage) ──
-const DRAFT_KEY = "pattern.admin.editor.draft";
+// ── Editor persistence (localStorage) — TABS: one draft per open workflow. ──
 const PANES_KEY = "pattern.admin.editor.panes";
+const TABS_KEY = "pattern.admin.editor.tabs";
+const DRAFT_PREFIX = "pattern.admin.editor.draft.";
+/** The tab key of an unsaved brand-new workflow (at most one at a time). */
+const NEW_KEY = "__new__";
+/** Pre-tabs single-draft key — migrated on first load. */
+const LEGACY_DRAFT_KEY = "pattern.admin.editor.draft";
 
-/** The whole canvas, continuously persisted so closing/navigating never loses
+/** One tab's canvas, continuously persisted so closing/switching never loses
  *  work. `slug` is null for a brand-new workflow; `dirty` = differs from the
- *  last saved version (drives the discard guard). */
+ *  last saved version (drives the dot + discard guard). */
 interface EditorDraft {
   slug: string | null;
   newSlug?: string;
@@ -64,21 +69,68 @@ interface EditorDraft {
   at: number;
 }
 
-function readDraft(): EditorDraft | null {
+interface EditorTabs {
+  open: string[];
+  /** Where the editor was last — plain /editor reopens here. */
+  last?: string;
+}
+
+const draftKeyOf = (slug: string | null): string => slug ?? NEW_KEY;
+
+function readDraft(key: string): EditorDraft | null {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(DRAFT_PREFIX + key);
     const d = raw ? (JSON.parse(raw) as EditorDraft) : null;
     return d && Array.isArray(d.doc?.nodes) ? d : null;
   } catch {
     return null;
   }
 }
-function writeDraft(d: EditorDraft | null): void {
+function writeDraft(key: string, d: EditorDraft | null): void {
   try {
-    if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
-    else localStorage.removeItem(DRAFT_KEY);
+    if (d) localStorage.setItem(DRAFT_PREFIX + key, JSON.stringify(d));
+    else localStorage.removeItem(DRAFT_PREFIX + key);
   } catch {
     /* storage full/blocked — drafts are best-effort */
+  }
+}
+const removeDraft = (key: string): void => writeDraft(key, null);
+
+function readTabs(): EditorTabs {
+  migrateLegacyDraft();
+  try {
+    const t = JSON.parse(localStorage.getItem(TABS_KEY) ?? "") as EditorTabs;
+    if (Array.isArray(t.open)) return { open: t.open.filter((k) => typeof k === "string"), last: t.last };
+  } catch {
+    /* default below */
+  }
+  return { open: [] };
+}
+function writeTabs(t: EditorTabs): void {
+  try {
+    localStorage.setItem(TABS_KEY, JSON.stringify(t));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** One-time migration of the pre-tabs single draft into its own tab. */
+function migrateLegacyDraft(): void {
+  try {
+    const raw = localStorage.getItem(LEGACY_DRAFT_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw) as EditorDraft;
+    if (d && Array.isArray(d.doc?.nodes)) {
+      const key = draftKeyOf(d.slug);
+      localStorage.setItem(DRAFT_PREFIX + key, raw);
+      const t = JSON.parse(localStorage.getItem(TABS_KEY) ?? '{"open":[]}') as EditorTabs;
+      if (!t.open.includes(key)) t.open.push(key);
+      t.last = key;
+      localStorage.setItem(TABS_KEY, JSON.stringify(t));
+    }
+    localStorage.removeItem(LEGACY_DRAFT_KEY);
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -109,13 +161,41 @@ function EditorInner() {
   const [notice, setNotice] = useState<string | null>(null);
   const [newSlug, setNewSlug] = useState("");
   const [runOpen, setRunOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
   const [forkSlug, setForkSlug] = useState("");
   /** Inspector stretched over the whole editor (focus mode for big configs). */
   const [inspectorWide, setInspectorWide] = useState(false);
-  /** A dirty draft for ANOTHER target blocks init until the user decides. */
+  /** An explicit doc (template / "edit vN") over a dirty draft asks first. */
   const [pendingDraft, setPendingDraft] = useState<EditorDraft | null>(null);
   const [initTick, setInitTick] = useState(0);
+
+  // ── Tabs: every workflow you open stays open (per-tab drafts). ──
+  const tabKey = slug ?? NEW_KEY;
+  const [tabs, setTabs] = useState<string[]>(() => readTabs().open);
+  const [dirtyMap, setDirtyMap] = useState<Record<string, { dirty: boolean; newSlug?: string }>>({});
+  const [closingTab, setClosingTab] = useState<string | null>(null);
+
+  /** Re-read every tab's draft state (dots + new-tab label). */
+  const refreshDirty = useCallback((keys: string[]) => {
+    const m: Record<string, { dirty: boolean; newSlug?: string }> = {};
+    for (const k of keys) {
+      const d = readDraft(k);
+      m[k] = { dirty: Boolean(d?.dirty), newSlug: d?.newSlug };
+    }
+    setDirtyMap(m);
+  }, []);
+
+  // The tab being viewed is always an open tab; remember it as `last`.
+  useEffect(() => {
+    setTabs((prev) => {
+      const next = prev.includes(tabKey) ? prev : [...prev, tabKey];
+      writeTabs({ open: next, last: tabKey });
+      refreshDirty(next);
+      return next;
+    });
+    setNotice(null); // a stale notice from another tab would mislead
+  }, [tabKey, refreshDirty]);
   const baseDoc = useRef<WorkflowDoc>({ id: slug ?? "untitled", nodes: [], edges: [] });
   /** Normal-form snapshot of the last *saved* doc (dirty = current ≠ this). */
   const savedRef = useRef<string>("__unsaved__");
@@ -232,36 +312,38 @@ function EditorInner() {
     [opMap, setNodes, setEdges],
   );
 
-  // ── Initialize the canvas (once per slug, after ops + workflow load).
-  // Priority: a dirty draft for another target asks first; then an explicit
-  // doc (template / "edit from version"); then this target's own draft —
-  // the editor reopens exactly where you left it; then the server doc.
+  // ── Initialize the canvas (once per tab, after ops + workflow load).
+  // Priority: an explicit doc (template / "edit from version") asks first if
+  // it would clobber this tab's dirty draft; then the tab's own draft — every
+  // tab reopens exactly where you left it; then the server doc.
   useEffect(() => {
     if (!opMap.size) return;
     if (!isNew && !wfData) return;
-    const key = slug ?? "__new__";
-    if (loadedFor.current === key) return;
+    if (loadedFor.current === tabKey) return;
 
     const serverDoc = wfData?.latestDoc ?? wfData?.liveDoc ?? null;
-    const draft = readDraft();
+    const draft = readDraft(tabKey);
     const explicit = template ?? loadDoc;
+    const wantsNewTab = Boolean((locState as { newTab?: boolean } | null)?.newTab);
 
-    // Plain /editor visit → the editor reopens wherever you were. Never
-    // destructive, never asks: jump to the draft's URL when it has one.
-    if (!slug && !explicit && draft?.slug) {
-      loadedFor.current = null;
-      navigate(`/editor/${draft.slug}`, { replace: true });
-      return;
+    // Plain /editor visit → reopen where you were (the last active tab). The
+    // "+" tab button passes state.newTab to genuinely open the new-workflow tab.
+    if (!slug && !explicit && !wantsNewTab && !draft?.doc.nodes.length) {
+      const last = readTabs().last;
+      if (last && last !== NEW_KEY) {
+        loadedFor.current = null;
+        navigate(`/editor/${last}`, { replace: true });
+        return;
+      }
     }
 
-    // Opening a *different* doc over a dirty draft would destroy work → ask.
-    const draftIsThisTarget = draft && draft.slug === (slug ?? null) && !explicit;
-    if (draft?.dirty && !draftIsThisTarget && !pendingDraft) {
+    // An explicit doc over THIS tab's dirty draft would destroy work → ask.
+    if (explicit && draft?.dirty && !pendingDraft) {
       setPendingDraft(draft);
       return; // blocked until the user decides (modal below)
     }
 
-    loadedFor.current = key;
+    loadedFor.current = tabKey;
     setPendingDraft(null);
 
     if (explicit) {
@@ -269,7 +351,7 @@ function EditorInner() {
       if (loadDoc) setNotice(`Editing ${locState?.note ?? "an older version"} — Save to make it the newest version.`);
       return;
     }
-    if (draftIsThisTarget) {
+    if (draft) {
       mountDoc(draft.doc, { saved: serverDoc });
       if (!slug && draft.newSlug) setNewSlug(draft.newSlug);
       if (draft.dirty) setNotice("Restored your unsaved draft.");
@@ -277,19 +359,82 @@ function EditorInner() {
     }
     mountDoc(serverDoc ?? { id: slug ?? "untitled", name: slug, nodes: [], edges: [] }, { saved: serverDoc });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opMap, slug, wfData, isNew, template, loadDoc, initTick, mountDoc, navigate]);
+  }, [opMap, slug, wfData, isNew, template, loadDoc, initTick, mountDoc, navigate, tabKey]);
 
-  // ── Persist the canvas continuously (debounced) — work is never lost. ──
+  // ── Persist the canvas continuously (debounced, per tab) — never lost. ──
   useEffect(() => {
-    if (loadedFor.current !== (slug ?? "__new__")) return; // not initialized
+    if (loadedFor.current !== tabKey) return; // not initialized
     const t = setTimeout(() => {
       const doc = toDoc(baseDoc.current, nodes, edges);
       const ser = JSON.stringify(doc);
       const dirty = ser !== savedRef.current && (Boolean(slug) || doc.nodes.length > 0);
-      writeDraft({ slug: slug ?? null, newSlug: newSlug || undefined, doc, dirty, at: Date.now() });
+      writeDraft(tabKey, { slug: slug ?? null, newSlug: newSlug || undefined, doc, dirty, at: Date.now() });
+      setDirtyMap((m) => (m[tabKey]?.dirty === dirty && m[tabKey]?.newSlug === (newSlug || undefined) ? m : { ...m, [tabKey]: { dirty, newSlug: newSlug || undefined } }));
     }, 400);
     return () => clearTimeout(t);
-  }, [nodes, edges, newSlug, slug]);
+  }, [nodes, edges, newSlug, slug, tabKey]);
+
+  /** Write the current canvas to its draft NOW (used before switching tabs,
+   *  so the last ≤400ms of edits aren't lost to the debounce). */
+  const flushDraft = useCallback(() => {
+    if (loadedFor.current !== tabKey) return;
+    const doc = toDoc(baseDoc.current, rf.getNodes(), rf.getEdges());
+    const dirty = JSON.stringify(doc) !== savedRef.current && (Boolean(slug) || doc.nodes.length > 0);
+    writeDraft(tabKey, { slug: slug ?? null, newSlug: newSlug || undefined, doc, dirty, at: Date.now() });
+  }, [tabKey, slug, newSlug, rf]);
+
+  /** Switch tabs: flush this canvas, then navigate (init loads the target's draft). */
+  const switchTab = useCallback(
+    (key: string) => {
+      if (key === tabKey) return;
+      flushDraft();
+      sfx.play("nav");
+      navigate(key === NEW_KEY ? "/editor" : `/editor/${key}`, key === NEW_KEY ? { state: { newTab: true } } : undefined);
+    },
+    [tabKey, flushDraft, navigate],
+  );
+
+  /** Close a tab (dirty ones confirm via modal first). */
+  const doCloseTab = useCallback(
+    (key: string) => {
+      removeDraft(key);
+      setClosingTab(null);
+      setTabs((prev) => {
+        const idx = prev.indexOf(key);
+        const next = prev.filter((k) => k !== key);
+        if (key === tabKey) {
+          const neighbor = next[idx - 1] ?? next[idx] ?? null;
+          loadedFor.current = null;
+          if (neighbor) {
+            writeTabs({ open: next, last: neighbor });
+            navigate(neighbor === NEW_KEY ? "/editor" : `/editor/${neighbor}`, neighbor === NEW_KEY ? { state: { newTab: true } } : undefined);
+          } else {
+            // Last tab closed → a fresh new-workflow tab.
+            const fresh = [NEW_KEY];
+            writeTabs({ open: fresh, last: NEW_KEY });
+            setNewSlug("");
+            navigate("/editor", { state: { newTab: true } });
+            setInitTick((t) => t + 1);
+            return fresh;
+          }
+        } else {
+          writeTabs({ open: next, last: tabKey });
+        }
+        return next;
+      });
+      sfx.play("delete");
+    },
+    [tabKey, navigate],
+  );
+  const requestCloseTab = useCallback(
+    (key: string) => {
+      if (key === tabKey) flushDraft();
+      const d = readDraft(key);
+      if (d?.dirty) setClosingTab(key);
+      else doCloseTab(key);
+    },
+    [tabKey, flushDraft, doCloseTab],
+  );
 
   // ── Connection rules: ports must agree on kind AND data type (T2). Checked
   // live while dragging, so an incompatible port simply refuses the link.
@@ -500,8 +645,16 @@ function EditorInner() {
   const adoptSaved = (doc: WorkflowDoc) => {
     baseDoc.current = doc;
     savedRef.current = JSON.stringify(doc);
-    writeDraft({ slug: doc.id, doc, dirty: false, at: Date.now() });
+    writeDraft(doc.id, { slug: doc.id, doc, dirty: false, at: Date.now() });
+    setDirtyMap((m) => ({ ...m, [doc.id]: { dirty: false } }));
     if (isNew) {
+      // The new-workflow tab becomes the saved slug's tab.
+      removeDraft(NEW_KEY);
+      setTabs((prev) => {
+        const next = prev.map((k) => (k === NEW_KEY ? doc.id : k)).filter((k, i, a) => a.indexOf(k) === i);
+        writeTabs({ open: next, last: doc.id });
+        return next;
+      });
       loadedFor.current = doc.id; // canvas already shows this doc — don't reload
       navigate(`/editor/${doc.id}`, { replace: true });
     }
@@ -553,9 +706,10 @@ function EditorInner() {
       return;
     }
     setForkOpen(false);
-    writeDraft({ slug: id, doc, dirty: false, at: Date.now() });
+    flushDraft(); // the source tab keeps its state
+    writeDraft(id, { slug: id, doc, dirty: false, at: Date.now() });
     loadedFor.current = null;
-    navigate(`/editor/${id}`);
+    navigate(`/editor/${id}`); // opens as its own tab
     setNotice(`Forked to ${id}.`);
     sfx.play("save");
   };
@@ -693,6 +847,16 @@ function EditorInner() {
           >
             <Download size={14} />
           </NeonButton>
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="View workflow JSON"
+            title="View the JSON of the canvas as it is right now (unsaved state included)"
+            onClick={() => setJsonOpen(true)}
+            disabled={nodes.length === 0}
+          >
+            <Braces size={14} />
+          </NeonButton>
           <input
             ref={importInput}
             type="file"
@@ -719,6 +883,55 @@ function EditorInner() {
             </>
           )}
         </div>
+      </div>
+
+      {/* Tabs — every open workflow keeps its own draft; dot = unsaved. */}
+      <div className="mb-2 flex items-center gap-1 overflow-x-auto">
+        {tabs.map((k) => {
+          const active = k === tabKey;
+          const d = dirtyMap[k];
+          const label = k === NEW_KEY ? `✦ ${(active ? newSlug : d?.newSlug) || "new"}` : k;
+          return (
+            <div
+              key={k}
+              role="tab"
+              aria-selected={active}
+              onClick={() => switchTab(k)}
+              title={k === NEW_KEY ? "New workflow (unsaved)" : k}
+              className={`group flex max-w-56 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                active
+                  ? "border-[var(--color-neon-cyan)]/40 bg-white/10 text-[var(--fg)]"
+                  : "hairline text-muted bg-transparent hover:bg-white/5 hover:text-[var(--fg)]"
+              }`}
+            >
+              <span className="truncate font-mono">{label}</span>
+              {(active ? undefined : d?.dirty) || (active && d?.dirty) ? (
+                <span aria-label="unsaved changes" title="Unsaved changes" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-neon-amber)]" />
+              ) : null}
+              <button
+                type="button"
+                aria-label={`Close ${label}`}
+                title="Close tab"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  requestCloseTab(k);
+                }}
+                className="text-muted -mr-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/10 hover:text-[var(--fg)]"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          aria-label="New workflow tab"
+          title="New workflow tab"
+          onClick={() => switchTab(NEW_KEY)}
+          className="text-muted shrink-0 rounded-lg border hairline px-2.5 py-1.5 text-xs hover:bg-white/5 hover:text-[var(--fg)]"
+        >
+          +
+        </button>
       </div>
 
       <div className="relative grid min-h-0 flex-1 gap-0" style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px` }}>
@@ -817,6 +1030,29 @@ function EditorInner() {
 
       {runOpen && <RunPanel open={runOpen} onClose={() => setRunOpen(false)} doc={currentDoc()} opMap={opMap} />}
 
+      {/* The canvas AS JSON — exactly what Save would persist, dirty state included. */}
+      {jsonOpen && (
+        <Modal open onClose={() => setJsonOpen(false)} title={`${currentDoc().id}.json — live canvas`} wide>
+          <div className="space-y-3">
+            <JsonView value={currentDoc()} className="max-h-[60vh]" />
+            <div className="flex justify-end gap-2">
+              <NeonButton
+                variant="ghost"
+                onClick={() => {
+                  void navigator.clipboard.writeText(JSON.stringify(currentDoc(), null, 2));
+                  sfx.play("ok");
+                }}
+              >
+                Copy JSON
+              </NeonButton>
+              <NeonButton variant="ghost" onClick={onExport}>
+                <Download size={13} /> Download
+              </NeonButton>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Fork dialog */}
       <Modal open={forkOpen} onClose={() => setForkOpen(false)} title="Fork workflow">
         <div className="space-y-4">
@@ -844,15 +1080,15 @@ function EditorInner() {
         </div>
       </Modal>
 
-      {/* Unsaved-draft guard: this navigation would destroy other work.
-          Closing the dialog = the non-destructive choice (resume). */}
+      {/* Unsaved-draft guard: an explicit doc (template / "edit vN") would
+          clobber this tab's dirty draft. Closing = the non-destructive choice. */}
       <Modal open={pendingDraft !== null} onClose={() => resumeDraft()} title="Unsaved draft">
         {pendingDraft && (
           <div className="space-y-4">
             <p className="text-sm">
-              You have unsaved changes in{" "}
-              <span className="font-mono">{pendingDraft.slug ?? pendingDraft.newSlug ?? pendingDraft.doc.id ?? "a new workflow"}</span>. Opening{" "}
-              <span className="font-mono">{slug ?? "a new canvas"}</span> will discard them.
+              This tab has unsaved changes in{" "}
+              <span className="font-mono">{pendingDraft.slug ?? pendingDraft.newSlug ?? pendingDraft.doc.id ?? "a new workflow"}</span>. Loading{" "}
+              {locState?.note ? <span className="font-mono">{locState.note}</span> : "this document"} over it will discard them.
             </p>
             <div className="flex justify-end gap-2">
               <NeonButton variant="ghost" onClick={resumeDraft}>
@@ -861,7 +1097,7 @@ function EditorInner() {
               <NeonButton
                 variant="danger"
                 onClick={() => {
-                  writeDraft(null);
+                  removeDraft(tabKey);
                   setPendingDraft(null);
                   loadedFor.current = null;
                   setInitTick((t) => t + 1);
@@ -869,6 +1105,26 @@ function EditorInner() {
                 }}
               >
                 Discard draft
+              </NeonButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Closing a dirty tab — make losing work an explicit choice. */}
+      <Modal open={closingTab !== null} onClose={() => setClosingTab(null)} title="Close tab">
+        {closingTab && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              <span className="font-mono">{closingTab === NEW_KEY ? dirtyMap[NEW_KEY]?.newSlug || "new workflow" : closingTab}</span> has
+              unsaved changes. Close anyway?
+            </p>
+            <div className="flex justify-end gap-2">
+              <NeonButton variant="ghost" onClick={() => setClosingTab(null)}>
+                Keep it open
+              </NeonButton>
+              <NeonButton variant="danger" onClick={() => doCloseTab(closingTab)}>
+                Discard & close
               </NeonButton>
             </div>
           </div>

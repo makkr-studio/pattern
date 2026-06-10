@@ -76,7 +76,7 @@ describe("SPA pages render", () => {
   it("Ops browser lists ops and shows detail", () => {
     mount(<OpsPage />, "/ops/core.math.add", "/ops/:type");
     expect(screen.getAllByText("core.math.add").length).toBeGreaterThan(0);
-    expect(screen.getByText("Used by 2 workflow(s).")).toBeTruthy();
+    expect(screen.getByText("Used by 2 workflows")).toBeTruthy();
   });
 
   it("System map renders sections", () => {

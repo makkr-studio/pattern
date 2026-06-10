@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useDeploy, useDiff, useSaveWorkflow, useVersions, useWorkflow } from "../lib/queries";
-import { Badge, GlassPanel, JsonView, Modal, NeonButton, PageHeader, Spinner } from "../components/ui";
+import { Badge, GlassPanel, Modal, NeonButton, PageHeader, Spinner } from "../components/ui";
+import { JsonDiff } from "../components/JsonDiff";
 import { ago } from "../lib/format";
 import { GitFork, Pencil } from "lucide-react";
 import { Rocket } from "../components/icon";
@@ -185,11 +186,42 @@ export function VersionsPage() {
                   <div className="mt-4 space-y-2">
                     {diff.nodes.changed.map((c) => (
                       <div key={c.id} className="text-xs">
-                        <span className="font-mono text-[var(--color-neon-amber)]">{c.id}</span>
-                        <div className="mt-1 grid grid-cols-2 gap-2">
-                          <JsonView value={c.before} className="max-h-40" />
-                          <JsonView value={c.after} className="max-h-40" />
-                        </div>
+                        <span className="font-mono text-[var(--color-neon-amber)]">~ {c.id}</span>
+                        <JsonDiff before={c.before} after={c.after} className="mt-1 max-h-64" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {diff.nodes.added.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {diff.nodes.added.map((n) => (
+                      <div key={n.id} className="text-xs">
+                        <span className="font-mono text-[var(--color-neon-lime)]">+ {n.id}</span>
+                        <JsonDiff before={undefined} after={n} className="mt-1 max-h-48" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {diff.nodes.removed.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {diff.nodes.removed.map((n) => (
+                      <div key={n.id} className="text-xs">
+                        <span className="font-mono text-[var(--color-neon-pink)]">− {n.id}</span>
+                        <JsonDiff before={n} after={undefined} className="mt-1 max-h-48" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(diff.edges.added.length > 0 || diff.edges.removed.length > 0) && (
+                  <div className="mt-4 space-y-1 text-xs">
+                    {diff.edges.added.map((e, i) => (
+                      <div key={`a${i}`} className="font-mono text-[var(--color-neon-lime)]">
+                        + {e.from.node}.{e.from.port} → {e.to.node}.{e.to.port}
+                      </div>
+                    ))}
+                    {diff.edges.removed.map((e, i) => (
+                      <div key={`r${i}`} className="font-mono text-[var(--color-neon-pink)]">
+                        − {e.from.node}.{e.from.port} → {e.to.node}.{e.to.port}
                       </div>
                     ))}
                   </div>

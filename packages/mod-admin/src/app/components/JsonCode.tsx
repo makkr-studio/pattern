@@ -11,7 +11,7 @@ const TOKEN =
   /("(?:[^"\\]|\\.)*")(\s*:)|("(?:[^"\\]|\\.)*")|(-?\b\d+\.?\d*(?:[eE][+-]?\d+)?\b)|(\btrue\b|\bfalse\b)|(\bnull\b)|([{}[\],:])/g;
 
 /** Tokenize JSON-ish text into colored spans (best-effort while typing). */
-function highlight(text: string): ReactNode[] {
+export function highlight(text: string): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
@@ -92,7 +92,8 @@ export function jsonStatus(text: string): JsonStatus {
 }
 
 // The pre and the textarea MUST share these exactly — that's the whole trick.
-const TYPO = "p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words";
+// No soft wrap: one logical line = one visual line, so the gutter stays true.
+const TYPO = "py-2 pr-2 pl-2 font-mono text-xs leading-relaxed whitespace-pre";
 
 export function JsonCode({
   text,
@@ -117,31 +118,47 @@ export function JsonCode({
   ariaLabel?: string;
 }) {
   const preRef = useRef<HTMLPreElement>(null);
+  const gutterRef = useRef<HTMLPreElement>(null);
   const status = jsonStatus(text);
   const bad = invalid || (!status.ok && !plainOk);
+  const lineCount = Math.max(1, text.split("\n").length);
 
   return (
     <div>
-      <div className={`glass relative w-full overflow-hidden rounded-lg ${bad ? "ring-1 ring-[var(--color-neon-amber)]" : ""}`}>
-        <pre ref={preRef} aria-hidden className={`${TYPO} ${height} pointer-events-none w-full overflow-auto`}>
-          {highlight(text)}
-          {"\n" /* breathing room so the last line scrolls fully into view */}
+      <div className={`glass flex w-full overflow-hidden rounded-lg ${bad ? "ring-1 ring-[var(--color-neon-amber)]" : ""}`}>
+        {/* Line-number gutter — same typography, scroll-synced to the textarea. */}
+        <pre
+          ref={gutterRef}
+          aria-hidden
+          className={`${TYPO} ${height} w-8 shrink-0 select-none overflow-hidden border-r hairline text-right text-[var(--fg-muted)] opacity-60`}
+        >
+          {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
+          {"\n"}
         </pre>
-        <textarea
-          value={text}
-          spellCheck={false}
-          aria-label={ariaLabel ?? "JSON"}
-          aria-invalid={bad}
-          placeholder={placeholder}
-          onChange={(e) => onText(e.target.value)}
-          onBlur={onBlur}
-          onScroll={(e) => {
-            if (!preRef.current) return;
-            preRef.current.scrollTop = e.currentTarget.scrollTop;
-            preRef.current.scrollLeft = e.currentTarget.scrollLeft;
-          }}
-          className={`${TYPO} absolute inset-0 ${height} w-full resize-none overflow-auto bg-transparent text-transparent caret-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] selection:bg-[var(--color-neon-cyan)]/25`}
-        />
+        <div className="relative min-w-0 flex-1">
+          <pre ref={preRef} aria-hidden className={`${TYPO} ${height} pointer-events-none w-full overflow-auto`}>
+            {highlight(text)}
+            {"\n" /* breathing room so the last line scrolls fully into view */}
+          </pre>
+          <textarea
+            value={text}
+            spellCheck={false}
+            wrap="off"
+            aria-label={ariaLabel ?? "JSON"}
+            aria-invalid={bad}
+            placeholder={placeholder}
+            onChange={(e) => onText(e.target.value)}
+            onBlur={onBlur}
+            onScroll={(e) => {
+              if (preRef.current) {
+                preRef.current.scrollTop = e.currentTarget.scrollTop;
+                preRef.current.scrollLeft = e.currentTarget.scrollLeft;
+              }
+              if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            className={`${TYPO} absolute inset-0 ${height} w-full resize-none overflow-auto bg-transparent text-transparent caret-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] selection:bg-[var(--color-neon-cyan)]/25`}
+          />
+        </div>
       </div>
       {/* Live parse status */}
       {!status.ok ? (
