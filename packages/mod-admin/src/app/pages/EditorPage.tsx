@@ -38,6 +38,7 @@ import { SchemaBuilder } from "../components/SchemaBuilder";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
 import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2 } from "../components/icon";
+import { Lock } from "lucide-react";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -600,6 +601,14 @@ function EditorInner() {
       <div className="mb-3 flex items-center gap-3">
         <h1 className="text-xl font-semibold">{isNew ? "New workflow" : slug}</h1>
         {wfData?.meta && <Badge hue={wfData.meta.source === "code" ? 200 : 150}>{wfData.meta.source}</Badge>}
+        {isCode && (
+          <span
+            className="flex items-center gap-1 rounded-full bg-[var(--color-neon-amber)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-neon-amber)]"
+            title="Shipped by a mod — it can't be saved or deployed from here. Fork it to make it yours."
+          >
+            <Lock size={11} /> read-only
+          </span>
+        )}
         {wfData?.meta?.live && wfData.meta.live !== "code" && (
           <Badge hue={150} title={`Deployed version: ${wfData.meta.live}`}>
             live {wfData.meta.live}
@@ -639,7 +648,7 @@ function EditorInner() {
           <NeonButton variant="ghost" className="!px-2" aria-label="Auto-tidy layout" title="Auto-tidy layout" onClick={onTidy} disabled={nodes.length === 0}>
             <Wand2 size={14} />
           </NeonButton>
-          {slug && (
+          {slug && !isCode && (
             <NeonButton
               variant="ghost"
               className="!px-2"
@@ -650,11 +659,12 @@ function EditorInner() {
               <History size={14} />
             </NeonButton>
           )}
+          {/* For a read-only code workflow, Fork IS the primary action. */}
           <NeonButton
-            variant="ghost"
-            className="!px-2"
+            variant={isCode ? "solid" : "ghost"}
+            className={isCode ? undefined : "!px-2"}
             aria-label="Fork to a new slug"
-            title="Fork to a new slug"
+            title={isCode ? "Fork — copy this read-only workflow to a slug you own" : "Fork to a new slug"}
             onClick={() => {
               setForkSlug(slug ? `${slug}-fork` : newSlug ? `${newSlug}-fork` : "");
               setForkOpen(true);
@@ -662,6 +672,7 @@ function EditorInner() {
             disabled={nodes.length === 0}
           >
             <GitFork size={14} />
+            {isCode ? " Fork to edit" : null}
           </NeonButton>
           <NeonButton
             variant="ghost"
@@ -696,12 +707,17 @@ function EditorInner() {
           <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
             <Play size={14} /> Run
           </NeonButton>
-          <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending || isCode} title={isCode ? "Code workflows are read-only — fork instead" : undefined}>
-            Save
-          </NeonButton>
-          <NeonButton onClick={onDeploy} disabled={deploy.isPending || isCode} title={isCode ? "Code workflows are read-only — fork instead" : undefined}>
-            <Rocket size={14} /> Deploy
-          </NeonButton>
+          {/* Save/Deploy don't exist for read-only code workflows — fork instead. */}
+          {!isCode && (
+            <>
+              <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending}>
+                Save
+              </NeonButton>
+              <NeonButton onClick={onDeploy} disabled={deploy.isPending}>
+                <Rocket size={14} /> Deploy
+              </NeonButton>
+            </>
+          )}
         </div>
       </div>
 

@@ -93,6 +93,10 @@ export interface WorkflowStore {
   getFixture(slug: string, name: string): Promise<Fixture | null>;
   saveFixture(slug: string, name: string, f: Fixture): Promise<void>;
   deleteFixture(slug: string, name: string): Promise<void>;
+  /** Admin-wide settings blob (observability knobs etc.) — survives restarts
+   *  on persistent storage. Null = never saved. */
+  getAdminConfig(): Promise<Record<string, unknown> | null>;
+  saveAdminConfig(cfg: Record<string, unknown>): Promise<void>;
 }
 
 /**

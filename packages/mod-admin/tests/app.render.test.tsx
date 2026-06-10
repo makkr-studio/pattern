@@ -48,7 +48,7 @@ function seeded(): QueryClient {
   qc.setQueryData(["mods"], [{ name: "@pattern/mod-admin", ops: ["admin.workflow.list"], workflows: ["admin.api.ops.list"], frontend: { menu: 5, pages: 0, commands: 2 } }]);
   qc.setQueryData(["system"], { routes: [{ method: "GET", path: "/hello/:name", workflow: "greeting", conflict: false }], apps: [], schedules: [], hooks: [], events: [], ws: [], ports: [3000] });
   qc.setQueryData(["metrics"], { window: { label: "since boot", sinceBoot: true }, runs: 12, errors: 1, errorRate: 0.08, inFlight: 0, runsPerMin: 3.2, perWorkflow: [{ workflowId: "greeting", count: 10, errors: 1, p50: 2, p95: 8, p99: 12, maxMs: 20 }] });
-  qc.setQueryData(["runs", {}], [
+  qc.setQueryData(["runs", { limit: 500 }], [
     { runId: "run-1234abcd", traceId: "t", workflowId: "greeting", trigger: "in", principal: {}, status: "ok", startTime: Date.now() - 1000, endTime: Date.now(), durationMs: 7, spanCount: 3 },
   ]);
   return qc;

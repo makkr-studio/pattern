@@ -446,6 +446,12 @@ export interface RunRequest {
   /** Opt into bounded, masked per-node I/O sampling on spans (admin-spec T1). */
   sampleIo?: boolean;
   /**
+   * Caller-chosen run id (otherwise the transport generates one). Lets a UI
+   * that only learns the result at completion cancel/pause the run it just
+   * started — no list-the-running-runs race for sub-second workflows.
+   */
+  runId?: string;
+  /**
    * Hook-chain depth this run executes at (§8). Set when a hook chain spawns the
    * run, so a nested `core.hook.invoke` resumes the same chain's recursion guard
    * — threaded explicitly (not a thread-local) so it survives transport seams.

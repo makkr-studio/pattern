@@ -187,7 +187,7 @@ export class WorkerPoolTransport implements RunTransport {
     }
     this.rr = (this.rr + 1) % n;
 
-    const runId = crypto.randomUUID();
+    const runId = req.runId ?? crypto.randomUUID();
     const result = worker.run(req, runId);
     return {
       runId,
