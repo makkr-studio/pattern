@@ -39,9 +39,6 @@
   /* Node surface: opaque enough that overlapping nodes stay legible even where
      backdrop-filter can't sample (inside the transformed RF viewport). */
   --node-surface: color-mix(in srgb, #ffffff 86%, transparent);
-  /* The run-tab notch: --node-surface flattened over the page bg (opaque), so
-     it fully covers the node border segment under its mouth — no line across. */
-  --notch-surface: color-mix(in srgb, #ffffff 86%, #f4f6fb);
   /* Through a var so the build never mangles the multi-function value. */
   --node-blur: blur(12px) saturate(1.35);
   /* Editor canvas dot grid — quiet, but present. */
@@ -64,7 +61,6 @@
 .dark {
   --bg: #070910;
   --node-surface: color-mix(in srgb, #0c101a 88%, transparent);
-  --notch-surface: color-mix(in srgb, #0c101a 88%, #070910);
   --canvas-dot: rgba(255, 255, 255, 0.16);
   --bg-mesh-1: rgba(34, 211, 238, 0.16);
   --bg-mesh-2: rgba(167, 139, 250, 0.18);

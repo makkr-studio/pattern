@@ -16,6 +16,7 @@ const FALLBACK_MENU: MenuEntry[] = [
   { category: "Author", label: "Workflows", icon: "workflow", path: "/workflows", order: 10 },
   { category: "Observe", label: "Runs", icon: "activity", path: "/runs", order: 10 },
   { category: "Observe", label: "Metrics", icon: "bar-chart", path: "/metrics", order: 20 },
+  { category: "Observe", label: "Process", icon: "cpu", path: "/process", order: 30 },
   { category: "Catalog", label: "Ops", icon: "boxes", path: "/ops", order: 10 },
   { category: "Catalog", label: "Mods", icon: "package", path: "/mods", order: 20 },
   { category: "System", label: "System map", icon: "network", path: "/system", order: 10 },

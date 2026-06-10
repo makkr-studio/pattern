@@ -142,6 +142,11 @@ export class AdminClient {
   templates = (): Promise<Template[]> => this.request("GET", "/templates");
   uiManifest = (): Promise<UiManifest> => this.request("GET", "/ui/manifest");
   systemMap = (): Promise<SystemMap> => this.request("GET", "/system");
+  /** Host/process/event-loop/transport snapshot (deltas since the last poll). */
+  systemStats = <T = Record<string, unknown>>(): Promise<T> => this.request("GET", "/system/stats");
+  /** Worker-efficiency benchmark: same workload inline vs on a worker pool. */
+  systemBench = <T = Record<string, unknown>>(opts?: { n?: number; runs?: number }): Promise<T> =>
+    this.request("POST", "/system/bench", opts ?? {});
   /** Run a source op once and return its output (declarative-page data source). */
   invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
   /** Run a workflow (draft doc or live slug) from a trigger; records the run. */

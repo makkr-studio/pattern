@@ -13,6 +13,10 @@ import type { RunHandle, RunRequest, RunTransport } from "../types.js";
 export class InProcessTransport implements RunTransport {
   constructor(private readonly deps: RunDeps) {}
 
+  describe(): Record<string, unknown> {
+    return { kind: "in-process" };
+  }
+
   dispatch(req: RunRequest): RunHandle {
     const ac = new AbortController();
     const runId = crypto.randomUUID();

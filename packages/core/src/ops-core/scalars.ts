@@ -68,6 +68,20 @@ export const mathOps: OpDefinition[] = [
     output: num,
     compute: ({ value: v, min, max }) => Math.min(Math.max(asNumber(v), asNumber(min)), asNumber(max)),
   }),
+  pureOp({
+    type: "core.math.fib",
+    description:
+      "Naive recursive fibonacci(`n`) — deliberately CPU-bound (exponential). Exists for benchmarks and " +
+      "demos: it makes event-loop blocking visible and gives worker transports something to chew on.",
+    inputs: { n: value(num) },
+    output: num,
+    config: z.object({ n: z.number().int().min(1).max(42).default(34) }),
+    compute: ({ n }, ctx) => {
+      const k = n == null ? (ctx.config as { n: number }).n : asNumber(n, "n");
+      const fib = (i: number): number => (i < 2 ? i : fib(i - 1) + fib(i - 2));
+      return fib(Math.min(42, Math.max(1, Math.floor(k))));
+    },
+  }),
 ];
 
 const cmp = (type: string, description: string, fn: (a: any, b: any) => boolean): OpDefinition =>

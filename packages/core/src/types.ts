@@ -478,4 +478,8 @@ export interface RunTransport {
   dispatch(req: RunRequest): RunHandle;
   /** Release resources (worker pools, sockets). */
   close?(): Promise<void>;
+  /** Introspection for observability surfaces (e.g. the admin's Process page):
+   *  at minimum `{ kind }`, plus whatever the transport knows (pool size,
+   *  per-worker inflight…). Never required for running. */
+  describe?(): Record<string, unknown>;
 }

@@ -20,6 +20,7 @@ import {
   type Workflow,
 } from "@pattern/core";
 import { adminServices, ASSETS_FS } from "../services.js";
+import { processStats, workerBench } from "../system-stats.js";
 import { catalog, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";
 import { diffWorkflows } from "../control-plane/versioning.js";
 import { safeSegment } from "../control-plane/store.js";
@@ -235,6 +236,12 @@ const runTail: OpDefinition = {
 
 const modListOp = adminOp("admin.mod.list", "List installed mods + their contributions.", (_args, { engine }) => modList(engine));
 const systemMapOp = adminOp("admin.system.map", "Routes, schedules, hooks, events, WS across registered workflows.", (_args, { engine }) => systemMap(engine));
+const systemStatsOp = adminOp("admin.system.stats", "Host/process/event-loop/transport snapshot (the Process page; deltas since last poll).", (_args, { engine }) =>
+  processStats(engine),
+);
+const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark: the same CPU-bound workload inline vs on a worker pool.", (args) =>
+  workerBench({ n: args.n != null ? Number(args.n) : undefined, runs: args.runs != null ? Number(args.runs) : undefined }),
+);
 
 /** The aggregated frontend manifest (serializable) the shell builds its nav from. */
 const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", (_args, { engine }) => {
@@ -397,6 +404,8 @@ export const adminOps: OpDefinition[] = [
   metricsSummary,
   modListOp,
   systemMapOp,
+  systemStatsOp,
+  systemBenchOp,
   uiManifest,
   invokeOp,
   runOp,
