@@ -17,22 +17,64 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
   const nodes = spans.filter((s) => s.attributes["pattern.node.id"] !== undefined);
   if (nodes.length === 0) return <div className="text-muted text-sm">No node spans captured.</div>;
   return (
-    <div className="space-y-1.5">
+    <div>
+      {/* What am I looking at? One row per node; the bar is when it ran. */}
+      <div className="text-muted mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <span>One row per node — faint = waiting on inputs, solid = working. Click a bar for its I/O.</span>
+        <span className="flex items-center gap-3">
+          {(
+            [
+              ["ok", "var(--color-neon-lime)"],
+              ["error", "var(--color-neon-pink)"],
+              ["running", "var(--color-neon-cyan)"],
+            ] as const
+          ).map(([label, color]) => (
+            <span key={label} className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </span>
+      </div>
+      {/* Time axis over the bar lane (aligned with the rows' grid below). */}
+      <div className="mb-1.5 flex items-center gap-3 text-[10px]">
+        <span className="w-40 shrink-0" />
+        <div className="text-muted flex flex-1 justify-between border-b hairline pb-0.5 font-mono">
+          <span>0</span>
+          <span>{ms(total / 2)}</span>
+          <span>{ms(total)}</span>
+        </div>
+        <span className="w-14 shrink-0" />
+      </div>
+      <div className="space-y-1.5">
       {nodes.map((s) => {
         const left = total ? ((s.startTime - runStart) / total) * 100 : 0;
         const width = total ? Math.max(1.5, ((s.endTime - s.startTime) / total) * 100) : 100;
         const color = statusColor(s.status);
+        // Every node launches at t≈0 and blocks on its inputs — the engine
+        // reports that prefix so we can dim it: faint = waiting, solid = working.
+        const blockedMs = Number(s.attributes["pattern.node.blockedMs"] ?? 0);
+        const blocked = total ? Math.min((blockedMs / total) * 100, width - 1) : 0;
+        const active = s.endTime - s.startTime - blockedMs;
         return (
           <div key={s.spanId}>
             <button onClick={() => setOpen(open === s.spanId ? null : s.spanId)} className="block w-full text-left">
               <div className="flex items-center gap-3 text-xs">
                 <span className="w-40 shrink-0 truncate font-mono">{nodeOf(s)}</span>
-                <div className="relative h-4 flex-1 rounded bg-white/5">
+                <div className="relative h-4 flex-1 rounded bg-white/5" {...(blockedMs > 0 ? { title: `waited ${ms(blockedMs)} on inputs · worked ${ms(Math.max(0, active))}` } : {})}>
+                  {blocked > 0.5 && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 0.22 }}
+                      className="absolute top-0 h-4 rounded-l"
+                      style={{ left: `${left}%`, width: `${blocked}%`, background: color }}
+                    />
+                  )}
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: `${width}%` }}
+                    animate={{ width: `${Math.max(1.5, width - blocked)}%` }}
                     className="absolute top-0 h-4 rounded"
-                    style={{ left: `${left}%`, background: color, boxShadow: `0 0 10px ${color}` }}
+                    style={{ left: `${left + blocked}%`, background: color, boxShadow: `0 0 10px ${color}` }}
                   />
                 </div>
                 <span className="text-muted w-14 shrink-0 text-right">{ms(s.endTime - s.startTime)}</span>
@@ -47,6 +89,7 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -135,7 +178,10 @@ export function RunsPage() {
 
   return (
     <>
-      <PageHeader title="Runs" subtitle="Recent runs from the in-memory sink. Click a run for its span waterfall + I/O." />
+      <PageHeader
+        title="Runs"
+        subtitle="Recent runs from the in-memory sink. Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
+      />
       <div className="grid grid-cols-[1fr_1.3fr] gap-6">
         <div className="space-y-4">
           <GlassPanel className="overflow-hidden">

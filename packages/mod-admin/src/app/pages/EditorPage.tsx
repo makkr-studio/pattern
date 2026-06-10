@@ -729,7 +729,7 @@ function EditorInner() {
             fitView
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={20} color="rgba(255,255,255,0.06)" />
+            <Background gap={22} size={1.6} color="var(--canvas-dot)" />
             <Controls />
             <MiniMap
               pannable
@@ -884,7 +884,7 @@ function PaneGrip({ onPointerDown, label }: { onPointerDown: (e: ReactPointerEve
 const SCHEMA_FIELDS: Record<string, string[]> = {
   "core.schema.define": ["schema"],
   "core.schema.validate": ["schema"],
-  "boundary.http.request": ["body", "query"],
+  "boundary.http.request": ["body", "query", "params"],
   "boundary.ws.message": ["message"],
 };
 
@@ -1003,9 +1003,9 @@ function OpItem({ op }: { op: OpInfo }) {
           <div className="text-muted">Drag onto the canvas to add{op.boundary && op.pair ? ` (brings its ${op.boundary === "trigger" ? "out-gate" : "trigger"} partner)` : ""}.</div>
         </div>,
       )}
-      className="flex w-full cursor-grab items-center gap-2 rounded-lg px-2 py-1 text-left text-xs select-none hover:bg-white/5 active:cursor-grabbing"
+      className="flex w-full cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] select-none hover:bg-white/5 active:cursor-grabbing"
     >
-      <Icon size={12} style={{ color: cat.color }} className="shrink-0" />
+      <Icon size={15} style={{ color: cat.color }} className="shrink-0" />
       <span className="truncate">{paletteLabel(op.type, category)}</span>
     </div>
   );
@@ -1018,8 +1018,8 @@ function CategorySection({ category, ops, open, onToggle }: { category: string; 
   return (
     <div className="mb-0.5">
       <button onClick={onToggle} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
-        <Icon size={14} style={{ color: cat.color }} />
-        <span className="text-xs font-semibold capitalize">{category}</span>
+        <Icon size={15} style={{ color: cat.color }} />
+        <span className="text-[13px] font-semibold capitalize">{category}</span>
         <span className="text-muted ml-auto text-[10px]">{ops.length}</span>
       </button>
       {open && (

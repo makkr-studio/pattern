@@ -105,6 +105,36 @@ describe("HTTP host — declarative routing", () => {
     expect((await bad.json()).error).toContain("body");
   });
 
+  it("coerces & validates path params against a declared schema (400 on mismatch)", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "by-id",
+      nodes: [
+        {
+          id: "in",
+          op: "boundary.http.request",
+          config: {
+            method: "GET",
+            path: "/items/:id",
+            params: { type: "object", properties: { id: { type: "integer", minimum: 1 } }, required: ["id"] },
+          },
+        },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [{ from: { node: "in", port: "params" }, to: { node: "out", port: "body" } }],
+    };
+    engine.registerWorkflow(wf);
+    await startOn(engine, 4807);
+
+    const ok = await fetch("http://localhost:4807/items/42");
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ id: 42 }); // coerced "42" → 42
+
+    const bad = await fetch("http://localhost:4807/items/banana");
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toContain("params");
+  });
+
   it("coerces & validates query params", async () => {
     const engine = new Engine();
     const wf: Workflow = {

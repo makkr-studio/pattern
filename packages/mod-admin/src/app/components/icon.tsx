@@ -33,6 +33,7 @@ import {
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
+  SunMoon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -60,4 +61,4 @@ export function Icon({ name, size = 16, className }: { name?: string; size?: num
   return <C size={size} className={className} />;
 }
 
-export { ChevronRight, CircleDot, Sun, Moon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward, Download, Upload, Volume2, VolumeX, Wand2, History, GitFork, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen };
+export { ChevronRight, CircleDot, Sun, Moon, SunMoon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward, Download, Upload, Volume2, VolumeX, Wand2, History, GitFork, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen };

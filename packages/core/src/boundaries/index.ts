@@ -147,13 +147,13 @@ export const httpRequest: OpDefinition = {
   title: "boundary.http.request",
   description:
     "Inbound HTTP request trigger. The route is declared here: method, path, port, " +
-    "cors, and JSON-Schema validation of body/query. Outputs { method, url, path, " +
-    "headers, query, params, body }.",
+    "cors, and JSON-Schema validation of body/query/params. Outputs { method, url, " +
+    "path, headers, query, params, body }.",
   boundary: "trigger",
   pair: "boundary.http.response",
   inputs: {},
   // Registration-time config ports: wire an op (e.g. core.env) into method/path/
-  // port — or a `core.schema.define` node into body/query — and the engine
+  // port — or a `core.schema.define` node into body/query/params — and the engine
   // resolves it once at registration (the resolve phase).
   configInputs: {
     method: value(z.string()),
@@ -161,20 +161,26 @@ export const httpRequest: OpDefinition = {
     port: value(z.number().int().positive()),
     body: value(jsonSchema),
     query: value(jsonSchema),
+    params: value(jsonSchema),
   },
-  // Output port schemas are derived from the declared body/query schemas, so the
-  // graph is typed end-to-end and downstream value edges are checked.
-  outputs: (config: { bodyMode?: string; body?: unknown; query?: unknown }): Ports => ({
+  // Output port schemas are derived from the declared body/query/params schemas,
+  // so the graph is typed end-to-end and downstream value edges are checked.
+  // Declared schemas are flagged `validate`: the engine enforces them on every
+  // run's seeded input, whatever the entry path (host, editor run, invoke).
+  // Query/params arrive as URL strings, so their compiled schemas coerce.
+  outputs: (config: { bodyMode?: string; body?: unknown; query?: unknown; params?: unknown }): Ports => ({
     method: value(z.string()),
     url: value(z.string()),
     path: value(z.string()),
     headers: value(stringRecord),
-    query: value(config.query ? jsonSchemaToZod(config.query as any) : stringRecord),
-    params: value(stringRecord),
+    query: config.query ? value(jsonSchemaToZod(config.query as any, { coerce: true }), { validate: true }) : value(stringRecord),
+    params: config.params ? value(jsonSchemaToZod(config.params as any, { coerce: true }), { validate: true }) : value(stringRecord),
     body:
       config.bodyMode === "stream"
         ? stream(z.instanceof(Uint8Array))
-        : value(config.body ? jsonSchemaToZod(config.body as any) : z.unknown()),
+        : config.body
+          ? value(jsonSchemaToZod(config.body as any), { validate: true })
+          : value(z.unknown()),
   }),
   config: z.object({
     /** HTTP method to match. Use "ANY" to match all. */
@@ -189,6 +195,8 @@ export const httpRequest: OpDefinition = {
     body: jsonSchema.optional(),
     /** JSON Schema validating the query parameters (400 on mismatch). */
     query: jsonSchema.optional(),
+    /** JSON Schema validating the path params extracted from `path` (400 on mismatch). */
+    params: jsonSchema.optional(),
     /** "buffered" parses the whole body; "stream" hands a byte stream to the graph. */
     bodyMode: z.enum(["buffered", "stream"]).default("buffered"),
     requireAuth,
@@ -285,8 +293,9 @@ export const wsMessage: OpDefinition = {
   // Wire a schema node in to validate inbound messages (resolve phase).
   configInputs: { message: value(jsonSchema) },
   // The message output is typed by the declared schema, like http.request's body.
+  // `validate`: the engine enforces it on seeded input for any entry path.
   outputs: (config: { message?: unknown }): Ports => ({
-    message: config.message ? value(jsonSchemaToZod(config.message as never)) : value(),
+    message: config.message ? value(jsonSchemaToZod(config.message as never), { validate: true }) : value(),
     connection: value(connectionSchema),
     room: value(z.string()),
   }),

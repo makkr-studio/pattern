@@ -73,16 +73,16 @@ const str = (v: unknown, name: string): string => {
 // ── Workflows ──
 
 const workflowList = adminOp("admin.workflow.list", "List all workflows (code + stored), with provenance + versions.", (_args, { engine, controlPlane }) =>
-  catalog(engine, controlPlane.store),
+  catalog(engine, controlPlane.store, parkedCode),
 );
 
 const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live doc (+ latest saved version).", async (args, { engine, controlPlane }) => {
   const slug = str(args.slug, "slug");
-  const metas = await catalog(engine, controlPlane.store);
+  const metas = await catalog(engine, controlPlane.store, parkedCode);
   const meta = metas.find((m) => m.slug === slug) ?? null;
   let liveDoc: Workflow | null = null;
   if (meta?.source === "code") {
-    liveDoc = engine.workflows.get(slug) ?? null;
+    liveDoc = engine.workflows.get(slug) ?? parkedCode.get(slug) ?? null;
   } else if (meta?.live) {
     liveDoc = await controlPlane.store.getVersion(slug, meta.live);
   }
@@ -125,14 +125,38 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
   return { slug, issues };
 });
 
-const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable (unregister) a workflow.", async (args, { controlPlane }) => {
+/**
+ * Code workflows a user undeployed in THIS process: slug → the doc the mod
+ * registered, parked so re-enabling needs no restart. Mods re-register at boot,
+ * so a code undeploy lasts until restart — by design: a safety net against
+ * permanently bricking the admin from inside itself.
+ */
+const parkedCode = new Map<string, Workflow>();
+
+const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow — code ones park until restart.", async (args, { controlPlane, engine }) => {
   const slug = str(args.slug, "slug");
   const enabled = Boolean(args.enabled);
   if (enabled) {
+    const parked = parkedCode.get(slug);
+    if (parked) {
+      await engine.registerWorkflowAsync(parked);
+      parkedCode.delete(slug);
+      return { ok: true };
+    }
     const meta = await controlPlane.store.getMeta(slug);
     if (!meta?.live) throw new Error(`"${slug}" has no live version to enable`);
     const res = await controlPlane.deploy(slug, meta.live);
     return { ok: res.ok, ...(res.ok ? {} : { conflicts: res.conflicts }) };
+  }
+  // Undeploy. A code workflow has no store meta — park its doc (so it can come
+  // back without a restart) and unregister: routes/schedules drop immediately.
+  const meta = await controlPlane.store.getMeta(slug);
+  if (!meta) {
+    const doc = engine.workflows.get(slug);
+    if (!doc) throw new Error(`workflow "${slug}" not found`);
+    parkedCode.set(slug, doc);
+    engine.unregisterWorkflow(slug);
+    return { ok: true };
   }
   await controlPlane.disable(slug);
   return { ok: true };
@@ -277,10 +301,14 @@ function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Reco
 const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigger; records the run.", async (args, { engine }) => {
   const doc = args.doc as Workflow | undefined;
   const slug = args.slug as string | undefined;
-  const wf = doc ?? (slug ? engine.workflows.get(slug) : undefined);
-  if (!wf) throw new Error("provide a `doc` or a known `slug`");
-  const issues = collectIssues(wf, engine.ops).issues;
+  const raw = doc ?? (slug ? engine.workflows.get(slug) : undefined);
+  if (!raw) throw new Error("provide a `doc` or a known `slug`");
+  const issues = collectIssues(raw, engine.ops).issues;
   if (issues.length) return { ok: false, issues };
+  // A draft doc never went through registration — run the resolve phase here so
+  // boundary config ports (e.g. a schema wired into http.request's `body`) are
+  // frozen in and the run behaves exactly like its deployed self would.
+  const wf = doc ? await engine.resolveWorkflowDoc(doc) : raw;
   const res = await engine.run(wf, {
     trigger: args.trigger as string | undefined,
     input: (args.input as Record<string, unknown>) ?? {},

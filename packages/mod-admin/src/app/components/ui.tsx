@@ -13,13 +13,21 @@ export function GlassPanel({ className = "", children, ...rest }: HTMLAttributes
 }
 
 /** A glass card with a soft neon glow on hover (for clickable tiles). */
-export function GlowCard({ className = "", children, onClick }: { className?: string; children: ReactNode; onClick?: () => void }) {
+export function GlowCard({
+  className = "",
+  children,
+  onClick,
+  style,
+  ...rest
+}: { className?: string; children: ReactNode; onClick?: () => void; style?: React.CSSProperties } & Record<`data-${string}`, string>) {
   return (
     <motion.div
       whileHover={{ y: -2, boxShadow: "0 12px 40px rgba(34,211,238,0.18)" }}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
       onClick={onClick}
+      style={style}
       className={`glass rounded-2xl ${onClick ? "cursor-pointer" : ""} ${className}`}
+      {...rest}
     >
       {children}
     </motion.div>

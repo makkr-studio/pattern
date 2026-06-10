@@ -37,6 +37,14 @@ export interface PortSpec {
   schema?: ZodAny;
   /** Value inputs only: must be wired and resolve. A stream input is "present" once wired. */
   required?: boolean;
+  /**
+   * Trigger outputs only: enforce `schema` on the externally-seeded value at the
+   * start of every run (engine-level, so it holds for ANY entry path — HTTP host,
+   * editor runs, ctx.invoke). Set on ports whose schema is *user-declared*
+   * validation (e.g. http.request `body` when a body schema is configured), not
+   * on structural typing like `method: string` that a manual run may omit.
+   */
+  validate?: boolean;
   description?: string;
 }
 
