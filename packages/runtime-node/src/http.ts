@@ -17,6 +17,7 @@ import type { Socket } from "node:net";
 import { extname } from "node:path";
 import { Readable } from "node:stream";
 import {
+  ANONYMOUS,
   jsonSchemaToZod,
   type Engine,
   type OpDefinition,
@@ -203,7 +204,7 @@ export class HttpHost {
 
   private async rebuildNow(): Promise<void> {
     this.routes = this.scanRoutes();
-    this.apps = this.scanApps();
+    this.apps = await this.scanApps();
     const needed = new Set<number>([...this.routes.map((r) => r.port), ...this.apps.map((a) => a.port)]);
 
     for (const port of needed) {
@@ -254,21 +255,41 @@ export class HttpHost {
     return routes;
   }
 
-  /** Scan workflows for `boundary.http.app` static mounts (admin-spec P1). */
-  private scanApps(): AppMount[] {
+  /**
+   * Scan workflows for `boundary.http.app` mounts (admin-spec P1). The trigger
+   * declares the HTTP side (mount/port/cors/auth); the app itself is *resolved
+   * by running the workflow once* — the run flows trigger → app op (e.g.
+   * `core.app.static`, `admin.app`) → the `boundary.http.app.serve` out-gate,
+   * whose captured `app` descriptor tells the host what to serve.
+   */
+  private async scanApps(): Promise<AppMount[]> {
     const apps: AppMount[] = [];
     for (const wf of this.engine.workflows.list()) {
       for (const node of wf.nodes) {
         const op = this.engine.ops.get(node.op);
         if (op?.type !== "boundary.http.app") continue;
         const cfg = parseConfig(op, node.config);
-        if (!cfg.filesystem) continue;
+        const mount = normalizeMount(cfg.mount ?? "/");
+        let app: { filesystem?: unknown; spaFallback?: unknown; immutableAssets?: unknown } | undefined;
+        try {
+          const result = await this.engine.runFrom(wf, node.id, { mount: cfg.mount ?? "/" }, ANONYMOUS);
+          if (result.status === "error") throw result.error;
+          const payload = firstOutgate(result, wf, "boundary.http.app.serve");
+          app = (payload as { app?: typeof app } | undefined)?.app;
+        } catch (err) {
+          console.error(`[pattern] app workflow "${wf.id}" failed to resolve its app:`, err);
+          continue;
+        }
+        if (!app || typeof app.filesystem !== "string") {
+          console.error(`[pattern] app workflow "${wf.id}" produced no app descriptor — not mounted`);
+          continue;
+        }
         apps.push({
-          mount: normalizeMount(cfg.mount ?? "/"),
+          mount,
           port: cfg.port ?? this.defaultPort,
-          filesystem: cfg.filesystem,
-          spaFallback: cfg.spaFallback ?? "index.html",
-          immutableAssets: Boolean(cfg.immutableAssets),
+          filesystem: app.filesystem,
+          spaFallback: typeof app.spaFallback === "string" ? app.spaFallback : "index.html",
+          immutableAssets: Boolean(app.immutableAssets),
           cors: normalizeCors(cfg.cors),
           requireAuth: cfg.requireAuth,
         });

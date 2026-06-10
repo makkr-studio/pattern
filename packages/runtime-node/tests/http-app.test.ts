@@ -15,25 +15,41 @@ async function startOn(engine: Engine, port: number) {
   return host;
 }
 
-/** A workflow that mounts a static SPA via boundary.http.app. */
+/** The canonical app trio (§7): mount trigger → core.app.static → serve out-gate. */
 function appWorkflow(mount: string): Workflow {
   return {
     id: `app-${mount.replace(/\W/g, "_")}`,
     nodes: [
+      { id: "mount", op: "boundary.http.app", config: { mount } },
       {
-        id: "app",
-        op: "boundary.http.app",
-        config: { mount, filesystem: "assets", spaFallback: "index.html", immutableAssets: true },
+        id: "assets",
+        op: "core.app.static",
+        config: { filesystem: "assets", spaFallback: "index.html", immutableAssets: true },
       },
+      { id: "serve", op: "boundary.http.app.serve" },
     ],
-    edges: [],
+    edges: [
+      { from: { node: "mount", port: "out" }, to: { node: "assets", port: "in" } },
+      { from: { node: "assets", port: "app" }, to: { node: "serve", port: "app" } },
+    ],
   };
 }
 
 describe("boundary.http.app — static asset serving (P1)", () => {
-  it("validates an app-only workflow (no out-gate required)", () => {
+  it("validates the app trio (trigger reaches its serve out-gate)", () => {
     const engine = new Engine();
     expect(() => engine.registerWorkflow(appWorkflow("/admin"))).not.toThrow();
+  });
+
+  it("rejects an app trigger with no serve out-gate (boundaries are pairs)", () => {
+    const engine = new Engine();
+    expect(() =>
+      engine.registerWorkflow({
+        id: "lonely-app",
+        nodes: [{ id: "mount", op: "boundary.http.app", config: { mount: "/x" } }],
+        edges: [],
+      }),
+    ).toThrow(/out-gate/);
   });
 
   it("serves assets, SPA-fallback, and 404s under a mount", async () => {

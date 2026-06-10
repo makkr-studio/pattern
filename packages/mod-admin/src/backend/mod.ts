@@ -27,7 +27,7 @@ import { FlystorageWorkflowStore } from "./control-plane/store.js";
 import { MemoryTraceSink } from "./trace/memory-sink.js";
 import { adminOps } from "./ops/index.js";
 import { endpointWorkflows, stampRequireAuth } from "./workflows/index.js";
-import { registerAdminServices } from "./services.js";
+import { ASSETS_FS, registerAdminServices } from "./services.js";
 import { adminFrontend } from "./frontend.js";
 
 export interface AdminModOptions {
@@ -44,9 +44,6 @@ export interface AdminModOptions {
   /** Max runs retained in the in-memory trace sink. Default 500. */
   traceCapacity?: number;
 }
-
-/** Name of the filesystem the SPA assets are served from. */
-const ASSETS_FS = "admin-assets";
 
 function resolveFs(fs: Filesystem | string | undefined, fallback: () => Filesystem): Filesystem {
   return fs ? toFilesystem(fs) : fallback();
@@ -79,21 +76,40 @@ code{color:#7cf}</style></head>
   return fs;
 }
 
-/** The workflow that mounts the SPA via the app boundary (admin-spec §11). */
+/**
+ * The workflow that mounts the SPA via the app boundary (admin-spec §11) — the
+ * canonical boundary *pair* plus the admin's own app node between them:
+ * `boundary.http.app` (where) → `admin.app` (what) → `…app.serve` (serve it).
+ */
 function spaWorkflow(mount: string): Workflow {
   return {
-    id: "admin.app",
+    id: "admin.spa",
     name: "Admin · SPA",
     source: "code",
     nodes: [
       {
-        id: "app",
+        id: "mount",
         op: "boundary.http.app",
-        config: { mount, filesystem: ASSETS_FS, spaFallback: "index.html", immutableAssets: true },
+        config: { mount },
         comment: "Serves the admin SPA; API routes under /admin/api win on the same port.",
+        ui: { x: 60, y: 60, pair: "serve" },
+      },
+      {
+        id: "admin",
+        op: "admin.app",
+        comment: "The Pattern Admin application bundle.",
+        ui: { x: 340, y: 60 },
+      },
+      {
+        id: "serve",
+        op: "boundary.http.app.serve",
+        ui: { x: 620, y: 60, pair: "mount" },
       },
     ],
-    edges: [],
+    edges: [
+      { from: { node: "mount", port: "out" }, to: { node: "admin", port: "in" } },
+      { from: { node: "admin", port: "app" }, to: { node: "serve", port: "app" } },
+    ],
   };
 }
 

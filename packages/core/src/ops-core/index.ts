@@ -20,6 +20,7 @@ import { cryptoOps } from "./crypto.js";
 import { httpFetch } from "./http.js";
 import { wsOps } from "./ws.js";
 import { extensibilityOps } from "./extensibility.js";
+import { appOps } from "./app.js";
 import { streamOps } from "../streams/ops.js";
 import { boundaryOps } from "../boundaries/index.js";
 
@@ -37,6 +38,7 @@ export const valueAndStreamOps: OpDefinition[] = [
   httpFetch,
   ...wsOps,
   ...extensibilityOps,
+  ...appOps,
   ...streamOps,
 ];
 
@@ -63,6 +65,7 @@ export {
   httpFetch,
   wsOps,
   extensibilityOps,
+  appOps,
   streamOps,
   boundaryOps,
 };
