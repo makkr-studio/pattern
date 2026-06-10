@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ReactFlow,
@@ -25,17 +25,18 @@ import {
   edgeStyle,
   outputKind,
   portOnNode,
+  tidyLayout,
   toDoc,
   CONTROL_IN,
   CONTROL_OUT,
   type OpMap,
   type OpNodeData,
 } from "../editor/graph";
-import { Badge, GlassPanel, NeonButton, Spinner } from "../components/ui";
+import { Badge, GlassPanel, Modal, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson } from "../components/FormFromSchema";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
-import { Rocket, Play, Redo2, Undo2, Download, Upload, Search } from "../components/icon";
+import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork } from "../components/icon";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -46,13 +47,51 @@ const nodeTypes = { op: OpNode };
 /** MIME type carrying an op across the palette→canvas drag. */
 const DND_TYPE = "application/x-pattern-op";
 
+// ── Editor persistence (localStorage) ──
+const DRAFT_KEY = "pattern.admin.editor.draft";
+const PANES_KEY = "pattern.admin.editor.panes";
+
+/** The whole canvas, continuously persisted so closing/navigating never loses
+ *  work. `slug` is null for a brand-new workflow; `dirty` = differs from the
+ *  last saved version (drives the discard guard). */
+interface EditorDraft {
+  slug: string | null;
+  newSlug?: string;
+  doc: WorkflowDoc;
+  dirty: boolean;
+  at: number;
+}
+
+function readDraft(): EditorDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    const d = raw ? (JSON.parse(raw) as EditorDraft) : null;
+    return d && Array.isArray(d.doc?.nodes) ? d : null;
+  } catch {
+    return null;
+  }
+}
+function writeDraft(d: EditorDraft | null): void {
+  try {
+    if (d) localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* storage full/blocked — drafts are best-effort */
+  }
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 function EditorInner() {
   const { slug } = useParams();
   const isNew = !slug;
   const navigate = useNavigate();
   const location = useLocation();
+  const locState = location.state as { template?: WorkflowDoc; loadDoc?: WorkflowDoc; note?: string } | null;
   /** A starting doc handed over by the template picker (new workflows only). */
-  const template = (location.state as { template?: WorkflowDoc } | null)?.template;
+  const template = locState?.template;
+  /** An explicit doc to open on this slug (e.g. "edit from version vN"). */
+  const loadDoc = locState?.loadDoc;
   const rf = useReactFlow<RFNode<OpNodeData>, RFEdge>();
   const { data: opsData } = useOps();
   const { data: wfData, isLoading } = useWorkflow(slug);
@@ -68,9 +107,50 @@ function EditorInner() {
   const [notice, setNotice] = useState<string | null>(null);
   const [newSlug, setNewSlug] = useState("");
   const [runOpen, setRunOpen] = useState(false);
+  const [forkOpen, setForkOpen] = useState(false);
+  const [forkSlug, setForkSlug] = useState("");
+  /** A dirty draft for ANOTHER target blocks init until the user decides. */
+  const [pendingDraft, setPendingDraft] = useState<EditorDraft | null>(null);
+  const [initTick, setInitTick] = useState(0);
   const baseDoc = useRef<WorkflowDoc>({ id: slug ?? "untitled", nodes: [], edges: [] });
+  /** Normal-form snapshot of the last *saved* doc (dirty = current ≠ this). */
+  const savedRef = useRef<string>("__unsaved__");
   const loadedFor = useRef<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
+
+  // ── Resizable panels: palette | canvas | inspector, widths persisted. ──
+  const [panes, setPanes] = useState<{ l: number; r: number }>(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem(PANES_KEY) ?? "");
+      if (typeof p?.l === "number" && typeof p?.r === "number") return p;
+    } catch {
+      /* default below */
+    }
+    return { l: 240, r: 300 };
+  });
+  const dragPane = (side: "l" | "r") => (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panes[side];
+    const onMove = (ev: PointerEvent) => {
+      const d = ev.clientX - startX;
+      setPanes((p) => ({ ...p, [side]: clamp(side === "l" ? startW + d : startW - d, side === "l" ? 170 : 230, side === "l" ? 440 : 560) }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setPanes((p) => {
+        try {
+          localStorage.setItem(PANES_KEY, JSON.stringify(p));
+        } catch {
+          /* best-effort */
+        }
+        return p;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   // ── Undo/redo (spec §15.12): a snapshot stack over the canvas. Snapshots are
   // taken *before* each structural mutation (add/connect/delete/drag/config
@@ -128,25 +208,84 @@ function EditorInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  // Initialize the canvas from the live doc (once per slug, after ops load).
-  // Wait for the workflow query too, so we don't lock in an empty doc when
-  // `useOps` happens to resolve before `useWorkflow`.
+  /** Load a doc onto the canvas + reset history; `saved` sets the dirty baseline. */
+  const mountDoc = useCallback(
+    (doc: WorkflowDoc, opts: { saved: WorkflowDoc | null }) => {
+      baseDoc.current = doc;
+      history.current = { past: [], future: [] };
+      const flow = buildFlow(doc, opMap);
+      setNodes(flow.nodes);
+      setEdges(flow.edges);
+      // Normal-form the saved baseline through the same path the persist effect
+      // uses, so an untouched canvas is never spuriously "dirty".
+      if (opts.saved) {
+        const sf = buildFlow(opts.saved, opMap);
+        savedRef.current = JSON.stringify(toDoc(opts.saved, sf.nodes, sf.edges));
+      } else {
+        savedRef.current = "__unsaved__";
+      }
+    },
+    [opMap, setNodes, setEdges],
+  );
+
+  // ── Initialize the canvas (once per slug, after ops + workflow load).
+  // Priority: a dirty draft for another target asks first; then an explicit
+  // doc (template / "edit from version"); then this target's own draft —
+  // the editor reopens exactly where you left it; then the server doc.
   useEffect(() => {
     if (!opMap.size) return;
     if (!isNew && !wfData) return;
     const key = slug ?? "__new__";
     if (loadedFor.current === key) return;
+
+    const serverDoc = wfData?.latestDoc ?? wfData?.liveDoc ?? null;
+    const draft = readDraft();
+    const explicit = template ?? loadDoc;
+
+    // Plain /editor visit → the editor reopens wherever you were. Never
+    // destructive, never asks: jump to the draft's URL when it has one.
+    if (!slug && !explicit && draft?.slug) {
+      loadedFor.current = null;
+      navigate(`/editor/${draft.slug}`, { replace: true });
+      return;
+    }
+
+    // Opening a *different* doc over a dirty draft would destroy work → ask.
+    const draftIsThisTarget = draft && draft.slug === (slug ?? null) && !explicit;
+    if (draft?.dirty && !draftIsThisTarget && !pendingDraft) {
+      setPendingDraft(draft);
+      return; // blocked until the user decides (modal below)
+    }
+
     loadedFor.current = key;
-    // Open the newest saved version (a save without a deploy must not present
-    // an empty canvas); fall back to the live doc, then template/blank.
-    const doc: WorkflowDoc =
-      wfData?.latestDoc ?? wfData?.liveDoc ?? (isNew && template ? template : { id: slug ?? "untitled", name: slug, nodes: [], edges: [] });
-    baseDoc.current = doc;
-    history.current = { past: [], future: [] };
-    const flow = buildFlow(doc, opMap);
-    setNodes(flow.nodes);
-    setEdges(flow.edges);
-  }, [opMap, slug, wfData, isNew, template, setNodes, setEdges]);
+    setPendingDraft(null);
+
+    if (explicit) {
+      mountDoc({ ...explicit, id: slug ?? explicit.id }, { saved: serverDoc });
+      if (loadDoc) setNotice(`Editing ${locState?.note ?? "an older version"} — Save to make it the newest version.`);
+      return;
+    }
+    if (draftIsThisTarget) {
+      mountDoc(draft.doc, { saved: serverDoc });
+      if (!slug && draft.newSlug) setNewSlug(draft.newSlug);
+      if (draft.dirty) setNotice("Restored your unsaved draft.");
+      return;
+    }
+    mountDoc(serverDoc ?? { id: slug ?? "untitled", name: slug, nodes: [], edges: [] }, { saved: serverDoc });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opMap, slug, wfData, isNew, template, loadDoc, initTick, mountDoc, navigate]);
+
+  // ── Persist the canvas continuously (debounced) — work is never lost. ──
+  useEffect(() => {
+    if (loadedFor.current !== (slug ?? "__new__")) return; // not initialized
+    const t = setTimeout(() => {
+      const doc = toDoc(baseDoc.current, nodes, edges);
+      const ser = JSON.stringify(doc);
+      const dirty = ser !== savedRef.current && (Boolean(slug) || doc.nodes.length > 0);
+      writeDraft({ slug: slug ?? null, newSlug: newSlug || undefined, doc, dirty, at: Date.now() });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [nodes, edges, newSlug, slug]);
 
   // ── Connection rules: ports must agree on kind AND data type (T2). Checked
   // live while dragging, so an incompatible port simply refuses the link.
@@ -326,6 +465,26 @@ function EditorInner() {
     [rf, opMap, addNodeAt],
   );
 
+  /** "Resume my draft": go back to where the draft lives. The router change
+   *  (slug or cleared location.state) re-runs the init effect — no manual
+   *  tick, which would race the navigation and re-trigger the guard. */
+  const resumeDraft = useCallback(() => {
+    const d = pendingDraft;
+    setPendingDraft(null);
+    if (!d) return;
+    loadedFor.current = null;
+    navigate(d.slug ? `/editor/${d.slug}` : "/editor", { replace: true, state: null });
+  }, [pendingDraft, navigate]);
+
+  /** Auto-tidy: layered layout, undo-able, then settle the viewport. */
+  const onTidy = useCallback(() => {
+    pushHistory();
+    const layout = tidyLayout(rf.getNodes(), rf.getEdges());
+    setNodes((ns) => ns.map((n) => ({ ...n, position: layout.get(n.id) ?? n.position })));
+    setTimeout(() => void rf.fitView({ padding: 0.2, duration: 350 }), 50);
+    sfx.play("open");
+  }, [rf, setNodes, pushHistory]);
+
   const currentDoc = (): WorkflowDoc => {
     const targetSlug = slug ?? (newSlug || "untitled");
     return { ...toDoc(baseDoc.current, nodes, edges), id: targetSlug, name: baseDoc.current.name ?? targetSlug };
@@ -336,6 +495,8 @@ function EditorInner() {
    *  a brand-new workflow onto its real URL. */
   const adoptSaved = (doc: WorkflowDoc) => {
     baseDoc.current = doc;
+    savedRef.current = JSON.stringify(doc);
+    writeDraft({ slug: doc.id, doc, dirty: false, at: Date.now() });
     if (isNew) {
       loadedFor.current = doc.id; // canvas already shows this doc — don't reload
       navigate(`/editor/${doc.id}`, { replace: true });
@@ -374,6 +535,27 @@ function EditorInner() {
     sfx.play(res.ok ? "deploy" : "error");
   };
 
+  /** Fork: save the current canvas under a new slug (works for code workflows
+   *  too — that's how you make a read-only workflow your own). */
+  const onFork = async () => {
+    const id = forkSlug.trim();
+    if (!id) return;
+    const doc: WorkflowDoc = { ...currentDoc(), id, name: id, source: undefined };
+    const res = await save.mutateAsync({ slug: id, doc, note: `forked from ${slug ?? "draft"}` });
+    if (res.issues.length) {
+      setIssues(res.issues);
+      setNotice(`${res.issues.length} validation issue(s) — fix before forking.`);
+      sfx.play("invalid");
+      return;
+    }
+    setForkOpen(false);
+    writeDraft({ slug: id, doc, dirty: false, at: Date.now() });
+    loadedFor.current = null;
+    navigate(`/editor/${id}`);
+    setNotice(`Forked to ${id}.`);
+    sfx.play("save");
+  };
+
   // ── Import / export: a workflow is a file — round-trip it like one (§15). ──
   const onExport = () => {
     const doc = currentDoc();
@@ -406,6 +588,7 @@ function EditorInner() {
   };
 
   const selectedNode = nodes.find((n) => n.id === selected);
+  const isCode = wfData?.meta?.source === "code";
 
   if (isLoading && !isNew) return <Spinner />;
 
@@ -414,6 +597,11 @@ function EditorInner() {
       <div className="mb-3 flex items-center gap-3">
         <h1 className="text-xl font-semibold">{isNew ? "New workflow" : slug}</h1>
         {wfData?.meta && <Badge hue={wfData.meta.source === "code" ? 200 : 150}>{wfData.meta.source}</Badge>}
+        {wfData?.meta?.live && wfData.meta.live !== "code" && (
+          <Badge hue={150} title={`Deployed version: ${wfData.meta.live}`}>
+            live {wfData.meta.live}
+          </Badge>
+        )}
         {isNew && (
           <input
             value={newSlug}
@@ -444,6 +632,33 @@ function EditorInner() {
             disabled={history.current.future.length === 0}
           >
             <Redo2 size={14} />
+          </NeonButton>
+          <NeonButton variant="ghost" className="!px-2" aria-label="Auto-tidy layout" title="Auto-tidy layout" onClick={onTidy} disabled={nodes.length === 0}>
+            <Wand2 size={14} />
+          </NeonButton>
+          {slug && (
+            <NeonButton
+              variant="ghost"
+              className="!px-2"
+              aria-label="Versions & history"
+              title={`Versions & history${wfData?.meta ? ` (${wfData.meta.versions.length})` : ""}`}
+              onClick={() => navigate(`/versions/${slug}`)}
+            >
+              <History size={14} />
+            </NeonButton>
+          )}
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Fork to a new slug"
+            title="Fork to a new slug"
+            onClick={() => {
+              setForkSlug(slug ? `${slug}-fork` : newSlug ? `${newSlug}-fork` : "");
+              setForkOpen(true);
+            }}
+            disabled={nodes.length === 0}
+          >
+            <GitFork size={14} />
           </NeonButton>
           <NeonButton
             variant="ghost"
@@ -478,18 +693,20 @@ function EditorInner() {
           <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
             <Play size={14} /> Run
           </NeonButton>
-          <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending || wfData?.meta?.source === "code"}>
+          <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending || isCode} title={isCode ? "Code workflows are read-only — fork instead" : undefined}>
             Save
           </NeonButton>
-          <NeonButton onClick={onDeploy} disabled={deploy.isPending || wfData?.meta?.source === "code"}>
+          <NeonButton onClick={onDeploy} disabled={deploy.isPending || isCode} title={isCode ? "Code workflows are read-only — fork instead" : undefined}>
             <Rocket size={14} /> Deploy
           </NeonButton>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[15rem_1fr_18rem] gap-3">
+      <div className="grid min-h-0 flex-1 gap-0" style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px` }}>
         {/* Palette — searchable, drag onto the canvas */}
         <Palette ops={opsData ?? []} />
+
+        <PaneGrip onPointerDown={dragPane("l")} label="Resize palette" />
 
         {/* Canvas */}
         <GlassPanel className="overflow-hidden" onDragOver={onDragOver} onDrop={onDrop}>
@@ -522,6 +739,8 @@ function EditorInner() {
             />
           </ReactFlow>
         </GlassPanel>
+
+        <PaneGrip onPointerDown={dragPane("r")} label="Resize inspector" />
 
         {/* Inspector */}
         <GlassPanel className="overflow-y-auto p-4">
@@ -557,6 +776,78 @@ function EditorInner() {
       </div>
 
       {runOpen && <RunPanel open={runOpen} onClose={() => setRunOpen(false)} doc={currentDoc()} opMap={opMap} />}
+
+      {/* Fork dialog */}
+      <Modal open={forkOpen} onClose={() => setForkOpen(false)} title="Fork workflow">
+        <div className="space-y-4">
+          <p className="text-muted text-sm">
+            Save a copy of the current canvas under a new slug{isCode ? " — that's how a read-only code workflow becomes yours" : ""}.
+          </p>
+          <input
+            value={forkSlug}
+            onChange={(e) => setForkSlug(e.target.value.replace(/[^a-z0-9.\-_]/gi, ""))}
+            placeholder="new-workflow-slug"
+            aria-label="New workflow slug"
+            className="glass w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void onFork();
+            }}
+          />
+          <div className="flex justify-end gap-2">
+            <NeonButton variant="ghost" onClick={() => setForkOpen(false)}>
+              Cancel
+            </NeonButton>
+            <NeonButton onClick={() => void onFork()} disabled={!forkSlug.trim() || save.isPending}>
+              <GitFork size={14} /> Fork
+            </NeonButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Unsaved-draft guard: this navigation would destroy other work.
+          Closing the dialog = the non-destructive choice (resume). */}
+      <Modal open={pendingDraft !== null} onClose={() => resumeDraft()} title="Unsaved draft">
+        {pendingDraft && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              You have unsaved changes in{" "}
+              <span className="font-mono">{pendingDraft.slug ?? pendingDraft.newSlug ?? pendingDraft.doc.id ?? "a new workflow"}</span>. Opening{" "}
+              <span className="font-mono">{slug ?? "a new canvas"}</span> will discard them.
+            </p>
+            <div className="flex justify-end gap-2">
+              <NeonButton variant="ghost" onClick={resumeDraft}>
+                Resume my draft
+              </NeonButton>
+              <NeonButton
+                variant="danger"
+                onClick={() => {
+                  writeDraft(null);
+                  setPendingDraft(null);
+                  loadedFor.current = null;
+                  setInitTick((t) => t + 1);
+                  sfx.play("delete");
+                }}
+              >
+                Discard draft
+              </NeonButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/** The thin draggable gutter between panes. */
+function PaneGrip({ onPointerDown, label }: { onPointerDown: (e: ReactPointerEvent) => void; label: string }) {
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      onPointerDown={onPointerDown}
+      className="group flex cursor-col-resize items-center justify-center"
+    >
+      <div className="h-10 w-1 rounded-full bg-white/10 transition-colors group-hover:bg-[var(--color-neon-cyan)]/60" />
     </div>
   );
 }

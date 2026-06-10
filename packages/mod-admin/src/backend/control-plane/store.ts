@@ -169,8 +169,15 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     }
 
     // Content-addressed dedupe: an identical snapshot reuses its version id.
+    // "Identical" means same *behavior* (the hash ignores ui/title/comment) —
+    // so refresh the stored body: node positions and notes must survive a save
+    // even when they don't deserve a new version.
     const existing = meta.versions.find((v) => v.hash === hash);
     if (existing) {
+      await this.fs.write(
+        this.versionPath(slug, existing.id),
+        `${JSON.stringify({ ...doc, id: slug, source: meta.source }, null, 2)}\n`,
+      );
       // Keep catalog metadata fresh even when the body is unchanged — and leave
       // an audit trace when it actually changed (the body didn't, the card did).
       const before = JSON.stringify([meta.name, meta.description, meta.tags, meta.route]);

@@ -183,6 +183,84 @@ export function edgeStyle(kind: PortInfo["kind"]): React.CSSProperties {
   return { stroke: color, strokeWidth: 2, strokeDasharray: kind === "control" ? "4 4" : undefined };
 }
 
+/** Estimated rendered height of a node (mirrors OpNode's geometry). */
+function nodeHeight(data: OpNodeData): number {
+  const rows = Math.max(data.configInputs.length + data.inputs.length, data.outputs.length + data.controlOuts.length, 1);
+  return 40 + rows * 22 + 12;
+}
+
+/**
+ * Auto-tidy: longest-path layering (left → right along edges) with a few
+ * barycenter passes to order each layer (crossing reduction), columns centered
+ * vertically. Pure — returns new positions keyed by node id.
+ */
+export function tidyLayout(nodes: RFNode<OpNodeData>[], edges: RFEdge[]): Map<string, { x: number; y: number }> {
+  const X_GAP = 300;
+  const Y_GAP = 48;
+
+  // ── Layering: layer(v) = longest path from any source. Cycle-safe (skips
+  // anything Kahn can't settle, which validation forbids anyway).
+  const indeg = new Map<string, number>(nodes.map((n) => [n.id, 0]));
+  const out = new Map<string, string[]>();
+  const into = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!indeg.has(e.source) || !indeg.has(e.target) || e.source === e.target) continue;
+    indeg.set(e.target, indeg.get(e.target)! + 1);
+    (out.get(e.source) ?? out.set(e.source, []).get(e.source)!).push(e.target);
+    (into.get(e.target) ?? into.set(e.target, []).get(e.target)!).push(e.source);
+  }
+  const layer = new Map<string, number>();
+  const queue = nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id);
+  for (const id of queue) layer.set(id, 0);
+  while (queue.length) {
+    const u = queue.shift()!;
+    for (const v of out.get(u) ?? []) {
+      layer.set(v, Math.max(layer.get(v) ?? 0, layer.get(u)! + 1));
+      indeg.set(v, indeg.get(v)! - 1);
+      if (indeg.get(v) === 0) queue.push(v);
+    }
+  }
+  for (const n of nodes) if (!layer.has(n.id)) layer.set(n.id, 0);
+
+  // ── Order within layers: start from current y (stable for the author),
+  // then a few barycenter sweeps over predecessor/successor positions.
+  const layers: string[][] = [];
+  for (const n of nodes) (layers[layer.get(n.id)!] ??= []).push(n.id);
+  const yNow = new Map(nodes.map((n) => [n.id, n.position.y] as const));
+  for (const l of layers) l?.sort((a, b) => yNow.get(a)! - yNow.get(b)!);
+  const pos = new Map<string, number>(); // index within its layer
+  const reindex = () => layers.forEach((l) => l?.forEach((id, i) => pos.set(id, i)));
+  reindex();
+  for (let pass = 0; pass < 4; pass++) {
+    const refs = pass % 2 === 0 ? into : out; // alternate sweep direction
+    for (const l of layers) {
+      l?.sort((a, b) => {
+        const bary = (id: string) => {
+          const r = refs.get(id) ?? [];
+          return r.length ? r.reduce((s, p) => s + (pos.get(p) ?? 0), 0) / r.length : (pos.get(id) ?? 0);
+        };
+        return bary(a) - bary(b);
+      });
+      l?.forEach((id, i) => pos.set(id, i));
+    }
+  }
+
+  // ── Coordinates: columns at fixed x, stacked with gaps, centered on the
+  // tallest column so the graph reads as one band.
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const colHeights = layers.map((l) => (l ?? []).reduce((s, id) => s + nodeHeight(byId.get(id)!.data) + Y_GAP, -Y_GAP));
+  const maxH = Math.max(0, ...colHeights);
+  const result = new Map<string, { x: number; y: number }>();
+  layers.forEach((l, li) => {
+    let y = 80 + (maxH - (colHeights[li] ?? 0)) / 2;
+    for (const id of l ?? []) {
+      result.set(id, { x: 80 + li * X_GAP, y: Math.round(y) });
+      y += nodeHeight(byId.get(id)!.data) + Y_GAP;
+    }
+  });
+  return result;
+}
+
 /** Convert React Flow state back into a workflow document. */
 export function toDoc(base: WorkflowDoc, nodes: RFNode<OpNodeData>[], edges: RFEdge[]): WorkflowDoc {
   return {

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { OpInfo, RunResult, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { Badge, Dot, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
+import { JsonCode } from "../components/JsonCode";
 import { statusColor } from "../lib/format";
 import { sfx } from "../lib/sfx";
 import type { OpMap } from "./graph";
@@ -74,8 +75,10 @@ function buildInput(op: string, config: Record<string, any>, form: Record<string
 
 function TriggerForm({ op, config, form, set }: { op: string; config: Record<string, any>; form: Record<string, string>; set: (k: string, v: string) => void }) {
   const input = "glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]";
-  const ta = "glass w-full rounded-lg p-2 font-mono text-xs outline-none h-20";
   const Label = ({ children }: { children: string }) => <div className="text-muted mb-1 font-mono text-xs">{children}</div>;
+  /** Props for a highlighted JSON field bound to one form key (spread onto
+   *  JsonCode inline — a nested component would remount per keystroke). */
+  const json = (k: string) => ({ text: form[k] ?? "", onText: (t: string) => set(k, t), height: "h-20", placeholder: "{}", ariaLabel: k });
 
   if (op === "boundary.manual") {
     const outputs: string[] = config.outputs ?? ["value"];
@@ -104,11 +107,11 @@ function TriggerForm({ op, config, form, set }: { op: string; config: Record<str
         ))}
         <div>
           <Label>query (JSON)</Label>
-          <textarea className={ta} value={form.query ?? ""} onChange={(e) => set("query", e.target.value)} placeholder="{}" />
+          <JsonCode {...json("query")} />
         </div>
         <div>
           <Label>body (JSON)</Label>
-          <textarea className={ta} value={form.body ?? ""} onChange={(e) => set("body", e.target.value)} placeholder="{}" />
+          <JsonCode {...json("body")} />
         </div>
       </div>
     );
@@ -118,7 +121,7 @@ function TriggerForm({ op, config, form, set }: { op: string; config: Record<str
     return (
       <div>
         <Label>payload (JSON)</Label>
-        <textarea className={ta} value={form.payload ?? ""} onChange={(e) => set("payload", e.target.value)} placeholder="{}" />
+        <JsonCode {...json("payload")} />
       </div>
     );
   }
@@ -127,7 +130,7 @@ function TriggerForm({ op, config, form, set }: { op: string; config: Record<str
       <div className="space-y-3">
         <div>
           <Label>message (JSON or text)</Label>
-          <textarea className={ta} value={form.message ?? ""} onChange={(e) => set("message", e.target.value)} />
+          <JsonCode {...json("message")} placeholder="" plainOk />
         </div>
         <div>
           <Label>connection</Label>
@@ -139,7 +142,7 @@ function TriggerForm({ op, config, form, set }: { op: string; config: Record<str
   return (
     <div>
       <Label>input (JSON)</Label>
-      <textarea className={ta} value={form.input ?? ""} onChange={(e) => set("input", e.target.value)} placeholder="{}" />
+      <JsonCode {...json("input")} />
     </div>
   );
 }

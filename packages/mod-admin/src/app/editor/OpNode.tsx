@@ -67,13 +67,31 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
   const hasControlOut = !data.outputs.some((p) => p.name === CONTROL_OUT);
   const controlSpec: PortInfo = { name: CONTROL_IN, kind: "control" };
 
+  const borderColor = replay ? replay.color : selected ? "var(--color-neon-cyan)" : accent;
+
+  /** The run tabs grow out of the node frame: same surface, same border, a
+   *  control-grey dot in the middle — a notch, not a floating pill. */
+  const runTab = (side: "top" | "bottom"): React.CSSProperties => ({
+    width: 26,
+    height: 10,
+    [side]: -10,
+    borderRadius: side === "top" ? "7px 7px 0 0" : "0 0 7px 7px",
+    background: "var(--node-surface)",
+    border: `1px solid ${borderColor}`,
+    [side === "top" ? "borderBottom" : "borderTop"]: "none",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  });
+  const runDot = <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--color-port-control)", pointerEvents: "none" }} />;
+
   return (
     <div
-      className={`glass-strong overflow-visible rounded-xl ${replay?.pulse ? "animate-pulse" : ""}`}
+      className={`node-surface overflow-visible rounded-xl border ${replay?.pulse ? "animate-pulse" : ""}`}
       style={{
         width: 196,
         minHeight: height,
-        borderColor: replay ? replay.color : selected ? "var(--color-neon-cyan)" : accent,
+        borderColor,
         borderWidth: replay || selected ? 2 : 1,
         opacity: replay?.dim ? 0.45 : 1,
         boxShadow: replay && !replay.dim ? `0 0 18px ${replay.color}55` : undefined,
@@ -86,8 +104,10 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
           position={Position.Top}
           id={CONTROL_IN}
           {...portTip({ name: "in", kind: "control", description: "Run after — a dataless control pulse. Wire any node's run-then port here to sequence without passing a value." })}
-          style={{ width: 14, height: 7, borderRadius: 4, top: -4, background: "var(--color-port-control)", border: "1px solid rgba(255,255,255,0.35)" }}
-        />
+          style={runTab("top")}
+        >
+          {runDot}
+        </Handle>
       )}
 
       <div
@@ -148,8 +168,10 @@ export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
           position={Position.Bottom}
           id={CONTROL_OUT}
           {...portTip({ ...controlSpec, name: "out", description: "Run then — pulses when this node completes. Wire into another node's run-after port to sequence without passing a value." })}
-          style={{ width: 14, height: 7, borderRadius: 4, bottom: -4, background: "var(--color-port-control)", border: "1px solid rgba(255,255,255,0.35)" }}
-        />
+          style={runTab("bottom")}
+        >
+          {runDot}
+        </Handle>
       )}
     </div>
   );
