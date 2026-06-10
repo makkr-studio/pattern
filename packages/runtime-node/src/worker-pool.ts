@@ -165,6 +165,15 @@ export class WorkerPoolTransport implements RunTransport {
     if (i >= 0) this.workers[i] = this.spawn();
   }
 
+  describe(): Record<string, unknown> {
+    return {
+      kind: "worker-pool",
+      size: this.workers.length,
+      inflight: this.workers.map((w) => w.inflight),
+      threadIds: this.workers.map((w) => w.worker.threadId),
+    };
+  }
+
   dispatch(req: RunRequest): RunHandle {
     if (this.closed || this.workers.length === 0) {
       throw new Error("WorkerPoolTransport is closed");

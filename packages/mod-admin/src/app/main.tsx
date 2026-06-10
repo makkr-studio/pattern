@@ -13,6 +13,7 @@ import { OpsPage } from "./pages/OpsPage";
 import { ModsPage } from "./pages/ModsPage";
 import { SystemPage } from "./pages/SystemPage";
 import { MetricsPage } from "./pages/MetricsPage";
+import { ProcessPage } from "./pages/ProcessPage";
 import { VersionsPage } from "./pages/VersionsPage";
 import { ManifestPage } from "./pages/ManifestPage";
 import { api } from "./lib/api";
@@ -54,6 +55,7 @@ const router = createBrowserRouter(
         { path: "mods", element: <ModsPage /> },
         { path: "system", element: <SystemPage /> },
         { path: "metrics", element: <MetricsPage /> },
+        { path: "process", element: <ProcessPage /> },
         { path: "versions/:slug", element: <VersionsPage /> },
         { path: "*", element: <ManifestPage /> },
       ],

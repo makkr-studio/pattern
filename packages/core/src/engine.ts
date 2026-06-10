@@ -527,6 +527,11 @@ export class Engine {
     );
   }
 
+  /** What this engine runs workflows ON (observability; see RunTransport.describe). */
+  transportInfo(): Record<string, unknown> {
+    return this.transport.describe?.() ?? { kind: "unknown" };
+  }
+
   /** Emit an event onto the bus (fire-and-forget, §8). */
   emit(event: string, payload: unknown): void {
     this.events.emit(event, payload);

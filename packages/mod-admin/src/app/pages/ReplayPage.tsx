@@ -84,12 +84,23 @@ export function ReplayPage() {
   const doc = wfData?.liveDoc;
   const flow = useMemo(() => (doc && opMap.size ? buildFlow(doc, opMap) : null), [doc, opMap]);
 
+  // Replay states are DISCRETE — they only change when the scrubber crosses a
+  // span boundary. Key the decoration on that signature, not on raw `t`:
+  // handing React Flow a brand-new nodes array every animation frame keeps its
+  // nodes perpetually "unmeasured" (= hidden), blanking the canvas during play.
+  const stateSig = useMemo(() => {
+    const now = t0 + t;
+    return nodeSpans.map((s) => `${nodeIdOf(s)}:${stateAt(s, now)}`).join("|");
+  }, [nodeSpans, t, t0]);
+
   // Decorate the static flow with per-node replay state + edge illumination.
   const decorated = useMemo(() => {
     if (!flow) return null;
-    const now = t0 + t;
     const spanState = new Map<string, ReplayState>();
-    for (const s of nodeSpans) spanState.set(nodeIdOf(s)!, stateAt(s, now));
+    for (const part of stateSig ? stateSig.split("|") : []) {
+      const i = part.lastIndexOf(":");
+      spanState.set(part.slice(0, i), part.slice(i + 1) as ReplayState);
+    }
     // Triggers never execute (the engine seeds their outputs), so they have no
     // span — but the run existing means they fired: show them ok from t0.
     const stateByNode = new Map<string, ReplayState>(
@@ -109,7 +120,7 @@ export function ReplayPage() {
       };
     });
     return { nodes, edges };
-  }, [flow, nodeSpans, t, t0]);
+  }, [flow, stateSig]);
 
   if (runLoading || wfLoading) return <Spinner />;
   if (!run || !runId) {
@@ -154,7 +165,7 @@ export function ReplayPage() {
             elementsSelectable={false}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={20} color="rgba(255,255,255,0.06)" />
+            <Background gap={22} size={1.6} color="var(--canvas-dot)" />
             <Controls showInteractive={false} />
           </ReactFlow>
         </ReactFlowProvider>
