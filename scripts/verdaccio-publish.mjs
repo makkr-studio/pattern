@@ -26,8 +26,15 @@ import { dirname, join } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REGISTRY = process.env.VERDACCIO_REGISTRY || "http://localhost:4873";
 
-// Publish order matters: core before runtime-node (which depends on it).
-const PKG_DIRS = ["packages/core", "packages/runtime-node", "packages/create-pattern"];
+// Publish order matters: dependencies before dependents (core → runtime-node →
+// admin-sdk → mod-admin → create-pattern, whose studio modpack pulls mod-admin).
+const PKG_DIRS = [
+  "packages/core",
+  "packages/runtime-node",
+  "packages/admin-sdk",
+  "packages/mod-admin",
+  "packages/create-pattern",
+];
 
 const args = process.argv.slice(2);
 const setIdx = args.indexOf("--set");

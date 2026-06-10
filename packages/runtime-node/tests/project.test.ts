@@ -21,6 +21,18 @@ describe("project loading (mods + JSON workflows)", () => {
     expect(workflows.map((w) => w.id)).toContain("greet");
   });
 
+  it("runs `ready` hooks only after the whole mod batch is installed", async () => {
+    // needs-upper is listed FIRST but its `ready` registers a workflow using an
+    // op from upper.mjs (listed after) — only the two-phase install makes this
+    // resolve. This is the admin-bootstrap scenario in miniature.
+    const { engine } = await loadProject({
+      mods: [fixture("mods/needs-upper.mjs"), fixture("mods/upper.mjs")],
+    });
+    const res = await engine.run("ready-greet", { input: { value: "two-phase" } });
+    expect(res.status).toBe("ok");
+    expect(Object.values(res.outputs)[0]).toEqual({ value: "TWO-PHASE" });
+  });
+
   it("accepts an inline config object too", async () => {
     const { engine, config } = await loadProject(
       { mods: [fixture("mods/upper.mjs")], workflows: fixture("workflows") },

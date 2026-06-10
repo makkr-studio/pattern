@@ -53,7 +53,13 @@ export class DefaultControlPlane implements ControlPlane {
       if (meta.source === "code") continue;
       if (meta.enabled && meta.live) {
         const doc = await this.store.getVersion(meta.slug, meta.live);
-        if (doc) await this.register(meta.slug, doc);
+        // A workflow that no longer validates (e.g. its op's mod was removed)
+        // must never brick boot: log, leave it stored-but-unregistered, move on.
+        try {
+          if (doc) await this.register(meta.slug, doc);
+        } catch (err) {
+          console.error(`[pattern] admin bootstrap: skipping "${meta.slug}":`, (err as Error).message);
+        }
       }
     }
   }

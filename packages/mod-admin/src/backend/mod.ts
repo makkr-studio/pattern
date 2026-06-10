@@ -5,8 +5,9 @@
  * surface: it contributes the `admin.*` ops, the endpoint workflows that expose
  * them over HTTP, and a `boundary.http.app` workflow that serves the SPA. Its
  * `setup` registers the in-process backend services (control plane, store, trace
- * sink), subscribes the sink, registers the assets filesystem, and bootstraps
- * the stored workflows.
+ * sink), subscribes the sink, and registers the assets filesystem; `ready` —
+ * which runs after every mod of the install batch — bootstraps the stored
+ * workflows, so they may use ops from mods loaded after the admin.
  *
  * Install it with `await engine.useAsync(adminMod())` (or via loadMods/loadProject)
  * so `setup` — which is async — completes before you start the host.
@@ -122,6 +123,9 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
   // admin UI itself would stay publicly reachable when `auth` is configured.
   const spa = auth ? stampRequireAuth(spaWorkflow(mount), auth) : spaWorkflow(mount);
 
+  // Created in `setup`, bootstrapped in `ready` (after the whole mod batch).
+  let controlPlane: DefaultControlPlane | undefined;
+
   return defineMod({
     name: "@pattern/mod-admin",
     ops: adminOps,
@@ -134,10 +138,10 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
 
       const store = new FlystorageWorkflowStore(storageFs, { prefix: options.storePrefix });
       const sink = new MemoryTraceSink({ capacity: options.traceCapacity });
-      const controlPlane = new DefaultControlPlane(engine, store);
-      registerAdminServices(engine, { controlPlane, sink, engine });
+      const cp = new DefaultControlPlane(engine, store);
+      registerAdminServices(engine, { controlPlane: cp, sink, engine });
       engine.onTrace(sink);
-      await controlPlane.bootstrap();
+      controlPlane = cp;
       // Re-apply persisted admin settings (run retention / exclusion regex) —
       // best-effort: a bad stored pattern must never block boot.
       const saved = await store.getAdminConfig();
@@ -151,6 +155,10 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
         }
       }
     },
+    // Bootstrap in `ready`, not `setup`: stored workflows may use ops from mods
+    // listed *after* the admin in the project config — `ready` runs once every
+    // mod of the batch is installed, so all their ops resolve.
+    ready: () => controlPlane?.bootstrap(),
   });
 }
 

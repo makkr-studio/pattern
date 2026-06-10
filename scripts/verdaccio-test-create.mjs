@@ -4,8 +4,8 @@
  * project, install its deps (pulling the freshly-published @pattern/* packages),
  * and optionally run it.
  *
- *   node scripts/verdaccio-test-create.mjs                       # hello-workflow, install + run
- *   node scripts/verdaccio-test-create.mjs --template http-api   # different template
+ *   node scripts/verdaccio-test-create.mjs                       # blank modpack, install + run
+ *   node scripts/verdaccio-test-create.mjs --template studio     # different modpack
  *   node scripts/verdaccio-test-create.mjs --no-run --keep       # keep the temp dir, skip run
  *
  * Publish first with:  node scripts/verdaccio-publish.mjs
@@ -19,7 +19,7 @@ import { join } from "node:path";
 const REGISTRY = process.env.VERDACCIO_REGISTRY || "http://localhost:4873";
 const args = process.argv.slice(2);
 const tIdx = args.indexOf("--template");
-const template = tIdx >= 0 ? args[tIdx + 1] : "hello-workflow";
+const template = tIdx >= 0 ? args[tIdx + 1] : "blank";
 const keep = args.includes("--keep");
 const run = !args.includes("--no-run");
 
@@ -59,7 +59,7 @@ try {
   if (!existsSync(appDir)) throw new Error(`scaffold did not create ${appDir}`);
 
   if (run && existsSync(join(appDir, "src/index.ts"))) {
-    if (template === "hello-workflow") {
+    if (template === "blank") {
       console.log(c.b("\nRunning the scaffolded app…"));
       sh(`node src/index.ts`, appDir);
     } else {

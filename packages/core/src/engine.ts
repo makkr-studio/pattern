@@ -69,6 +69,15 @@ export interface PatternMod {
    */
   frontend?: FrontendContribution;
   setup?: (engine: Engine) => void | Promise<void>;
+  /**
+   * Runs after **every** mod of the installation batch is installed (admin-spec
+   * P3). `setup` sees only the mods loaded before it; `ready` sees them all —
+   * the seam for work that depends on other mods' ops, e.g. the admin control
+   * plane registering stored workflows that use app-mod ops. For a single
+   * `use`/`useAsync` install the batch is just that mod, so `ready` follows
+   * `setup` immediately; `loadMods` defers it until the whole config list is in.
+   */
+  ready?: (engine: Engine) => void | Promise<void>;
 }
 
 /** A mod paired with the metadata a frontend host needs to attribute its UI. */
@@ -380,8 +389,8 @@ export class Engine {
     this.installMod(mod, (wf) => {
       this.registerWorkflow(wf);
     });
-    const r = mod.setup?.(this);
-    if (r instanceof Promise) r.catch((err) => console.error(`[pattern] mod "${mod.name}" setup failed:`, err));
+    const r = Promise.resolve(mod.setup?.(this)).then(() => mod.ready?.(this));
+    r.catch((err) => console.error(`[pattern] mod "${mod.name}" setup failed:`, err));
     return this;
   }
 
@@ -390,13 +399,15 @@ export class Engine {
    * that uses boundary config ports, and awaiting an async `setup` (admin-spec P3).
    * Use this whenever a mod's workflows may wire ops into a boundary's config.
    */
-  async useAsync(mod: PatternMod): Promise<this> {
+  async useAsync(mod: PatternMod, opts: { deferReady?: boolean } = {}): Promise<this> {
     const pending: Array<Promise<unknown>> = [];
     this.installMod(mod, (wf) => {
       pending.push(this.registerWorkflowAsync(wf));
     });
     await Promise.all(pending);
     await mod.setup?.(this);
+    // Batch installs (`loadMods`) defer `ready` until every mod is in.
+    if (!opts.deferReady) await mod.ready?.(this);
     return this;
   }
 

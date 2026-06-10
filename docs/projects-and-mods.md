@@ -167,10 +167,15 @@ export default defineMod({
   authProviders: [/* … */],
   hooks: [{ name: "post.beforeSave" }],
   setup(engine) { /* anything imperative */ },
+  ready(engine) { /* runs after EVERY mod of the batch is installed */ },
 });
 ```
 
-Three sources, one mechanism (`engine.use(mod)` under the hood):
+`setup` sees only the mods loaded before it; `ready` sees the whole batch — use
+it for work that depends on other mods' ops (the admin bootstraps its stored
+workflows there, so they may use ops from mods listed after it).
+
+Three sources, one mechanism (`engine.useAsync(mod)` under the hood):
 
 | Source | How |
 |--------|-----|
