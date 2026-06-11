@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactFlow, Background, Controls, ReactFlowProvider } from "@xyflow/react";
 import type { DeclarativeView as View } from "@pattern/admin-sdk";
@@ -9,9 +10,16 @@ import { OpNode } from "../editor/OpNode";
 import { GlassPanel, JsonView, Modal, NeonButton, Spinner, Table, type Column } from "./ui";
 import { FormFromSchema } from "./FormFromSchema";
 
-/** Fetch a declarative view's data source (an op type) via admin.invoke. */
-function useSource(source: string) {
-  return useQuery({ queryKey: ["invoke", source], queryFn: () => api.invoke<unknown>(source), enabled: Boolean(source) });
+/**
+ * Fetch a declarative view's data source (an op type) via admin.invoke. Route
+ * params (a details page's :userId, say) ride along as the op's args.
+ */
+function useSource(source: string, args?: Record<string, unknown>) {
+  return useQuery({
+    queryKey: ["invoke", source, args ?? {}],
+    queryFn: () => api.invoke<unknown>(source, args && Object.keys(args).length ? args : undefined),
+    enabled: Boolean(source),
+  });
 }
 
 /**
@@ -19,7 +27,7 @@ function useSource(source: string) {
  * Data sources are ops/workflows, so a declarative page is wiring over the
  * self-reflecting API — not a new bespoke surface.
  */
-export function DeclarativeView({ view }: { view: View }) {
+export function DeclarativeView({ view, params = {} }: { view: View; params?: Record<string, string> }) {
   if (view.kind === "iframe") {
     return <iframe src={view.url} className="glass h-[70vh] w-full rounded-2xl" title="embedded" />;
   }
@@ -29,7 +37,24 @@ export function DeclarativeView({ view }: { view: View }) {
   if (view.kind === "graph") {
     return <GraphView slug={view.workflow} />;
   }
-  return <DataView view={view} />;
+  if (view.kind === "detail") {
+    return <DetailView source={view.source} args={params as Record<string, unknown>} />;
+  }
+  return <DataView view={view} args={params as Record<string, unknown>} />;
+}
+
+/** `detail` kind: one object as labeled rows (ResultView — copy keys included). */
+function DetailView({ source, args }: { source: string; args: Record<string, unknown> }) {
+  const { data, isLoading, error } = useSource(source, args);
+  if (isLoading) return <Spinner />;
+  if (error) {
+    return <GlassPanel className="text-[var(--color-neon-pink)] p-6 text-sm">Failed to load “{source}”.</GlassPanel>;
+  }
+  return (
+    <GlassPanel className="max-w-2xl p-5">
+      <ResultView value={data} />
+    </GlassPanel>
+  );
 }
 
 /**
@@ -158,9 +183,9 @@ function GraphView({ slug }: { slug: string }) {
   );
 }
 
-function DataView({ view }: { view: Exclude<View, { kind: "iframe" | "form" | "graph" }> }) {
+function DataView({ view, args }: { view: Exclude<View, { kind: "iframe" | "form" | "graph" | "detail" }>; args: Record<string, unknown> }) {
   const source = view.source;
-  const { data, isLoading, error } = useSource(source);
+  const { data, isLoading, error } = useSource(source, args);
 
   if (isLoading) return <Spinner />;
   if (error) return <GlassPanel className="text-[var(--color-neon-pink)] p-6 text-sm">Failed to load “{source}”.</GlassPanel>;
@@ -216,6 +241,7 @@ const rowArgs = (action: RowAction, row: Record<string, unknown>): Record<string
  */
 function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<{ action: RowAction; row: Record<string, unknown> } | null>(null);
   const [result, setResult] = useState<{ title: string; value: unknown } | null>(null);
@@ -256,7 +282,16 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 key={a.label}
                 type="button"
                 disabled={busy !== null}
-                onClick={() => (a.confirm ? setPending({ action: a, row }) : void execute(a.label, a.run, rowArgs(a, row), a.result === "show"))}
+                onClick={() => {
+                  if (a.path) {
+                    const filled = Object.entries(rowArgs(a, row)).reduce(
+                      (acc, [k, v]) => acc.replace(`:${k}`, encodeURIComponent(String(v))),
+                      a.path,
+                    );
+                    navigate(filled);
+                  } else if (a.confirm) setPending({ action: a, row });
+                  else if (a.run) void execute(a.label, a.run, rowArgs(a, row), a.result === "show");
+                }}
                 className="text-muted rounded-md border border-white/10 px-2 py-0.5 text-xs hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-40"
               >
                 {busy === key ? "…" : a.label}
@@ -294,7 +329,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 onClick={() => {
                   const { action, row } = pending;
                   setPending(null);
-                  void execute(action.label, action.run, rowArgs(action, row), action.result === "show");
+                  if (action.run) void execute(action.label, action.run, rowArgs(action, row), action.result === "show");
                 }}
               >
                 {pending.action.label}

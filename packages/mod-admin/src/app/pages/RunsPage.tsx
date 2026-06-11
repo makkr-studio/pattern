@@ -101,6 +101,58 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
   );
 }
 
+/** One run's `ctx.log` lines: `log.<level>` span events, in time order. */
+function RunLogs({ spans, runStart }: { spans: SpanData[]; runStart: number }) {
+  const lines = spans
+    .flatMap((s) =>
+      s.events
+        .filter((e) => e.name.startsWith("log."))
+        .map((e) => ({
+          time: e.time,
+          level: e.name.slice(4),
+          node: nodeOf(s),
+          message: String(e.attributes?.message ?? ""),
+          extra: Object.fromEntries(Object.entries(e.attributes ?? {}).filter(([k]) => k !== "message")),
+        })),
+    )
+    .sort((a, b) => a.time - b.time);
+  if (lines.length === 0) return null;
+
+  const levelColor: Record<string, string> = {
+    error: "var(--color-neon-pink)",
+    warn: "var(--color-neon-amber)",
+    info: "var(--color-neon-cyan)",
+    debug: "var(--fg-muted)",
+  };
+  return (
+    <div className="mt-4">
+      <h3 className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">Logs ({lines.length})</h3>
+      <div className="glass max-h-64 space-y-0.5 overflow-y-auto rounded-xl p-3 font-mono text-xs leading-relaxed">
+        {lines.map((l, i) => (
+          <div key={i} className="flex items-baseline gap-2">
+            <span className="text-muted shrink-0 tabular-nums">+{(l.time - runStart).toFixed(0)}ms</span>
+            <span className="shrink-0 font-semibold uppercase" style={{ color: levelColor[l.level] ?? "var(--fg)" }}>
+              {l.level}
+            </span>
+            <span className="text-muted shrink-0">{l.node}</span>
+            <span className="min-w-0 break-all">
+              {l.message}
+              {Object.keys(l.extra).length > 0 && <span className="text-muted"> {JSON.stringify(l.extra)}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The run's principal, readably (the session provider puts email in claims). */
+function whoOf(principal: unknown): string | null {
+  const p = principal as { kind?: string; id?: string; claims?: { email?: unknown } } | undefined;
+  if (!p || p.kind !== "user") return null;
+  return typeof p.claims?.email === "string" ? p.claims.email : (p.id ?? null);
+}
+
 function RunDetail({ runId }: { runId: string }) {
   const { data, isLoading } = useRun(runId);
   const control = useRunControl(runId);
@@ -154,7 +206,14 @@ function RunDetail({ runId }: { runId: string }) {
         )}
         <span className={`text-muted font-mono text-xs ${inflight ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
       </div>
+      {whoOf(summary.principal) && (
+        <div className="text-muted mb-3 text-xs">
+          run as <span className="font-mono text-[var(--color-neon-cyan)]">{whoOf(summary.principal)}</span>
+          <span className="ml-2 opacity-60">· trigger {summary.trigger}</span>
+        </div>
+      )}
       <Waterfall spans={spans} runStart={runStart} total={runEnd - runStart} />
+      <RunLogs spans={spans} runStart={runStart} />
     </GlassPanel>
   );
 }

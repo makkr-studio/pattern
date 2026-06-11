@@ -131,6 +131,30 @@ describe("admin secure-by-default (§9)", () => {
     );
     expect(identitySection?.section.fields[0]?.key).toBe("signup");
 
+    // The user-details page (multi-view + :param) survives manifest serialization…
+    const detailsPage = manifest.pages.find((p: { path: string }) => p.path === "/x/identity/users/:userId");
+    expect(detailsPage?.views?.length).toBeGreaterThanOrEqual(2);
+
+    // …its profile source resolves…
+    const profile = await fetch(`${base}/admin/api/invoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ source: "identity.users.get", input: { userId: users[0].id } }),
+    });
+    expect((await profile.json()).email).toBe("root@x.io");
+
+    // …and run stats see the admin API runs THIS user just made (the runs
+    // above executed as the cookie's principal and the sink retained them).
+    const stats = await fetch(`${base}/admin/api/invoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ source: "identity.users.runStats", input: { userId: users[0].id } }),
+    });
+    const rows = await stats.json();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toHaveProperty("workflow");
+    expect(rows[0]).toHaveProperty("runs");
+
     // …and the same invoke WITHOUT the admin scope hits the in-op guard
     // (defense in depth below the route stamp).
     const anon = await fetch(`${base}/admin/api/invoke`, {
