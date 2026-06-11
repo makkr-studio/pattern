@@ -25,6 +25,14 @@ import pc from "picocolors";
 
 const TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
 
+interface NextCtx {
+  name: string;
+  runCmd: string;
+  installed: boolean;
+  installLine: string;
+  auth: boolean;
+}
+
 interface Modpack {
   id: string;
   label: string;
@@ -34,9 +42,18 @@ interface Modpack {
   mods: string[];
   /** "What's in the box" bullet lines. */
   contents: string[];
+  /**
+   * Auth is a DIMENSION, not a pack: packs that serve HTTP can opt into the
+   * identity brick (magic-link login, users/sessions, secured admin). Absent
+   * → the question is never asked (blank has no HTTP host).
+   */
+  auth?: { default: boolean };
   /** Tailored next steps once scaffolded. */
-  next: (name: string, runCmd: string, installed: boolean, installLine: string) => string[];
+  next: (ctx: NextCtx) => string[];
 }
+
+/** What the auth toggle adds (pack card lines + config wiring). */
+const AUTH_MODS = ["@pattern/mod-identity", "@pattern/mod-auth-magic-link"];
 
 const MODPACKS: Modpack[] = [
   {
@@ -49,13 +66,20 @@ const MODPACKS: Modpack[] = [
       "3 editable example workflows seeded on first boot",
       "an app-local mod adding ops AND an admin page (the extension surface, live)",
     ],
-    next: (name, runCmd, installed, installLine) =>
+    // Secure-by-default is the philosophy — the flagship pack ships locked.
+    auth: { default: true },
+    next: ({ name, runCmd, installed, installLine, auth }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
         `${pc.dim("$")} ${runCmd} dev`,
         "",
-        `${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`,
+        ...(auth
+          ? [
+              `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} in the console — click it, you're the owner`,
+              `${pc.cyan("→")} then ${pc.bold("http://localhost:3000/admin")} ${pc.dim("(sign-in links print to the console too)")}`,
+            ]
+          : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
         `${pc.cyan("→")} curl localhost:3000/hello/world`,
       ].filter((l) => l !== ""),
   },
@@ -69,7 +93,9 @@ const MODPACKS: Modpack[] = [
       "JSON-Schema request validation + env-interpolated config",
       "an app-local mod contributing the `app.shout` op",
     ],
-    next: (name, runCmd, installed, installLine) =>
+    // APIs often start behind a gateway — opt in with one keystroke.
+    auth: { default: false },
+    next: ({ name, runCmd, installed, installLine, auth }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
@@ -77,6 +103,11 @@ const MODPACKS: Modpack[] = [
         "",
         `${pc.cyan("→")} curl localhost:3000/hello/world`,
         `${pc.cyan("→")} curl -XPOST localhost:3000/echo -H 'content-type: application/json' -d '{"message":"hi"}'`,
+        ...(auth
+          ? [
+              `${pc.cyan("→")} curl localhost:3000/whoami ${pc.dim("— 401 until you log in (first boot prints a one-time link)")}`,
+            ]
+          : []),
       ].filter((l) => l !== ""),
   },
   {
@@ -85,7 +116,7 @@ const MODPACKS: Modpack[] = [
     hint: "only the engine — one workflow, run programmatically",
     mods: [],
     contents: ["the smallest possible Pattern program: one JSON workflow, one `engine.run()`"],
-    next: (name, runCmd, installed, installLine) =>
+    next: ({ name, runCmd, installed, installLine }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
@@ -111,6 +142,8 @@ interface Flags {
   git: boolean;
   yes: boolean;
   list: boolean;
+  /** undefined = ask (interactive) / pack default (headless). */
+  auth?: boolean;
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -121,6 +154,8 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--pm") flags.pm = argv[++i] as Pm;
     else if (a === "--no-install") flags.install = false;
     else if (a === "--no-git") flags.git = false;
+    else if (a === "--auth") flags.auth = true;
+    else if (a === "--no-auth") flags.auth = false;
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (!a.startsWith("-") && !flags.name) flags.name = a;
@@ -145,11 +180,19 @@ function detectPm(): Pm {
   return "npm";
 }
 
-function packCard(pack: Modpack): string {
-  const mods = pack.mods.length ? pack.mods.map((m) => pc.magenta(m)).join(pc.dim(" + ")) : pc.dim("none — just the engine");
+function packCard(pack: Modpack, auth: boolean): string {
+  const modList = auth ? [...AUTH_MODS, ...pack.mods] : pack.mods;
+  const mods = modList.length ? modList.map((m) => pc.magenta(m)).join(pc.dim(" + ")) : pc.dim("none — just the engine");
+  const authLines = auth
+    ? [
+        `${pc.cyan("◆")} authentication: magic-link login, users & sessions${pack.id === "studio" ? ", the admin locked behind it" : ""}`,
+        `${pc.cyan("◆")} first boot prints a one-time link — the first account becomes admin`,
+      ]
+    : [];
   return [
     `${pc.dim("mods:")} ${mods}`,
     ...pack.contents.map((line) => `${pc.cyan("◆")} ${line}`),
+    ...authLines,
     `${pc.green("✦")} AGENTS.md + CLAUDE.md included — your coding agent knows this project`,
   ].join("\n");
 }
@@ -157,9 +200,10 @@ function packCard(pack: Modpack): string {
 function listPacks(): void {
   console.log(`\n${pc.bold("Modpacks")} — curated mod sets per use case:\n`);
   for (const pack of MODPACKS) {
-    console.log(`  ${pc.cyan(pack.id.padEnd(10))}${pack.label} — ${pc.dim(pack.hint)}`);
+    const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"} by default — --auth/--no-auth)`) : "";
+    console.log(`  ${pc.cyan(pack.id.padEnd(10))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
-  console.log(`\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id>")}\n`);
+  console.log(`\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth]")}\n`);
 }
 
 async function copyTemplate(packId: string, targetDir: string, name: string): Promise<void> {
@@ -202,6 +246,47 @@ function packOrThrow(id: string): Modpack {
   return pack;
 }
 
+/** A protected route demoing requireAuth + the trigger's `user` port (headless). */
+const WHOAMI_WORKFLOW = `{
+  "$schema": "pattern/workflow/v1",
+  "id": "whoami",
+  "name": "GET /whoami (protected)",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": { "method": "GET", "path": "/whoami", "requireAuth": true },
+      "comment": "requireAuth gates the route; the user port carries the signed-in identity."
+    },
+    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "user" }, "to": { "node": "out", "port": "body" } }
+  ]
+}
+`;
+
+/**
+ * Flip the auth dimension on: wire the identity mods into the manifest and
+ * the config (FIRST in the list — they're infrastructure), and give headless
+ * packs a protected /whoami route so the value is curl-able in minute one.
+ */
+async function applyAuth(targetDir: string, packId: string): Promise<void> {
+  const pkgPath = join(targetDir, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
+  for (const mod of AUTH_MODS) pkg.dependencies[mod] = "^0.1.0";
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
+  cfg.mods = [...AUTH_MODS, ...cfg.mods];
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+  if (packId === "headless") {
+    await writeFile(join(targetDir, "workflows", "whoami.json"), WHOAMI_WORKFLOW);
+  }
+}
+
 async function runInteractive(flags: Flags): Promise<void> {
   banner();
   p.intro(pc.bgMagenta(pc.black(" create-pattern ")));
@@ -225,8 +310,23 @@ async function runInteractive(flags: Flags): Promise<void> {
   if (p.isCancel(packId)) return cancel();
   const pack = packOrThrow(String(packId));
 
+  // Auth is orthogonal to the pack — asked only where it makes sense.
+  let auth = false;
+  if (pack.auth) {
+    if (flags.auth !== undefined) {
+      auth = flags.auth;
+    } else {
+      const answer = await p.confirm({
+        message: `Add authentication? ${pc.dim("magic-link login, users & sessions" + (pack.id === "studio" ? " — locks the admin" : ""))}`,
+        initialValue: pack.auth.default,
+      });
+      if (p.isCancel(answer)) return cancel();
+      auth = answer;
+    }
+  }
+
   // The pack card: what this modpack actually wires up.
-  p.note(packCard(pack), `${pack.label} modpack`);
+  p.note(packCard(pack, auth), `${pack.label} modpack`);
 
   const pm =
     flags.pm ??
@@ -239,10 +339,13 @@ async function runInteractive(flags: Flags): Promise<void> {
 
   const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
 
-  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git });
+  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth });
 
   const runCmd = pm === "npm" ? "npm run" : String(pm);
-  p.note(pack.next(String(name), runCmd, install, `${pc.dim("$")} ${pm} install`).join("\n"), "Next steps");
+  p.note(
+    pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth }).join("\n"),
+    "Next steps",
+  );
   p.note(
     [
       `${pc.dim("Workflows are JSON graphs of typed ops; ops carry the code; mods bundle both.")}`,
@@ -260,13 +363,18 @@ async function runHeadless(flags: Flags): Promise<void> {
   const name = flags.name ?? "my-pattern-app";
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
-  console.log(`create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm})`);
-  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git });
+  // No prompt to ask — flags win, else the pack's default (studio ships locked).
+  const auth = pack.auth ? (flags.auth ?? pack.auth.default) : false;
+  console.log(
+    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${auth ? ", auth on" : ""})`,
+  );
+  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
+  if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
   if (pack.id === "studio") console.log(`Admin: http://localhost:3000/admin`);
 }
 
-async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boolean; git: boolean }): Promise<void> {
+async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boolean; git: boolean; auth: boolean }): Promise<void> {
   const targetDir = resolve(process.cwd(), opts.name);
   if (existsSync(targetDir) && (await readdir(targetDir)).length > 0) {
     throw new Error(`directory "${opts.name}" already exists and is not empty`);
@@ -275,7 +383,8 @@ async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boo
   const spin = process.stdout.isTTY ? p.spinner() : undefined;
   spin?.start(`Unpacking the ${opts.pack} modpack`);
   await copyTemplate(opts.pack, targetDir, opts.name);
-  spin?.stop(`Modpack unpacked (${opts.pack})`);
+  if (opts.auth) await applyAuth(targetDir, opts.pack);
+  spin?.stop(`Modpack unpacked (${opts.pack}${opts.auth ? " + auth" : ""})`);
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });

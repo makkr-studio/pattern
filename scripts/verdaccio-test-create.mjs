@@ -22,6 +22,8 @@ const tIdx = args.indexOf("--template");
 const template = tIdx >= 0 ? args[tIdx + 1] : "blank";
 const keep = args.includes("--keep");
 const run = !args.includes("--no-run");
+// Forward the auth dimension (unset → the pack's default; studio ships locked).
+const authFlag = args.includes("--auth") ? " --auth" : args.includes("--no-auth") ? " --no-auth" : "";
 
 const c = {
   b: (s) => `\x1b[1m${s}\x1b[0m`,
@@ -54,7 +56,7 @@ try {
   console.log(c.dim(`  workdir: ${dir}\n`));
 
   // `--` forwards the rest to create-pattern; install runs with the env registry.
-  sh(`npm create pattern@latest -- ${name} --template ${template} --pm npm --no-git --yes`, dir);
+  sh(`npm create pattern@latest -- ${name} --template ${template}${authFlag} --pm npm --no-git --yes`, dir);
 
   if (!existsSync(appDir)) throw new Error(`scaffold did not create ${appDir}`);
 
