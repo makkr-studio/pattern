@@ -15,6 +15,7 @@
 import { z } from "zod";
 import { required, stream, value } from "../ops-core/helpers.js";
 import { jsonSchemaToZod } from "../json-schema.js";
+import { userInputSchema } from "../auth/well-known.js";
 import type { OpDefinition, Ports } from "../types.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
@@ -42,6 +43,13 @@ export const corsConfigSchema = z.union([
 
 /** Triggers never run their execute (the engine seeds outputs). */
 const TRIGGER_EXECUTE = () => ({});
+
+/**
+ * The `user` output port carried by host-bound triggers (§9): the resolved
+ * principal flattened for wiring, or null when anonymous. Hosts seed it from
+ * `engine.authenticate`; an unseeded port simply arrives undefined.
+ */
+const userPort = () => value(userInputSchema);
 
 /** Build an out-gate whose resolved inputs become the external payload. */
 function outgate(opts: {
@@ -148,7 +156,7 @@ export const httpRequest: OpDefinition = {
   description:
     "Inbound HTTP request trigger. The route is declared here: method, path, port, " +
     "cors, and JSON-Schema validation of body/query/params. Outputs { method, url, " +
-    "path, headers, query, params, body }.",
+    "path, headers, query, params, body, user }.",
   boundary: "trigger",
   pair: "boundary.http.response",
   inputs: {},
@@ -173,6 +181,7 @@ export const httpRequest: OpDefinition = {
     url: value(z.string()),
     path: value(z.string()),
     headers: value(stringRecord),
+    user: userPort(),
     query: config.query ? value(jsonSchemaToZod(config.query as any, { coerce: true }), { validate: true }) : value(stringRecord),
     params: config.params ? value(jsonSchemaToZod(config.params as any, { coerce: true }), { validate: true }) : value(stringRecord),
     body:
@@ -284,7 +293,7 @@ export const wsMessage: OpDefinition = {
   type: "boundary.ws.message",
   title: "boundary.ws.message",
   description:
-    "Fires a run per inbound WS message. Outputs { message, connection, room? }. config.message " +
+    "Fires a run per inbound WS message. Outputs { message, connection, user, room? }. config.message " +
     "(JSON Schema — wire a core.schema.define node into the config port) validates inbound " +
     "messages; invalid ones are refused with an error reply instead of firing the run.",
   boundary: "trigger",
@@ -297,6 +306,7 @@ export const wsMessage: OpDefinition = {
   outputs: (config: { message?: unknown }): Ports => ({
     message: config.message ? value(jsonSchemaToZod(config.message as never), { validate: true }) : value(),
     connection: value(connectionSchema),
+    user: userPort(),
     room: value(z.string()),
   }),
   config: z.object({
@@ -310,11 +320,11 @@ export const wsMessage: OpDefinition = {
 export const wsOpen: OpDefinition = {
   type: "boundary.ws.open",
   title: "boundary.ws.open",
-  description: "Connection-opened trigger. Outputs { connection }.",
+  description: "Connection-opened trigger. Outputs { connection, user }.",
   boundary: "trigger",
   pair: "boundary.ws.send",
   inputs: {},
-  outputs: { connection: value(connectionSchema) },
+  outputs: { connection: value(connectionSchema), user: userPort() },
   config: z.object({ requireAuth }),
   execute: TRIGGER_EXECUTE,
 };
@@ -322,12 +332,17 @@ export const wsOpen: OpDefinition = {
 export const wsClose: OpDefinition = {
   type: "boundary.ws.close",
   title: "boundary.ws.close",
-  description: "Connection-closed trigger. Outputs { connection, code?, reason? }.",
+  description: "Connection-closed trigger. Outputs { connection, user, code?, reason? }.",
   boundary: "trigger",
   // The socket is already gone — the run's outcome is just its recorded result.
   pair: "boundary.return",
   inputs: {},
-  outputs: { connection: value(connectionSchema), code: value(z.number()), reason: value(z.string()) },
+  outputs: {
+    connection: value(connectionSchema),
+    user: userPort(),
+    code: value(z.number()),
+    reason: value(z.string()),
+  },
   // Same auth seam as open/message — a protected socket's close handler should
   // be declarable as protected too.
   config: z.object({ requireAuth }),
