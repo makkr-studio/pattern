@@ -31,7 +31,7 @@ import {
 import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
 import { validateWorkflow } from "./validate.js";
-import type { FrontendContribution } from "./frontend.js";
+import type { FrontendContribution, SettingsSection } from "./frontend.js";
 import {
   ANONYMOUS,
   type AuthContext,
@@ -446,11 +446,13 @@ export class Engine {
     menu: FrontendContribution["menu"];
     pages: FrontendContribution["pages"];
     commands: FrontendContribution["commands"];
+    settings: Array<{ mod: string; section: SettingsSection }>;
   } {
     const assets: Array<{ mod: string; assets: string }> = [];
     const menu: NonNullable<FrontendContribution["menu"]> = [];
     const pages: NonNullable<FrontendContribution["pages"]> = [];
     const commands: NonNullable<FrontendContribution["commands"]> = [];
+    const settings: Array<{ mod: string; section: SettingsSection }> = [];
     for (const mod of this.mods) {
       const f = mod.frontend;
       if (!f) continue;
@@ -458,9 +460,10 @@ export class Engine {
       if (f.menu) menu.push(...f.menu);
       if (f.pages) pages.push(...f.pages);
       if (f.commands) commands.push(...f.commands);
+      if (f.settings) settings.push(...f.settings.map((section) => ({ mod: mod.name, section })));
     }
     menu.sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label));
-    return { assets, menu, pages, commands };
+    return { assets, menu, pages, commands, settings };
   }
 
   // ── Observability ──

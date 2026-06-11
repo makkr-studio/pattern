@@ -45,6 +45,8 @@ export interface DeclarativeAction {
   /** The op type or workflow id to run. */
   run: string;
   icon?: string;
+  /** "silent" (default) refreshes the source; "show" renders the op's result. */
+  result?: "silent" | "show";
 }
 
 /**
@@ -61,6 +63,39 @@ export interface DeclarativeRowAction {
   icon?: string;
   /** Ask for confirmation before running. */
   confirm?: boolean;
+  /**
+   * "silent" (default): the refreshed table IS the feedback — nothing pops.
+   * "show": the op's return value is for the operator (a minted link, a
+   * report) — rendered as labeled rows; a `copy` key gets a Copy button.
+   * Errors always surface regardless.
+   */
+  result?: "silent" | "show";
+}
+
+/** A field in a mod-contributed settings section. */
+export interface SettingsField {
+  /** Key in the source/submit ops' value object. */
+  key: string;
+  label: string;
+  type: "toggle" | "select" | "text" | "number";
+  /** Choices for `select`. */
+  options?: Array<{ value: string; label: string }>;
+  description?: string;
+}
+
+/**
+ * A mod-contributed section on the admin's Settings page. `source` is an op
+ * returning the current values keyed by field; `submit` is an op receiving
+ * `{ [key]: value }` patches. Same self-reflection as declarative pages —
+ * settings are wiring over ops, not a bespoke surface.
+ */
+export interface SettingsSection {
+  id: string;
+  title: string;
+  description?: string;
+  source: string;
+  submit: string;
+  fields: SettingsField[];
 }
 
 /**
@@ -117,4 +152,6 @@ export interface FrontendContribution {
   menu?: MenuEntry[];
   pages?: PageDef[];
   commands?: CommandDef[];
+  /** Sections rendered on the admin's Settings page (System → Settings). */
+  settings?: SettingsSection[];
 }

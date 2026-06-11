@@ -211,7 +211,9 @@ const usersInvite = jsonOp(
       data: { roles },
     });
     const { delivered, url } = await deliverToken(ctx, { email, path: issued.path, purpose: "invite" });
-    return { ok: true, email, roles, delivered, ...(delivered ? {} : { url }) };
+    // Undelivered (no email channel): hand the link to the inviting admin —
+    // `copy` renders as a copyable field in the admin's result view.
+    return { ok: true, email, roles, delivered, ...(delivered ? {} : { copy: url }) };
   },
   { scope: "admin" },
 );
@@ -261,10 +263,12 @@ const usersLoginLink = jsonOp(
     if (user.disabled) throw new Error("user is disabled — re-enable them first");
     const issued = await svc.issueToken({ purpose: "login", email: user.email });
     return {
+      // `copy` is the result-view convention: rendered as a copyable field
+      // (the admin prepends its origin for absolute links).
+      copy: issued.path,
       email: user.email,
-      link: issued.path,
-      validUntil: new Date(issued.expiresAt).toISOString(),
-      note: "single use — prepend your app's origin and send it over any channel",
+      "valid until": new Date(issued.expiresAt).toLocaleString(),
+      note: "single use — send it over any channel",
     };
   },
   { scope: "admin" },
@@ -277,13 +281,12 @@ const settingsGet = jsonOp(
   { scope: "admin" },
 );
 
-const settingsToggleSignup = jsonOp(
-  "identity.settings.toggleSignup",
-  "Flip the signup policy between invite-only and open (admin). Persisted — survives restarts.",
-  async (_args, svc) => {
-    const next = (await svc.getSignup()) === "open" ? "invite" : "open";
-    await svc.setSignup(next);
-    return { signup: next, hint: next === "open" ? "anyone with an email can sign up" : "only invited emails get in" };
+const settingsSet = jsonOp(
+  "identity.settings.set",
+  'Update identity settings (admin). Args { signup: "open" | "invite" }. Persisted — survives restarts.',
+  async (args, svc) => {
+    if (args.signup !== undefined) await svc.setSignup(args.signup as "open" | "invite");
+    return { signup: await svc.getSignup() };
   },
   { scope: "admin" },
 );
@@ -456,7 +459,7 @@ export const identityOps: OpDefinition[] = [
   usersRevokeSessions,
   usersLoginLink,
   settingsGet,
-  settingsToggleSignup,
+  settingsSet,
   sessionsList,
   sessionsRevoke,
   loginPage,

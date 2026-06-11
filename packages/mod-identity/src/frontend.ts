@@ -30,11 +30,12 @@ export function identityFrontend(): FrontendContribution {
             { key: "created", label: "Created", format: "date" },
           ],
           rowActions: [
-            { label: "Sign-in link", run: "identity.users.loginLink", args: { userId: "id" }, icon: "key-round" },
+            // result:"show" — the minted link is FOR the operator (copyable);
+            // the mutations stay silent: the refreshed row is the feedback.
+            { label: "Sign-in link", run: "identity.users.loginLink", args: { userId: "id" }, icon: "key-round", result: "show" },
             { label: "Toggle disabled", run: "identity.users.toggleDisabled", args: { userId: "id" }, icon: "ban", confirm: true },
             { label: "Log out everywhere", run: "identity.users.revokeSessions", args: { userId: "id" }, icon: "log-out", confirm: true },
           ],
-          actions: [{ label: "Sign-ups: toggle open / invite-only", run: "identity.settings.toggleSignup" }],
         },
       },
       {
@@ -73,6 +74,28 @@ export function identityFrontend(): FrontendContribution {
     commands: [
       { id: "identity.invite", label: "Invite user…", group: "Access", icon: "user-plus", path: "/x/identity/invite" },
       { id: "identity.whoami", label: "Who am I?", group: "Access", icon: "user", run: "identity.whoami" },
+    ],
+    // Lives on the admin's Settings page (System → Settings), with the other knobs.
+    settings: [
+      {
+        id: "identity",
+        title: "Identity",
+        description: "Who may sign up. Invites and admin-minted sign-in links work in both modes.",
+        source: "identity.settings.get",
+        submit: "identity.settings.set",
+        fields: [
+          {
+            key: "signup",
+            label: "Sign-ups",
+            type: "select",
+            options: [
+              { value: "invite", label: "Invite-only" },
+              { value: "open", label: "Open" },
+            ],
+            description: "Invite-only: unknown emails get no magic link and can't create accounts.",
+          },
+        ],
+      },
     ],
   };
 }

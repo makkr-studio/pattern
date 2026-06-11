@@ -104,19 +104,32 @@ describe("admin secure-by-default (§9)", () => {
       body: JSON.stringify({ source: "identity.users.loginLink", input: { userId: users[0].id } }),
     });
     expect(mint.status).toBe(200);
-    const { link } = await mint.json();
-    expect(link).toMatch(/^\/auth\/token\?t=/);
-    const follow = await fetch(`${base}${link}`, { redirect: "manual" });
+    const { copy } = await mint.json(); // `copy` = the result-view's copyable-field convention
+    expect(copy).toMatch(/^\/auth\/token\?t=/);
+    const follow = await fetch(`${base}${copy}`, { redirect: "manual" });
     expect(follow.status).toBe(302);
     expect(follow.headers.get("set-cookie")).toMatch(/pattern_session=/);
 
-    // The signup toggle round-trips through the invoke path too.
-    const toggle = await fetch(`${base}/admin/api/invoke`, {
+    // The settings ops round-trip through the invoke path (the Settings page's
+    // contributed sections use exactly this), and the manifest carries the section.
+    const set = await fetch(`${base}/admin/api/invoke`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.settings.toggleSignup" }),
+      body: JSON.stringify({ source: "identity.settings.set", input: { signup: "open" } }),
     });
-    expect((await toggle.json()).signup).toBe("open"); // default was invite
+    expect((await set.json()).signup).toBe("open");
+    const get = await fetch(`${base}/admin/api/invoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ source: "identity.settings.get" }),
+    });
+    expect((await get.json()).signup).toBe("open");
+
+    const manifest = await (await fetch(`${base}/admin/api/ui/manifest`, { headers: { cookie } })).json();
+    const identitySection = (manifest.settings ?? []).find(
+      (s: { section: { id: string } }) => s.section.id === "identity",
+    );
+    expect(identitySection?.section.fields[0]?.key).toBe("signup");
 
     // …and the same invoke WITHOUT the admin scope hits the in-op guard
     // (defense in depth below the route stamp).

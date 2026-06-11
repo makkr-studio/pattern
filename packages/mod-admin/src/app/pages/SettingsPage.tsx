@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { SettingsSection as ModSection } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
+import { useManifest } from "../lib/queries";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import { sfx } from "../lib/sfx";
 import { readSettings, writeSettings, DEFAULT_SETTINGS, type AdminSettings } from "../lib/settings";
@@ -26,6 +28,79 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="text-sm">{label}</span>
       <span className="flex items-center gap-2">{children}</span>
     </div>
+  );
+}
+
+/**
+ * A mod-contributed settings section (admin-spec P2): fields bound to a
+ * `source` op (current values) and a `submit` op (patches). Edits auto-save —
+ * one toggle shouldn't need a Save button — and re-read, so the panel always
+ * shows what the server accepted.
+ */
+function ModSettingsSection({ mod, section, flash }: { mod: string; section: ModSection; flash: (t: string) => void }) {
+  const qc = useQueryClient();
+  const { data, error } = useQuery({
+    queryKey: ["invoke", section.source],
+    queryFn: () => api.invoke<Record<string, unknown>>(section.source),
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async (key: string, value: unknown) => {
+    setSaving(true);
+    try {
+      await api.invoke(section.submit, { [key]: value });
+      await qc.invalidateQueries({ queryKey: ["invoke", section.source] });
+      flash(`${section.title}: ${key} saved.`);
+    } catch (err) {
+      flash(`${section.title}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (error) return null; // e.g. insufficient scopes — hide rather than break the page
+
+  return (
+    <Section title={section.title} hint={section.description ?? `Contributed by ${mod}.`}>
+      {section.fields.map((field) => {
+        const current = data?.[field.key];
+        return (
+          <div key={field.key}>
+            <Row label={field.label}>
+              {field.type === "select" &&
+                (field.options ?? []).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={saving || data === undefined}
+                    onClick={() => current !== opt.value && void save(field.key, opt.value)}
+                    className={`rounded-lg px-3 py-1.5 text-xs ${current === opt.value ? "bg-[var(--color-neon-cyan)] font-medium text-black" : "glass text-muted hover:bg-white/5"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              {field.type === "toggle" && (
+                <NeonButton variant="ghost" disabled={saving || data === undefined} onClick={() => void save(field.key, !current)}>
+                  {current ? "On" : "Off"}
+                </NeonButton>
+              )}
+              {(field.type === "text" || field.type === "number") && (
+                <input
+                  defaultValue={current == null ? "" : String(current)}
+                  disabled={saving || data === undefined}
+                  onBlur={(e) => {
+                    const v = field.type === "number" ? Number(e.currentTarget.value) : e.currentTarget.value;
+                    if (v !== current) void save(field.key, v);
+                  }}
+                  className="glass w-44 rounded px-2 py-1 text-right font-mono text-xs outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+                />
+              )}
+            </Row>
+            {field.description && <p className="text-muted mt-1 text-[11px] leading-relaxed">{field.description}</p>}
+          </div>
+        );
+      })}
+    </Section>
   );
 }
 
@@ -125,6 +200,7 @@ export function SettingsPage() {
   const [muted, setMuted] = useState(sfx.muted());
   const [settings, setSettings] = useState<AdminSettings>(readSettings());
   const [notice, setNotice] = useState<string | null>(null);
+  const { data: manifest } = useManifest();
   const { data: stats } = useQuery({
     queryKey: ["system-stats"],
     queryFn: () => api.systemStats<{ host: { cpus: number }; process: { node: string; pid: number }; transport: { kind?: string; size?: number } }>(),
@@ -235,6 +311,11 @@ export function SettingsPage() {
         </Section>
 
         <ObservabilitySection flash={flash} />
+
+        {/* Mod-contributed sections (admin-spec P2): identity's signup policy, … */}
+        {(manifest?.settings ?? []).map(({ mod, section }) => (
+          <ModSettingsSection key={`${mod}:${section.id}`} mod={mod} section={section} flash={flash} />
+        ))}
 
         <Section title="Runtime" hint="Read-only — these belong to the host process, not this browser.">
           <Row label="Node">
