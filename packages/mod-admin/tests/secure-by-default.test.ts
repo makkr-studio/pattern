@@ -94,7 +94,29 @@ describe("admin secure-by-default (§9)", () => {
       body: JSON.stringify({ source: "identity.users.list" }),
     });
     expect(invoke.status).toBe(200);
-    expect((await invoke.json()).map((u: { email: string }) => u.email)).toEqual(["root@x.io"]);
+    const users = await invoke.json();
+    expect(users.map((u: { email: string }) => u.email)).toEqual(["root@x.io"]);
+
+    // The admin can mint a sign-in link for manual delivery — and it works.
+    const mint = await fetch(`${base}/admin/api/invoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ source: "identity.users.loginLink", input: { userId: users[0].id } }),
+    });
+    expect(mint.status).toBe(200);
+    const { link } = await mint.json();
+    expect(link).toMatch(/^\/auth\/token\?t=/);
+    const follow = await fetch(`${base}${link}`, { redirect: "manual" });
+    expect(follow.status).toBe(302);
+    expect(follow.headers.get("set-cookie")).toMatch(/pattern_session=/);
+
+    // The signup toggle round-trips through the invoke path too.
+    const toggle = await fetch(`${base}/admin/api/invoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ source: "identity.settings.toggleSignup" }),
+    });
+    expect((await toggle.json()).signup).toBe("open"); // default was invite
 
     // …and the same invoke WITHOUT the admin scope hits the in-op guard
     // (defense in depth below the route stamp).

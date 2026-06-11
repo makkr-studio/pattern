@@ -112,6 +112,18 @@ describe("DefaultIdentityService", () => {
     expect(await svc.consumeToken(expired.token)).toBeNull();
   });
 
+  it("signup policy: option is the seed, the stored setting wins, lookups by email work", async () => {
+    const svc = makeService({ signup: "invite" });
+    expect(await svc.getSignup()).toBe("invite");
+    await svc.setSignup("open");
+    expect(await svc.getSignup()).toBe("open");
+    await expect(svc.setSignup("everyone" as never)).rejects.toThrow("invalid signup mode");
+
+    await svc.findOrCreateByIdentity(identity("Ada@X.io"));
+    expect((await svc.findUserByEmail("ada@x.io"))?.email).toBe("Ada@X.io");
+    expect(await svc.findUserByEmail("ghost@x.io")).toBeNull();
+  });
+
   it("registers login methods and maps roles to deduped scopes", () => {
     const svc = makeService({ roles: { a: ["x", "y"], b: ["y", "z"] } });
     svc.registerLoginMethod({ id: "magic-link", label: "Email", kind: "form", startUrl: "/auth/magic-link/request" });

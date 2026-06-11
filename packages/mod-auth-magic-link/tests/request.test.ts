@@ -11,15 +11,16 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function boot(port: number, opts: { listIdentityFirst?: boolean } = {}) {
+async function boot(port: number, opts: { listIdentityFirst?: boolean; signup?: "open" | "invite" } = {}) {
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   const engine = new Engine();
   // Two-phase install: register both with deferred ready, then ready in order —
   // exactly what loadMods does for pattern.config.json entries.
+  const signup = opts.signup ?? "open";
   const mods =
     opts.listIdentityFirst === false
-      ? [magicLinkMod(), identityMod({ storage: "memory", signup: "open" })]
-      : [identityMod({ storage: "memory", signup: "open" }), magicLinkMod()];
+      ? [magicLinkMod(), identityMod({ storage: "memory", signup })]
+      : [identityMod({ storage: "memory", signup }), magicLinkMod()];
   for (const mod of mods) await engine.useAsync(mod, { deferReady: true });
   for (const mod of mods) await mod.ready?.(engine);
 
@@ -87,6 +88,57 @@ describe("@pattern/mod-auth-magic-link", () => {
     expect(garbage.status).toBe(200);
     expect(await garbage.text()).toContain("Check your inbox");
     // …but no token was issued for garbage.
+    expect(printedLink(logSpy)).toBeUndefined();
+  });
+
+  it("invite-only: no token is issued (or delivered) for unknown or disabled emails", async () => {
+    const { base, service, logSpy } = await boot(4887, { signup: "invite" });
+
+    // Unknown email: identical response, but NOTHING was minted or delivered.
+    logSpy.mockClear();
+    const unknown = await requestLink(base, { email: "stranger@x.io" });
+    expect(unknown.status).toBe(200);
+    expect(await unknown.text()).toContain("Check your inbox");
+    expect(printedLink(logSpy)).toBeUndefined();
+
+    // A real user gets a link…
+    const user = await service.findOrCreateByIdentity({
+      provider: "magic-link",
+      subject: "ada@x.io",
+      email: "ada@x.io",
+      allowCreate: true,
+    });
+    logSpy.mockClear();
+    await requestLink(base, { email: "ada@x.io" });
+    expect(printedLink(logSpy)).toBeTruthy();
+
+    // …until they're disabled — then issuance stops too (no wasted emails).
+    await service.setDisabled(user!.id, true);
+    logSpy.mockClear();
+    const disabled = await requestLink(base, { email: "ada@x.io" });
+    expect(disabled.status).toBe(200);
+    expect(printedLink(logSpy)).toBeUndefined();
+  });
+
+  it("the runtime signup toggle opens and closes issuance for unknown emails", async () => {
+    const { base, service, logSpy } = await boot(4888, { signup: "invite" });
+
+    logSpy.mockClear();
+    await requestLink(base, { email: "stranger@x.io" });
+    expect(printedLink(logSpy)).toBeUndefined();
+
+    await service.setSignup("open");
+    logSpy.mockClear();
+    await requestLink(base, { email: "stranger@x.io" });
+    const link = printedLink(logSpy);
+    expect(link).toBeTruthy();
+    // The callback honors the same effective policy: the stranger gets in.
+    const cb = await fetch(link!, { redirect: "manual" });
+    expect((cb.headers.get("set-cookie") ?? "")).toMatch(/pattern_session=/);
+
+    await service.setSignup("invite");
+    logSpy.mockClear();
+    await requestLink(base, { email: "another@x.io" });
     expect(printedLink(logSpy)).toBeUndefined();
   });
 

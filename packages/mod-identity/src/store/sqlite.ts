@@ -275,6 +275,21 @@ class SqliteTokenStore implements TokenStore {
   }
 }
 
+class SqliteSettingsStore {
+  constructor(private readonly db: SqlDatabase) {}
+
+  async get(key: string): Promise<string | null> {
+    const r = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as Raw | undefined;
+    return r ? String(r.value) : null;
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    this.db
+      .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(key, value);
+  }
+}
+
 /* ── factory ───────────────────────────────────────────────────────────── */
 
 /**
@@ -306,6 +321,7 @@ export async function sqliteIdentityStores(filePath: string): Promise<IdentitySt
     users: new SqliteUserStore(db),
     sessions: new SqliteSessionStore(db),
     tokens: new SqliteTokenStore(db),
+    settings: new SqliteSettingsStore(db),
     close: async () => db.close(),
   };
 }

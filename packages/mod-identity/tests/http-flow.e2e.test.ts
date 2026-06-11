@@ -189,6 +189,7 @@ describe("identity over HTTP (e2e)", () => {
     const first = await boot(4868, { storage: dbPath });
     const cookie = await bootstrapAdmin(first.base, first.logSpy, "persist@x.io");
     expect(cookie).toMatch(/^pattern_session=/);
+    await first.service.setSignup("open"); // runtime setting, persisted
     await closer!();
     closer = undefined;
     vi.restoreAllMocks();
@@ -197,6 +198,8 @@ describe("identity over HTTP (e2e)", () => {
     // and the cookie from boot #1 still authenticates (sessions persist too).
     const second = await boot(4869, { storage: dbPath });
     expect((await second.service.listUsers())[0]?.email).toBe("persist@x.io");
+    // Runtime settings persist across boots too (set during boot #1).
+    expect(await second.service.getSignup()).toBe("open");
     expect(second.logSpy.mock.calls.map((c) => String(c[0])).join("\n")).not.toContain("bootstrap?t=");
     const who = await fetch(`${second.base}/auth/whoami`, { headers: { cookie } });
     expect((await who.json()).email).toBe("persist@x.io");

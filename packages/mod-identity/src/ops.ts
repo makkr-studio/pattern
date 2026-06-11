@@ -252,6 +252,42 @@ const usersRevokeSessions = jsonOp(
   { scope: "admin" },
 );
 
+const usersLoginLink = jsonOp(
+  "identity.users.loginLink",
+  "Mint a single-use sign-in link for a user (admin) — for handing over manually when no email/SMS delivery is wired. Args { userId }.",
+  async (args, svc) => {
+    const user = await svc.getUser(String(args.userId));
+    if (!user) throw new Error("user not found");
+    if (user.disabled) throw new Error("user is disabled — re-enable them first");
+    const issued = await svc.issueToken({ purpose: "login", email: user.email });
+    return {
+      email: user.email,
+      link: issued.path,
+      validUntil: new Date(issued.expiresAt).toISOString(),
+      note: "single use — prepend your app's origin and send it over any channel",
+    };
+  },
+  { scope: "admin" },
+);
+
+const settingsGet = jsonOp(
+  "identity.settings.get",
+  "Current identity settings (admin): the effective signup policy.",
+  async (_args, svc) => ({ signup: await svc.getSignup() }),
+  { scope: "admin" },
+);
+
+const settingsToggleSignup = jsonOp(
+  "identity.settings.toggleSignup",
+  "Flip the signup policy between invite-only and open (admin). Persisted — survives restarts.",
+  async (_args, svc) => {
+    const next = (await svc.getSignup()) === "open" ? "invite" : "open";
+    await svc.setSignup(next);
+    return { signup: next, hint: next === "open" ? "anyone with an email can sign up" : "only invited emails get in" };
+  },
+  { scope: "admin" },
+);
+
 const sessionsList = jsonOp(
   "identity.sessions.list",
   "List sessions, newest first (admin). Args { userId? }.",
@@ -321,7 +357,8 @@ const tokenCallback = httpOp(
       provider: typeof data.provider === "string" ? data.provider : "magic-link",
       subject: token.emailNorm,
       email: token.emailNorm,
-      allowCreate: invite || svc.options.signup === "open",
+      // The EFFECTIVE policy (admin-toggleable), not the construction-time option.
+      allowCreate: invite || (await svc.getSignup()) === "open",
       roles: invite && Array.isArray(data.roles) ? (data.roles as string[]) : undefined,
     });
     if (!user) return redirect(`${loginUrl}?error=signup-closed`);
@@ -417,6 +454,9 @@ export const identityOps: OpDefinition[] = [
   usersSetRoles,
   usersToggleDisabled,
   usersRevokeSessions,
+  usersLoginLink,
+  settingsGet,
+  settingsToggleSignup,
   sessionsList,
   sessionsRevoke,
   loginPage,

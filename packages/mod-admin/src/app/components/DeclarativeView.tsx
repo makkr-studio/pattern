@@ -154,21 +154,26 @@ const rowArgs = (action: RowAction, row: Record<string, unknown>): Record<string
  * (`args: { userId: "id" }` → `{ userId: row.id }`) and refresh the source —
  * which is how mod screens get mutations without shipping any UI code.
  * `confirm` actions go through the admin's Modal (never window.confirm —
- * native dialogs block automation and skip the design system).
+ * native dialogs block automation and skip the design system), and action
+ * RESULTS are shown in a Modal too: an op that returns something (a minted
+ * sign-in link, the new settings value) hands it straight to the operator.
  */
 function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<{ action: RowAction; row: Record<string, unknown> } | null>(null);
+  const [result, setResult] = useState<{ title: string; value: unknown } | null>(null);
   const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   const rowActions = view.rowActions ?? [];
 
-  const execute = async (action: RowAction, row: Record<string, unknown>) => {
-    const args = rowArgs(action, row);
-    setBusy(`${action.label}:${JSON.stringify(args)}`);
+  const execute = async (label: string, run: string, args: Record<string, unknown>) => {
+    setBusy(`${label}:${JSON.stringify(args)}`);
     try {
-      await api.invoke(action.run, args);
+      const out = await api.invoke(run, args);
       await queryClient.invalidateQueries({ queryKey: ["invoke", view.source] });
+      if (out != null) setResult({ title: label, value: out });
+    } catch (err) {
+      setResult({ title: label, value: { error: err instanceof Error ? err.message : String(err) } });
     } finally {
       setBusy(null);
     }
@@ -192,7 +197,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 key={a.label}
                 type="button"
                 disabled={busy !== null}
-                onClick={() => (a.confirm ? setPending({ action: a, row }) : void execute(a, row))}
+                onClick={() => (a.confirm ? setPending({ action: a, row }) : void execute(a.label, a.run, rowArgs(a, row)))}
                 className="text-muted rounded-md border border-white/10 px-2 py-0.5 text-xs hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-40"
               >
                 {busy === key ? "…" : a.label}
@@ -208,7 +213,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
     <div className="space-y-3">
       <Table columns={columns} rows={rows} getKey={(r) => JSON.stringify(r)} />
       {view.actions?.map((a) => (
-        <NeonButton key={a.label} variant="ghost" onClick={() => api.invoke(a.run)}>
+        <NeonButton key={a.label} variant="ghost" disabled={busy !== null} onClick={() => void execute(a.label, a.run, {})}>
           {a.label}
         </NeonButton>
       ))}
@@ -230,10 +235,24 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 onClick={() => {
                   const { action, row } = pending;
                   setPending(null);
-                  void execute(action, row);
+                  void execute(action.label, action.run, rowArgs(action, row));
                 }}
               >
                 {pending.action.label}
+              </NeonButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Action results: minted links, new settings values, errors. */}
+      <Modal open={result !== null} onClose={() => setResult(null)} title={result?.title ?? ""}>
+        {result && (
+          <div className="space-y-4">
+            <JsonView value={result.value} className="max-h-80" />
+            <div className="flex justify-end">
+              <NeonButton variant="ghost" onClick={() => setResult(null)}>
+                Close
               </NeonButton>
             </div>
           </div>

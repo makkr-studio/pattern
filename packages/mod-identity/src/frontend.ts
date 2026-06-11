@@ -30,9 +30,11 @@ export function identityFrontend(): FrontendContribution {
             { key: "created", label: "Created", format: "date" },
           ],
           rowActions: [
+            { label: "Sign-in link", run: "identity.users.loginLink", args: { userId: "id" }, icon: "key-round" },
             { label: "Toggle disabled", run: "identity.users.toggleDisabled", args: { userId: "id" }, icon: "ban", confirm: true },
             { label: "Log out everywhere", run: "identity.users.revokeSessions", args: { userId: "id" }, icon: "log-out", confirm: true },
           ],
+          actions: [{ label: "Sign-ups: toggle open / invite-only", run: "identity.settings.toggleSignup" }],
         },
       },
       {

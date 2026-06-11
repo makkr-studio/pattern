@@ -67,6 +67,14 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX IF NOT EXISTS idx_tokens_purpose ON tokens(purpose);
   `,
+
+  // v2 — runtime-mutable settings (signup policy toggled from the admin).
+  `
+  CREATE TABLE IF NOT EXISTS settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+  );
+  `,
 ];
 
 export function runMigrations(db: SqlDatabase): void {
