@@ -32,6 +32,62 @@ export function DeclarativeView({ view }: { view: View }) {
   return <DataView view={view} />;
 }
 
+/**
+ * An op result meant for human eyes: objects render as labeled rows (never
+ * raw JSON), and a `copy` key becomes a copyable field — relative paths get
+ * the admin's origin prepended, so a minted link is one click from a chat
+ * message. Non-objects fall back to the JSON view.
+ */
+export function ResultView({ value }: { value: unknown }) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return <JsonView value={value} className="max-h-80" />;
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  const copy = entries.find(([k]) => k === "copy")?.[1];
+  const rows = entries.filter(([k]) => k !== "copy");
+  return (
+    <div className="space-y-4">
+      {typeof copy === "string" && <CopyField value={copy} />}
+      {rows.length > 0 && (
+        <div className="space-y-2">
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex items-baseline justify-between gap-6 text-sm">
+              <span className="text-muted shrink-0 text-xs uppercase tracking-wider">{k}</span>
+              <span className="min-w-0 break-all text-right font-mono text-xs">
+                {typeof v === "string" ? v : v === true ? "yes" : v === false ? "no" : JSON.stringify(v)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyField({ value }: { value: string }) {
+  const absolute = value.startsWith("/") ? `${location.origin}${value}` : value;
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        readOnly
+        value={absolute}
+        onFocus={(e) => e.currentTarget.select()}
+        className="glass min-w-0 flex-1 rounded-lg px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+      />
+      <NeonButton
+        onClick={() => {
+          void navigator.clipboard?.writeText(absolute);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1800);
+        }}
+      >
+        {copied ? "Copied ✓" : "Copy"}
+      </NeonButton>
+    </div>
+  );
+}
+
 /** `form` kind: a FormFromSchema over the declared JSON schema; submit invokes
  *  the target op with the values and shows its result. */
 function FormView({ schema, submit }: { schema: unknown; submit: string }) {
@@ -60,7 +116,7 @@ function FormView({ schema, submit }: { schema: unknown; submit: string }) {
           </NeonButton>
         </div>
       </GlassPanel>
-      {result !== undefined && <JsonView value={result} className="max-h-72" />}
+      {result !== undefined && <ResultView value={result} />}
     </div>
   );
 }
@@ -166,13 +222,16 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   const rowActions = view.rowActions ?? [];
 
-  const execute = async (label: string, run: string, args: Record<string, unknown>) => {
+  const execute = async (label: string, run: string, args: Record<string, unknown>, show: boolean) => {
     setBusy(`${label}:${JSON.stringify(args)}`);
     try {
       const out = await api.invoke(run, args);
       await queryClient.invalidateQueries({ queryKey: ["invoke", view.source] });
-      if (out != null) setResult({ title: label, value: out });
+      // Silent (default): the refreshed table IS the feedback. "show" is for
+      // ops whose return value belongs in the operator's hands (minted links).
+      if (show && out != null) setResult({ title: label, value: out });
     } catch (err) {
+      // Errors always surface.
       setResult({ title: label, value: { error: err instanceof Error ? err.message : String(err) } });
     } finally {
       setBusy(null);
@@ -197,7 +256,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 key={a.label}
                 type="button"
                 disabled={busy !== null}
-                onClick={() => (a.confirm ? setPending({ action: a, row }) : void execute(a.label, a.run, rowArgs(a, row)))}
+                onClick={() => (a.confirm ? setPending({ action: a, row }) : void execute(a.label, a.run, rowArgs(a, row), a.result === "show"))}
                 className="text-muted rounded-md border border-white/10 px-2 py-0.5 text-xs hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-40"
               >
                 {busy === key ? "…" : a.label}
@@ -213,7 +272,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
     <div className="space-y-3">
       <Table columns={columns} rows={rows} getKey={(r) => JSON.stringify(r)} />
       {view.actions?.map((a) => (
-        <NeonButton key={a.label} variant="ghost" disabled={busy !== null} onClick={() => void execute(a.label, a.run, {})}>
+        <NeonButton key={a.label} variant="ghost" disabled={busy !== null} onClick={() => void execute(a.label, a.run, {}, a.result === "show")}>
           {a.label}
         </NeonButton>
       ))}
@@ -235,7 +294,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 onClick={() => {
                   const { action, row } = pending;
                   setPending(null);
-                  void execute(action.label, action.run, rowArgs(action, row));
+                  void execute(action.label, action.run, rowArgs(action, row), action.result === "show");
                 }}
               >
                 {pending.action.label}
@@ -249,7 +308,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
       <Modal open={result !== null} onClose={() => setResult(null)} title={result?.title ?? ""}>
         {result && (
           <div className="space-y-4">
-            <JsonView value={result.value} className="max-h-80" />
+            <ResultView value={result.value} />
             <div className="flex justify-end">
               <NeonButton variant="ghost" onClick={() => setResult(null)}>
                 Close

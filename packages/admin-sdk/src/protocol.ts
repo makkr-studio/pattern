@@ -7,9 +7,9 @@
  * them; richer engine types come from `@pattern/core`.
  */
 
-import type { PortKind, MenuEntry, CommandDef, DeclarativeView } from "@pattern/core";
+import type { PortKind, MenuEntry, CommandDef, DeclarativeView, SettingsSection } from "@pattern/core";
 
-export type { MenuEntry, CommandDef, DeclarativeView } from "@pattern/core";
+export type { MenuEntry, CommandDef, DeclarativeView, SettingsField, SettingsSection } from "@pattern/core";
 
 export interface UiManifestPage {
   path: string;
@@ -23,6 +23,8 @@ export interface UiManifest {
   commands: CommandDef[];
   assets: Array<{ mod: string; assets: string }>;
   pages: UiManifestPage[];
+  /** Mod-contributed Settings-page sections. */
+  settings?: Array<{ mod: string; section: SettingsSection }>;
 }
 
 export type Source = "code" | "file" | "db";

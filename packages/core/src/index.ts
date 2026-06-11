@@ -32,6 +32,8 @@ export type {
   DeclarativeAction,
   DeclarativeRowAction,
   CommandDef,
+  SettingsField,
+  SettingsSection,
 } from "./frontend.js";
 
 // Terminal graph rendering (for `pattern graph`)

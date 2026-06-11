@@ -138,6 +138,14 @@ A mod's `frontend` block adds UI to the admin — no admin code changes. See
   (`{ schema, submit }`), `chart`, `json`, `markdown` (`{ source }`), `graph`
   (`{ workflow }`), `iframe` (`{ url }`).
 - **Command** (⌘K palette): `{ id, label, group, run?, path? }`.
+- **Settings section** (on System → Settings): `{ id, title, description?,
+  source, submit, fields }` under the mod's `frontend.settings` — `source` is
+  an op returning current values, `submit` receives `{ key: value }` patches,
+  fields are `{ key, label, type: toggle|select|text|number, options? }`.
+- **Action results**: row/table actions default to silent (the refreshed
+  table is the feedback); set `result: "show"` when the op's return value is
+  for the operator — objects render as labeled rows and a `copy` key becomes
+  a copyable field (relative paths get the origin prepended).
 - **Tier-2 page** (full React): `{ path, remote: "/ext/my-page.js" }` — an ESM
   file you serve yourself (e.g. a `boundary.http.app` mount). It reads
   `globalThis.__PATTERN_ADMIN__` for the shared `React`, `api` client, and the

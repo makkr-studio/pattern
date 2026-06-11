@@ -303,7 +303,7 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
     if ("remote" in p) return { path: p.path, remote: p.remote };
     return { path: p.path, tier2: true }; // function-loaded; not serializable over HTTP
   });
-  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages };
+  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [] };
 });
 /**
  * Run a "source" op one-shot and return its output — the data backend for

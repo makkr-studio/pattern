@@ -113,7 +113,7 @@ CAS — replays fail closed. Purposes: `login` (magic links), `invite` (admin
 callback turns a consumed token into user + session per the **signup
 policy**: `invite` (default — unknown emails are refused) or `open`. The
 policy is a **runtime setting** (persisted; the mod option only seeds it) —
-toggle it from the admin's Users screen. Magic-link issuance is gated by the
+toggle it on the admin's Settings page (identity contributes a section there). Magic-link issuance is gated by the
 same policy: unknown or disabled emails mint nothing and send nothing
 (delivery costs money), while the response stays byte-identical — no
 enumeration. Need to sign someone in with no email channel wired? The Users
