@@ -15,7 +15,7 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineMod, type Engine, type PatternMod, type Workflow } from "@pattern/core";
+import { defineMod, IDENTITY_SERVICE, type Engine, type PatternMod, type Workflow } from "@pattern/core";
 import {
   localFs,
   memoryFs,
@@ -40,7 +40,12 @@ export interface AdminModOptions {
   storePrefix?: string;
   /** SPA assets filesystem (or a local dir path). Default a built-in placeholder. */
   assets?: Filesystem | string;
-  /** Auth requirement stamped onto every admin endpoint (P6). Default false. */
+  /**
+   * Auth requirement stamped onto every admin endpoint + the SPA (P6).
+   * Unset: open — UNLESS the identity mod is installed, in which case the
+   * admin defaults to `{ scopes: ["admin"] }` (secure-by-default). Pass
+   * `false` to explicitly keep it open even with identity present.
+   */
   auth?: boolean | { scopes: string[] };
   /** Max runs retained in the in-memory trace sink. Default 500. */
   traceCapacity?: number;
@@ -158,7 +163,20 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     // Bootstrap in `ready`, not `setup`: stored workflows may use ops from mods
     // listed *after* the admin in the project config — `ready` runs once every
     // mod of the batch is installed, so all their ops resolve.
-    ready: () => controlPlane?.bootstrap(),
+    ready: async (engine) => {
+      await controlPlane?.bootstrap();
+      // Secure-by-default (§9): identity installed + no explicit `auth` option
+      // → the whole admin (API + SPA) requires the admin scope. Re-registering
+      // upserts by id, so the host re-derives the routes with requireAuth.
+      // `auth: false` is the explicit opt-out. (IDENTITY_SERVICE is a core
+      // const — no package dependency on mod-identity.)
+      if (options.auth === undefined && engine.service(IDENTITY_SERVICE)) {
+        const requirement = { scopes: ["admin"] };
+        for (const wf of [...endpointWorkflows(requirement), stampRequireAuth(spaWorkflow(mount), requirement)]) {
+          await engine.registerWorkflowAsync(wf);
+        }
+      }
+    },
   });
 }
 

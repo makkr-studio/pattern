@@ -51,13 +51,17 @@ type JsonHandler = (
   ctx: OpContext,
 ) => unknown | Promise<unknown>;
 
-/** A JSON op: params/query/body in, a single `out` value out. */
+/**
+ * A JSON op: params/query/body in, a single `out` value out. Deliberately
+ * reusable — admin screens reach these through `admin.invoke`, and workflows
+ * may wire them (an automation listing users, say). The `scope` guard is the
+ * protection: the RUN's principal must carry it, whatever the entry path.
+ */
 function jsonOp(type: string, description: string, handler: JsonHandler, opts: { scope?: string } = {}): OpDefinition {
   return {
     type,
     title: type,
     description,
-    reusable: false,
     inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
     outputs: { out: value() },
     execute: async (ctx) => {
