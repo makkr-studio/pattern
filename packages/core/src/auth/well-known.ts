@@ -19,6 +19,14 @@ import type { Principal } from "../types.js";
 export const AUTH_LOGIN_URL = "auth.loginUrl";
 
 /**
+ * Engine service key under which the app's "home" URL (string) is advertised —
+ * where a successful login lands when no explicit `next` was requested. The
+ * admin mod registers its mount (`/admin`); an app with its own frontend can
+ * override by providing the service itself.
+ */
+export const AUTH_HOME_URL = "auth.homeUrl";
+
+/**
  * Engine service key under which an identity service is registered (users,
  * sessions, tokens, login methods). The interface lives in the identity mod;
  * consumers that only need presence-detection (e.g. the admin's

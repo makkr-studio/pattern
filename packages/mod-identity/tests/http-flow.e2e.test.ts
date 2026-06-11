@@ -60,6 +60,9 @@ async function bootstrapAdmin(base: string, logSpy: ReturnType<typeof vi.spyOn>,
     redirect: "manual",
   });
   expect(submit.status).toBe(302);
+  // No AUTH_HOME_URL advertised (no admin here) → the welcome fallback, never
+  // a bare "/" that may 404.
+  expect(submit.headers.get("location")).toBe("/auth/welcome");
   const cookie = cookieOf(submit);
   expect(cookie).toMatch(/^pattern_session=/);
   return cookie;
@@ -69,6 +72,14 @@ describe("identity over HTTP (e2e)", () => {
   it("bootstrap → whoami → protected route → logout", async () => {
     const { base, logSpy } = await boot(4861);
     const cookie = await bootstrapAdmin(base, logSpy);
+
+    // the welcome landing knows who you are; logged out it bounces to login
+    const welcome = await fetch(`${base}/auth/welcome`, { headers: { cookie } });
+    expect(welcome.status).toBe(200);
+    expect(await welcome.text()).toContain("ada@x.io");
+    const anonWelcome = await fetch(`${base}/auth/welcome`, { redirect: "manual" });
+    expect(anonWelcome.status).toBe(302);
+    expect(anonWelcome.headers.get("location")).toBe("/auth/login");
 
     // whoami sees the new admin
     const who = await fetch(`${base}/auth/whoami`, { headers: { cookie } });

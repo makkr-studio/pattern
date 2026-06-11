@@ -54,6 +54,7 @@ export function endpointWorkflows(mount: string): Workflow[] {
     { id: "identity.route.token", method: "GET", path: `${mount}/token`, op: "identity.token.callback", shape: "http" },
     { id: "identity.route.logout", method: "POST", path: `${mount}/logout`, op: "identity.logout", shape: "http" },
     { id: "identity.route.whoami", method: "GET", path: `${mount}/whoami`, op: "identity.whoami", shape: "json" },
+    { id: "identity.route.welcome", method: "GET", path: `${mount}/welcome`, op: "identity.welcome.page", shape: "http" },
     { id: "identity.route.bootstrap", method: "GET", path: `${mount}/bootstrap`, op: "identity.bootstrap.page", shape: "http" },
     { id: "identity.route.bootstrap.submit", method: "POST", path: `${mount}/bootstrap`, op: "identity.bootstrap.submit", shape: "http" },
   ];
