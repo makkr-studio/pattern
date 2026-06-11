@@ -43,6 +43,7 @@ import {
   type OpServices,
   type Principal,
   type RunHandle,
+  type RunParentRef,
   type RunResult,
   type RunTransport,
   type TraceSink,
@@ -173,8 +174,8 @@ export class Engine {
     this.connections = opts.connections ?? new InMemoryConnectionRegistry();
     this.env = opts.env ?? {};
 
-    const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal, hookDepth) =>
-      this.runFrom(wf, trig, input, principal, undefined, undefined, undefined, hookDepth),
+    const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal, hookDepth, opts) =>
+      this.runFrom(wf, trig, input, principal, undefined, undefined, undefined, hookDepth, opts?.runId, opts?.parent),
     );
     this.services = { events: this.events, hooks: hookRunner, connections: this.connections };
     this.transport = opts.transport ?? new InProcessTransport(this.deps());
@@ -542,6 +543,7 @@ export class Engine {
     sampleIo?: boolean,
     hookDepth?: number,
     runId?: string,
+    parent?: RunParentRef,
   ): Promise<RunResult> {
     const handle = this.transport.dispatch({
       workflow,
@@ -552,6 +554,7 @@ export class Engine {
       sampleIo: sampleIo ?? this.sampleIoDefault,
       hookDepth,
       runId,
+      parent,
     });
     // Track every in-flight run (whatever the entry path) so the admin can
     // cancel / pause it by runId while it executes.

@@ -90,6 +90,53 @@ describe("ctx.invoke run linkage", () => {
     expect(mulSpan.io?.outputs?.out).toMatchObject({ kind: "value", preview: 10 });
   });
 
+  it("hook-chain member runs link back to the invoking run + node too", async () => {
+    const engine = new Engine();
+    const { sink, starts, spans } = collectingSink();
+    engine.onTrace(sink);
+
+    // Two listeners on hook "h" — each member of the chain is its own run.
+    const listener = (id: string, priority: number): Workflow => ({
+      id,
+      nodes: [
+        { id: "in", op: "boundary.hook", config: { hook: "h", priority } },
+        { id: "out", op: "boundary.hook.return" },
+      ],
+      edges: [{ from: { node: "in", port: "payload" }, to: { node: "out", port: "payload" } }],
+    });
+    engine.registerWorkflow(listener("listener-a", 10));
+    engine.registerWorkflow(listener("listener-b", 20));
+    // The caller: a node that invokes the chain (Benoit's hook-hello shape).
+    engine.registerWorkflow({
+      id: "caller",
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["payload"] } },
+        { id: "call", op: "core.hook.invoke", config: { hook: "h" } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "payload" }, to: { node: "call", port: "payload" } },
+        { from: { node: "call", port: "payload" }, to: { node: "out", port: "value" } },
+      ],
+    });
+
+    const res = await engine.run("caller", { input: { payload: { n: 1 } }, sampleIo: true });
+    expect(res.status).toBe("ok");
+
+    const callerStart = starts.find((s) => s.workflowId === "caller")!;
+    const memberStarts = starts.filter((s) => s.workflowId.startsWith("listener-"));
+    expect(memberStarts).toHaveLength(2);
+    for (const m of memberStarts) {
+      expect(m.parent).toEqual({ runId: callerStart.runId, workflowId: "caller", nodeId: "call" });
+    }
+
+    // The invoking node's span links forward to both member runs, named by hook.
+    const callSpan = spans.find((s) => s.attributes["pattern.node.id"] === "call")!;
+    const invokes = callSpan.events.filter((e) => e.name === "invoke");
+    expect(invokes.map((e) => e.attributes?.hook)).toEqual(["h", "h"]);
+    expect(new Set(invokes.map((e) => e.attributes?.runId))).toEqual(new Set(memberStarts.map((m) => m.runId)));
+  });
+
   it("engine-level default sampling applies when the caller didn't choose", async () => {
     const engine = new Engine();
     const { sink, spans } = collectingSink();

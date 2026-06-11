@@ -21,7 +21,15 @@
 
 import { HookRecursionError } from "../errors.js";
 import type { HookRegistry, WorkflowRegistry } from "../registry.js";
-import { ANONYMOUS, type HookInvoker, type Principal, type RunResult, type Workflow } from "../types.js";
+import {
+  ANONYMOUS,
+  type HookInvokeOrigin,
+  type HookInvoker,
+  type Principal,
+  type RunParentRef,
+  type RunResult,
+  type Workflow,
+} from "../types.js";
 
 export type HookRunFn = (
   workflow: Workflow,
@@ -30,6 +38,8 @@ export type HookRunFn = (
   principal: Principal,
   /** Hook-chain depth the spawned run inherits (its nested invokes resume here). */
   hookDepth: number,
+  /** Pre-minted run id + the invoking run/node, when a run's node invoked the chain. */
+  opts?: { runId?: string; parent?: RunParentRef },
 ) => Promise<RunResult>;
 
 export class HookChainRunner implements HookInvoker {
@@ -39,7 +49,7 @@ export class HookChainRunner implements HookInvoker {
     private readonly runFrom: HookRunFn,
   ) {}
 
-  async invoke(name: string, payload: unknown, depth = 0): Promise<unknown> {
+  async invoke(name: string, payload: unknown, depth = 0, origin?: HookInvokeOrigin): Promise<unknown> {
     const def = this.hooks.definition(name);
     const maxDepth = def?.maxDepth ?? 16;
     if (depth >= maxDepth) throw new HookRecursionError(name, maxDepth);
@@ -58,7 +68,15 @@ export class HookChainRunner implements HookInvoker {
     for (const reg of regs) {
       const wf = this.workflows.get(reg.workflowId);
       if (!wf) continue;
-      const res = await this.runFrom(wf, reg.nodeId, { payload: current }, ANONYMOUS, depth + 1);
+      // Each member is a first-class run, minted HERE so the invoking node's
+      // span can link to it before/while it runs; the member carries the
+      // reverse `parent` ref to the trace sink (same shape as ctx.invoke).
+      const runId = crypto.randomUUID();
+      origin?.onRun?.({ workflowId: wf.id, runId });
+      const res = await this.runFrom(wf, reg.nodeId, { payload: current }, ANONYMOUS, depth + 1, {
+        runId,
+        parent: origin?.parent,
+      });
       if (res.status === "error") throw res.error; // fail-fast
       const out = firstOutput(res.outputs);
       if (out && "payload" in out) current = out.payload;
