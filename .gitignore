@@ -10,3 +10,4 @@ coverage/
 dist-app/
 .pattern/
 .pattern-dev/
+.pattern-data/
