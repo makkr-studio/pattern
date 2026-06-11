@@ -145,6 +145,28 @@ describe("admin secure-by-default (§9)", () => {
 
     // …and run stats see the admin API runs THIS user just made (the runs
     // above executed as the cookie's principal and the sink retained them).
+    // Editor runs (admin.run) execute as the caller: a draft using the
+    // trigger's `user` port sees the signed-in admin, like a real request would.
+    const editorRun = await fetch(`${base}/admin/api/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        doc: {
+          id: "draft-whoami",
+          nodes: [
+            { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/draft-whoami" } },
+            { id: "out", op: "boundary.http.response" },
+          ],
+          edges: [{ from: { node: "in", port: "user" }, to: { node: "out", port: "body" } }],
+        },
+        trigger: "in",
+        input: {},
+      }),
+    });
+    const runResult = await editorRun.json();
+    expect(runResult.status).toBe("ok");
+    expect(JSON.stringify(runResult.outputs)).toContain("root@x.io");
+
     const stats = await fetch(`${base}/admin/api/invoke`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },

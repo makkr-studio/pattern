@@ -360,7 +360,7 @@ function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Reco
  * the run (§13). Powers "test from the editor". Validates first; runs in-process
  * with I/O sampling so the run replays in the Runs view.
  */
-const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigger; records the run.", async (args, { engine }) => {
+const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigger; records the run.", async (args, { engine }, ctx) => {
   const doc = args.doc as Workflow | undefined;
   const slug = args.slug as string | undefined;
   const raw = doc ?? (slug ? engine.workflows.get(slug) : undefined);
@@ -380,6 +380,9 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
     params: (args.params as Record<string, unknown>) ?? {},
     sampleIo: true,
     runId,
+    // Run as the CALLER (§9): editor runs carry the signed-in admin, so a
+    // trigger's `user` port behaves exactly like a host-served request.
+    principal: ctx.principal,
   });
   return {
     ok: true,
