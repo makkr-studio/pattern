@@ -30,6 +30,7 @@ export type {
   DeclarativeView,
   DeclarativeColumn,
   DeclarativeAction,
+  DeclarativeRowAction,
   CommandDef,
 } from "./frontend.js";
 

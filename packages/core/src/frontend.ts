@@ -39,7 +39,7 @@ export interface DeclarativeColumn {
   format?: string;
 }
 
-/** A row action in a declarative table view: a button that runs an op/workflow. */
+/** A table-level action in a declarative table view: a button that runs an op/workflow. */
 export interface DeclarativeAction {
   label: string;
   /** The op type or workflow id to run. */
@@ -48,12 +48,34 @@ export interface DeclarativeAction {
 }
 
 /**
+ * A per-row action: a button on every table row that invokes an op with
+ * arguments mapped from the row, e.g. `{ args: { userId: "id" } }` calls
+ * `run` with `{ userId: row.id }`. The renderer refreshes the table after.
+ */
+export interface DeclarativeRowAction {
+  label: string;
+  /** The op type or workflow id to run. */
+  run: string;
+  /** Op-argument name → row key. */
+  args?: Record<string, string>;
+  icon?: string;
+  /** Ask for confirmation before running. */
+  confirm?: boolean;
+}
+
+/**
  * A declarative page body (Tier 1). All data sources are op types or workflow
  * ids, so a declarative page is *wiring over the self-reflecting API*, never a
  * new bespoke surface.
  */
 export type DeclarativeView =
-  | { kind: "table"; source: string; columns: DeclarativeColumn[]; actions?: DeclarativeAction[] }
+  | {
+      kind: "table";
+      source: string;
+      columns: DeclarativeColumn[];
+      actions?: DeclarativeAction[];
+      rowActions?: DeclarativeRowAction[];
+    }
   | { kind: "form"; schema: unknown; submit: string }
   | { kind: "chart"; source: string; spec: unknown }
   | { kind: "json" | "markdown"; source: string }
