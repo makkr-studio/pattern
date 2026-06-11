@@ -33,6 +33,7 @@ export class InProcessTransport implements RunTransport {
         params: req.params,
         sampleIo: req.sampleIo,
         hookDepth: req.hookDepth,
+        parent: req.parent,
         runId,
         control,
       },

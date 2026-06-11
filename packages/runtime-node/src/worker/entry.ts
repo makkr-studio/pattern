@@ -43,6 +43,7 @@ interface RunMessage {
   params?: Record<string, unknown>;
   sampleIo?: boolean;
   hookDepth?: number;
+  parent?: { runId: string; workflowId: string; nodeId: string };
 }
 
 port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
@@ -51,7 +52,7 @@ port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
 });
 
 async function handleRun(msg: RunMessage): Promise<void> {
-  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth } = msg;
+  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent } = msg;
   const ac = new AbortController();
   aborts.set(id, ac);
 
@@ -66,7 +67,7 @@ async function handleRun(msg: RunMessage): Promise<void> {
     } catch {
       /* boundary config ports — resolved on the host, run directly here */
     }
-    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth);
+    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, undefined, parent);
   } catch (err) {
     port.postMessage({ type: "result", id, status: "error", outputs: {}, error: serializeError(err) });
     port.postMessage({ type: "done", id });

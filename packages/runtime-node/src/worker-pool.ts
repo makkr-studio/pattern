@@ -116,6 +116,7 @@ class WorkerWrapper {
         params: req.params,
         sampleIo: req.sampleIo,
         hookDepth: req.hookDepth,
+        parent: req.parent,
       });
     });
   }

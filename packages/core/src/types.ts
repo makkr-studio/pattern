@@ -212,11 +212,23 @@ export interface HookRegistration {
 }
 
 /**
+ * Where a hook invocation came from, when a run's node invoked it. Each chain
+ * member runs as its own run — `parent` links those runs back to the invoking
+ * node (same ref the sink stores for `ctx.invoke` sub-runs), and `onRun` fires
+ * as each member dispatches (runId minted up front) so the invoking node's
+ * span can point at it.
+ */
+export interface HookInvokeOrigin {
+  parent: RunParentRef;
+  onRun?: (run: { workflowId: string; runId: string }) => void;
+}
+
+/**
  * The capability ops use to invoke a hook chain (`core.hook.invoke`). Returns
  * the threaded payload after the chain completes (§8).
  */
 export interface HookInvoker {
-  invoke(name: string, payload: unknown, depth?: number): Promise<unknown>;
+  invoke(name: string, payload: unknown, depth?: number, origin?: HookInvokeOrigin): Promise<unknown>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -474,6 +486,8 @@ export interface RunRequest {
    * — threaded explicitly (not a thread-local) so it survives transport seams.
    */
   hookDepth?: number;
+  /** The run + node that started this one (`ctx.invoke` or a hook chain). */
+  parent?: RunParentRef;
 }
 
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */
