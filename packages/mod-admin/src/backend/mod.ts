@@ -15,7 +15,7 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineMod, IDENTITY_SERVICE, type Engine, type PatternMod, type Workflow } from "@pattern/core";
+import { AUTH_HOME_URL, defineMod, IDENTITY_SERVICE, type Engine, type PatternMod, type Workflow } from "@pattern/core";
 import {
   localFs,
   memoryFs,
@@ -140,6 +140,10 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
       const storageFs = resolveFs(options.storage, () => localFs("./.pattern"));
       const assetsFs = resolveFs(options.assets, () => bundledAssets(mount));
       provideFilesystem(engine, ASSETS_FS, assetsFs);
+
+      // The admin is the app's natural landing spot: logins without an explicit
+      // `next` (bootstrap included) redirect here instead of a bare "/".
+      engine.provideService(AUTH_HOME_URL, mount);
 
       const store = new FlystorageWorkflowStore(storageFs, { prefix: options.storePrefix });
       const sink = new MemoryTraceSink({ capacity: options.traceCapacity });

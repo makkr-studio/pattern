@@ -113,6 +113,7 @@ export { InMemoryConnectionRegistry, type MessageSink } from "./connections/memo
 export { HookChainRunner, type HookRunFn } from "./hooks/chain.js";
 export { resolvePrincipal, meetsRequirement, type AuthRequirement } from "./auth/resolve.js";
 export {
+  AUTH_HOME_URL,
   AUTH_LOGIN_URL,
   IDENTITY_SERVICE,
   principalToUser,

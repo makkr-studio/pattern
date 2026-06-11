@@ -15,7 +15,7 @@
  * customizable part (the `identity.deliverToken` hook).
  */
 
-import { value, z, type OpContext, type OpDefinition } from "@pattern/core";
+import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern/core";
 import { identityService } from "./service-key.js";
 import type { IdentityService } from "./service.js";
 import { clearSessionCookie, serializeSessionCookie } from "./cookies.js";
@@ -23,6 +23,7 @@ import { deliverToken } from "./deliver.js";
 import { looksLikeEmail } from "./tokens.js";
 import { renderLoginPage, renderSentPage } from "./pages/login.js";
 import { renderBootstrapPage } from "./pages/bootstrap.js";
+import { renderWelcomePage } from "./pages/welcome.js";
 import { safeNextPath } from "./pages/html.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
@@ -86,6 +87,12 @@ interface HttpRequestCtx {
   /** Request headers (lower-cased keys), wired from the trigger. */
   headers: Record<string, string>;
   principal: OpContext["principal"];
+  /**
+   * Where a login lands without an explicit `next`: the app's advertised
+   * AUTH_HOME_URL (the admin registers its mount), else the welcome page —
+   * never a bare "/" that may not exist.
+   */
+  home: string;
   op: OpContext;
 }
 
@@ -116,12 +123,15 @@ function httpOp(type: string, description: string, handler: HttpHandler): OpDefi
         ctx.input.value("body"),
         ctx.input.value("headers"),
       ]);
+      const svc = identityService(ctx);
+      const advertisedHome = ctx.services[AUTH_HOME_URL];
       const req: HttpRequestCtx = {
         headers: (headers ?? {}) as Record<string, string>,
         principal: ctx.principal,
+        home: typeof advertisedHome === "string" ? advertisedHome : `${svc.options.mount}/welcome`,
         op: ctx,
       };
-      const result = await handler(mergeArgs(query, params, body), identityService(ctx), req);
+      const result = await handler(mergeArgs(query, params, body), svc, req);
       return { status: result.status, headers: result.headers ?? {}, body: result.body ?? null };
     },
   };
@@ -318,7 +328,7 @@ const tokenCallback = httpOp(
     if (user.disabled) return redirect(`${loginUrl}?error=account-disabled`);
 
     const minted = await svc.mintSession(user.id, { userAgent: req.headers["user-agent"] ?? null });
-    const next = safeNextPath(args.next ?? data.next);
+    const next = safeNextPath(args.next ?? data.next ?? req.home);
     return redirect(next, {
       "set-cookie": serializeSessionCookie(svc.options.cookieName, minted.token, {
         secure: svc.options.cookieSecure,
@@ -337,6 +347,23 @@ const logout = httpOp(
     return redirect(`${svc.options.mount}/login`, {
       "set-cookie": clearSessionCookie(svc.options.cookieName, { secure: svc.options.cookieSecure }),
     });
+  },
+);
+
+const welcomePage = httpOp(
+  "identity.welcome.page",
+  "Post-login landing of last resort (no AUTH_HOME_URL advertised): who you are + sign-out.",
+  (_args, svc, req) => {
+    if (req.principal.kind !== "user") return redirect(`${svc.options.mount}/login`);
+    const claims = req.principal.claims ?? {};
+    return html(
+      200,
+      renderWelcomePage({
+        email: typeof claims.email === "string" ? claims.email : req.principal.id,
+        name: typeof claims.name === "string" ? claims.name : null,
+        mount: svc.options.mount,
+      }),
+    );
   },
 );
 
@@ -374,7 +401,7 @@ const bootstrapSubmit = httpOp(
     if (!user) return redirect(`${svc.options.mount}/login?error=invalid-token`);
 
     const minted = await svc.mintSession(user.id, { userAgent: req.headers["user-agent"] ?? null });
-    return redirect(safeNextPath(token.data?.next ?? "/"), {
+    return redirect(safeNextPath(token.data?.next ?? req.home), {
       "set-cookie": serializeSessionCookie(svc.options.cookieName, minted.token, {
         secure: svc.options.cookieSecure,
         maxAgeSeconds: svc.options.sessionTtlMs / 1000,
@@ -395,6 +422,7 @@ export const identityOps: OpDefinition[] = [
   loginPage,
   tokenCallback,
   logout,
+  welcomePage,
   bootstrapPage,
   bootstrapSubmit,
 ];

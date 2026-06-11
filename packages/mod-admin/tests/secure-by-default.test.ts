@@ -76,6 +76,8 @@ describe("admin secure-by-default (§9)", () => {
       body: new URLSearchParams({ t: token!, email: "root@x.io" }).toString(),
       redirect: "manual",
     });
+    // The admin advertises AUTH_HOME_URL → bootstrap lands on /admin, not "/".
+    expect(submit.headers.get("location")).toBe("/admin");
     const cookie = (submit.headers.get("set-cookie") ?? "").split(";")[0]!;
 
     const api = await fetch(`${base}/admin/api/workflows`, { headers: { cookie } });

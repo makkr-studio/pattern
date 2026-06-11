@@ -65,7 +65,10 @@ enforcement primitive — core is untouched.
 Installing mod-identity flips `/admin` (API + SPA) to require the `admin`
 scope, unless `adminMod({ auth: … })` was set explicitly (`auth: false` keeps
 it open). A logged-out browser hitting `/admin` is 302'd to the login page
-(any mod can advertise one via core's `AUTH_LOGIN_URL` service key); fetch
+(any mod can advertise one via core's `AUTH_LOGIN_URL` service key). Logins
+without an explicit `next` land on the app's advertised home — the admin
+registers its mount under core's `AUTH_HOME_URL` service key; absent that,
+identity's own `/auth/welcome` page (never a bare `/`); fetch
 calls get bare 401s, which the admin SPA turns into a login redirect. The
 admin grows an **Access** section: Users (invite, disable, log-out-everywhere),
 Invite, Sessions (revoke) — Tier-1 declarative pages over `identity.*` ops.
@@ -135,6 +138,7 @@ export default identityMod({
 | `GET /auth/token?t=…` | Token callback → session cookie → redirect `next` |
 | `POST /auth/logout` | Revoke current session, clear cookie |
 | `GET /auth/whoami` | Current principal (JSON) |
+| `GET /auth/welcome` | Post-login landing when no home is advertised |
 | `GET/POST /auth/bootstrap` | First-admin setup (one-time link) |
 | `POST /auth/magic-link/request` | (magic-link mod) issue + deliver a login link |
 
