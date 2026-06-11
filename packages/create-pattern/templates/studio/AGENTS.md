@@ -146,6 +146,9 @@ A mod's `frontend` block adds UI to the admin — no admin code changes. See
 
 ## Recipe: add login & users (identity)
 
+> If auth was chosen at scaffold time, this is already wired — skip to "What
+> you get".
+
 Add the identity mods to `pattern.config.json`:
 
 ```jsonc

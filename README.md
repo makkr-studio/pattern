@@ -94,7 +94,7 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 | [`@pattern/mod-identity`](./packages/mod-identity) | The optional [identity brick](./docs/identity.md): users, revocable cookie sessions (CAS-backed sqlite), roles→scopes, single-use token kernel, login page, bootstrap-on-first-boot, WS session rooms, admin Users/Sessions screens. Installing it flips the admin to secure-by-default. |
 | [`@pattern/mod-auth-magic-link`](./packages/mod-auth-magic-link) | Email magic-link login — the reference identity provider mod. Delivery via the `identity.deliverToken` hook; the console fallback doubles as the zero-config dev login. |
 | [`@pattern/mod-sample`](./packages/mod-sample) | A sample mod proving the extension surface: a Tier-1 page + ⌘K command + a Tier-2 ESM remote, added with zero admin-core changes. |
-| [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Modpacks per use case — `studio` (admin), `headless`, `blank` — each shipping AGENTS.md/CLAUDE.md for coding agents. |
+| [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Modpacks per use case — `studio` (admin), `headless`, `blank` — plus an auth toggle (identity + magic-link; studio defaults to locked), each shipping AGENTS.md/CLAUDE.md for coding agents. |
 
 ## Docs
 
