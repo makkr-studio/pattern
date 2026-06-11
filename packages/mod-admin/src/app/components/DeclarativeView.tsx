@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { useOps, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap } from "../editor/graph";
 import { OpNode } from "../editor/OpNode";
-import { GlassPanel, JsonView, NeonButton, Spinner, Table, type Column } from "./ui";
+import { GlassPanel, JsonView, Modal, NeonButton, Spinner, Table, type Column } from "./ui";
 import { FormFromSchema } from "./FormFromSchema";
 
 /** Fetch a declarative view's data source (an op type) via admin.invoke. */
@@ -143,23 +143,28 @@ function DataView({ view }: { view: Exclude<View, { kind: "iframe" | "form" | "g
 }
 
 type TableViewDef = Extract<View, { kind: "table" }>;
+type RowAction = NonNullable<TableViewDef["rowActions"]>[number];
+
+/** Map a row action's `args` declaration over a concrete row. */
+const rowArgs = (action: RowAction, row: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(action.args ?? {}).map(([argName, rowKey]) => [argName, row[rowKey]]));
 
 /**
  * `table` kind. Row actions invoke their op with args mapped from the row
  * (`args: { userId: "id" }` → `{ userId: row.id }`) and refresh the source —
  * which is how mod screens get mutations without shipping any UI code.
+ * `confirm` actions go through the admin's Modal (never window.confirm —
+ * native dialogs block automation and skip the design system).
  */
 function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ action: RowAction; row: Record<string, unknown> } | null>(null);
   const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   const rowActions = view.rowActions ?? [];
 
-  const runRowAction = async (action: NonNullable<TableViewDef["rowActions"]>[number], row: Record<string, unknown>) => {
-    if (action.confirm && !window.confirm(`${action.label}?`)) return;
-    const args = Object.fromEntries(
-      Object.entries(action.args ?? {}).map(([argName, rowKey]) => [argName, row[rowKey]]),
-    );
+  const execute = async (action: RowAction, row: Record<string, unknown>) => {
+    const args = rowArgs(action, row);
     setBusy(`${action.label}:${JSON.stringify(args)}`);
     try {
       await api.invoke(action.run, args);
@@ -181,13 +186,13 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
       render: (row) => (
         <span className="flex justify-end gap-1.5">
           {rowActions.map((a) => {
-            const key = `${a.label}:${JSON.stringify(Object.fromEntries(Object.entries(a.args ?? {}).map(([n, k]) => [n, row[k]])))}`;
+            const key = `${a.label}:${JSON.stringify(rowArgs(a, row))}`;
             return (
               <button
                 key={a.label}
                 type="button"
                 disabled={busy !== null}
-                onClick={() => void runRowAction(a, row)}
+                onClick={() => (a.confirm ? setPending({ action: a, row }) : void execute(a, row))}
                 className="text-muted rounded-md border border-white/10 px-2 py-0.5 text-xs hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-40"
               >
                 {busy === key ? "…" : a.label}
@@ -207,6 +212,33 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
           {a.label}
         </NeonButton>
       ))}
+
+      <Modal open={pending !== null} onClose={() => setPending(null)} title={pending?.action.label ?? ""}>
+        {pending && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              Run <span className="font-mono">{pending.action.run}</span> with:
+            </p>
+            <JsonView value={rowArgs(pending.action, pending.row)} className="max-h-40" />
+            <div className="flex justify-end gap-2">
+              <NeonButton variant="ghost" onClick={() => setPending(null)}>
+                Cancel
+              </NeonButton>
+              <NeonButton
+                variant="danger"
+                disabled={busy !== null}
+                onClick={() => {
+                  const { action, row } = pending;
+                  setPending(null);
+                  void execute(action, row);
+                }}
+              >
+                {pending.action.label}
+              </NeonButton>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
