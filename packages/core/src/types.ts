@@ -146,6 +146,21 @@ export interface Span {
   end(): void;
 }
 
+/**
+ * Where a run came from, when another run started it (`ctx.invoke` — sub-workflow
+ * ops like core.array.map / core.flow.try). Sub-runs keep their own runId and
+ * traceId (a run stays the unit of cancel/pause/replay); this explicit ref is
+ * what links the two, in both directions: the child carries it in `onRunStart`,
+ * and the invoking node's span carries a matching `invoke` event with the
+ * child's runId.
+ */
+export interface RunParentRef {
+  runId: string;
+  workflowId: string;
+  /** The node whose op called `ctx.invoke`. */
+  nodeId: string;
+}
+
 /** A subscribable telemetry sink (§10). The engine stores nothing itself. */
 export interface TraceSink {
   onRunStart?(run: {
@@ -154,6 +169,8 @@ export interface TraceSink {
     workflowId: string;
     trigger: string;
     principal: Principal;
+    /** Present when this run was started by another run (`ctx.invoke`). */
+    parent?: RunParentRef;
   }): void;
   onSpanEnd?(span: SpanData): void;
   onRunEnd?(run: {

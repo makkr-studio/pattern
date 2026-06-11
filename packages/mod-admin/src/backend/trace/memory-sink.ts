@@ -10,7 +10,7 @@
  * Windows are labelled honestly (since-boot / last N minutes).
  */
 
-import type { Principal, SpanData, TraceSink } from "@pattern/core";
+import type { Principal, RunParentRef, SpanData, TraceSink } from "@pattern/core";
 
 export interface RunSummary {
   runId: string;
@@ -26,6 +26,8 @@ export interface RunSummary {
   durationMs?: number;
   spanCount: number;
   error?: { message: string };
+  /** Set when this run was started by another run (`ctx.invoke`). */
+  parent?: RunParentRef;
 }
 
 export interface RunDetail {
@@ -125,7 +127,14 @@ export class MemoryTraceSink implements TraceSink {
     this.excludeSource = pattern;
   }
 
-  onRunStart(run: { runId: string; traceId: string; workflowId: string; trigger: string; principal: Principal }): void {
+  onRunStart(run: {
+    runId: string;
+    traceId: string;
+    workflowId: string;
+    trigger: string;
+    principal: Principal;
+    parent?: RunParentRef;
+  }): void {
     if (this.exclude?.test(run.workflowId)) {
       this.excludedTraces.add(run.traceId);
       return;
@@ -140,6 +149,7 @@ export class MemoryTraceSink implements TraceSink {
         status: "running",
         startTime: this.now(),
         spanCount: 0,
+        parent: run.parent,
       },
       spans: [],
     });
@@ -201,6 +211,16 @@ export class MemoryTraceSink implements TraceSink {
     if (rec) return rec;
     for (const r of this.inProgress.values()) if (r.summary.runId === runId) return r;
     return null;
+  }
+
+  /** Sub-runs this run started via `ctx.invoke`, oldest first (linear scan —
+   *  the ring buffer is bounded, and this only runs on a run-detail view). */
+  children(runId: string): RunSummary[] {
+    const out: RunSummary[] = [];
+    for (const r of this.runs) if (r.summary.parent?.runId === runId) out.push(r.summary);
+    for (const r of this.inProgress.values()) if (r.summary.parent?.runId === runId) out.push(r.summary);
+    out.sort((a, b) => a.startTime - b.startTime);
+    return out;
   }
 
   /** A live stream of node spans, optionally filtered to one workflow (SSE tail). */

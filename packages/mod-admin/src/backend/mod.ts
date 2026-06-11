@@ -151,14 +151,15 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
       registerAdminServices(engine, { controlPlane: cp, sink, engine });
       engine.onTrace(sink);
       controlPlane = cp;
-      // Re-apply persisted admin settings (run retention / exclusion regex) —
-      // best-effort: a bad stored pattern must never block boot.
+      // Re-apply persisted admin settings (run retention / exclusion regex /
+      // I/O sampling) — best-effort: a bad stored pattern must never block boot.
       const saved = await store.getAdminConfig();
-      const obs = (saved?.observability ?? null) as { capacity?: number; exclude?: string | null } | null;
+      const obs = (saved?.observability ?? null) as { capacity?: number; exclude?: string | null; sampleIo?: boolean } | null;
       if (obs) {
         try {
           if (obs.capacity != null) sink.setCapacity(obs.capacity);
           sink.setExclude(obs.exclude ?? null);
+          if (obs.sampleIo != null) engine.setIoSampling(Boolean(obs.sampleIo));
         } catch (err) {
           console.error("[pattern] ignoring bad persisted observability settings:", err);
         }

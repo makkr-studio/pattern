@@ -115,6 +115,34 @@ describe("M3 — admin endpoints respond over HTTP", () => {
     expect(explain.text).toContain("Custom endpoint");
   });
 
+  it("settings toggle host-run I/O sampling; run.get carries samples + children", async () => {
+    const engine = await startAdmin();
+
+    // sampleIo rides the observability settings (off by default, applies live).
+    const before = await (await fetch(api("/settings"))).json();
+    expect(before.observability.sampleIo).toBe(false);
+    const set = await (await fetch(api("/settings"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ observability: { sampleIo: true } }),
+    })).json();
+    expect(set.observability.sampleIo).toBe(true);
+    expect(engine.ioSampling()).toBe(true);
+
+    // A HOST-served run (not an editor run) now samples node I/O…
+    await engine.registerWorkflowAsync(customWorkflow);
+    await fetch(`${BASE}/custom`);
+    const runs = await (await fetch(api("/runs"))).json();
+    const run = runs.find((r: { workflowId: string }) => r.workflowId === "custom");
+    const detail = await (await fetch(api(`/runs/${run.runId}`))).json();
+    const bodySpan = detail.spans.find(
+      (s: { attributes: Record<string, unknown> }) => s.attributes["pattern.node.id"] === "body",
+    );
+    expect(bodySpan.io.outputs.out).toMatchObject({ kind: "value", preview: "from-admin" });
+    // …and run.get exposes the (empty here) sub-run list for the detail view.
+    expect(detail.children).toEqual([]);
+  });
+
   it("serves the SPA placeholder at the mount root", async () => {
     await startAdmin();
     const res = await fetch(`${BASE}/admin`, { headers: { accept: "text/html" } });

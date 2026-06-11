@@ -157,6 +157,12 @@ export class Engine {
    * added — masking a value from a since-removed workflow is the safe direction.
    */
   private readonly secretValues = new Set<string>();
+  /**
+   * When true, runs sample their node I/O even if the caller didn't ask
+   * (admin Settings → Observability). An explicit `RunOptions.sampleIo`
+   * always wins; `ctx.invoke` sub-runs inherit their parent's decision.
+   */
+  private sampleIoDefault = false;
 
   constructor(opts: EngineOptions = {}) {
     this.ops = opts.ops ?? new InMemoryOpRegistry();
@@ -473,6 +479,16 @@ export class Engine {
     return this.traceSink.add(sink);
   }
 
+  /** Sample node I/O on every run by default (T1). Explicit `RunOptions.sampleIo` still wins. */
+  setIoSampling(on: boolean): void {
+    this.sampleIoDefault = on;
+  }
+
+  /** Whether runs sample node I/O by default. */
+  ioSampling(): boolean {
+    return this.sampleIoDefault;
+  }
+
   // ── Validation ──
 
   validate(workflow: unknown): Workflow {
@@ -527,7 +543,16 @@ export class Engine {
     hookDepth?: number,
     runId?: string,
   ): Promise<RunResult> {
-    const handle = this.transport.dispatch({ workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, runId });
+    const handle = this.transport.dispatch({
+      workflow,
+      triggerNodeId,
+      input,
+      principal,
+      params,
+      sampleIo: sampleIo ?? this.sampleIoDefault,
+      hookDepth,
+      runId,
+    });
     // Track every in-flight run (whatever the entry path) so the admin can
     // cancel / pause it by runId while it executes.
     this.inflightRuns.set(handle.runId, handle);

@@ -113,26 +113,33 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; Icon: typeof Sun }[] = [
 interface ObservabilityConfig {
   capacity: number;
   exclude: string | null;
+  sampleIo?: boolean;
 }
 
-/** Server-side knobs: run retention + workflow-id exclusion regex. */
+/** Server-side knobs: run retention + workflow-id exclusion regex + I/O sampling. */
 function ObservabilitySection({ flash }: { flash: (text: string) => void }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.settings.get<{ observability: ObservabilityConfig }>() });
   const [capacity, setCapacity] = useState<number | null>(null);
   const [exclude, setExclude] = useState<string | null>(null);
+  const [sampleIo, setSampleIo] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Adopt server values once loaded (local edits win until saved).
   useEffect(() => {
-    if (data && capacity === null && exclude === null) {
+    if (data && capacity === null && exclude === null && sampleIo === null) {
       setCapacity(data.observability.capacity);
       setExclude(data.observability.exclude ?? "");
+      setSampleIo(data.observability.sampleIo ?? false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  const dirty = data && (capacity !== data.observability.capacity || (exclude || null) !== (data.observability.exclude || null));
+  const dirty =
+    data &&
+    (capacity !== data.observability.capacity ||
+      (exclude || null) !== (data.observability.exclude || null) ||
+      (sampleIo ?? false) !== (data.observability.sampleIo ?? false));
 
   const save = async () => {
     setError(null);
@@ -148,7 +155,7 @@ function ObservabilitySection({ flash }: { flash: (text: string) => void }) {
     }
     setSaving(true);
     try {
-      await api.settings.set({ observability: { capacity, exclude: exclude || null } });
+      await api.settings.set({ observability: { capacity, exclude: exclude || null, sampleIo: sampleIo ?? false } });
       await qc.invalidateQueries({ queryKey: ["admin-settings"] });
       flash("Observability settings applied (and persisted with the workflow store).");
     } catch (err) {
@@ -181,6 +188,19 @@ function ObservabilitySection({ flash }: { flash: (text: string) => void }) {
           aria-label="Exclusion regex"
         />
       </Row>
+      <Row label="Sample run I/O (what flowed through each node)">
+        <input
+          type="checkbox"
+          checked={sampleIo ?? false}
+          onChange={(e) => setSampleIo(e.target.checked)}
+          className="accent-[var(--color-neon-cyan)]"
+          aria-label="Sample run I/O"
+        />
+      </Row>
+      <p className="text-muted text-[11px]">
+        Editor runs always sample; this extends it to host-served traffic and <code className="font-mono">ctx.invoke</code>{" "}
+        sub-runs. Previews are capped at 4&nbsp;KB per port and secret-masked; streams are marked, never drained.
+      </p>
       {error && <p className="text-xs text-[var(--color-neon-pink)]">{error}</p>}
       <Row label="">
         <NeonButton onClick={() => void save()} disabled={!dirty || saving}>
