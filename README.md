@@ -91,6 +91,8 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 | [`@pattern/runtime-node`](./packages/runtime-node) | Node adapter: HTTP/WebSocket/CLI/schedule hosts, `node:worker_threads` pool transport, socket-bound connection registry, JSONL/SQLite trace sinks, the `pattern` CLI. |
 | [`@pattern/mod-admin`](./packages/mod-admin) | The admin mod: an authorable, self-reflecting control surface — control plane, workflow store + versioning, run/metrics sink, the `admin.*` ops + workflow-backed HTTP API, and a React 19 / xyflow / Tailwind v4 glassmorphism **SPA** (catalog, graph editor, runs+replay, versions+diff, system map, metrics). |
 | [`@pattern/admin-sdk`](./packages/admin-sdk) | The admin extension surface: a typed API client over the workflow-backed endpoints (incl. SSE tail) + nav/command helpers + shared protocol types. |
+| [`@pattern/mod-identity`](./packages/mod-identity) | The optional [identity brick](./docs/identity.md): users, revocable cookie sessions (CAS-backed sqlite), roles→scopes, single-use token kernel, login page, bootstrap-on-first-boot, WS session rooms, admin Users/Sessions screens. Installing it flips the admin to secure-by-default. |
+| [`@pattern/mod-auth-magic-link`](./packages/mod-auth-magic-link) | Email magic-link login — the reference identity provider mod. Delivery via the `identity.deliverToken` hook; the console fallback doubles as the zero-config dev login. |
 | [`@pattern/mod-sample`](./packages/mod-sample) | A sample mod proving the extension surface: a Tier-1 page + ⌘K command + a Tier-2 ESM remote, added with zero admin-core changes. |
 | [`create-pattern`](./packages/create-pattern) | The scaffolder (`npm create pattern`). Modpacks per use case — `studio` (admin), `headless`, `blank` — each shipping AGENTS.md/CLAUDE.md for coding agents. |
 
@@ -100,6 +102,7 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 - [Projects & mods](./docs/projects-and-mods.md) — `pattern.config.json`, declarative HTTP routes, runtime-modifiable workflows, the mod system.
 - [Op catalog](./docs/op-catalog.md) — every base op, grouped, with ports & config.
 - [Authoring ops & mods](./docs/authoring-ops.md) — write your own ops, boundaries, and plugins.
+- [Identity](./docs/identity.md) — users, sessions, roles, login methods, the `user` port, WS session rooms.
 - [The spec](./pattern-engine-spec.md) — the full design of record.
 
 ## CLI

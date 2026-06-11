@@ -33,6 +33,8 @@ const PKG_DIRS = [
   "packages/runtime-node",
   "packages/admin-sdk",
   "packages/mod-admin",
+  "packages/mod-identity",
+  "packages/mod-auth-magic-link",
   "packages/create-pattern",
 ];
 

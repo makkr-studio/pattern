@@ -116,6 +116,17 @@ Zod-typed ports and config.
 **Verify:** `npx pattern ops app.` must list your op. Then wire it in a
 workflow and `npx pattern validate` it.
 
+## Recipe: protect routes (identity)
+
+`npm i @pattern/mod-identity @pattern/mod-auth-magic-link`, list both in
+`pattern.config.json` mods. Then on any route trigger:
+`"config": { …, "requireAuth": true }` (or `{ "scopes": ["admin"] }`).
+First boot prints a one-time bootstrap link (first user = admin); magic-link
+sign-ins print to the console until you subscribe a delivery workflow to the
+`identity.deliverToken` hook. The trigger's `user` output port carries
+`{ id, email?, scopes } | null` — wire it to scope data per user. Identity
+data lands in gitignored `./.pattern-data/`.
+
 ## Project layout
 
 ```

@@ -132,15 +132,45 @@ A mod's `frontend` block adds UI to the admin — no admin code changes. See
 
 - **Menu**: `{ category, label, icon, path, order }` — `icon` is a lucide name.
 - **Tier-1 page** (no build step): `{ path, view }` where `view` is one of
-  `table` (`{ source, columns, actions? }` — `source` is an op type or workflow
-  id), `form` (`{ schema, submit }`), `chart`, `json`, `markdown`
-  (`{ source }`), `graph` (`{ workflow }`), `iframe` (`{ url }`).
+  `table` (`{ source, columns, actions?, rowActions? }` — `source` is an op
+  type or workflow id; a `rowAction` `{ label, run, args: { opArg: "rowKey" },
+  confirm? }` invokes `run` with values pulled from the row), `form`
+  (`{ schema, submit }`), `chart`, `json`, `markdown` (`{ source }`), `graph`
+  (`{ workflow }`), `iframe` (`{ url }`).
 - **Command** (⌘K palette): `{ id, label, group, run?, path? }`.
 - **Tier-2 page** (full React): `{ path, remote: "/ext/my-page.js" }` — an ESM
   file you serve yourself (e.g. a `boundary.http.app` mount). It reads
   `globalThis.__PATTERN_ADMIN__` for the shared `React`, `api` client, and the
   glass `ui` kit, and default-exports a component. Reach for Tier-2 only when a
   declarative view can't express the page.
+
+## Recipe: add login & users (identity)
+
+Add the identity mods to `pattern.config.json`:
+
+```jsonc
+{ "mods": ["@pattern/mod-identity", "@pattern/mod-auth-magic-link", "@pattern/mod-admin", "./mods/quotes.mjs"] }
+```
+
+(`npm i @pattern/mod-identity @pattern/mod-auth-magic-link` first.) What you get:
+
+- **First boot** prints a one-time `/auth/bootstrap?t=…` link → first user
+  becomes admin. Magic-link sign-in links print to the **server console**
+  until you subscribe a workflow to the `identity.deliverToken` hook
+  (`payload: { email, url, purpose, delivered }` — send it, set
+  `delivered: true`).
+- **The admin flips to secure-by-default** (`admin` scope required; a
+  logged-out browser is redirected to `/auth/login`). Users / Invite /
+  Sessions screens appear under "Access".
+- **Protect any route** with `requireAuth: true` (or `{ "scopes": ["admin"] }`)
+  in the trigger's config. The trigger's **`user` output port** carries
+  `{ id, email?, scopes, claims } | null` — wire it to scope data per user
+  (e.g. `in.user → yourOp.owner`). In op code, `ctx.principal` has the same.
+- Signup is **invite-only** by default; customize via a wrapper mod
+  (`mods/identity.mjs` default-exporting `identityMod({ signup: "open", … })`)
+  and list it instead of the bare package name.
+- ⚠ Identity data lives in `./.pattern-data/` (gitignored). Never store
+  user/PII data in `./.pattern/` — that directory is committed.
 
 ## Project layout
 
