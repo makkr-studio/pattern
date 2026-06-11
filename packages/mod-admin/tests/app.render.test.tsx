@@ -117,7 +117,7 @@ describe("SPA pages render", () => {
       assets: [],
       pages: [{ path: "/x/greetings", view: { kind: "table", source: "sample.greetings.list", columns: [{ key: "id", label: "ID" }, { key: "text", label: "Greeting" }] } }],
     });
-    qc.setQueryData(["invoke", "sample.greetings.list"], [{ id: "ada", text: "Hello, Ada!" }]);
+    qc.setQueryData(["invoke", "sample.greetings.list", {}], [{ id: "ada", text: "Hello, Ada!" }]);
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={["/x/greetings"]}>

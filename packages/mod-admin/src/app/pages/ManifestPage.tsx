@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, type ComponentType } from "react";
-import { useLocation } from "react-router-dom";
+import { matchPath, useLocation } from "react-router-dom";
 import { useManifest } from "../lib/queries";
 import { DeclarativeView } from "../components/DeclarativeView";
 import { EmptyState, PageHeader, Spinner } from "../components/ui";
@@ -17,13 +17,26 @@ function remote(url: string): ComponentType {
 
 /**
  * Renders a mod-contributed page (mod-admin-spec §6) matched by path from the UI
- * manifest: Tier-1 declarative `view`, or a Tier-2 ESM `remote` loaded at runtime.
+ * manifest: Tier-1 declarative `view` (or stacked `views`), or a Tier-2 ESM
+ * `remote` loaded at runtime. Paths may carry `:params`
+ * (`/x/identity/users/:userId`) — matched like routes, exact paths first; the
+ * params reach every view's source op as args.
  * This is what makes "add a mod → its page appears" work with zero admin changes.
  */
 export function ManifestPage() {
   const { data: manifest, isLoading } = useManifest();
   const { pathname } = useLocation();
-  const page = useMemo(() => manifest?.pages.find((p) => p.path === pathname), [manifest, pathname]);
+  const { page, params } = useMemo(() => {
+    const pages = manifest?.pages ?? [];
+    const exact = pages.find((p) => p.path === pathname);
+    if (exact) return { page: exact, params: {} as Record<string, string> };
+    for (const p of pages) {
+      if (!p.path.includes(":")) continue;
+      const m = matchPath(p.path, pathname);
+      if (m) return { page: p, params: (m.params ?? {}) as Record<string, string> };
+    }
+    return { page: undefined, params: {} as Record<string, string> };
+  }, [manifest, pathname]);
 
   if (isLoading) return <Spinner />;
   if (!page) {
@@ -35,12 +48,21 @@ export function ManifestPage() {
     );
   }
 
-  const menu = manifest?.menu.find((m) => m.path === pathname);
-  if (page.view) {
+  const menu = manifest?.menu.find((m) => m.path === page.path);
+  const title = menu?.label ?? page.path.split("/").filter((s) => s && !s.startsWith(":")).pop() ?? page.path;
+  if (page.view || page.views) {
+    const sections = page.views ?? [{ title: undefined, view: page.view! }];
     return (
       <>
-        <PageHeader title={menu?.label ?? pathname} subtitle="Contributed by a mod (Tier-1 declarative page)." />
-        <DeclarativeView view={page.view} />
+        <PageHeader title={title} subtitle="Contributed by a mod (Tier-1 declarative page)." />
+        <div className="space-y-6">
+          {sections.map((s, i) => (
+            <section key={i}>
+              {s.title && <h2 className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">{s.title}</h2>}
+              <DeclarativeView view={s.view} params={params} />
+            </section>
+          ))}
+        </div>
       </>
     );
   }
@@ -48,7 +70,7 @@ export function ManifestPage() {
     const Remote = remote(page.remote);
     return (
       <>
-        <PageHeader title={menu?.label ?? pathname} subtitle="Contributed by a mod (Tier-2 ESM remote)." />
+        <PageHeader title={title} subtitle="Contributed by a mod (Tier-2 ESM remote)." />
         <Suspense fallback={<Spinner />}>
           <Remote />
         </Suspense>

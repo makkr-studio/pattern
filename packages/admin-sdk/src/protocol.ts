@@ -14,6 +14,8 @@ export type { MenuEntry, CommandDef, DeclarativeView, SettingsField, SettingsSec
 export interface UiManifestPage {
   path: string;
   view?: DeclarativeView;
+  /** Stacked views (detail-style pages); each section may carry a title. */
+  views?: Array<{ title?: string; view: DeclarativeView }>;
   remote?: string;
   tier2?: boolean;
 }

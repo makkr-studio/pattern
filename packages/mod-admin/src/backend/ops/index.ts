@@ -300,6 +300,7 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
   const fe = engine.frontend();
   const pages = (fe.pages ?? []).map((p) => {
     if ("view" in p) return { path: p.path, view: p.view };
+    if ("views" in p) return { path: p.path, views: p.views };
     if ("remote" in p) return { path: p.path, remote: p.remote };
     return { path: p.path, tier2: true }; // function-loaded; not serializable over HTTP
   });

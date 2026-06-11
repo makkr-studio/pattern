@@ -56,9 +56,15 @@ export interface DeclarativeAction {
  */
 export interface DeclarativeRowAction {
   label: string;
-  /** The op type or workflow id to run. */
-  run: string;
-  /** Op-argument name → row key. */
+  /** The op type or workflow id to run. Mutually exclusive with `path`. */
+  run?: string;
+  /**
+   * Navigate instead of running: a page path whose `:tokens` are filled from
+   * the row via `args`, e.g. `path: "/x/identity/users/:userId"` +
+   * `args: { userId: "id" }` → `/x/identity/users/<row.id>`.
+   */
+  path?: string;
+  /** Op-argument name → row key (also fills `path` tokens). */
   args?: Record<string, string>;
   icon?: string;
   /** Ask for confirmation before running. */
@@ -114,16 +120,24 @@ export type DeclarativeView =
   | { kind: "form"; schema: unknown; submit: string }
   | { kind: "chart"; source: string; spec: unknown }
   | { kind: "json" | "markdown"; source: string }
+  /** A single object rendered as labeled rows (a `copy` key gets a Copy button). */
+  | { kind: "detail"; source: string }
   | { kind: "graph"; workflow: string }
   | { kind: "iframe"; url: string };
 
 /**
- * A page contributed by a mod. Tier 1 carries a declarative `view`; Tier 2
- * carries an `element` — a loader for a built ESM module whose default export is
- * a component (typed concretely in `@pattern/admin-sdk`).
+ * A page contributed by a mod. Tier 1 carries a declarative `view` (or a
+ * stacked list of `views` for detail-style pages); Tier 2 carries an
+ * `element` — a loader for a built ESM module whose default export is a
+ * component (typed concretely in `@pattern/admin-sdk`).
+ *
+ * Paths may carry `:params` (`/x/identity/users/:userId`): the host matches
+ * them like routes and passes the extracted params as args to every view's
+ * source op — which is how a row click becomes a details page.
  */
 export type PageDef =
   | { path: string; view: DeclarativeView }
+  | { path: string; views: Array<{ title?: string; view: DeclarativeView }> }
   | { path: string; element: () => Promise<{ default: unknown }> }
   /** Tier-2 ESM remote by URL — serializable, so it survives the manifest endpoint. */
   | { path: string; remote: string };

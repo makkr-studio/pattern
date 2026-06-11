@@ -134,9 +134,13 @@ A mod's `frontend` block adds UI to the admin — no admin code changes. See
 - **Tier-1 page** (no build step): `{ path, view }` where `view` is one of
   `table` (`{ source, columns, actions?, rowActions? }` — `source` is an op
   type or workflow id; a `rowAction` `{ label, run, args: { opArg: "rowKey" },
-  confirm? }` invokes `run` with values pulled from the row), `form`
-  (`{ schema, submit }`), `chart`, `json`, `markdown` (`{ source }`), `graph`
-  (`{ workflow }`), `iframe` (`{ url }`).
+  confirm? }` invokes `run` with values pulled from the row — or use
+  `path: "/x/mine/:id"` instead of `run` to NAVIGATE, tokens filled from
+  `args`), `form` (`{ schema, submit }`), `chart`, `json`, `markdown`
+  (`{ source }`), `detail` (`{ source }` — one object as labeled rows),
+  `graph` (`{ workflow }`), `iframe` (`{ url }`). Page paths may carry
+  `:params` (passed as args to every source op), and a page may stack
+  `views: [{ title?, view }]` — that's how you build a details page.
 - **Command** (⌘K palette): `{ id, label, group, run?, path? }`.
 - **Settings section** (on System → Settings): `{ id, title, description?,
   source, submit, fields }` under the mod's `frontend.settings` — `source` is

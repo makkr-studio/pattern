@@ -254,6 +254,81 @@ const usersRevokeSessions = jsonOp(
   { scope: "admin" },
 );
 
+/** Minimal shape of the admin's trace sink we read run stats from (feature-detected). */
+interface RunsReadable {
+  list(filter?: { limit?: number }): Array<{
+    workflowId: string;
+    status: string;
+    startTime: number;
+    durationMs?: number;
+    principal?: { kind?: string; id?: string };
+  }>;
+}
+const canReadRuns = (s: unknown): s is RunsReadable => typeof (s as RunsReadable | undefined)?.list === "function";
+
+const usersGet = jsonOp(
+  "identity.users.get",
+  "One user's profile for the details page (admin). Args { userId }.",
+  async (args, svc) => {
+    const user = await svc.getUser(String(args.userId));
+    if (!user) throw new Error("user not found");
+    const sessions = await svc.listSessions(user.id);
+    const active = sessions.filter((s) => s.revokedAt == null && s.expiresAt > Date.now());
+    return {
+      email: user.email,
+      name: user.name ?? "—",
+      roles: user.roles.join(", ") || "—",
+      scopes: svc.scopesForRoles(user.roles).join(", ") || "—",
+      disabled: user.disabled,
+      created: new Date(user.createdAt).toLocaleString(),
+      "active sessions": active.length,
+      "user id": user.id,
+    };
+  },
+  { scope: "admin" },
+);
+
+const usersRunStats = jsonOp(
+  "identity.users.runStats",
+  "Per-workflow run counts for a user, from the admin's retained run window (admin). Args { userId }.",
+  async (args, svc, ctx) => {
+    const user = await svc.getUser(String(args.userId));
+    if (!user) throw new Error("user not found");
+    // The trace sink is the ADMIN's service — feature-detected, so this op
+    // degrades to an empty list when the admin isn't installed. Stats cover
+    // the sink's retained window (bounded ring buffer), not all time.
+    const sink = ctx.services["adminTraceSink"];
+    if (!canReadRuns(sink)) return [];
+    const runs = sink
+      .list({ limit: 10_000 })
+      // Synthetic `__invoke_*` wrappers (declarative-page data fetches) are
+      // plumbing, not the user's workflows — they'd drown the real numbers.
+      .filter((r) => r.principal?.kind === "user" && r.principal.id === user.id && !r.workflowId.startsWith("__"));
+    const byWorkflow = new Map<string, { workflow: string; runs: number; errors: number; lastRun: number; totalMs: number; timed: number }>();
+    for (const r of runs) {
+      const agg = byWorkflow.get(r.workflowId) ?? { workflow: r.workflowId, runs: 0, errors: 0, lastRun: 0, totalMs: 0, timed: 0 };
+      agg.runs++;
+      if (r.status === "error") agg.errors++;
+      if (r.startTime > agg.lastRun) agg.lastRun = r.startTime;
+      if (r.durationMs != null) {
+        agg.totalMs += r.durationMs;
+        agg.timed++;
+      }
+      byWorkflow.set(r.workflowId, agg);
+    }
+    return [...byWorkflow.values()]
+      .sort((a, b) => b.runs - a.runs)
+      .map((a) => ({
+        workflow: a.workflow,
+        runs: a.runs,
+        errors: a.errors,
+        "avg ms": a.timed ? Math.round(a.totalMs / a.timed) : "—",
+        "last run": new Date(a.lastRun).toLocaleString(),
+      }));
+  },
+  { scope: "admin" },
+);
+
 const usersLoginLink = jsonOp(
   "identity.users.loginLink",
   "Mint a single-use sign-in link for a user (admin) — for handing over manually when no email/SMS delivery is wired. Args { userId }.",
@@ -457,6 +532,8 @@ export const identityOps: OpDefinition[] = [
   usersSetRoles,
   usersToggleDisabled,
   usersRevokeSessions,
+  usersGet,
+  usersRunStats,
   usersLoginLink,
   settingsGet,
   settingsSet,

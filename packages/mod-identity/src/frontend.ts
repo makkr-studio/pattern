@@ -30,13 +30,53 @@ export function identityFrontend(): FrontendContribution {
             { key: "created", label: "Created", format: "date" },
           ],
           rowActions: [
-            // result:"show" — the minted link is FOR the operator (copyable);
-            // the mutations stay silent: the refreshed row is the feedback.
+            // `path` navigates (tokens filled from the row); result:"show" —
+            // the minted link is FOR the operator (copyable); the mutations
+            // stay silent: the refreshed row is the feedback.
+            { label: "Details", path: "/x/identity/users/:userId", args: { userId: "id" }, icon: "user" },
             { label: "Sign-in link", run: "identity.users.loginLink", args: { userId: "id" }, icon: "key-round", result: "show" },
             { label: "Toggle disabled", run: "identity.users.toggleDisabled", args: { userId: "id" }, icon: "ban", confirm: true },
             { label: "Log out everywhere", run: "identity.users.revokeSessions", args: { userId: "id" }, icon: "log-out", confirm: true },
           ],
         },
+      },
+      {
+        // The user details page: profile + run metrics, three declarative views
+        // over admin.invoke — the :userId param reaches each source op as args.
+        path: "/x/identity/users/:userId",
+        views: [
+          { title: "Profile", view: { kind: "detail", source: "identity.users.get" } },
+          {
+            title: "Runs by workflow (recent window)",
+            view: {
+              kind: "table",
+              source: "identity.users.runStats",
+              columns: [
+                { key: "workflow", label: "Workflow" },
+                { key: "runs", label: "Runs" },
+                { key: "errors", label: "Errors" },
+                { key: "avg ms", label: "Avg ms" },
+                { key: "last run", label: "Last run" },
+              ],
+            },
+          },
+          {
+            title: "Sessions",
+            view: {
+              kind: "table",
+              source: "identity.sessions.list",
+              columns: [
+                { key: "status", label: "Status", format: "badge" },
+                { key: "created", label: "Created", format: "date" },
+                { key: "lastSeen", label: "Last seen", format: "date" },
+                { key: "userAgent", label: "Device" },
+              ],
+              rowActions: [
+                { label: "Revoke", run: "identity.sessions.revoke", args: { sessionId: "id" }, icon: "log-out", confirm: true },
+              ],
+            },
+          },
+        ],
       },
       {
         path: "/x/identity/invite",
