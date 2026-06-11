@@ -194,11 +194,14 @@ export const objectOps: OpDefinition[] = [
   defineOp({
     type: "core.object.build",
     title: "core.object.build",
-    description: "Assemble an object by mapping the named input ports → keys. config: { keys: string[] }.",
+    description:
+      "Assemble an object by mapping the named input ports → keys. Each key in config.keys becomes an input port; unwired keys are omitted.",
     inputs: (config: { keys?: string[] }): Ports =>
-      Object.fromEntries((config.keys ?? []).map((k) => [k, value()])),
+      Object.fromEntries((config.keys ?? ["value"]).map((k) => [k, value()])),
     outputs: { out: value(obj) },
-    config: z.object({ keys: z.array(z.string()) }),
+    // Default gives a fresh node one visible port instead of zero — rename/add
+    // keys and the ports follow (the editor re-resolves ports from config).
+    config: z.object({ keys: z.array(z.string()).default(["value"]) }),
     execute: async (ctx) => {
       const { keys } = ctx.config as { keys: string[] };
       const entries = await Promise.all(keys.map(async (k) => [k, await ctx.input.value(k)] as const));

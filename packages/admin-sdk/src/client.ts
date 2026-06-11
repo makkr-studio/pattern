@@ -9,7 +9,7 @@
  * Uses the global `fetch` by default; inject one for tests / non-browser hosts.
  */
 
-import type {
+import type { NodePorts,
   DeployResult,
   JsonDiff,
   MetricsSummary,
@@ -161,6 +161,8 @@ export class AdminClient {
   invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
   /** Run a workflow (draft doc or live slug) from a trigger; records the run. */
   run = (req: RunInput): Promise<RunResult> => this.request("POST", "/run", req);
+  /** Per-node ports for a doc, resolved against each node's config (dynamic-port ops). */
+  docPorts = (doc: unknown): Promise<Record<string, NodePorts>> => this.request("POST", "/doc/ports", { doc });
 
   /** Consume the SSE tail endpoint as parsed `SpanData` events. */
   private async *tailSpans(workflow?: string): AsyncGenerator<SpanData, void, undefined> {

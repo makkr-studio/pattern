@@ -11,6 +11,14 @@ import type { PortKind, MenuEntry, CommandDef, DeclarativeView, SettingsSection 
 
 export type { MenuEntry, CommandDef, DeclarativeView, SettingsField, SettingsSection } from "@pattern/core";
 
+/** One node's config-resolved ports (admin.doc.ports). */
+export interface NodePorts {
+  inputs: PortInfo[];
+  outputs: PortInfo[];
+  configInputs: PortInfo[];
+  controlOut: string[];
+}
+
 export interface UiManifestPage {
   path: string;
   view?: DeclarativeView;

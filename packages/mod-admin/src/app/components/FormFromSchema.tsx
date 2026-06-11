@@ -145,20 +145,10 @@ function Field({ name, schema, required, value, onChange }: { name: string; sche
   if (type === "array") {
     const itemType = unwrapSchema(s?.items)?.type;
     if (itemType === "string" || itemType === "number") {
-      const arr = Array.isArray(value) ? value : [];
       return (
         <div>
           {label}
-          <input
-            id={id}
-            value={arr.join(", ")}
-            placeholder="comma, separated, values"
-            onChange={(e) => {
-              const parts = e.target.value.split(",").map((p) => p.trim()).filter(Boolean);
-              onChange(itemType === "number" ? parts.map(Number) : parts);
-            }}
-            className={inputCls}
-          />
+          <CsvField id={id} value={value} numeric={itemType === "number"} onChange={onChange} className={inputCls} />
         </div>
       );
     }
@@ -238,6 +228,48 @@ function JsonTextarea({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Comma-separated list editor for string[]/number[] config. Keeps a DRAFT of
+ * the raw text while focused — a fully-controlled input that re-parses every
+ * keystroke eats the trailing comma before you can type the next item (the
+ * `core.object.build` keys bug). Parses on every change (the canvas updates
+ * live) but renders the draft; normalizes on blur.
+ */
+function CsvField({
+  id,
+  value,
+  numeric,
+  onChange,
+  className,
+}: {
+  id: string;
+  value: unknown;
+  numeric: boolean;
+  onChange: (v: unknown) => void;
+  className: string;
+}) {
+  const canonical = (Array.isArray(value) ? value : []).join(", ");
+  const [draft, setDraft] = useState<string | null>(null);
+  const parse = (text: string) => {
+    const parts = text.split(",").map((p) => p.trim()).filter(Boolean);
+    onChange(numeric ? parts.map(Number).filter((n) => !Number.isNaN(n)) : parts);
+  };
+  return (
+    <input
+      id={id}
+      value={draft ?? canonical}
+      placeholder="comma, separated, values"
+      onFocus={() => setDraft(canonical)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        parse(e.target.value);
+      }}
+      onBlur={() => setDraft(null)}
+      className={className}
+    />
   );
 }
 

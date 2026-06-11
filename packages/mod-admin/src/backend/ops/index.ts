@@ -21,7 +21,7 @@ import {
 } from "@pattern/core";
 import { adminServices, ASSETS_FS } from "../services.js";
 import { processStats, workerBench } from "../system-stats.js";
-import { catalog, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";
+import { catalog, docPorts, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";
 import { diffWorkflows } from "../control-plane/versioning.js";
 import { safeSegment } from "../control-plane/store.js";
 import { builtinTemplates } from "../templates.js";
@@ -393,6 +393,13 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
   };
 });
 
+/** Per-node ports for a doc, config-resolved — the editor's dynamic-port source. */
+const docPortsOp = adminOp("admin.doc.ports", "Resolve every node's ports against its config (dynamic-port ops).", (args, { engine }) => {
+  const doc = args.doc as { nodes: Array<{ id: string; op: string; config?: unknown }> } | undefined;
+  if (!doc || !Array.isArray(doc.nodes)) throw new Error('missing "doc"');
+  return docPorts(engine, doc);
+});
+
 const templateList = adminOp("admin.template.list", "List built-in workflow templates.", () =>
   builtinTemplates.map((t) => ({ id: t.id, name: t.name, description: t.description, doc: t.doc })),
 );
@@ -476,6 +483,7 @@ export const adminOps: OpDefinition[] = [
   uiManifest,
   invokeOp,
   runOp,
+  docPortsOp,
   templateList,
   fixtureList,
   fixtureGet,

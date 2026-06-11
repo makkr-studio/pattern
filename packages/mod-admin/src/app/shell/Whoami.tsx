@@ -50,7 +50,9 @@ export function WhoamiChip({ collapsed }: { collapsed: boolean }) {
     <div
       className={`glass text-muted mt-2 flex items-center rounded-xl text-sm ${collapsed ? "flex-col gap-1 p-2" : "gap-2 px-3 py-2"}`}
     >
-      <User size={14} className="shrink-0 text-[var(--color-neon-cyan)]" {...(collapsed ? tip(label) : {})} />
+      <span className="flex shrink-0" {...(collapsed ? tip(label) : {})}>
+        <User size={14} className="text-[var(--color-neon-cyan)]" />
+      </span>
       {!collapsed && (
         <span className="min-w-0 flex-1 truncate" title={data.email}>
           {label}

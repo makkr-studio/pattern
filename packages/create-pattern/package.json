@@ -1,6 +1,6 @@
 {
   "name": "create-pattern",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Scaffolder for Pattern projects — npm create pattern@latest.",
   "type": "module",
   "license": "MIT",
