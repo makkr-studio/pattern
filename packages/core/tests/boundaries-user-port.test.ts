@@ -27,6 +27,32 @@ describe("trigger `user` output port (§9)", () => {
     expect(resolvePorts(manual.outputs, { outputs: ["value", "user"] })).toHaveProperty("user");
   });
 
+  it("engine.run seeds an unprovided user port from the run principal", async () => {
+    const { Engine } = await import("@pattern/core");
+    const engine = new Engine();
+    engine.registerWorkflow({
+      id: "whoami-flow",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/w" } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [{ from: { node: "in", port: "user" }, to: { node: "out", port: "body" } }],
+    });
+    // Editor-style run: no input.user, principal on the run options.
+    const res = await engine.run("whoami-flow", {
+      input: {},
+      principal: { kind: "user", id: "u1", provider: "test", scopes: ["admin"], claims: { email: "a@b.c" } },
+    });
+    expect(res.status).toBe("ok");
+    expect((Object.values(res.outputs)[0] as { body: { id: string; email?: string } }).body).toMatchObject({
+      id: "u1",
+      email: "a@b.c",
+    });
+    // Anonymous run → null (not undefined): downstream sees an explicit "nobody".
+    const anon = await engine.run("whoami-flow", { input: {} });
+    expect((Object.values(anon.outputs)[0] as { body: unknown }).body).toBeNull();
+  });
+
   it("principalToUser flattens a user principal and nulls anonymous", () => {
     const anon: Principal = { kind: "anonymous" };
     expect(principalToUser(anon)).toBeNull();
