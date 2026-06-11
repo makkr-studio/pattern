@@ -37,6 +37,13 @@ import {
   Cpu,
   Gauge,
   Settings,
+  Users,
+  User,
+  UserPlus,
+  KeyRound,
+  LogOut,
+  Ban,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -59,6 +66,13 @@ const MAP: Record<string, LucideIcon> = {
   cpu: Cpu,
   gauge: Gauge,
   settings: Settings,
+  users: Users,
+  user: User,
+  "user-plus": UserPlus,
+  "key-round": KeyRound,
+  "log-out": LogOut,
+  ban: Ban,
+  "shield-check": ShieldCheck,
 };
 
 /** Render a lucide icon by its kebab name (from menu/command manifests). */
@@ -67,4 +81,4 @@ export function Icon({ name, size = 16, className }: { name?: string; size?: num
   return <C size={size} className={className} />;
 }
 
-export { ChevronRight, CircleDot, Sun, Moon, SunMoon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward, Download, Upload, Volume2, VolumeX, Wand2, History, GitFork, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Cpu, Gauge, Settings };
+export { ChevronRight, CircleDot, Sun, Moon, SunMoon, Search, Play, Plus, Rocket, Power, Trash2, Undo2, Redo2, Pause, SkipBack, SkipForward, Download, Upload, Volume2, VolumeX, Wand2, History, GitFork, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Cpu, Gauge, Settings, User, LogOut };

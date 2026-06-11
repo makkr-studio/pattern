@@ -9,6 +9,7 @@ import { Icon } from "../components/icon";
 import { Sun, Moon, SunMoon, Search, Volume2, VolumeX, PanelLeftClose, PanelLeftOpen } from "../components/icon";
 import { PatternLogo } from "../components/logo";
 import { CommandPalette, useCommandHotkey } from "./CommandPalette";
+import { WhoamiChip } from "./Whoami";
 import { TooltipHost, tip } from "../components/Tooltip";
 
 /** A sensible default nav if the manifest hasn't loaded yet (the admin's own). */
@@ -161,6 +162,7 @@ export function Shell() {
             {!collapsed && <span>{THEME_LABEL[mode]}</span>}
           </button>
         </div>
+        <WhoamiChip collapsed={collapsed} />
       </aside>
 
       {/* Main */}

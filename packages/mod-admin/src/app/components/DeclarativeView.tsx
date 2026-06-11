@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactFlow, Background, Controls, ReactFlowProvider } from "@xyflow/react";
 import type { DeclarativeView as View } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
@@ -135,25 +135,78 @@ function DataView({ view }: { view: Exclude<View, { kind: "iframe" | "form" | "g
         </GlassPanel>
       );
     }
-    case "table": {
-      const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
-      const columns: Column<Record<string, unknown>>[] = view.columns.map((c) => ({
-        key: c.key,
-        label: c.label ?? c.key,
-        render: (row) => String(row[c.key] ?? ""),
-      }));
-      return (
-        <div className="space-y-3">
-          <Table columns={columns} rows={rows} getKey={(r) => JSON.stringify(r)} />
-          {view.actions?.map((a) => (
-            <NeonButton key={a.label} variant="ghost" onClick={() => api.invoke(a.run)}>
-              {a.label}
-            </NeonButton>
-          ))}
-        </div>
-      );
-    }
+    case "table":
+      return <TableView view={view} data={data} />;
     default:
       return <JsonView value={data} />;
   }
+}
+
+type TableViewDef = Extract<View, { kind: "table" }>;
+
+/**
+ * `table` kind. Row actions invoke their op with args mapped from the row
+ * (`args: { userId: "id" }` → `{ userId: row.id }`) and refresh the source —
+ * which is how mod screens get mutations without shipping any UI code.
+ */
+function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  const rowActions = view.rowActions ?? [];
+
+  const runRowAction = async (action: NonNullable<TableViewDef["rowActions"]>[number], row: Record<string, unknown>) => {
+    if (action.confirm && !window.confirm(`${action.label}?`)) return;
+    const args = Object.fromEntries(
+      Object.entries(action.args ?? {}).map(([argName, rowKey]) => [argName, row[rowKey]]),
+    );
+    setBusy(`${action.label}:${JSON.stringify(args)}`);
+    try {
+      await api.invoke(action.run, args);
+      await queryClient.invalidateQueries({ queryKey: ["invoke", view.source] });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const columns: Column<Record<string, unknown>>[] = view.columns.map((c) => ({
+    key: c.key,
+    label: c.label ?? c.key,
+    render: (row) => String(row[c.key] ?? ""),
+  }));
+  if (rowActions.length) {
+    columns.push({
+      key: "__actions",
+      label: "",
+      render: (row) => (
+        <span className="flex justify-end gap-1.5">
+          {rowActions.map((a) => {
+            const key = `${a.label}:${JSON.stringify(Object.fromEntries(Object.entries(a.args ?? {}).map(([n, k]) => [n, row[k]])))}`;
+            return (
+              <button
+                key={a.label}
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void runRowAction(a, row)}
+                className="text-muted rounded-md border border-white/10 px-2 py-0.5 text-xs hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-40"
+              >
+                {busy === key ? "…" : a.label}
+              </button>
+            );
+          })}
+        </span>
+      ),
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <Table columns={columns} rows={rows} getKey={(r) => JSON.stringify(r)} />
+      {view.actions?.map((a) => (
+        <NeonButton key={a.label} variant="ghost" onClick={() => api.invoke(a.run)}>
+          {a.label}
+        </NeonButton>
+      ))}
+    </div>
+  );
 }

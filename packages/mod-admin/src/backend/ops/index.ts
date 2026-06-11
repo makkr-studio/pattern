@@ -310,7 +310,7 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
  * declarative pages (§6). Wraps the op in a synthetic manual→op→return workflow
  * so any catalog op can feed a table/chart/json view.
  */
-const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", async (args, { engine }) => {
+const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", async (args, { engine }, ctx) => {
   const source = str(args.source, "source");
   const op = engine.ops.get(source);
   if (!op) throw new Error(`unknown op "${source}"`);
@@ -336,7 +336,9 @@ const invokeOp = adminOp("admin.invoke", "Run a source op once and return its ou
       { from: { node: "s", port: firstOut }, to: { node: "r", port: "value" } },
     ],
   };
-  const res = await engine.run(wf, { trigger: "t", input: { input: args.input } });
+  // Run as the CALLER's principal: ops guarding scopes in-op (e.g. identity.*)
+  // see who's really asking, not an anonymous synthetic run.
+  const res = await engine.run(wf, { trigger: "t", input: { input: args.input }, principal: ctx.principal });
   if (res.status === "error") throw res.error;
   return (Object.values(res.outputs)[0] as { value?: unknown } | undefined)?.value ?? null;
 });
