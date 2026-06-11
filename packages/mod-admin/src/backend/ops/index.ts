@@ -217,7 +217,9 @@ const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captu
   if (!detail) return detail;
   // Live control state: is the run still in flight, and is it paused?
   const paused = engine.runPaused(str(args.runId, "runId"));
-  return { ...detail, inflight: paused !== undefined, paused: paused ?? false };
+  // Sub-runs this run started via ctx.invoke — the "invoked by" link's mirror.
+  const children = sink.children(str(args.runId, "runId"));
+  return { ...detail, inflight: paused !== undefined, paused: paused ?? false, children };
 });
 
 // ── In-flight run control (cancel works on any entry path; pause needs the
@@ -267,15 +269,15 @@ const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark
 
 // ── Server-side admin settings (observability) ──
 
-const settingsGet = adminOp("admin.settings.get", "Server-side admin settings (run retention, exclusion).", (_args, { sink }) => ({
-  observability: sink.config(),
+const settingsGet = adminOp("admin.settings.get", "Server-side admin settings (run retention, exclusion, I/O sampling).", (_args, { sink, engine }) => ({
+  observability: { ...sink.config(), sampleIo: engine.ioSampling() },
 }));
 
 const settingsSet = adminOp(
   "admin.settings.set",
-  "Update server-side admin settings: { capacity?, exclude? }. Applies live; persisted with the workflow store.",
-  async (args, { sink, controlPlane }) => {
-    const obs = (args.observability ?? args) as { capacity?: unknown; exclude?: unknown };
+  "Update server-side admin settings: { capacity?, exclude?, sampleIo? }. Applies live; persisted with the workflow store.",
+  async (args, { sink, controlPlane, engine }) => {
+    const obs = (args.observability ?? args) as { capacity?: unknown; exclude?: unknown; sampleIo?: unknown };
     if (obs.capacity != null) {
       const n = Number(obs.capacity);
       if (!Number.isFinite(n) || n < 10 || n > 10_000) throw new Error("capacity must be between 10 and 10000");
@@ -289,7 +291,10 @@ const settingsSet = adminOp(
         throw new Error(`invalid exclude regex: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    const applied = sink.config();
+    // Sample every run's node I/O (bounded + secret-masked previews, T1) —
+    // editor runs always sample; this extends it to host-served traffic.
+    if (obs.sampleIo !== undefined) engine.setIoSampling(Boolean(obs.sampleIo));
+    const applied = { ...sink.config(), sampleIo: engine.ioSampling() };
     await controlPlane.store.saveAdminConfig({ observability: applied });
     return { ok: true, observability: applied };
   },

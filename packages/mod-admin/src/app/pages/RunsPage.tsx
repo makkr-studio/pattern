@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "motion/react";
-import type { RunSummary, SpanData } from "@pattern/admin-sdk";
+import type { RunSummary, SpanData, SpanIoSample } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
 import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
@@ -17,6 +17,32 @@ const FETCH_WINDOW = 500;
 
 function nodeOf(span: SpanData): string {
   return String(span.attributes["pattern.node.id"] ?? span.name);
+}
+
+/** One side of a node's sampled I/O: a labeled row per port. */
+function IoPorts({ title, ports }: { title: string; ports?: Record<string, SpanIoSample> }) {
+  const entries = Object.entries(ports ?? {});
+  if (entries.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <div className="text-muted text-[10px] font-semibold uppercase tracking-wider">{title}</div>
+      {entries.map(([port, s]) => (
+        <div key={port} className="flex items-start gap-2 text-xs">
+          <span className="text-muted w-24 shrink-0 truncate pt-0.5 text-right font-mono" title={port}>
+            {port}
+          </span>
+          {s.kind === "stream" ? (
+            <span className="text-muted pt-0.5 italic">stream — flows, not stored</span>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <JsonView value={s.preview} className="max-h-24" />
+              {s.truncated && <span className="text-muted text-[10px]">preview truncated (4 KB cap)</span>}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: number; total: number }) {
@@ -63,11 +89,23 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
         const blockedMs = Number(s.attributes["pattern.node.blockedMs"] ?? 0);
         const blocked = total ? Math.min((blockedMs / total) * 100, width - 1) : 0;
         const active = s.endTime - s.startTime - blockedMs;
+        // Sub-workflow invocations this node made (ctx.invoke) — linkable runs.
+        const invokes = (s.events ?? []).filter((e) => e.name === "invoke");
         return (
           <div key={s.spanId}>
             <button onClick={() => setOpen(open === s.spanId ? null : s.spanId)} className="block w-full text-left">
               <div className="flex items-center gap-3 text-xs">
-                <span className="w-40 shrink-0 truncate font-mono">{nodeOf(s)}</span>
+                <span className="flex w-40 shrink-0 items-center gap-1 truncate font-mono">
+                  <span className="truncate">{nodeOf(s)}</span>
+                  {invokes.length > 0 && (
+                    <span
+                      className="shrink-0 text-[var(--color-neon-cyan)]"
+                      title={`invoked ${invokes.length} sub-workflow run${invokes.length > 1 ? "s" : ""} — click for links`}
+                    >
+                      ↳{invokes.length > 1 ? invokes.length : ""}
+                    </span>
+                  )}
+                </span>
                 <div className="relative h-4 flex-1 rounded bg-white/5" {...(blockedMs > 0 ? { title: `waited ${ms(blockedMs)} on inputs · worked ${ms(Math.max(0, active))}` } : {})}>
                   {blocked > 0.5 && (
                     <motion.div
@@ -87,10 +125,26 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
                 <span className="text-muted w-14 shrink-0 text-right">{ms(s.endTime - s.startTime)}</span>
               </div>
             </button>
-            {open === s.spanId && (s.io || s.error) && (
-              <div className="ml-40 mt-1">
+            {open === s.spanId && (s.io || s.error || invokes.length > 0) && (
+              <div className="ml-40 mt-1 space-y-2">
                 {s.error && <div className="text-[var(--color-neon-pink)] text-xs">{s.error.message}</div>}
-                {s.io && <JsonView value={s.io} className="max-h-48" />}
+                {invokes.map((e, i) => (
+                  <Link
+                    key={i}
+                    to={`/runs/${String(e.attributes?.runId ?? "")}`}
+                    className="flex items-center gap-1.5 text-xs text-[var(--color-neon-cyan)] hover:underline"
+                  >
+                    ↳ ran <span className="font-mono">{String(e.attributes?.workflowId ?? "?")}</span>
+                    <span className="text-muted font-mono">{String(e.attributes?.runId ?? "").slice(0, 8)}</span>
+                  </Link>
+                ))}
+                <IoPorts title="In" ports={s.io?.inputs} />
+                <IoPorts title="Out" ports={s.io?.outputs} />
+              </div>
+            )}
+            {open === s.spanId && !s.io && (
+              <div className="text-muted ml-40 mt-1 text-[10px]">
+                No I/O sampled for this run — turn on “Sample run I/O” in Settings → Observability, or run it from the editor.
               </div>
             )}
           </div>
@@ -158,7 +212,7 @@ function RunDetail({ runId }: { runId: string }) {
   const control = useRunControl(runId);
   if (isLoading) return <Spinner />;
   if (!data) return <GlassPanel className="text-muted p-8 text-sm">Run not found (it may have been evicted from the ring buffer).</GlassPanel>;
-  const { summary, spans, inflight, paused } = data;
+  const { summary, spans, inflight, paused, children } = data;
   const runStart = Math.min(...spans.map((s) => s.startTime), summary.startTime);
   const runEnd = Math.max(...spans.map((s) => s.endTime), summary.endTime ?? summary.startTime);
   const act = (action: "cancel" | "pause" | "resume") => {
@@ -212,7 +266,40 @@ function RunDetail({ runId }: { runId: string }) {
           <span className="ml-2 opacity-60">· trigger {summary.trigger}</span>
         </div>
       )}
+      {/* This run was started by another run's node (ctx.invoke) — link up. */}
+      {summary.parent && (
+        <div className="text-muted mb-3 text-xs">
+          invoked by{" "}
+          <Link to={`/runs/${summary.parent.runId}`} className="font-mono text-[var(--color-neon-cyan)] hover:underline">
+            {summary.parent.workflowId}
+          </Link>
+          <span className="ml-1 opacity-60">
+            · node <span className="font-mono">{summary.parent.nodeId}</span>
+          </span>
+        </div>
+      )}
       <Waterfall spans={spans} runStart={runStart} total={runEnd - runStart} />
+      {/* Sub-runs this run started (ctx.invoke) — link down. */}
+      {(children?.length ?? 0) > 0 && (
+        <div className="mt-4">
+          <h3 className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">Sub-runs ({children!.length})</h3>
+          <div className="glass max-h-48 overflow-y-auto rounded-xl">
+            {children!.map((c) => (
+              <Link
+                key={c.runId}
+                to={`/runs/${c.runId}`}
+                className="flex items-center gap-3 border-b hairline px-3 py-2 text-xs last:border-0 hover:bg-white/5"
+              >
+                <Dot color={statusColor(c.status)} pulse={c.status === "running"} />
+                <span className="font-mono">{c.workflowId}</span>
+                <span className="text-muted">via {c.parent?.nodeId}</span>
+                <span className="text-muted ml-auto">{ms(c.durationMs)}</span>
+                <span className="text-muted font-mono">{c.runId.slice(0, 8)}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
       <RunLogs spans={spans} runStart={runStart} />
     </GlassPanel>
   );
@@ -325,6 +412,11 @@ export function RunsPage() {
                 }`}
               >
                 <Dot color={statusColor(r.status)} pulse={r.status === "running"} />
+                {r.parent && (
+                  <span className="text-muted -ml-1 shrink-0" title={`sub-run — invoked by ${r.parent.workflowId}`}>
+                    ↳
+                  </span>
+                )}
                 <span className="font-mono text-sm">{r.workflowId}</span>
                 <span className="text-muted ml-auto text-xs">{ms(r.durationMs)}</span>
                 <span className="text-muted w-16 text-right text-xs">{ago(r.startTime)}</span>

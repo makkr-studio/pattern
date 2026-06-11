@@ -167,6 +167,15 @@ export interface RunSummary {
   durationMs?: number;
   spanCount: number;
   error?: { message: string };
+  /** Set when this run was started by another run (`ctx.invoke`). */
+  parent?: RunParentRef;
+}
+
+/** The run + node that started a sub-run via `ctx.invoke`. */
+export interface RunParentRef {
+  runId: string;
+  workflowId: string;
+  nodeId: string;
 }
 
 export interface SpanIoSample {
@@ -204,6 +213,8 @@ export interface RunDetail {
   inflight?: boolean;
   /** Currently held at the pause gate. */
   paused?: boolean;
+  /** Sub-runs this run started via `ctx.invoke`, oldest first. */
+  children?: RunSummary[];
 }
 
 export interface LatencyStats {
