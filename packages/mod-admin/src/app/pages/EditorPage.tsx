@@ -10,6 +10,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  SelectionMode,
   type Connection,
   type Edge as RFEdge,
   type Node as RFNode,
@@ -57,6 +58,25 @@ const DRAFT_PREFIX = "pattern.admin.editor.draft.";
 const NEW_KEY = "__new__";
 /** Pre-tabs single-draft key — migrated on first load. */
 const LEGACY_DRAFT_KEY = "pattern.admin.editor.draft";
+
+// ── Node clipboard (⌘C/⌘X/⌘V). Lives in localStorage so it crosses editor
+// tabs and even browser windows: copy in one workflow, paste into another. ──
+const CLIPBOARD_KEY = "pattern.admin.editor.clipboard";
+
+interface ClipboardPayload {
+  kind: "pattern/nodes@v1";
+  nodes: Array<{
+    id: string;
+    op: string;
+    position: { x: number; y: number };
+    config: Record<string, unknown>;
+    title?: string;
+    comment?: string;
+    pairId?: string;
+  }>;
+  /** Edges INTERNAL to the copied set (both endpoints copied). */
+  edges: Array<{ source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }>;
+}
 
 /** One tab's canvas, continuously persisted so closing/switching never loses
  *  work. `slug` is null for a brand-new workflow; `dirty` = differs from the
@@ -596,6 +616,173 @@ function EditorInner() {
     [rf],
   );
 
+  // ── Copy / cut / paste of selected nodes (+ the edges between them). ──
+
+  /** Snapshot the current selection to the shared clipboard. False when empty. */
+  const copySelection = useCallback((): boolean => {
+    const sel = rf.getNodes().filter((n) => n.selected);
+    if (sel.length === 0) return false;
+    const ids = new Set(sel.map((n) => n.id));
+    const payload: ClipboardPayload = {
+      kind: "pattern/nodes@v1",
+      nodes: sel.map((n) => ({
+        id: n.id,
+        op: n.data.op,
+        position: n.position,
+        config: n.data.config ?? {},
+        title: n.data.title,
+        comment: n.data.comment,
+        pairId: n.data.pairId,
+      })),
+      edges: rf
+        .getEdges()
+        .filter((e) => ids.has(e.source) && ids.has(e.target))
+        .map((e) => ({ source: e.source, sourceHandle: e.sourceHandle, target: e.target, targetHandle: e.targetHandle })),
+    };
+    try {
+      localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(payload));
+    } catch {
+      /* storage full/blocked — clipboard is best-effort */
+    }
+    sfx.play("click");
+    return true;
+  }, [rf]);
+
+  /** Cut = copy + the normal delete path (pair expansion, history, sfx). */
+  const cutSelection = useCallback((): boolean => {
+    if (!copySelection()) return false;
+    void rf.deleteElements({ nodes: rf.getNodes().filter((n) => n.selected) });
+    return true;
+  }, [rf, copySelection]);
+
+  /**
+   * Paste the clipboard with fresh ids, keeping the copied layout. Same-canvas
+   * pastes land nudged +24/+24 (a visible duplicate); when the copied area is
+   * off-screen (typically a paste into ANOTHER workflow), the group anchors to
+   * the viewport center instead so it never arrives invisible.
+   */
+  const pasteClipboard = useCallback(() => {
+    let payload: ClipboardPayload | null = null;
+    try {
+      payload = JSON.parse(localStorage.getItem(CLIPBOARD_KEY) ?? "null") as ClipboardPayload | null;
+    } catch {
+      /* corrupt clipboard — ignore */
+    }
+    if (!payload || payload.kind !== "pattern/nodes@v1" || payload.nodes.length === 0) return;
+    // Ops are engine-global, but a clipboard can outlive a mod: skip unknowns.
+    const known = payload.nodes.filter((n) => opMap.has(n.op));
+    if (known.length === 0) {
+      sfx.play("invalid");
+      return;
+    }
+    pushHistory();
+
+    // Placement: bounding-box center vs the visible canvas.
+    const cx = known.reduce((s, n) => s + n.position.x, 0) / known.length;
+    const cy = known.reduce((s, n) => s + n.position.y, 0) / known.length;
+    let dx = 24;
+    let dy = 24;
+    const pane = document.querySelector(".react-flow")?.getBoundingClientRect();
+    if (pane) {
+      const onScreen = rf.flowToScreenPosition({ x: cx, y: cy });
+      const visible = onScreen.x >= pane.left && onScreen.x <= pane.right && onScreen.y >= pane.top && onScreen.y <= pane.bottom;
+      if (!visible) {
+        const center = rf.screenToFlowPosition({ x: pane.left + pane.width / 2, y: pane.top + pane.height / 2 });
+        dx = center.x - cx;
+        dy = center.y - cy;
+      }
+    }
+
+    // Mint ids (keep the original name when free — cross-workflow pastes stay
+    // readable), then remap edges and pair links onto the new ids.
+    const taken = new Set(rf.getNodes().map((n) => n.id));
+    const idMap = new Map<string, string>();
+    const newNodes: RFNode<OpNodeData>[] = known.map((n) => {
+      const op = opMap.get(n.op)!;
+      let id = n.id;
+      let i = 1;
+      while (taken.has(id)) id = `${n.id}-${++i}`;
+      taken.add(id);
+      idMap.set(n.id, id);
+      return {
+        id,
+        type: "op",
+        position: { x: n.position.x + dx, y: n.position.y + dy },
+        selected: true,
+        data: {
+          op: op.type,
+          config: JSON.parse(JSON.stringify(n.config ?? {})) as Record<string, unknown>,
+          title: n.title,
+          comment: n.comment,
+          description: op.description,
+          inputs: op.inputs,
+          outputs: op.outputs,
+          configInputs: op.configInputs ?? [],
+          controlOuts: op.controlOut ?? [],
+          boundary: op.boundary,
+        },
+      };
+    });
+    for (const [i, src] of known.entries()) {
+      // Pair links survive only when the partner came along; else drop them
+      // (a dangling pairId would make onBeforeDelete chase a ghost).
+      const mapped = src.pairId ? idMap.get(src.pairId) : undefined;
+      if (mapped) newNodes[i]!.data.pairId = mapped;
+    }
+    const pastedDoc = toDoc(baseDoc.current, newNodes, []);
+    const newEdges: RFEdge[] = payload.edges
+      .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+      .map((e, i) => {
+        const source = idMap.get(e.source)!;
+        const kind = outputKind(source, e.sourceHandle ?? CONTROL_OUT, pastedDoc, opMap);
+        return {
+          id: `paste-${Date.now()}-${i}`,
+          source,
+          sourceHandle: e.sourceHandle,
+          target: idMap.get(e.target)!,
+          targetHandle: e.targetHandle,
+          type: "default",
+          animated: kind === "stream",
+          style: edgeStyle(kind),
+        };
+      });
+
+    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), ...newNodes]);
+    setEdges((es) => [...es, ...newEdges]);
+    setSelected(newNodes.length === 1 ? newNodes[0]!.id : null);
+    sfx.play("add");
+  }, [rf, opMap, pushHistory, setNodes, setEdges]);
+
+  // ⌘C/⌘X/⌘V on the canvas — never over text fields or a live text selection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k !== "c" && k !== "x" && k !== "v") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if ((k === "c" || k === "x") && window.getSelection()?.isCollapsed === false) return; // copying text, not nodes
+      if (k === "c") {
+        if (copySelection()) e.preventDefault();
+      } else if (k === "x") {
+        if (cutSelection()) e.preventDefault();
+      } else {
+        e.preventDefault();
+        pasteClipboard();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [copySelection, cutSelection, pasteClipboard]);
+
+  /** Multi-select clears the single-node inspector (it shows ONE node). */
+  const onSelectionChange = useCallback(
+    ({ nodes: sel }: { nodes: RFNode<OpNodeData>[] }) => {
+      if (sel.length > 1) setSelected(null);
+    },
+    [],
+  );
+
   /** Materialize an op as a canvas node with a fresh id. */
   const makeNode = useCallback((op: OpInfo, pos: { x: number; y: number }, ids: Set<string>): RFNode<OpNodeData> => {
     const base = op.type.split(".").slice(-1)[0]!;
@@ -1003,6 +1190,11 @@ function EditorInner() {
             onNodeDragStart={() => pushHistory()}
             onNodeClick={(_e, n) => setSelected(n.id)}
             onPaneClick={() => setSelected(null)}
+            // Marquee: Shift+drag draws a selection rectangle (drag alone still
+            // pans); touching a node is enough to take it (Partial). The
+            // inspector shows ONE node — clear it when a box grabs several.
+            selectionMode={SelectionMode.Partial}
+            onSelectionChange={onSelectionChange}
             nodeTypes={nodeTypes}
             fitView
             proOptions={{ hideAttribution: true }}
