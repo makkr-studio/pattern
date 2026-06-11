@@ -129,9 +129,16 @@ export interface TokenStore {
   deleteExpired(now: number): Promise<number>;
 }
 
+/** Small persisted key/value bag for runtime-mutable identity settings (signup policy…). */
+export interface SettingsStore {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+}
+
 export interface IdentityStores {
   users: UserStore;
   sessions: SessionStore;
   tokens: TokenStore;
+  settings: SettingsStore;
   close(): Promise<void>;
 }

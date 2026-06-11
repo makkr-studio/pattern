@@ -67,6 +67,8 @@ export interface IdentityService {
   // users
   findOrCreateByIdentity(input: FindOrCreateInput): Promise<UserRow | null>;
   getUser(id: string): Promise<UserRow | null>;
+  /** Lookup by (normalized) email — provider mods gate token issuance on this. */
+  findUserByEmail(email: string): Promise<UserRow | null>;
   listUsers(): Promise<UserRow[]>;
   /** CAS-retried. Revokes the user's sessions — privilege changes end sessions. */
   setRoles(userId: string, roles: string[]): Promise<UserRow>;
@@ -95,6 +97,11 @@ export interface IdentityService {
 
   // roles → scopes
   scopesForRoles(roles: string[]): string[];
+
+  // runtime settings (persisted; the mod option is only the default seed)
+  /** The EFFECTIVE signup policy — admin-toggleable at runtime. */
+  getSignup(): Promise<"open" | "invite">;
+  setSignup(mode: "open" | "invite"): Promise<void>;
 
   // config surface other code reads
   readonly options: ResolvedIdentityOptions;
@@ -157,6 +164,10 @@ export class DefaultIdentityService implements IdentityService {
 
   getUser(id: string): Promise<UserRow | null> {
     return this.stores.users.findById(id);
+  }
+
+  findUserByEmail(email: string): Promise<UserRow | null> {
+    return this.stores.users.findByEmailNorm(normalizeEmail(email));
   }
 
   listUsers(): Promise<UserRow[]> {
@@ -304,5 +315,19 @@ export class DefaultIdentityService implements IdentityService {
     const out = new Set<string>();
     for (const role of roles) for (const scope of this.options.roles[role] ?? []) out.add(scope);
     return [...out];
+  }
+
+  /* ── runtime settings ────────────────────────────────────────────────── */
+
+  // Read-through on purpose (no cache): a settings read is one indexed hit,
+  // and it keeps multiple instances honest without invalidation machinery.
+  async getSignup(): Promise<"open" | "invite"> {
+    const stored = await this.stores.settings.get("signup");
+    return stored === "open" || stored === "invite" ? stored : this.options.signup;
+  }
+
+  async setSignup(mode: "open" | "invite"): Promise<void> {
+    if (mode !== "open" && mode !== "invite") throw new Error(`invalid signup mode "${mode}"`);
+    await this.stores.settings.set("signup", mode);
   }
 }

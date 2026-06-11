@@ -35,9 +35,12 @@ const stringRecord = z.record(z.string(), z.string());
 /**
  * `auth.magiclink.request` — issue a login token for an email and deliver it.
  *
- * Always answers with the same "check your inbox" page, whether or not the
- * email has an account (no enumeration); the *callback* enforces the signup
- * policy. Accepts a browser form post (urlencoded) or JSON `{ email, next? }`.
+ * Issuance is GATED, not just the callback: a token is minted only for a
+ * known, enabled user — or for an unknown email when signup is open. Anything
+ * else does no work and sends nothing (delivery costs money and an open
+ * issuer is a spam relay). The response is byte-identical either way, so
+ * nothing leaks about who exists. Accepts a browser form post (urlencoded)
+ * or JSON `{ email, next? }`.
  */
 const requestOp: OpDefinition = {
   type: "auth.magiclink.request",
@@ -69,16 +72,20 @@ const requestOp: OpDefinition = {
     const next = safeNextPath(args.next ?? q.next);
 
     if (looksLikeEmail(email)) {
-      const issued = await svc.issueToken({ purpose: "login", email, data: { next } });
-      await deliverToken(ctx, {
-        email,
-        path: issued.path,
-        purpose: "login",
-        headers: (headers ?? null) as Record<string, string> | null,
-      });
+      const user = await svc.findUserByEmail(email);
+      const shouldIssue = user ? !user.disabled : (await svc.getSignup()) === "open";
+      if (shouldIssue) {
+        const issued = await svc.issueToken({ purpose: "login", email, data: { next } });
+        await deliverToken(ctx, {
+          email,
+          path: issued.path,
+          purpose: "login",
+          headers: (headers ?? null) as Record<string, string> | null,
+        });
+      }
     }
-    // Identical response either way — and a beat of work even for bad input
-    // keeps timing flat enough for a login page.
+    // Identical response either way — nothing leaks about who exists or
+    // whether anything was sent.
     return {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
