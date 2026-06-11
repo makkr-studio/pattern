@@ -1,0 +1,36 @@
+{
+  "name": "@pattern/mod-auth-magic-link",
+  "version": "0.1.7",
+  "description": "Email magic-link login for Pattern — the reference identity provider mod. One op, one route, one login method; tokens delivered via the identity.deliverToken hook (console fallback = zero-config dev login).",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pattern/core": "workspace:*",
+    "@pattern/mod-identity": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@pattern/runtime-node": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
