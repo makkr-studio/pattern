@@ -18,7 +18,9 @@ import { extname } from "node:path";
 import { Readable } from "node:stream";
 import {
   ANONYMOUS,
+  AUTH_LOGIN_URL,
   jsonSchemaToZod,
+  principalToUser,
   type Engine,
   type OpDefinition,
   type Principal,
@@ -427,6 +429,9 @@ export class HttpHost {
       query,
       params: routeParams,
       body,
+      // Seeds the trigger's `user` output port (§9): the resolved principal
+      // flattened for wiring, null when anonymous.
+      user: principalToUser(principal),
     };
 
     let result: RunResult;
@@ -469,6 +474,16 @@ export class HttpHost {
       const principal = await this.engine.authenticate({ headers, raw: req });
       const auth = this.engine.authorize(principal, app.requireAuth as any);
       if (!auth.ok) {
+        // A browser asking for HTML gets bounced to the advertised login page
+        // (§9) — the identity mod registers AUTH_LOGIN_URL; fetch/XHR callers
+        // still get the bare 401 and handle it client-side.
+        const loginUrl = this.engine.service<string>(AUTH_LOGIN_URL);
+        const accept = String(req.headers["accept"] ?? "");
+        if (loginUrl && accept.includes("text/html")) {
+          const next = encodeURIComponent(req.url ?? "/");
+          res.writeHead(302, { location: `${loginUrl}?next=${next}` }).end();
+          return;
+        }
         res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
         return;
       }

@@ -9,7 +9,7 @@
  */
 
 import type { WebSocket } from "ws";
-import type { ConnectionRef, ConnectionRegistry } from "@pattern/core";
+import type { ConnectionRef, ConnectionRegistry, Principal } from "@pattern/core";
 
 const idOf = (c: ConnectionRef | string): string => (typeof c === "string" ? c : c.id);
 
@@ -22,16 +22,24 @@ function encode(data: unknown): string | Uint8Array {
 export class NodeConnectionRegistry implements ConnectionRegistry {
   private sockets = new Map<string, WebSocket>();
   private rooms = new Map<string, Set<string>>();
+  private principals = new Map<string, Principal>();
 
   /** Register a freshly-opened socket; returns its connection ref. */
-  add(socket: WebSocket, id: string = crypto.randomUUID()): ConnectionRef {
+  add(socket: WebSocket, id: string = crypto.randomUUID(), principal?: Principal): ConnectionRef {
     this.sockets.set(id, socket);
+    if (principal) this.principals.set(id, principal);
     return { id };
   }
 
   remove(id: string): void {
     this.sockets.delete(id);
+    this.principals.delete(id);
     for (const set of this.rooms.values()) set.delete(id);
+  }
+
+  /** The principal resolved at upgrade time, fixed for the connection's life (§9). */
+  principalOf(id: string): Principal | undefined {
+    return this.principals.get(id);
   }
 
   get(id: string): WebSocket | undefined {
@@ -81,5 +89,14 @@ export class NodeConnectionRegistry implements ConnectionRegistry {
   /** Members of a room (inspection/testing). */
   members(room: string): string[] {
     return [...(this.rooms.get(room) ?? [])];
+  }
+
+  /**
+   * Close every member of a room (§9: session revocation closes the session's
+   * sockets via the `session:{id}` room). Copies the member list first — close
+   * mutates room membership.
+   */
+  async closeRoom(room: string, code?: number, reason?: string): Promise<void> {
+    for (const id of this.members(room)) await this.close(id, code, reason);
   }
 }
