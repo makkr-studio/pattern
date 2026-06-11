@@ -123,6 +123,41 @@ export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
   };
 }
 
+/**
+ * Per-node ports for a DOC, resolved with each node's actual config — the
+ * editor's answer for dynamic-port ops (`core.object.build` keys,
+ * `boundary.manual` outputs, `core.flow.sequence` control-outs…). Port
+ * resolvers live server-side as functions, so the client asks instead of
+ * guessing; a node whose config breaks its resolver falls back to defaults.
+ */
+export function docPorts(
+  engine: Engine,
+  doc: { nodes: Array<{ id: string; op: string; config?: unknown }> },
+): Record<string, { inputs: PortInfo[]; outputs: PortInfo[]; configInputs: PortInfo[]; controlOut: string[] }> {
+  const out: Record<string, { inputs: PortInfo[]; outputs: PortInfo[]; configInputs: PortInfo[]; controlOut: string[] }> = {};
+  for (const node of doc.nodes ?? []) {
+    const op = engine.ops.get(node.op);
+    if (!op) continue;
+    const config = node.config ?? {};
+    try {
+      out[node.id] = {
+        inputs: portInfos(op.inputs, config),
+        outputs: portInfos(op.outputs, config),
+        configInputs: op.configInputs ? portInfos(op.configInputs, config) : [],
+        controlOut: resolveControlOuts(op, config),
+      };
+    } catch {
+      out[node.id] = {
+        inputs: portInfos(op.inputs, {}),
+        outputs: portInfos(op.outputs, {}),
+        configInputs: op.configInputs ? portInfos(op.configInputs, {}) : [],
+        controlOut: resolveControlOuts(op, {}),
+      };
+    }
+  }
+  return out;
+}
+
 export function opList(engine: Engine): OpInfo[] {
   return engine.ops
     .list()

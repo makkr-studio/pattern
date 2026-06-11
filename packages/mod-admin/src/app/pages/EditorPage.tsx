@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
-import { useDeploy, useOps, useSaveWorkflow, useWorkflow } from "../lib/queries";
+import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
 import { OpNode } from "../editor/OpNode";
 import { RunPanel } from "../editor/RunPanel";
 import {
@@ -373,6 +373,55 @@ function EditorInner() {
     }, 400);
     return () => clearTimeout(t);
   }, [nodes, edges, newSlug, slug, tabKey]);
+
+  // ── Dynamic ports (§12): some ops derive ports from node config
+  // (core.object.build keys, boundary.manual outputs, flow.sequence count…).
+  // The resolvers are server-side functions, so ask admin.doc.ports and
+  // refresh the handles; edge-referenced ports stay as fallbacks so a stale
+  // wire never loses its handle. Debounced alongside the draft autosave.
+  const portsSig = useMemo(
+    () =>
+      JSON.stringify([
+        nodes.map((n) => [n.id, n.data.op, n.data.config]),
+        edges.map((e) => [e.source, e.sourceHandle, e.target, e.targetHandle]),
+      ]),
+    [nodes, edges],
+  );
+  useEffect(() => {
+    if (loadedFor.current !== tabKey) return;
+    const t = setTimeout(async () => {
+      const [specs, wires] = JSON.parse(portsSig) as [
+        Array<[string, string, Record<string, unknown>]>,
+        Array<[string, string | null, string, string | null]>,
+      ];
+      if (specs.length === 0) return;
+      try {
+        const ports = await api.docPorts({ nodes: specs.map(([id, op, config]) => ({ id, op, config })) });
+        setNodes((ns) =>
+          ns.map((n) => {
+            const p = ports[n.id];
+            if (!p) return n;
+            const inputs = [...p.inputs];
+            const outputs = [...p.outputs];
+            for (const [src, srcPort, tgt, tgtPort] of wires) {
+              if (tgt === n.id && tgtPort && tgtPort !== "in" && !inputs.some((x) => x.name === tgtPort) && !p.configInputs.some((x) => x.name === tgtPort)) {
+                inputs.push({ name: tgtPort, kind: "value" });
+              }
+              if (src === n.id && srcPort && srcPort !== "out" && !outputs.some((x) => x.name === srcPort) && !p.controlOut.includes(srcPort)) {
+                outputs.push({ name: srcPort, kind: "value" });
+              }
+            }
+            const next = { inputs, outputs, configInputs: p.configInputs, controlOuts: p.controlOut };
+            const cur = { inputs: n.data.inputs, outputs: n.data.outputs, configInputs: n.data.configInputs, controlOuts: n.data.controlOuts };
+            return JSON.stringify(next) === JSON.stringify(cur) ? n : { ...n, data: { ...n.data, ...next } };
+          }),
+        );
+      } catch {
+        /* offline / older server — static ports remain */
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [portsSig, tabKey, setNodes]);
 
   /** Write the current canvas to its draft NOW (used before switching tabs,
    *  so the last ≤400ms of edits aren't lost to the debounce). */
@@ -1149,6 +1198,34 @@ function PaneGrip({ onPointerDown, label }: { onPointerDown: (e: ReactPointerEve
 }
 
 /**
+ * Widget for SubworkflowRef config fields ({ workflowId } | { workflow }) on
+ * higher-order ops (core.array.map, core.flow.try, …): pick a registered
+ * workflow from a select instead of hand-writing JSON. An inline `workflow`
+ * doc (advanced) still round-trips through the raw-JSON toggle.
+ */
+function WorkflowRefField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const { data: workflows } = useWorkflows();
+  const current = (value as { workflowId?: string; workflow?: unknown } | undefined) ?? {};
+  if (current.workflow) {
+    return <div className="text-muted text-xs">Inline workflow doc — edit via <span className="font-mono">raw JSON</span>.</div>;
+  }
+  return (
+    <select
+      value={current.workflowId ?? ""}
+      onChange={(e) => onChange(e.target.value ? { workflowId: e.target.value } : undefined)}
+      className="glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+    >
+      <option value="">— pick a workflow —</option>
+      {(workflows ?? []).map((w) => (
+        <option key={w.slug} value={w.slug}>
+          {w.slug}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
  * Config fields that hold a JSON Schema get the visual builder instead of a
  * raw JSON box. Keyed by op type — mods with schema-valued fields can be added
  * here (or we promote this to op metadata later).
@@ -1178,16 +1255,20 @@ function Inspector({
   const hasSchema = op?.configSchema != null && (op.configSchema as { type?: string }).type === "object";
   const inputCls = "glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]";
   const schemaOverrides = useMemo(() => {
-    const fields = SCHEMA_FIELDS[node.data.op];
-    if (!fields) return undefined;
     const o: Record<string, FieldOverride> = {};
-    for (const f of fields) {
+    for (const f of SCHEMA_FIELDS[node.data.op] ?? []) {
       o[f] = ({ value, onChange: set }) => (
         <SchemaBuilder value={value as Record<string, unknown> | undefined} onChange={set} />
       );
     }
-    return o;
-  }, [node.data.op]);
+    // Higher-order ops: a `workflow` config property is a SubworkflowRef —
+    // render the picker (detected from the schema, so mod ops get it too).
+    const props = (op?.configSchema as { properties?: Record<string, unknown> } | undefined)?.properties;
+    if (props && "workflow" in props && !o.workflow) {
+      o.workflow = ({ value, onChange: set }) => <WorkflowRefField value={value} onChange={set} />;
+    }
+    return Object.keys(o).length ? o : undefined;
+  }, [node.data.op, op?.configSchema]);
 
   return (
     <div>

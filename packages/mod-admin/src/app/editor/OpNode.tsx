@@ -1,4 +1,5 @@
-import { Handle, Position, useNodeConnections, type NodeProps, type Node } from "@xyflow/react";
+import { useEffect } from "react";
+import { Handle, Position, useNodeConnections, useUpdateNodeInternals, type NodeProps, type Node } from "@xyflow/react";
 import { MessageSquare, Settings2 } from "lucide-react";
 import type { PortInfo } from "@pattern/admin-sdk";
 import { CONTROL_IN, CONTROL_OUT, type OpNodeData } from "./graph";
@@ -107,7 +108,13 @@ function InputRow({ p, top, config }: { p: PortInfo; top: number; config?: boole
  *  friendly name + category icon/accent; ports are colored by *data type* (hover
  *  for the full type), config-input ports render as squares, and the implicit
  *  control run ports sit top (in) / bottom (out) for value-less chaining. */
-export function OpNode({ data, selected }: NodeProps<Node<OpNodeData>>) {
+export function OpNode({ id, data, selected }: NodeProps<Node<OpNodeData>>) {
+  // Dynamic ports: when config edits add/remove handles, xyflow must re-measure
+  // them or new handles stay unconnectable (cached node internals).
+  const updateInternals = useUpdateNodeInternals();
+  const handleSig = [...data.configInputs, ...data.inputs, ...data.outputs].map((p) => p.name).join(",") + "|" + data.controlOuts.join(",");
+  useEffect(() => updateInternals(id), [id, handleSig, updateInternals]);
+
   const cat = categoryStyle(categoryOfType(data.op));
   const accent = data.boundary ? "var(--color-neon-cyan)" : cat.color;
   const name = data.title ?? humanizeOp(data.op);

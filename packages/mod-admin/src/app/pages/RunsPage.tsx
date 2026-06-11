@@ -105,7 +105,7 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
 function RunLogs({ spans, runStart }: { spans: SpanData[]; runStart: number }) {
   const lines = spans
     .flatMap((s) =>
-      s.events
+(s.events ?? [])
         .filter((e) => e.name.startsWith("log."))
         .map((e) => ({
           time: e.time,
