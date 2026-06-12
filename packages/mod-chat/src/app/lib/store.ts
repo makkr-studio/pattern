@@ -10,9 +10,12 @@
 
 import { api, streamApproval, streamTurn } from "./api";
 import { sfx } from "./sfx";
-import type { Conversation, MessagePart, Turn, TurnEvent } from "./types";
+import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
 
 export interface ChatState {
+  /** Identity + auth policy from /chat/api/me (null until loaded). */
+  me: Me | null;
+  meLoaded: boolean;
   conversations: Conversation[];
   conversationsLoaded: boolean;
   currentId: string | null;
@@ -29,6 +32,8 @@ type Listener = () => void;
 
 class ChatStore {
   private state: ChatState = {
+    me: null,
+    meLoaded: false,
     conversations: [],
     conversationsLoaded: false,
     currentId: null,
@@ -57,9 +62,25 @@ class ChatStore {
     this.set({ turns: this.state.turns.map((t) => (t.id === turnId ? mutate({ ...t }) : t)) });
   }
 
+  /** Identity + auth policy. A failure (older server) just means "no chip". */
+  async loadMe(): Promise<void> {
+    const me = await api.me().catch(() => null);
+    this.set({ me, meLoaded: true });
+  }
+
+  /** A 401 mid-session (expired login) — re-ask /me so the sign-in gate shows. */
+  private onApiError(err: unknown): void {
+    if ((err as { status?: number }).status === 401) void this.loadMe();
+  }
+
   async loadConversations(): Promise<void> {
-    const conversations = await api.conversations.list().catch(() => []);
-    this.set({ conversations, conversationsLoaded: true });
+    try {
+      const conversations = await api.conversations.list();
+      this.set({ conversations, conversationsLoaded: true });
+    } catch (err) {
+      this.onApiError(err);
+      this.set({ conversations: [], conversationsLoaded: true });
+    }
   }
 
   async open(id: string | null): Promise<void> {
@@ -94,7 +115,13 @@ class ChatStore {
   async send(content: MessagePart[]): Promise<string | null> {
     let conversationId = this.state.currentId;
     if (!conversationId) {
-      conversationId = await this.newConversation();
+      try {
+        conversationId = await this.newConversation();
+      } catch (err) {
+        this.onApiError(err);
+        this.set({ sendError: err instanceof Error ? err.message : String(err) });
+        return null;
+      }
       this.set({ currentId: conversationId });
     }
     const turnId = crypto.randomUUID();
@@ -123,6 +150,7 @@ class ChatStore {
         });
         return conversationId;
       }
+      this.onApiError(err);
       this.patchTurn(turnId, (t) => ({ ...t, status: "error" }));
       this.set({ liveTurnId: null, sendError: err instanceof Error ? err.message : String(err) });
       return conversationId;

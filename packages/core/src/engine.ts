@@ -8,7 +8,7 @@
  * implementation without touching workflows (§4).
  */
 
-import { resolvePrincipal, type AuthRequirement, meetsRequirement } from "./auth/resolve.js";
+import { resolvePrincipal, type AuthRequirement, meetsRequirement, resolveAuthRequirement } from "./auth/resolve.js";
 import { resolveWorkflowEnvTracked } from "./env-config.js";
 import { collectSecretValues, maskSecretValues, redactConfig } from "./redact.js";
 import { resolveBoundaryConfig, hasConfigPorts } from "./resolve-config.js";
@@ -515,9 +515,13 @@ export class Engine {
     return resolvePrincipal(this.auth, ctx);
   }
 
-  /** Check a principal against a trigger's requirement (§9). */
+  /**
+   * Check a principal against a trigger's requirement (§9). An `{ env }`
+   * requirement is resolved against the engine's env map here, per call —
+   * hosts never see the deferred form.
+   */
   authorize(principal: Principal, requirement: AuthRequirement | undefined) {
-    return meetsRequirement(principal, requirement);
+    return meetsRequirement(principal, resolveAuthRequirement(requirement, this.env));
   }
 
   // ── Running ──

@@ -15,6 +15,7 @@ import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern/
 import { STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
 import { resolveOptions, type ChatModOptions } from "./options.js";
 import { chatOps } from "./ops.js";
+import { chatAdminOps, chatFrontend } from "./admin.js";
 import { ensureChatCollections } from "./data.js";
 import {
   approvalPipelineWorkflow,
@@ -76,8 +77,9 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
 
   return defineMod({
     name: "@pattern/mod-chat",
-    ops: [...chatOps(() => engineRef), chatAppOp],
+    ops: [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp],
     workflows,
+    frontend: chatFrontend(),
     setup: (engine: Engine) => {
       engineRef = engine;
       const assets = opts.assets ? localFs(opts.assets) : bundledAssets(opts.mount);

@@ -3,7 +3,8 @@
 import React from "react";
 import { chatStore } from "../lib/store";
 import { isMuted, toggleMute } from "../lib/sfx";
-import type { Conversation } from "../lib/types";
+import { ConfirmDialog } from "./ConfirmDialog";
+import type { Conversation, Me } from "../lib/types";
 
 function timeAgo(ts: number): string {
   const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
@@ -13,18 +14,51 @@ function timeAgo(ts: number): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+/** Who's chatting — a calm footer chip: the user when signed in, else Guest. */
+function IdentityChip({ me }: { me: Me | null }) {
+  const user = me?.user ?? null;
+  const label = user ? (user.name || user.email || user.id) : "Guest";
+  const sub = user ? (user.email && user.name ? user.email : "signed in") : "anonymous on this device";
+  return (
+    <div className="flex items-center gap-2.5 border-t px-4 py-3" style={{ borderColor: "var(--line-soft)" }}>
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
+        style={
+          user
+            ? { background: "var(--accent-soft)", color: "var(--accent)" }
+            : { background: "var(--line-soft)", color: "var(--fg-faint)" }
+        }
+        aria-hidden
+      >
+        {user ? label.slice(0, 1).toUpperCase() : "?"}
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-[13px]" style={{ color: "var(--fg)" }}>
+          {label}
+        </div>
+        <div className="truncate text-[11px]" style={{ color: "var(--fg-faint)" }}>
+          {sub}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar({
   conversations,
   currentId,
+  me,
   onOpen,
   onNew,
 }: {
   conversations: Conversation[];
   currentId: string | null;
+  me: Me | null;
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
   const [muted, setMuted] = React.useState(isMuted());
+  const [pendingDelete, setPendingDelete] = React.useState<Conversation | null>(null);
   return (
     <aside
       className="flex h-full w-[270px] shrink-0 flex-col border-r"
@@ -76,9 +110,7 @@ export function Sidebar({
               </div>
             </button>
             <button
-              onClick={() => {
-                if (confirm("Delete this conversation?")) void chatStore.deleteConversation(c.id);
-              }}
+              onClick={() => setPendingDelete(c)}
               className="absolute right-2 top-2.5 hidden h-5 w-5 items-center justify-center rounded text-[12px] group-hover:flex"
               style={{ color: "var(--fg-faint)" }}
               title="Delete"
@@ -93,6 +125,21 @@ export function Sidebar({
           </div>
         )}
       </nav>
+
+      <IdentityChip me={me} />
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete this conversation?"
+          detail={`“${pendingDelete.title || "Untitled"}” and its turns are removed for good.`}
+          confirmLabel="Delete"
+          onConfirm={() => {
+            void chatStore.deleteConversation(pendingDelete.id);
+            setPendingDelete(null);
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </aside>
   );
 }

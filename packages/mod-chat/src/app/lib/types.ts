@@ -40,6 +40,13 @@ export type TurnEvent =
       stopReason: "complete" | "interrupted" | "error" | "cancelled";
     };
 
+/** GET /chat/api/me — caller identity + the server's resolved auth policy. */
+export interface Me {
+  user: { id: string; name: string | null; email: string | null; provider: string | null } | null;
+  authRequired: boolean;
+  login: { kind: string; requestPath: string };
+}
+
 export interface Conversation {
   id: string;
   title: string;

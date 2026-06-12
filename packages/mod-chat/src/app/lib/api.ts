@@ -1,6 +1,6 @@
 /** Pattern Chat — API client (pure fetch; SSE via ReadableStream). */
 
-import type { Conversation, MessagePart, Turn, TurnEvent } from "./types";
+import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
 
 const API = "/chat/api";
 
@@ -18,6 +18,9 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  /** Who am I, and is auth required? Always open — drives the sign-in gate. */
+  me: async (): Promise<Me> => json(await fetch(`${API}/me`)),
+
   conversations: {
     list: async (): Promise<Conversation[]> =>
       (await json<{ conversations: Conversation[] }>(await fetch(`${API}/conversations`))).conversations,
@@ -58,6 +61,20 @@ export const api = {
 
 export interface TurnRequestError extends Error {
   status?: number;
+}
+
+/**
+ * Ask the identity stack to email a sign-in link. The endpoint always answers
+ * 200 (no account enumeration) — "sent" here means "if that address exists,
+ * a link is on its way". `next` brings the user back to the chat after login.
+ */
+export async function requestMagicLink(requestPath: string, email: string): Promise<void> {
+  const res = await fetch(requestPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, next: "/chat/" }),
+  });
+  if (!res.ok) throw new Error(`sign-in request failed (${res.status})`);
 }
 
 /**

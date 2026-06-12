@@ -67,6 +67,17 @@ Wire it: add an `agents.guardrail` node (config: `tool` = the tool's name,
 `agents.agent` node's `guardrails` input. A tripped guardrail renders as an
 inline card in the chat — never a crash.
 
+### Require sign-in to chat
+
+By default guests chat anonymously (device-scoped conversations). To gate it:
+add `"@pattern/mod-identity"` and `"@pattern/mod-auth-magic-link"` to the
+mods in `pattern.config.json`, then set `CHAT_REQUIRE_AUTH=true` in `.env`
+(or a comma-separated scope list, e.g. `CHAT_REQUIRE_AUTH=member`). Anonymous
+visitors now get the chat's sign-in card (email → magic link — printed to the
+console until you wire a mail delivery workflow). Unset the var to reopen.
+Admin → Chat → Conversations shows every conversation either way, guests
+included.
+
 ### Compact long conversations
 
 Drop an `agents.history.compact` node between `chat.turn.begin`'s `history`

@@ -22,7 +22,12 @@ const recordSchema = z.record(z.string(), z.unknown());
 const stringRecord = z.record(z.string(), z.string());
 const connectionSchema = z.union([z.string(), z.object({ id: z.string() }).loose()]);
 const requireAuth = z
-  .union([z.boolean(), z.object({ scopes: z.array(z.string()) })])
+  .union([
+    z.boolean(),
+    z.object({ scopes: z.array(z.string()) }),
+    // Deferred form: the host resolves the env var per request (engine.authorize).
+    z.object({ env: z.string().min(1) }),
+  ])
   .optional();
 
 /** A JSON-Schema object carried in op config (compiled to Zod by the host). */
