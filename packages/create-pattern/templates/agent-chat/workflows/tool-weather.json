@@ -1,0 +1,39 @@
+{
+  "id": "tool-weather",
+  "name": "Tool · get_weather",
+  "description": "A tool with validated arguments: the params schema is enforced by the ENGINE before this graph runs — a hallucinated argument never reaches it.",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.tool",
+      "config": {
+        "name": "get_weather",
+        "description": "Current weather for a city (one line).",
+        "params": {
+          "type": "object",
+          "properties": { "city": { "type": "string", "description": "City name, e.g. Paris" } },
+          "required": ["city"]
+        }
+      },
+      "ui": { "x": 60, "y": 80, "pair": "out" }
+    },
+    {
+      "id": "url",
+      "op": "core.string.template",
+      "config": { "template": "https://wttr.in/{{city}}?format=3" },
+      "ui": { "x": 320, "y": 80 }
+    },
+    {
+      "id": "fetch",
+      "op": "core.http.fetch",
+      "config": { "responseType": "text" },
+      "ui": { "x": 580, "y": 80 }
+    },
+    { "id": "out", "op": "boundary.tool.return", "ui": { "x": 840, "y": 80, "pair": "in" } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "args" }, "to": { "node": "url", "port": "data" } },
+    { "from": { "node": "url", "port": "out" }, "to": { "node": "fetch", "port": "url" } },
+    { "from": { "node": "fetch", "port": "body" }, "to": { "node": "out", "port": "result" } }
+  ]
+}

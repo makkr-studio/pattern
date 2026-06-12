@@ -84,6 +84,38 @@ const MODPACKS: Modpack[] = [
       ].filter((l) => l !== ""),
   },
   {
+    id: "agent-chat",
+    label: "Agent chat",
+    hint: "a complete AI-agent chat — tools as workflows, HITL approvals, the works",
+    mods: [
+      "@pattern/mod-chat",
+      "@pattern/mod-agents(-openai)",
+      "@pattern/mod-store",
+      "@pattern/mod-vault",
+      "@pattern/mod-admin",
+    ],
+    contents: [
+      "a product chat app at /chat — streaming transcript, tool activity, image input",
+      "the turn pipeline is a WORKFLOW: fork it in the admin, add guardrails, swap models",
+      "two example tools (get_time, get_weather) — every call is a linked sub-run",
+      "vault for the OpenAI API key (encrypted, masked out of run samples)",
+    ],
+    auth: { default: true },
+    next: ({ name, runCmd, installed, installLine, auth }) =>
+      [
+        `${pc.dim("$")} cd ${name}`,
+        installed ? "" : installLine,
+        `${pc.dim("$")} export OPENAI_API_KEY=sk-… ${pc.dim("(or use the admin Secrets page later)")}`,
+        `${pc.dim("$")} ${runCmd} dev`,
+        "",
+        `${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`,
+        ...(auth
+          ? [`${pc.cyan("→")} the admin (the kitchen) is locked — first boot prints a one-time owner link`]
+          : [`${pc.cyan("→")} the admin (the kitchen) at ${pc.bold("http://localhost:3000/admin")}`]),
+        `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} — watch the tool bud on the strand`,
+      ].filter((l) => l !== ""),
+  },
+  {
     id: "headless",
     label: "Headless backend",
     hint: "declarative HTTP API — routes as JSON, an app-local mod, no UI",
