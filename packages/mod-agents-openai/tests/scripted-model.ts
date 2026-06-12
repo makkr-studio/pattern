@@ -10,7 +10,8 @@ import type { Model, ModelProvider, ModelRequest, ModelResponse } from "@openai/
 export type ScriptedTurn =
   | { kind: "text"; text: string; deltas?: string[] }
   | { kind: "tool_call"; name: string; callId: string; args: Record<string, unknown> }
-  | { kind: "throw"; message: string };
+  | { kind: "throw"; message: string }
+  | { kind: "hang" };
 
 const usage = { requests: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 };
 
@@ -58,12 +59,25 @@ export class ScriptedModel implements Model {
     const turn = this.next();
     if (turn.kind === "throw") throw new Error(turn.message);
     yield { type: "response_started" } as never;
+    if (turn.kind === "hang") {
+      // Park until the run's AbortSignal fires (Stop-button tests).
+      await new Promise<never>((_resolve, reject) => {
+        const abort = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        if (request.signal?.aborted) abort();
+        request.signal?.addEventListener("abort", abort, { once: true });
+      });
+    }
     if (turn.kind === "text") {
       for (const delta of turn.deltas ?? [turn.text]) {
         yield { type: "output_text_delta", delta } as never;
       }
     }
-    const output = turn.kind === "text" ? [messageItem(turn.text)] : [functionCallItem(turn)];
+    const output =
+      turn.kind === "text"
+        ? [messageItem(turn.text)]
+        : turn.kind === "tool_call"
+          ? [functionCallItem(turn)]
+          : [];
     yield {
       type: "response_done",
       response: { id: `resp_${this.requests.length}`, usage, output },

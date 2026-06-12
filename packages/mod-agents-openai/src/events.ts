@@ -134,6 +134,20 @@ export function pumpTurn(
         }
         await streamed.completed;
 
+        // An aborted run may END GRACEFULLY (the SDK swallows the abort and
+        // closes the stream) — cancellation outranks whatever else we saw.
+        if (signal.aborted) {
+          emit({ ...ids, type: "done", stopReason: "cancelled" });
+          resolveOutcome({
+            stopReason: "cancelled",
+            output: null,
+            history: null,
+            stateToken: null,
+            interruptions: [],
+          });
+          return;
+        }
+
         const interruptions = streamed.interruptions ?? [];
         if (interruptions.length > 0) {
           const stateToken = streamed.state.toString();
