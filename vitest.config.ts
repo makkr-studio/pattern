@@ -16,6 +16,8 @@ export default defineConfig({
       "@pattern/mod-sample": r("./packages/mod-sample/src/index.ts"),
       "@pattern/mod-identity": r("./packages/mod-identity/src/index.ts"),
       "@pattern/mod-auth-magic-link": r("./packages/mod-auth-magic-link/src/index.ts"),
+      "@pattern/mod-store": r("./packages/mod-store/src/index.ts"),
+      "@pattern/mod-vault": r("./packages/mod-vault/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built
       // JS to spawn workers); its own @pattern/core imports still alias above.
     },

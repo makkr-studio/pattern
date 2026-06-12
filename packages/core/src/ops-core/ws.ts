@@ -82,4 +82,36 @@ export const wsClose: OpDefinition = defineOp({
   },
 });
 
-export const wsOps: OpDefinition[] = [wsEmit, wsBroadcast, wsJoin, wsLeave, wsClose];
+/**
+ * The notification envelope every `core.ws.notify` push wears. Frontends
+ * filter on `kind === "notify"` and dispatch on `type` — THE convention for
+ * server-initiated "something changed" pings (the WS side of the
+ * SSE-for-streams / WS-for-notifications split).
+ */
+export interface NotifyEnvelope {
+  kind: "notify";
+  type: string;
+  payload: unknown;
+  ts: number;
+}
+
+export const wsNotify: OpDefinition = defineOp({
+  type: "core.ws.notify",
+  title: "core.ws.notify",
+  description:
+    'Push a typed notification to a room (conventionally "user:{id}"): envelope {kind:"notify", type, payload, ts}.',
+  inputs: { room: required(z.string()), type: required(z.string()), payload: value() },
+  outputs: {},
+  execute: async (ctx) => {
+    const [room, type, payload] = await Promise.all([
+      ctx.input.value<string>("room"),
+      ctx.input.value<string>("type"),
+      ctx.input.has("payload") ? ctx.input.value("payload") : Promise.resolve(null),
+    ]);
+    const envelope: NotifyEnvelope = { kind: "notify", type, payload: payload ?? null, ts: Date.now() };
+    await ctx.services.connections.broadcast(room, envelope);
+    return {};
+  },
+});
+
+export const wsOps: OpDefinition[] = [wsEmit, wsBroadcast, wsJoin, wsLeave, wsClose, wsNotify];

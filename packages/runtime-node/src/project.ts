@@ -18,6 +18,8 @@ import { dirname, join, resolve } from "node:path";
 import { Engine, type Workflow } from "@pattern/core";
 import { loadMods } from "./mods.js";
 import { HttpHost } from "./http.js";
+import { WsHost } from "./ws.js";
+import { NodeConnectionRegistry } from "./ws-registry.js";
 
 export interface PatternConfig {
   /** Mod specifiers: npm packages and/or app-local paths ("./mods/foo.ts"). */
@@ -26,6 +28,13 @@ export interface PatternConfig {
   workflows?: string;
   /** HTTP host defaults. */
   http?: { port?: number; host?: string };
+  /**
+   * WebSocket upgrades on the HTTP servers. Default true: `boundary.ws.*`
+   * trigger workflows bind declaratively (live, like HTTP routes) and
+   * authenticated clients can subscribe to `core.ws.notify` pushes even with
+   * no WS workflows at all. Set false to refuse upgrades entirely.
+   */
+  ws?: boolean | { path?: string };
 }
 
 /** Identity helper for authoring `pattern.config.ts` with type-checking. */
@@ -36,6 +45,8 @@ export function defineConfig(config: PatternConfig): PatternConfig {
 export interface LoadedProject {
   engine: Engine;
   http: HttpHost;
+  /** The auto-wired WS host (absent when `config.ws === false`). */
+  ws?: WsHost;
   config: PatternConfig;
   /** Start the HTTP host (opens a server per declared port). */
   start: () => Promise<{ ports: number[]; close: () => Promise<void> }>;
@@ -78,7 +89,9 @@ export async function loadProject(
   }
 
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
-  const engine = opts.engine ?? new Engine({ env: process.env });
+  // The node connection registry up-front means `core.ws.*` ops (notify,
+  // broadcast…) reach the same sockets the WS host accepts.
+  const engine = opts.engine ?? new Engine({ env: process.env, connections: new NodeConnectionRegistry() });
 
   if (config.mods?.length) {
     await loadMods(engine, config.mods, { baseDir });
@@ -93,5 +106,19 @@ export async function loadProject(
 
   const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host });
 
-  return { engine, http, config, start: () => http.start() };
+  // WS rides the same servers (auto mode: boundary.ws.* workflows bind live;
+  // bare connections still serve as the notification channel). One WsHost
+  // attaches to every port the route reconciler opens, now or later.
+  let ws: WsHost | undefined;
+  if (config.ws !== false) {
+    ws = new WsHost(engine, typeof config.ws === "object" ? { path: config.ws.path } : {});
+    const attached = new Set<unknown>();
+    http.onServer((server) => {
+      if (attached.has(server)) return;
+      attached.add(server);
+      ws!.attach(server);
+    });
+  }
+
+  return { engine, http, ws, config, start: () => http.start() };
 }
