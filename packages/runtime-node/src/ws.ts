@@ -47,6 +47,8 @@ export interface WsHostOptions {
   path?: string;
 }
 
+const WS_TRIGGER_OPS = ["boundary.ws.open", "boundary.ws.message", "boundary.ws.close"] as const;
+
 export class WsHost {
   readonly wss: WebSocketServer;
   readonly connections: NodeConnectionRegistry;
@@ -114,23 +116,55 @@ export class WsHost {
    * their requirements — a protected message handler protects the upgrade.
    */
   private deniedReason(principal: Principal): string | undefined {
-    const bindings = [
-      [this.opts.onOpen, "boundary.ws.open"],
-      [this.opts.onMessage, "boundary.ws.message"],
-      [this.opts.onClose, "boundary.ws.close"],
-    ] as const;
-    for (const [binding, op] of bindings) {
-      if (!binding) continue;
-      const r = this.resolve(binding, op);
-      if (!r) continue;
-      const cfg = r.workflow.nodes.find((n) => n.id === r.trigger)?.config as
-        | { requireAuth?: AuthRequirement }
-        | undefined;
-      if (!cfg?.requireAuth) continue;
-      const auth = this.engine.authorize(principal, cfg.requireAuth);
-      if (!auth.ok) return `Unauthorized: ${auth.reason}`;
+    for (const op of WS_TRIGGER_OPS) {
+      for (const r of this.resolved(op)) {
+        const cfg = r.workflow.nodes.find((n) => n.id === r.trigger)?.config as
+          | { requireAuth?: AuthRequirement }
+          | undefined;
+        if (!cfg?.requireAuth) continue;
+        const auth = this.engine.authorize(principal, cfg.requireAuth);
+        if (!auth.ok) return `Unauthorized: ${auth.reason}`;
+      }
     }
     return undefined;
+  }
+
+  /** Explicit binding (when configured) or auto mode is on for this host. */
+  private get auto(): boolean {
+    return !this.opts.onMessage && !this.opts.onOpen && !this.opts.onClose;
+  }
+
+  /**
+   * Bindings to enforce/fire for a trigger op. Explicit options win; auto mode
+   * resolves LIVE from the workflow registry (workflows deployed from the
+   * admin bind without a restart, mirroring HttpHost's declarative routing).
+   * Auth enforces ALL matching workflows' requirements; firing uses the first
+   * (one socket, no path dispatch — multi-handler WS is an explicit-options
+   * setup).
+   */
+  private resolved(opType: string): Array<{ workflow: Workflow; trigger: string }> {
+    const explicit =
+      opType === "boundary.ws.open"
+        ? this.opts.onOpen
+        : opType === "boundary.ws.message"
+          ? this.opts.onMessage
+          : this.opts.onClose;
+    if (explicit) {
+      const r = this.resolve(explicit, opType);
+      return r ? [r] : [];
+    }
+    if (!this.auto) return [];
+    const out: Array<{ workflow: Workflow; trigger: string }> = [];
+    for (const workflow of this.engine.workflows.list()) {
+      const node = workflow.nodes.find((n) => n.op === opType);
+      if (node) out.push({ workflow, trigger: node.id });
+    }
+    return out;
+  }
+
+  private bindingFor(opType: string): WsBinding | undefined {
+    const r = this.resolved(opType)[0];
+    return r ? { workflow: r.workflow, trigger: r.trigger } : undefined;
   }
 
   private onConnection(ws: WebSocket, principal: Principal): void {
@@ -145,21 +179,24 @@ export class WsHost {
     }
 
     const user = principalToUser(principal);
-    if (this.opts.onOpen) {
-      void this.fire(this.opts.onOpen, "boundary.ws.open", { connection: ref, user }, principal);
+    const onOpen = this.bindingFor("boundary.ws.open");
+    if (onOpen) {
+      void this.fire(onOpen, "boundary.ws.open", { connection: ref, user }, principal);
     }
 
     ws.on("message", (data, isBinary) => {
       const message = isBinary ? new Uint8Array(data as Buffer) : tryJson(data.toString());
-      if (this.opts.onMessage) {
-        void this.fireAndSend(this.opts.onMessage, ref, { message, connection: ref, user }, principal);
+      const onMessage = this.bindingFor("boundary.ws.message");
+      if (onMessage) {
+        void this.fireAndSend(onMessage, ref, { message, connection: ref, user }, principal);
       }
     });
 
     ws.on("close", (code, reason) => {
-      if (this.opts.onClose) {
+      const onClose = this.bindingFor("boundary.ws.close");
+      if (onClose) {
         void this.fire(
-          this.opts.onClose,
+          onClose,
           "boundary.ws.close",
           { connection: ref, user, code, reason: reason.toString() },
           principal,

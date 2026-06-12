@@ -204,6 +204,18 @@ export class Engine {
     return { ...this.deps(), traceSink: noopTraceSink };
   }
 
+  /**
+   * Add a runtime-discovered secret value to the sample-masking pool (mods
+   * that mint or decrypt secrets — a vault — call this so the value can never
+   * appear in sampled I/O). Same pool the engine feeds from workflow config;
+   * registering before the value flows is enough, masking happens at sample
+   * time. Short strings are ignored (masking "a" would shred samples).
+   */
+  registerSecretValue(value: string): this {
+    if (typeof value === "string" && value.length >= 4) this.secretValues.add(value);
+    return this;
+  }
+
   // ── Registration ──
 
   registerOp(op: OpDefinition): this {

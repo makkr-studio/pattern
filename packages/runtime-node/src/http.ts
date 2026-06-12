@@ -169,6 +169,7 @@ export class HttpHost {
   private apps: AppMount[] = [];
   private unsubscribe?: () => void;
   private readonly defaultPort: number;
+  private readonly serverListeners = new Set<(server: Server, port: number) => void>();
 
   constructor(
     private readonly engine: Engine,
@@ -325,9 +326,25 @@ export class HttpHost {
       server.listen(port, this.opts.host, () => {
         server.removeAllListeners("error");
         this.servers.set(port, server);
+        for (const cb of this.serverListeners) cb(server, port);
         resolve();
       });
     });
+  }
+
+  /** The live http.Server for `port`, if open (e.g. to attach a WS host). */
+  server(port: number): Server | undefined {
+    return this.servers.get(port);
+  }
+
+  /**
+   * Run `cb` for every open server, now and as new ports open (route
+   * reconciliation opens/closes servers live) — the WS auto-wiring seam.
+   */
+  onServer(cb: (server: Server, port: number) => void): () => void {
+    for (const [port, server] of this.servers) cb(server, port);
+    this.serverListeners.add(cb);
+    return () => this.serverListeners.delete(cb);
   }
 
   private match(port: number, method: string, pathname: string): { route: CompiledRoute; params: Record<string, string> } | undefined {

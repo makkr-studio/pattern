@@ -35,6 +35,8 @@ const PKG_DIRS = [
   "packages/mod-admin",
   "packages/mod-identity",
   "packages/mod-auth-magic-link",
+  "packages/mod-store",
+  "packages/mod-vault",
   "packages/create-pattern",
 ];
 

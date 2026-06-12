@@ -46,6 +46,11 @@ export class NodeConnectionRegistry implements ConnectionRegistry {
     return this.sockets.get(id);
   }
 
+  /** Ids of every live connection (observability; tests). */
+  ids(): string[] {
+    return [...this.sockets.keys()];
+  }
+
   async send(connection: ConnectionRef | string, data: unknown): Promise<void> {
     this.sockets.get(idOf(connection))?.send(encode(data));
   }
