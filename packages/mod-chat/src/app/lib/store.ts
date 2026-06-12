@@ -151,8 +151,10 @@ class ChatStore {
   }
 
   private async consume(genr: AsyncGenerator<TurnEvent>, turnId: string): Promise<void> {
+    let sawDone = false;
     try {
       for await (const ev of genr) {
+        if (ev.type === "done") sawDone = true;
         this.patchTurn(turnId, (t) => {
           const next = { ...t, events: [...t.events, ev] };
           if (ev.type === "done") {
@@ -174,6 +176,9 @@ class ChatStore {
       if (finished?.status === "complete") sfx.done();
       if (finished?.status === "interrupted") sfx.attention();
       this.set({ liveTurnId: this.state.liveTurnId === turnId ? null : this.state.liveTurnId });
+      // The live tail ended without a terminal event (producer died, server
+      // bounced) — the STORE is the source of truth; re-pull the real state.
+      if (!sawDone) void this.refreshTurnsForce();
       void this.loadConversations(); // titles/order may have changed
     }
   }

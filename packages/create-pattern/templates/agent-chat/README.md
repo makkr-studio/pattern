@@ -17,10 +17,11 @@ npm run dev
 
 Copy `.env.example` to `.env` (gitignored, loaded automatically on boot —
 your real environment always wins) and set `OPENAI_API_KEY`. Or store it
-encrypted: admin **Secrets** page (System → Secrets) + a `vault.read` node
-wired into the pipeline's `apiKey` input — vault values never appear in run
-samples. The vault's own master key (`PATTERN_VAULT_KEY`) lives in `.env`
-too: generate it ONCE with `openssl rand -base64 32` and keep it forever.
+encrypted: admin **Secrets** page (System → Secrets), as a secret named
+`OPENAI_API_KEY` — the agent finds it there by itself, and vault values
+never appear in run samples. The vault's own master key
+(`PATTERN_VAULT_KEY`) lives in `.env`: generate it ONCE with
+`openssl rand -base64 32` and keep it forever.
 
 ## Add a tool
 

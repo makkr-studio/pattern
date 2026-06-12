@@ -13,11 +13,12 @@ tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
    - `npx pattern ops chat` — the chat pipeline ops
    - `npx pattern ops <type>` — full ports + config detail for any op
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`.
-3. The agent needs an API key: put `OPENAI_API_KEY` in `.env` (copied from
-   `.env.example`; loaded automatically, real env wins) — or store it on the
-   admin **Secrets** page and wire a `vault.read` node into the pipeline's
-   `apiKey` input (vault values are masked out of run samples).
-   `PATTERN_VAULT_KEY` (the vault's master key) belongs in `.env` too.
+3. The agent needs an API key, resolved in order: explicit `apiKey` input →
+   `OPENAI_API_KEY` in `.env` (copied from `.env.example`; loaded
+   automatically, real env wins) → a vault secret NAMED `OPENAI_API_KEY`
+   (admin → System → Secrets — no wiring needed; vault values are masked out
+   of run samples). `PATTERN_VAULT_KEY` (the vault's master key) belongs in
+   `.env`.
 4. Don't edit `./.pattern` by hand; `./.pattern-data` is runtime data
    (conversations, blobs, secrets) and is gitignored.
 

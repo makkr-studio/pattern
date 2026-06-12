@@ -480,7 +480,9 @@ function makeOps(getEngine: () => Engine | undefined): OpDefinition[] {
         endedAt: Date.now(),
       }));
       await svc.leases.release(`chat:conversation:${meta.conversationId}`, `turn:${meta.turnId}`);
-      const history = await maybe<unknown[]>(ctx, "history");
+      // The history slot REJECTS when the producing run-node failed — the
+      // terminal bookkeeping above must still have happened, so swallow.
+      const history = await maybe<unknown[]>(ctx, "history").catch(() => undefined);
       if (status === "complete" && Array.isArray(history) && history.length > 0) {
         await casPut(svc, CONVERSATIONS, meta.conversationId, (data) => ({
           ...data,
