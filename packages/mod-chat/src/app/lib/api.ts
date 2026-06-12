@@ -68,6 +68,11 @@ export interface TurnRequestError extends Error {
  * 200 (no account enumeration) — "sent" here means "if that address exists,
  * a link is on its way". `next` brings the user back to the chat after login.
  */
+/** Revoke the session. POST (identity's CSRF guard makes forged logouts inert). */
+export async function signOut(logoutPath: string): Promise<void> {
+  await fetch(logoutPath, { method: "POST" }).catch(() => {});
+}
+
 export async function requestMagicLink(requestPath: string, email: string): Promise<void> {
   const res = await fetch(requestPath, {
     method: "POST",
