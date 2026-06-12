@@ -1,6 +1,6 @@
 {
   "name": "@pattern/mod-store",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Generic persistence for Pattern apps: JSON document collections with declared indexes, a blob store, and CAS leases (with auto-release on run settle). SQLite or in-memory drivers; ops for visible canvas wiring; a Data browser in the admin.",
   "type": "module",
   "license": "MIT",
