@@ -1,0 +1,231 @@
+@import "tailwindcss";
+
+/*
+ * Pattern Chat — design language: a TRANSCRIPT, not bubbles.
+ * Typography-led, warm monochrome, generous whitespace. The signature is the
+ * STRAND: a hairline rail along each agent turn that pulses while streaming
+ * and buds where tools fire. Sober at rest, alive at work.
+ */
+
+:root {
+  --bg: #faf9f7;
+  --bg-raised: #ffffff;
+  --fg: #1f1c18;
+  --fg-soft: #6e675e;
+  --fg-faint: #a39b8f;
+  --line: #e8e3db;
+  --line-soft: #f1ede6;
+  --accent: #b4552d; /* terracotta — the strand's living color */
+  --accent-soft: #f6e8e0;
+  --ok: #4d7c5f;
+  --warn: #b48a2d;
+  --danger: #b43d3d;
+  --danger-soft: #f9eaea;
+  --user-chip: #efeae2;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191613;
+    --bg-raised: #211d19;
+    --fg: #ece7df;
+    --fg-soft: #a59c90;
+    --fg-faint: #6e675e;
+    --line: #322d27;
+    --line-soft: #272320;
+    --accent: #d98d62;
+    --accent-soft: #3a2a20;
+    --ok: #7fb392;
+    --warn: #d3b465;
+    --danger: #d77a7a;
+    --danger-soft: #382323;
+    --user-chip: #2b2620;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, "Inter", sans-serif;
+  font-size: 16.5px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* ── the strand ──────────────────────────────────────────────────────── */
+
+.strand {
+  position: relative;
+}
+.strand::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line);
+  transition: background 400ms ease;
+}
+.strand[data-live="true"]::before {
+  background: linear-gradient(var(--accent), var(--line));
+  animation: strand-pulse 1.6s ease-in-out infinite;
+}
+.strand[data-status="error"]::before {
+  background: var(--danger);
+}
+.strand[data-status="interrupted"]::before {
+  background: var(--warn);
+}
+
+@keyframes strand-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* a bud: where a tool fired on the strand */
+.bud {
+  position: relative;
+}
+.bud::before {
+  content: "";
+  position: absolute;
+  left: -1.625rem;
+  top: 0.66rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 2px solid var(--fg-faint);
+}
+.bud[data-phase="start"]::before {
+  border-color: var(--accent);
+  animation: strand-pulse 1.2s ease-in-out infinite;
+}
+.bud[data-phase="done"]::before {
+  border-color: var(--ok);
+}
+.bud[data-phase="error"]::before {
+  border-color: var(--danger);
+}
+.bud[data-kind="approval"]::before {
+  border-color: var(--warn);
+}
+
+/* streaming caret */
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: caret-blink 1s steps(2) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* prose inside agent turns */
+.prose-chat p {
+  margin: 0 0 0.85em;
+}
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+.prose-chat code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--line-soft);
+  padding: 0.1em 0.35em;
+  border-radius: 5px;
+}
+.prose-chat pre {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font-size: 0.86em;
+  line-height: 1.55;
+}
+.prose-chat pre code {
+  background: none;
+  padding: 0;
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0 0 0.85em;
+  padding-left: 1.4em;
+}
+.prose-chat ul {
+  list-style: disc;
+}
+.prose-chat ol {
+  list-style: decimal;
+}
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3 {
+  font-size: 1.04em;
+  font-weight: 650;
+  margin: 1.1em 0 0.5em;
+}
+.prose-chat a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat blockquote {
+  border-left: 2px solid var(--line);
+  margin: 0 0 0.85em;
+  padding-left: 0.9em;
+  color: var(--fg-soft);
+}
+
+/* scrollbars, quietly */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* entrance for new turns */
+.turn-enter {
+  animation: turn-in 280ms ease both;
+}
+@keyframes turn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+textarea {
+  field-sizing: content;
+}
