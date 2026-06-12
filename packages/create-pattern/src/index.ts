@@ -48,6 +48,12 @@ interface Modpack {
    * → the question is never asked (blank has no HTTP host).
    */
   auth?: { default: boolean };
+  /**
+   * Docs is a DIMENSION too: any pack serving HTTP can ship `/docs` — the
+   * Pattern handbook + a live op reference, where every installed mod
+   * contributes its own chapter. Absent → never asked (blank has no host).
+   */
+  docs?: { default: boolean };
   /** Tailored next steps once scaffolded. */
   next: (ctx: NextCtx) => string[];
 }
@@ -55,20 +61,23 @@ interface Modpack {
 /** What the auth toggle adds (pack card lines + config wiring). */
 const AUTH_MODS = ["@pattern/mod-identity", "@pattern/mod-auth-magic-link"];
 
+/** What the docs toggle adds: self-reflecting documentation at /docs. */
+const DOCS_MOD = "@pattern/mod-docs";
+
 const MODPACKS: Modpack[] = [
   {
     id: "studio",
     label: "Studio",
     hint: "engine + visual admin — editor, versions, runs, traces (recommended)",
-    mods: ["@pattern/mod-admin", "@pattern/mod-docs", "./mods/quotes.mjs (app-local)"],
+    mods: ["@pattern/mod-admin", "./mods/quotes.mjs (app-local)"],
     contents: [
       "the admin SPA at /admin — edit, version, deploy, replay workflows",
       "3 editable example workflows seeded on first boot",
       "an app-local mod adding ops AND an admin page (the extension surface, live)",
-      "versioned docs for every installed mod at /docs — op reference generated live",
     ],
     // Secure-by-default is the philosophy — the flagship pack ships locked.
     auth: { default: true },
+    docs: { default: true },
     next: ({ name, runCmd, installed, installLine, auth }) =>
       [
         `${pc.dim("$")} cd ${name}`,
@@ -94,16 +103,15 @@ const MODPACKS: Modpack[] = [
       "@pattern/mod-store",
       "@pattern/mod-vault",
       "@pattern/mod-admin",
-      "@pattern/mod-docs",
     ],
     contents: [
       "a product chat app at /chat — streaming transcript, tool activity, image input",
       "the turn pipeline is a WORKFLOW: fork it in the admin, add guardrails, swap models",
       "two example tools (get_time, get_weather) — every call is a linked sub-run",
       "vault for the OpenAI API key (encrypted, masked out of run samples)",
-      "self-documenting: /docs shows every installed mod's chapter + the live op reference",
     ],
     auth: { default: true },
+    docs: { default: true },
     next: ({ name, runCmd, installed, installLine, auth }) =>
       [
         `${pc.dim("$")} cd ${name}`,
@@ -130,6 +138,7 @@ const MODPACKS: Modpack[] = [
     ],
     // APIs often start behind a gateway — opt in with one keystroke.
     auth: { default: false },
+    docs: { default: true },
     next: ({ name, runCmd, installed, installLine, auth }) =>
       [
         `${pc.dim("$")} cd ${name}`,
@@ -179,6 +188,8 @@ interface Flags {
   list: boolean;
   /** undefined = ask (interactive) / pack default (headless). */
   auth?: boolean;
+  /** Same tri-state as auth. */
+  docs?: boolean;
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -191,6 +202,8 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--no-git") flags.git = false;
     else if (a === "--auth") flags.auth = true;
     else if (a === "--no-auth") flags.auth = false;
+    else if (a === "--docs") flags.docs = true;
+    else if (a === "--no-docs") flags.docs = false;
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (!a.startsWith("-") && !flags.name) flags.name = a;
@@ -215,8 +228,8 @@ function detectPm(): Pm {
   return "npm";
 }
 
-function packCard(pack: Modpack, auth: boolean): string {
-  const modList = auth ? [...AUTH_MODS, ...pack.mods] : pack.mods;
+function packCard(pack: Modpack, auth: boolean, docs: boolean): string {
+  const modList = [...(auth ? AUTH_MODS : []), ...pack.mods, ...(docs ? [DOCS_MOD] : [])];
   const mods = modList.length ? modList.map((m) => pc.magenta(m)).join(pc.dim(" + ")) : pc.dim("none — just the engine");
   const authLines = auth
     ? [
@@ -224,10 +237,14 @@ function packCard(pack: Modpack, auth: boolean): string {
         `${pc.cyan("◆")} first boot prints a one-time link — the first account becomes admin`,
       ]
     : [];
+  const docsLines = docs
+    ? [`${pc.cyan("◆")} docs at /docs: the Pattern handbook + a live op reference — every mod documents itself`]
+    : [];
   return [
     `${pc.dim("mods:")} ${mods}`,
     ...pack.contents.map((line) => `${pc.cyan("◆")} ${line}`),
     ...authLines,
+    ...docsLines,
     `${pc.green("✦")} AGENTS.md + CLAUDE.md included — your coding agent knows this project`,
   ].join("\n");
 }
@@ -235,10 +252,10 @@ function packCard(pack: Modpack, auth: boolean): string {
 function listPacks(): void {
   console.log(`\n${pc.bold("Modpacks")} — curated mod sets per use case:\n`);
   for (const pack of MODPACKS) {
-    const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"} by default — --auth/--no-auth)`) : "";
+    const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"}, docs: ${pack.docs?.default ? "on" : "off"} by default)`) : "";
     console.log(`  ${pc.cyan(pack.id.padEnd(10))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
-  console.log(`\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth]")}\n`);
+  console.log(`\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth] [--docs|--no-docs]")}\n`);
 }
 
 async function copyTemplate(packId: string, targetDir: string, name: string): Promise<void> {
@@ -326,6 +343,19 @@ async function applyAuth(targetDir: string, packId: string): Promise<void> {
   }
 }
 
+/** Flip the docs dimension on: /docs joins the manifest + config (last — it documents the rest). */
+async function applyDocs(targetDir: string): Promise<void> {
+  const pkgPath = join(targetDir, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
+  pkg.dependencies[DOCS_MOD] = "^0.1.0";
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
+  cfg.mods = [...cfg.mods, DOCS_MOD];
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+}
+
 async function runInteractive(flags: Flags): Promise<void> {
   banner();
   p.intro(pc.bgMagenta(pc.black(" create-pattern ")));
@@ -364,8 +394,23 @@ async function runInteractive(flags: Flags): Promise<void> {
     }
   }
 
+  // Docs is orthogonal too — same tri-state as auth.
+  let docs = false;
+  if (pack.docs) {
+    if (flags.docs !== undefined) {
+      docs = flags.docs;
+    } else {
+      const answer = await p.confirm({
+        message: `Add documentation? ${pc.dim("/docs — the handbook + a live op reference; every mod's chapter")}`,
+        initialValue: pack.docs.default,
+      });
+      if (p.isCancel(answer)) return cancel();
+      docs = answer;
+    }
+  }
+
   // The pack card: what this modpack actually wires up.
-  p.note(packCard(pack, auth), `${pack.label} modpack`);
+  p.note(packCard(pack, auth, docs), `${pack.label} modpack`);
 
   const pm =
     flags.pm ??
@@ -378,11 +423,14 @@ async function runInteractive(flags: Flags): Promise<void> {
 
   const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
 
-  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth });
+  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, docs });
 
   const runCmd = pm === "npm" ? "npm run" : String(pm);
   p.note(
-    pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth }).join("\n"),
+    [
+      ...pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth }),
+      ...(docs ? [`${pc.cyan("→")} docs: ${pc.bold("http://localhost:3000/docs")} ${pc.dim("(public — DOCS_REQUIRE_AUTH gates it)")}`] : []),
+    ].join("\n"),
     "Next steps",
   );
   p.note(
@@ -404,16 +452,18 @@ async function runHeadless(flags: Flags): Promise<void> {
   const pm = flags.pm ?? detectPm();
   // No prompt to ask — flags win, else the pack's default (studio ships locked).
   const auth = pack.auth ? (flags.auth ?? pack.auth.default) : false;
+  const docs = pack.docs ? (flags.docs ?? pack.docs.default) : false;
   console.log(
-    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${auth ? ", auth on" : ""})`,
+    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${auth ? ", auth on" : ""}${docs ? ", docs on" : ""})`,
   );
-  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth });
+  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
   if (pack.id === "studio") console.log(`Admin: http://localhost:3000/admin`);
+  if (docs) console.log(`Docs: http://localhost:3000/docs`);
 }
 
-async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boolean; git: boolean; auth: boolean }): Promise<void> {
+async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boolean; git: boolean; auth: boolean; docs: boolean }): Promise<void> {
   const targetDir = resolve(process.cwd(), opts.name);
   if (existsSync(targetDir) && (await readdir(targetDir)).length > 0) {
     throw new Error(`directory "${opts.name}" already exists and is not empty`);
@@ -423,7 +473,8 @@ async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boo
   spin?.start(`Unpacking the ${opts.pack} modpack`);
   await copyTemplate(opts.pack, targetDir, opts.name);
   if (opts.auth) await applyAuth(targetDir, opts.pack);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.auth ? " + auth" : ""})`);
+  if (opts.docs) await applyDocs(targetDir);
+  spin?.stop(`Modpack unpacked (${opts.pack}${opts.auth ? " + auth" : ""}${opts.docs ? " + docs" : ""})`);
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });

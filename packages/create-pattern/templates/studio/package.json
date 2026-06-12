@@ -10,8 +10,7 @@
   "dependencies": {
     "@pattern/core": "^0.1.0",
     "@pattern/runtime-node": "^0.1.0",
-    "@pattern/mod-admin": "^0.1.0",
-    "@pattern/mod-docs": "^0.1.0"
+    "@pattern/mod-admin": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

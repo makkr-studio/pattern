@@ -15,8 +15,7 @@
     "@pattern/mod-vault": "^0.1.0",
     "@pattern/mod-agents": "^0.1.0",
     "@pattern/mod-agents-openai": "^0.1.0",
-    "@pattern/mod-chat": "^0.1.0",
-    "@pattern/mod-docs": "^0.1.0"
+    "@pattern/mod-chat": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

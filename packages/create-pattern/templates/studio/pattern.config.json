@@ -2,7 +2,6 @@
   "$schema": "pattern/config/v1",
   "mods": [
     "@pattern/mod-admin",
-    "@pattern/mod-docs",
     "./mods/quotes.mjs"
   ],
   "workflows": "./workflows"
