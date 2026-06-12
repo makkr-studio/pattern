@@ -201,31 +201,83 @@ function AgentTurn({ turn, live }: { turn: Turn; live: boolean }) {
   );
 }
 
+/**
+ * Reading-first scroll model. Sending a message anchors it at the TOP of the
+ * viewport — once — and the answer streams into space that already exists,
+ * so the container never scrolls under the reader.
+ *
+ * The trick is what we DON'T do: no reserved-padding math against a response
+ * of unknown length, and no pin-to-bottom loop. The last exchange block gets
+ * `min-height ≈ viewport` while it's the anchored one — a short answer leaves
+ * quiet space below (breathing room), a long one grows past the fold and the
+ * reader scrolls when THEY choose. Opening a conversation still lands at the
+ * end (dense, no reservation); the reservation only exists for turns sent in
+ * this session, and migrates forward on the next send — any collapse of the
+ * old block happens at the exact moment we're scrolling anyway.
+ */
 export function Transcript({ turns, liveTurnId }: { turns: Turn[]; liveTurnId: string | null }) {
-  const endRef = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const lastRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState(0);
+  const [anchoredId, setAnchoredId] = useState<string | null>(null);
+  const prev = useRef<{ conv?: string; last?: string }>({});
 
-  // Stay pinned to the bottom while streaming — unless the user scrolled up.
+  const last = turns.at(-1);
+  const convId = turns[0]?.conversationId;
+
+  // The scroller's height IS the reservation — track it through resizes
+  // (mobile keyboards, window drags) so the anchor stays reachable.
   useEffect(() => {
-    if (pinned.current) endRef.current?.scrollIntoView({ block: "end" });
-  });
+    const el = scrollerRef.current;
+    if (!el) return;
+    const update = () => setViewport(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!last) return;
+    const sameConv = prev.current.conv === convId;
+    const newLast = prev.current.last !== last.id;
+    prev.current = { conv: convId, last: last.id };
+    if (!sameConv) {
+      // Switched/opened a conversation: land at the end, no reservation.
+      setAnchoredId(null);
+      scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
+      return;
+    }
+    // A turn WE just sent (liveTurnId is set synchronously with it) → anchor.
+    if (newLast && last.id === liveTurnId) setAnchoredId(last.id);
+  }, [convId, last, liveTurnId]);
+
+  // Scroll AFTER the min-height committed, so "top" is actually reachable.
+  useEffect(() => {
+    if (anchoredId) lastRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [anchoredId]);
 
   return (
-    <div
-      className="h-full overflow-y-auto"
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      }}
-    >
+    <div ref={scrollerRef} className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[44rem] flex-col gap-7 px-5 py-8">
-        {turns.map((turn) => (
-          <React.Fragment key={turn.id}>
-            <UserMessage input={turn.input} />
-            <AgentTurn turn={turn} live={liveTurnId === turn.id} />
-          </React.Fragment>
-        ))}
-        <div ref={endRef} />
+        {turns.map((turn) => {
+          const isLast = turn.id === last?.id;
+          return (
+            <div
+              key={turn.id}
+              ref={isLast ? lastRef : undefined}
+              className="flex scroll-mt-3 flex-col gap-7"
+              style={
+                isLast && anchoredId === turn.id && viewport
+                  ? { minHeight: Math.max(0, viewport - 60) }
+                  : undefined
+              }
+            >
+              <UserMessage input={turn.input} />
+              <AgentTurn turn={turn} live={liveTurnId === turn.id} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
