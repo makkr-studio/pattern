@@ -312,7 +312,21 @@ export class HttpHost {
 
   private openServer(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      const server = createServer((req, res) => void this.handle(req, res, port));
+      // The backstop: NOTHING a request does may become an unhandled rejection
+      // (plain `node` kills the process on those). E.g. a streaming out-gate
+      // whose producer fails AFTER the run settled errors the response stream
+      // mid-write — that's a request-level failure, not a process-level one.
+      const server = createServer((req, res) =>
+        this.handle(req, res, port).catch((err) => {
+          console.error("[pattern] request handler failed:", err);
+          try {
+            if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+          } catch {
+            res.destroy();
+          }
+        }),
+      );
       // Surface listen errors (e.g. EADDRINUSE) as a rejection instead of an
       // unhandled 'error' event that would crash the process.
       server.once("error", (err) => reject(err));
@@ -649,9 +663,15 @@ async function writeResponse(res: ServerResponse, payload: ResponsePayload): Pro
       : { "transfer-encoding": "chunked", ...headers });
     const src = payload.stream ?? (payload.body instanceof ReadableStream ? payload.body : undefined);
     if (src) {
-      for await (const chunk of streamIter(src)) {
-        if (sse) res.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
-        else res.write(chunk instanceof Uint8Array ? chunk : typeof chunk === "string" ? chunk : JSON.stringify(chunk));
+      try {
+        for await (const chunk of streamIter(src)) {
+          if (sse) res.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
+          else res.write(chunk instanceof Uint8Array ? chunk : typeof chunk === "string" ? chunk : JSON.stringify(chunk));
+        }
+      } catch (err) {
+        // The producer failed mid-stream (headers are long gone) — end the
+        // response; consumers recover from their source of truth.
+        console.error("[pattern] response stream errored mid-flight:", err instanceof Error ? err.message : err);
       }
     }
     res.end();

@@ -68,12 +68,13 @@ releases the lease at the terminal event.
 
 ## API keys
 
-`agents.run` falls back to `OPENAI_API_KEY` from the environment —
-`loadProject` auto-loads a `.env` file next to `pattern.config.json`
-(existing env always wins), which is also where `PATTERN_VAULT_KEY` lives.
-The better way for the model key: store it on the admin **Secrets** page and wire `vault.read` into
-the `apiKey` input — the decrypted value registers into the engine's sample
-mask, so it can never appear in sampled run I/O.
+`agents.run` resolves its key in order: an explicit `apiKey` input →
+`OPENAI_API_KEY` from the environment (`loadProject` auto-loads a `.env`
+file next to `pattern.config.json`; existing env always wins — that's also
+where `PATTERN_VAULT_KEY` lives) → **a vault secret named `OPENAI_API_KEY`**
+(admin → System → Secrets) — storing it in the vault Just Works, no wiring.
+Vault-read values register into the engine's sample mask either way, so the
+key can never appear in sampled run I/O.
 
 ## Customizing the chat pipeline
 

@@ -178,6 +178,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       // stream input would otherwise capture instantly — even on the conflict
       // path, where its producer is skipped and the stream never flows.
       { from: { node: "gate", port: "then" }, to: { node: "ok", port: "in" } },
+      { from: { node: "gate", port: "then" }, to: { node: "sink", port: "in" } },
       { from: { node: "run", port: "events" }, to: { node: "ok", port: "stream" } },
       { from: { node: "run", port: "events" }, to: { node: "sink", port: "events" } },
       { from: { node: "begin", port: "turn" }, to: { node: "sink", port: "turn" } },
@@ -237,6 +238,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       { from: { node: "begin", port: "decisions" }, to: { node: "resume", port: "decisions" } },
       { from: { node: "begin", port: "turnId" }, to: { node: "resume", port: "turnId" } },
       { from: { node: "gate", port: "then" }, to: { node: "ok", port: "in" } },
+      { from: { node: "gate", port: "then" }, to: { node: "sink", port: "in" } },
       { from: { node: "resume", port: "events" }, to: { node: "ok", port: "stream" } },
       { from: { node: "resume", port: "events" }, to: { node: "sink", port: "events" } },
       { from: { node: "begin", port: "turn" }, to: { node: "sink", port: "turn" } },

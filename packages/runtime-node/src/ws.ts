@@ -179,16 +179,19 @@ export class WsHost {
     }
 
     const user = principalToUser(principal);
+    // Fire-and-forget MUST swallow into a log — an unhandled rejection here
+    // would take the whole process down under plain `node`.
+    const logFail = (err: unknown) => console.error("[pattern] ws workflow failed:", err);
     const onOpen = this.bindingFor("boundary.ws.open");
     if (onOpen) {
-      void this.fire(onOpen, "boundary.ws.open", { connection: ref, user }, principal);
+      void this.fire(onOpen, "boundary.ws.open", { connection: ref, user }, principal).catch(logFail);
     }
 
     ws.on("message", (data, isBinary) => {
       const message = isBinary ? new Uint8Array(data as Buffer) : tryJson(data.toString());
       const onMessage = this.bindingFor("boundary.ws.message");
       if (onMessage) {
-        void this.fireAndSend(onMessage, ref, { message, connection: ref, user }, principal);
+        void this.fireAndSend(onMessage, ref, { message, connection: ref, user }, principal).catch(logFail);
       }
     });
 
@@ -200,7 +203,7 @@ export class WsHost {
           "boundary.ws.close",
           { connection: ref, user, code, reason: reason.toString() },
           principal,
-        );
+        ).catch(logFail);
       }
       this.connections.remove(ref.id);
     });

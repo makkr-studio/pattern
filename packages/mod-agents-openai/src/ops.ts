@@ -96,17 +96,41 @@ const agentOp: OpDefinition = {
 
 /* ── runner plumbing ───────────────────────────────────────────────────── */
 
-function makeRunner(ctx: OpContext, apiKey: string | undefined): Runner {
+/** Duck-typed view of mod-vault's service (looked up by key — no dependency). */
+interface VaultLike {
+  unlocked(): boolean;
+  has(name: string): Promise<boolean>;
+  read(name: string): Promise<string>;
+}
+
+/**
+ * The API key, in order: explicit `apiKey` input (wire vault.read or any
+ * value) → OPENAI_API_KEY env var → a vault secret NAMED "OPENAI_API_KEY"
+ * (admin → Secrets) — so storing the key in the vault Just Works without
+ * wiring a node. Vault reads register into the sample mask either way.
+ */
+export async function resolveApiKey(ctx: OpContext, apiKey?: string): Promise<string | undefined> {
+  if (apiKey) return apiKey;
+  if (ctx.env.OPENAI_API_KEY) return ctx.env.OPENAI_API_KEY;
+  const vault = ctx.services["vaultService"] as VaultLike | undefined;
+  if (vault?.unlocked() && (await vault.has("OPENAI_API_KEY").catch(() => false))) {
+    return vault.read("OPENAI_API_KEY");
+  }
+  return undefined;
+}
+
+const NO_KEY_HINT =
+  "agents: no API key. Set OPENAI_API_KEY (a .env file next to pattern.config.json is loaded " +
+  "automatically), store a secret named OPENAI_API_KEY in the vault (admin → System → Secrets), " +
+  "or wire a key into the apiKey input.";
+
+async function makeRunner(ctx: OpContext, apiKey: string | undefined): Promise<Runner> {
   const override = ctx.services[MODEL_PROVIDER_SERVICE];
   if (override) {
     return new Runner({ modelProvider: override as never, tracingDisabled: true });
   }
-  const key = apiKey ?? ctx.env.OPENAI_API_KEY;
-  if (!key) {
-    throw new Error(
-      "agents: no API key — wire vault.read (or core env) into apiKey, or set OPENAI_API_KEY",
-    );
-  }
+  const key = await resolveApiKey(ctx, apiKey);
+  if (!key) throw new Error(NO_KEY_HINT);
   // Pattern's tracing is the source of truth; the SDK exporter stays off.
   return new Runner({ modelProvider: new OpenAIProvider({ apiKey: key }), tracingDisabled: true });
 }
@@ -172,7 +196,7 @@ const runOp: OpDefinition = {
       maybe<string>(ctx, "apiKey"),
       maybe<string>(ctx, "turnId"),
     ]);
-    const runner = makeRunner(ctx, apiKey);
+    const runner = await makeRunner(ctx, apiKey);
     const agent = await reifyAgent(agentSchema.parse(desc), ctx);
     const turnItems = await toInputItems(input, ctx);
     const items = [...((history ?? []) as AgentInputItem[]), ...turnItems];
@@ -212,7 +236,7 @@ const resumeOp: OpDefinition = {
       maybe<string>(ctx, "apiKey"),
       maybe<string>(ctx, "turnId"),
     ]);
-    const runner = makeRunner(ctx, apiKey);
+    const runner = await makeRunner(ctx, apiKey);
     const agent = await reifyAgent(agentSchema.parse(desc), ctx);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const state = await RunState.fromString(agent as Agent<any, any>, stateToken);
@@ -314,7 +338,7 @@ const compactOp: OpDefinition = {
 
     const old = history.slice(0, history.length - cfg.keepRecent);
     const recent = history.slice(history.length - cfg.keepRecent);
-    const runner = makeRunner(ctx, apiKey);
+    const runner = await makeRunner(ctx, apiKey);
     const summarizer = new Agent({
       name: "history-compactor",
       instructions:
@@ -343,8 +367,8 @@ const realtimeKeyOp: OpDefinition = {
   inputs: { apiKey: value(z.string()) },
   outputs: { ephemeralKey: value(z.string()), expiresAt: value(z.number()) },
   execute: async (ctx) => {
-    const apiKey = (await maybe<string>(ctx, "apiKey")) ?? ctx.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("agents: no API key for realtime client secret");
+    const apiKey = await resolveApiKey(ctx, await maybe<string>(ctx, "apiKey"));
+    if (!apiKey) throw new Error(NO_KEY_HINT);
     const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
