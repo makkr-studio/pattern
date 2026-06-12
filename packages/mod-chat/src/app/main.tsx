@@ -11,6 +11,7 @@ import { connectNotify } from "./lib/ws";
 import { Sidebar } from "./components/Sidebar";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
+import { SignIn } from "./components/SignIn";
 import "./index.css";
 
 function useChat() {
@@ -39,6 +40,7 @@ function App() {
   const state = useChat();
 
   useEffect(() => {
+    void chatStore.loadMe();
     void chatStore.loadConversations();
     // WS notifications: other tabs/devices, scheduled agents, approvals.
     const off = connectNotify((n) => {
@@ -58,11 +60,18 @@ function App() {
 
   const streaming = state.liveTurnId != null;
 
+  // The server says auth is required and we're anonymous → the sign-in gate
+  // replaces the app (the API would 401 anyway; this is the nice version).
+  if (state.me?.authRequired && !state.me.user) {
+    return <SignIn me={state.me} />;
+  }
+
   return (
     <div className="flex h-full">
       <Sidebar
         conversations={state.conversations}
         currentId={state.currentId}
+        me={state.me}
         onOpen={(id) => void chatStore.open(id)}
         onNew={() => void chatStore.open(null)}
       />

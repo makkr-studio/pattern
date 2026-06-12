@@ -63,7 +63,12 @@ export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
     { id: "chat.route.turns.list", method: "GET", path: `${api}/conversations/:id/turns`, op: "chat.turns.list" },
     { id: "chat.route.turn.stop", method: "POST", path: `${api}/conversations/:id/turns/:turnId/stop`, op: "chat.turn.stop" },
   ];
-  return specs.map((s) => route(s, opts.requireAuth));
+  return [
+    // /me is ALWAYS open: it answers "who am I / is auth required?" so the
+    // SPA can render its own sign-in instead of bouncing off a raw 401.
+    route({ id: "chat.route.me", method: "GET", path: `${api}/me`, op: "chat.me" }),
+    ...specs.map((s) => route(s, opts.requireAuth)),
+  ];
 }
 
 /** POST {mount}/api/blobs — raw bytes in (streamed), blob id out. Pure wiring. */

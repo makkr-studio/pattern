@@ -72,7 +72,7 @@ function ToolBud({ seg }: { seg: Extract<Segment, { kind: "tool" }> }) {
           {seg.error && <div style={{ color: "var(--danger)" }}>{seg.error}</div>}
           {seg.subRunId && (
             <a
-              href={`/admin/runs?run=${seg.subRunId}`}
+              href={`/admin/runs/${seg.subRunId}`}
               target="_blank"
               rel="noreferrer"
               className="mt-1.5 inline-block underline"

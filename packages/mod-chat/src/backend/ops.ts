@@ -12,7 +12,17 @@
  *    stays visible, editable nodes.
  */
 
-import { required, stream, value, z, type Engine, type OpContext, type OpDefinition } from "@pattern/core";
+import {
+  required,
+  resolveAuthRequirement,
+  stream,
+  value,
+  z,
+  type AuthRequirement,
+  type Engine,
+  type OpContext,
+  type OpDefinition,
+} from "@pattern/core";
 import { AGENTS_SERVICE, messagePartSchema, turnEventSchema, type AgentsService, type TurnEvent } from "@pattern/mod-agents";
 import type { DocumentRow, PatternStores } from "@pattern/mod-store";
 import {
@@ -134,7 +144,25 @@ async function casPut(
 
 const SAFE_ID = /^[a-zA-Z0-9-]{8,64}$/;
 
-function makeOps(getEngine: () => Engine | undefined): OpDefinition[] {
+function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefinition[] {
+  /* ── identity ──────────────────────────────────────────────────────────── */
+
+  // Always-open: the SPA's first question — "who am I, and is auth required?".
+  // The auth policy is resolved HERE (same {env} semantics as the routes) so
+  // the app can render the sign-in card instead of bouncing off raw 401s.
+  const me = httpOp("chat.me", "Caller identity + the resolved auth policy for the chat app.", async ({ user, ctx }) => {
+    const u = user as { id?: string; name?: string; email?: string; provider?: string } | null;
+    const requirement = resolveAuthRequirement(opts.requireAuth as AuthRequirement | undefined, ctx.env);
+    return {
+      status: 200,
+      body: {
+        user: u?.id ? { id: u.id, name: u.name ?? null, email: u.email ?? null, provider: u.provider ?? null } : null,
+        authRequired: requirement !== undefined && requirement !== false,
+        login: { kind: "magic-link", requestPath: opts.loginRequestPath },
+      },
+    };
+  });
+
   const create = httpOp(
     "chat.conversations.create",
     "Create a conversation (mints the anonymous device cookie when no user).",
@@ -575,7 +603,13 @@ function makeOps(getEngine: () => Engine | undefined): OpDefinition[] {
     },
   };
 
-  return [create, list, get, del, turnsList, stop, begin, sink, approvalBegin];
+  return [me, create, list, get, del, turnsList, stop, begin, sink, approvalBegin];
+}
+
+/** The slice of resolved options `chat.me` reports to the SPA. */
+interface MeOptions {
+  requireAuth?: unknown;
+  loginRequestPath: string;
 }
 
 export { makeOps as chatOps };

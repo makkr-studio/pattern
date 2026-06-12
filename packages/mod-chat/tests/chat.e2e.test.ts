@@ -4,7 +4,7 @@ import { createHttpHost } from "@pattern/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
 import { agentsMod, type TurnEvent } from "@pattern/mod-agents";
 import { agentsOpenAIMod, MODEL_PROVIDER_SERVICE } from "@pattern/mod-agents-openai";
-import { chatMod, TURNS, type TurnDoc } from "../src/index.js";
+import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
 import { scriptedProvider, type ScriptedTurn } from "../../mod-agents-openai/tests/scripted-model.js";
 
 /**
@@ -42,9 +42,21 @@ const weatherTool: Workflow = {
 
 let port = 4940;
 
-async function boot(turns: ScriptedTurn[], opts: { gatedTool?: boolean } = {}) {
+async function boot(
+  turns: ScriptedTurn[],
+  opts: { gatedTool?: boolean; env?: Record<string, string>; headerAuth?: boolean } = {},
+) {
   port += 1;
-  const engine = new Engine();
+  const engine = new Engine({ env: opts.env });
+  if (opts.headerAuth) {
+    engine.registerAuthProvider({
+      name: "header",
+      async authenticate({ headers }) {
+        const id = headers.get("x-user");
+        return id ? { kind: "user", id, provider: "header", claims: { name: id } } : null;
+      },
+    });
+  }
   await engine.useAsync(storeMod({ storage: "memory" }), { deferReady: true });
   await engine.useAsync(agentsMod(), { deferReady: true });
   await engine.useAsync(agentsOpenAIMod(), { deferReady: true });
@@ -295,5 +307,128 @@ describe("chat over HTTP (scripted model)", () => {
     expect(down.status).toBe(200);
     expect(down.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await down.arrayBuffer())).toEqual(png);
+  });
+});
+
+describe("admin Chats surface", () => {
+  it("lists guest conversations with owner labels + turn counts; deletes cascade", async () => {
+    const { base, engine, stores } = await boot([{ kind: "text", text: "hello there" }]);
+    const { id, cookie } = await createConversation(base);
+    await (
+      await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ content: [{ type: "text", text: "salut" }] }),
+      })
+    ).text();
+
+    const callAdmin = async (op: string, params?: Record<string, unknown>, principal?: unknown) => {
+      const wfId = `probe-${op}-${params ? "p" : "n"}`;
+      engine.registerWorkflow({
+        id: wfId,
+        nodes: [
+          { id: "in", op: "boundary.manual", config: { outputs: ["params"] } },
+          { id: "call", op },
+          { id: "out", op: "boundary.return" },
+        ],
+        edges: [
+          { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
+          { from: { node: "call", port: "out" }, to: { node: "out", port: "value" } },
+        ],
+      });
+      return engine.run(wfId, {
+        input: { params: params ?? {} },
+        principal: principal ?? { kind: "user", id: "admin", provider: "test", scopes: ["admin"] },
+      });
+    };
+
+    // Scope-guarded: anonymous (or non-admin) callers are refused in-op.
+    const denied = await callAdmin("chat.admin.conversations", undefined, { kind: "anonymous" });
+    expect(denied.status).toBe("error");
+    expect(String(denied.error)).toContain("admin");
+
+    // The guest conversation is a first-class row: owner label + turn count.
+    const list = await callAdmin("chat.admin.conversations");
+    expect(list.status).toBe("ok");
+    const rows = Object.assign({}, ...Object.values(list.outputs)).value as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id, title: "salut", kind: "guest", turns: 1 });
+    expect(String(rows[0]!.owner)).toMatch(/^guest · .{6}$/);
+
+    // Turn rows carry status + run deep-link material.
+    const turns = await callAdmin("chat.admin.turns", { id });
+    const turnRows = Object.assign({}, ...Object.values(turns.outputs)).value as Array<Record<string, unknown>>;
+    expect(turnRows).toHaveLength(1);
+    expect(turnRows[0]).toMatchObject({ input: "salut", status: "complete" });
+    expect(String(turnRows[0]!.runId)).not.toBe("");
+
+    // Delete cascades to the turn docs.
+    const del = await callAdmin("chat.admin.conversation.delete", { id });
+    expect(del.status).toBe("ok");
+    expect(await stores.docs.get(CONVERSATIONS, id)).toBeNull();
+    expect(await stores.docs.query({ collection: TURNS, where: { conversationId: id } })).toHaveLength(0);
+  });
+});
+
+describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
+  it("default: guests allowed, /me reports guest + auth not required", async () => {
+    const { base } = await boot([]);
+    const me = await fetch(`${base}/chat/api/me`);
+    expect(me.status).toBe(200);
+    const body = (await me.json()) as { user: unknown; authRequired: boolean; login: { requestPath: string } };
+    expect(body.user).toBeNull();
+    expect(body.authRequired).toBe(false);
+    expect(body.login.requestPath).toBe("/auth/magic-link/request");
+
+    // Guests can create conversations (today's behaviour, unchanged).
+    const res = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}" });
+    expect(res.status).toBe(201);
+  });
+
+  it("CHAT_REQUIRE_AUTH=true gates every API route except /me", async () => {
+    const { base } = await boot([{ kind: "text", text: "hi!" }], {
+      env: { CHAT_REQUIRE_AUTH: "true" },
+      headerAuth: true,
+    });
+
+    // /me stays open and reports the policy so the SPA can render sign-in.
+    const anonMe = (await (await fetch(`${base}/chat/api/me`)).json()) as { user: unknown; authRequired: boolean };
+    expect(anonMe).toMatchObject({ user: null, authRequired: true });
+
+    // Anonymous is rejected before the graph runs.
+    const denied = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}" });
+    expect(denied.status).toBe(401);
+    const deniedList = await fetch(`${base}/chat/api/conversations`);
+    expect(deniedList.status).toBe(401);
+
+    // A signed-in user passes, /me knows them, and a full turn works.
+    const auth = { "x-user": "benoit" };
+    const userMe = (await (await fetch(`${base}/chat/api/me`, { headers: auth })).json()) as {
+      user: { id: string; name: string };
+    };
+    expect(userMe.user).toMatchObject({ id: "benoit", name: "benoit" });
+
+    const created = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}", headers: auth });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const turn = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth },
+      body: JSON.stringify({ content: [{ type: "text", text: "salut" }] }),
+    });
+    expect(turn.status).toBe(200);
+    expect(sseEvents(await turn.text()).at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
+  });
+
+  it("CHAT_REQUIRE_AUTH can demand scopes", async () => {
+    const { base } = await boot([], { env: { CHAT_REQUIRE_AUTH: "member" }, headerAuth: true });
+    // The header provider issues no scopes → denied even when authenticated.
+    const denied = await fetch(`${base}/chat/api/conversations`, {
+      method: "POST",
+      body: "{}",
+      headers: { "x-user": "benoit" },
+    });
+    expect(denied.status).toBe(401);
+    expect(await denied.text()).toContain("member");
   });
 });

@@ -76,6 +76,32 @@ where `PATTERN_VAULT_KEY` lives) → **a vault secret named `OPENAI_API_KEY`**
 Vault-read values register into the engine's sample mask either way, so the
 key can never appear in sampled run I/O.
 
+## Who may chat (CHAT_REQUIRE_AUTH)
+
+Guests are allowed by default: anonymous visitors get a `chat_device` cookie
+and their own conversations. One switch closes the door —
+
+```sh
+CHAT_REQUIRE_AUTH=true     # any signed-in user
+CHAT_REQUIRE_AUTH=member   # comma-separated scope list works too
+```
+
+Every chat route's trigger carries `requireAuth: { env: "CHAT_REQUIRE_AUTH" }`
+— a core **env-deferred auth requirement** the host resolves per request, so
+the flag stays visible in the editor (it's a reference, not a baked secret)
+and **forked** chat workflows keep following the same switch. Unset/`false` =
+open. The SPA route itself always stays open: anonymous visitors of a gated
+chat see the app's own sign-in card (email → magic link → back in the chat),
+and the sidebar footer shows who you are — your name, or `Guest`. The policy
+comes from `GET /chat/api/me`, which is the one route that never requires
+auth. `chatMod({ requireAuth: ... })` overrides the default; the magic-link
+endpoint is `chatMod({ loginRequestPath })` if you mounted identity elsewhere.
+
+Guests stop being invisible in the admin too: **Chat → Conversations** lists
+every conversation with its owner (a username when identity knows them, else
+`guest · a1b2c3` from the device cookie), turn counts, and a click-through to
+each turn's event log with deep links to the runs.
+
 ## Customizing the chat pipeline
 
 `chat.turn.pipeline` ships as a code workflow. To rewire it: **fork** it in

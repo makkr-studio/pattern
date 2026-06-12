@@ -21,8 +21,20 @@ export interface ChatModOptions {
   turnTtlMs?: number;
   /** Max model↔tool round-trips per turn. Default 12. */
   maxTurns?: number;
-  /** requireAuth for ALL chat routes (e.g. { scopes: ["user"] }). Default open. */
+  /**
+   * requireAuth for ALL chat API routes (e.g. true, { scopes: ["user"] }).
+   * Default `{ env: "CHAT_REQUIRE_AUTH" }` — the host reads the env var per
+   * request: unset/false → guests allowed (today's behaviour), true/1 → any
+   * signed-in user, anything else → comma-separated scope list. Forked chat
+   * workflows copy the trigger config, so they keep following the same switch.
+   * The SPA route itself always stays open — the app renders its own sign-in.
+   */
   requireAuth?: unknown;
+  /**
+   * Where the chat sign-in card sends the email for a magic link. Default
+   * "/auth/magic-link/request" (mod-auth-magic-link's default mount).
+   */
+  loginRequestPath?: string;
 }
 
 export interface ResolvedChatOptions {
@@ -33,6 +45,7 @@ export interface ResolvedChatOptions {
   turnTtlMs: number;
   maxTurns: number;
   requireAuth?: unknown;
+  loginRequestPath: string;
 }
 
 export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOptions {
@@ -49,6 +62,7 @@ export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOption
     turnPipeline: options.turnPipeline ?? true,
     turnTtlMs: options.turnTtlMs ?? 5 * 60 * 1000,
     maxTurns: options.maxTurns ?? 12,
-    requireAuth: options.requireAuth,
+    requireAuth: options.requireAuth ?? { env: "CHAT_REQUIRE_AUTH" },
+    loginRequestPath: options.loginRequestPath ?? "/auth/magic-link/request",
   };
 }

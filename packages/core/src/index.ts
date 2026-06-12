@@ -113,7 +113,7 @@ export { InProcessTransport } from "./transport/in-process.js";
 export { InProcessEventBus } from "./events/bus.js";
 export { InMemoryConnectionRegistry, type MessageSink } from "./connections/memory.js";
 export { HookChainRunner, type HookRunFn } from "./hooks/chain.js";
-export { resolvePrincipal, meetsRequirement, type AuthRequirement } from "./auth/resolve.js";
+export { resolvePrincipal, meetsRequirement, resolveAuthRequirement, type AuthRequirement } from "./auth/resolve.js";
 export {
   AUTH_HOME_URL,
   AUTH_LOGIN_URL,

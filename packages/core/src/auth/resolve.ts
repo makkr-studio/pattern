@@ -10,8 +10,36 @@
 import type { AuthProviderRegistry } from "../registry.js";
 import { ANONYMOUS, type AuthContext, type Principal } from "../types.js";
 
-/** A trigger's optional auth requirement (§9). */
-export type AuthRequirement = boolean | { scopes: string[] };
+/**
+ * A trigger's optional auth requirement (§9). The `{ env }` form defers the
+ * decision to an environment variable, resolved per request by the host (via
+ * `engine.authorize`) — unset/false-y → open, truthy → any authenticated user,
+ * anything else → a comma-separated scope list. This keeps a fleet of routes
+ * (e.g. every chat workflow) on one operator-controlled switch, and the config
+ * stays a transparent reference in the admin instead of a baked value.
+ */
+export type AuthRequirement = boolean | { scopes: string[] } | { env: string };
+
+const ENV_FALSE = /^(false|0|no|off)$/i;
+const ENV_TRUE = /^(true|1|yes|on)$/i;
+
+/**
+ * Collapse an `{ env }` requirement to a concrete one against `env`. Other
+ * forms pass through untouched.
+ */
+export function resolveAuthRequirement(
+  requirement: AuthRequirement | undefined,
+  env: Record<string, string | undefined>,
+): boolean | { scopes: string[] } | undefined {
+  if (typeof requirement !== "object" || requirement === null || !("env" in requirement)) {
+    return requirement;
+  }
+  const raw = env[requirement.env]?.trim();
+  if (!raw || ENV_FALSE.test(raw)) return undefined;
+  if (ENV_TRUE.test(raw)) return true;
+  const scopes = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return scopes.length ? { scopes } : true;
+}
 
 /** Run the provider chain; first non-null principal wins, else anonymous. */
 export async function resolvePrincipal(
@@ -34,7 +62,10 @@ export function meetsRequirement(
   if (principal.kind === "anonymous") {
     return { ok: false, reason: "authentication required" };
   }
-  if (typeof requirement === "object" && requirement.scopes?.length) {
+  // An unresolved `{ env }` form reaching here acts as plain `true` (fail
+  // closed for anonymous above, no scope demands) — `engine.authorize`
+  // resolves it before delegating, so this is only a defensive path.
+  if (typeof requirement === "object" && "scopes" in requirement && requirement.scopes?.length) {
     const have = new Set(principal.scopes ?? []);
     const missing = requirement.scopes.filter((s) => !have.has(s));
     if (missing.length) {
