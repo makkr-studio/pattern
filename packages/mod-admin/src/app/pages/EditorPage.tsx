@@ -1427,6 +1427,7 @@ const SCHEMA_FIELDS: Record<string, string[]> = {
   "core.schema.validate": ["schema"],
   "boundary.http.request": ["body", "query", "params"],
   "boundary.ws.message": ["message"],
+  "boundary.tool": ["params"],
 };
 
 function Inspector({
