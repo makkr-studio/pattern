@@ -1,7 +1,7 @@
 {
   "name": "@pattern/mod-chat",
-  "version": "0.1.28",
-  "description": "A complete chat application for Pattern agents: transcript-style SPA (the strand shows tool calls live), conversations + turn event log in mod-store (refresh mid-turn recovers), lease-guarded turns with Stop, image input, HITL approvals \u2014 the turn pipeline is a workflow you can fork and rewire.",
+  "version": "0.1.29",
+  "description": "A complete chat application for Pattern agents: transcript-style SPA (the strand shows tool calls live), conversations + turn event log in mod-store (refresh mid-turn recovers), lease-guarded turns with Stop, image input, HITL approvals — the turn pipeline is a workflow you can fork and rewire.",
   "type": "module",
   "license": "MIT",
   "exports": {
