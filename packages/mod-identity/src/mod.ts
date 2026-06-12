@@ -13,6 +13,9 @@
  * the same single-use-token primitive as login and invites.
  */
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { localFs, provideFilesystem } from "@pattern/runtime-node";
 import { AUTH_LOGIN_URL, IDENTITY_SERVICE, defineMod, z, type Engine, type PatternMod } from "@pattern/core";
 import { resolveOptions, type IdentityOptions } from "./options.js";
 import { DefaultIdentityService } from "./service.js";
@@ -25,6 +28,17 @@ import { sqliteIdentityStores } from "./store/sqlite.js";
 import { DELIVER_TOKEN_HOOK } from "./deliver.js";
 
 /** Create the identity mod (a configured `PatternMod`). */
+
+/** The packaged docs/ chapter (the `docs` contribution points at "identity-docs"). */
+function packagedDocs(engine: Engine): void {
+  try {
+    const dir = fileURLToPath(new URL("../docs", import.meta.url));
+    if (existsSync(dir)) provideFilesystem(engine, "identity-docs", localFs(dir));
+  } catch {
+    /* packaged without docs — the contribution is simply skipped */
+  }
+}
+
 export function identityMod(options: IdentityOptions = {}): PatternMod {
   const opts = resolveOptions(options);
 
@@ -34,6 +48,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
 
   return defineMod({
     name: "@pattern/mod-identity",
+    docs: { filesystem: "identity-docs", title: "Identity", order: 40 },
     ops: identityOps,
     workflows: endpointWorkflows(opts.mount),
     authProviders: [sessionAuthProvider(() => service)],
@@ -52,6 +67,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     ],
     frontend: identityFrontend(),
     setup: async (engine: Engine) => {
+      packagedDocs(engine);
       const stores =
         opts.storage === "memory" ? memoryIdentityStores() : await sqliteIdentityStores(opts.storage);
       service = new DefaultIdentityService(stores, opts, engine.connections);

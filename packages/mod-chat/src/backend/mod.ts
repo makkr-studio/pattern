@@ -64,6 +64,17 @@ const chatAppOp: OpDefinition = {
   execute: (ctx) => ({ app: { ...(ctx.config as object) } }),
 };
 
+
+/** The packaged docs/ chapter (the `docs` contribution points at "chat-docs"). */
+function packagedDocs(engine: Engine): void {
+  try {
+    const dir = fileURLToPath(new URL("../../docs", import.meta.url));
+    if (existsSync(dir)) provideFilesystem(engine, "chat-docs", localFs(dir));
+  } catch {
+    /* packaged without docs — the contribution is simply skipped */
+  }
+}
+
 export function chatMod(options: ChatModOptions = {}): PatternMod {
   const opts = resolveOptions(options);
   let engineRef: Engine | undefined;
@@ -77,10 +88,12 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
 
   return defineMod({
     name: "@pattern/mod-chat",
+    docs: { filesystem: "chat-docs", title: "Chat", order: 52 },
     ops: [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp],
     workflows,
     frontend: chatFrontend(),
     setup: (engine: Engine) => {
+      packagedDocs(engine);
       engineRef = engine;
       const assets = opts.assets ? localFs(opts.assets) : bundledAssets(opts.mount);
       provideFilesystem(engine, CHAT_ASSETS_FS, assets);

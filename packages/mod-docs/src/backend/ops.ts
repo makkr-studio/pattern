@@ -192,5 +192,39 @@ export function makeDocsOps(
     },
   );
 
-  return [me, manifest, page, raw, opsList, opsGet, modsList, appOp];
+  const searchIndex = httpOp(
+    "docs.search.index",
+    "The ⌘K corpus: every page (chapter, file, title, headings) + every op type.",
+    async () => ({
+      status: 200,
+      body: {
+        pages: await content.searchIndex(),
+        ops: opListTrimmed(engine()).map((o) => ({ type: o.type, description: o.description ?? "" })),
+      },
+    }),
+  );
+
+  const llms = httpOp(
+    "docs.llms",
+    "The ENTIRE doc set as one markdown body (agent-readable docs) + a terse generated op reference.",
+    async () => {
+      const reference = opListTrimmed(engine())
+        .map((o) => {
+          const ports = (label: string, list: Array<{ name: string; kind: string }>) =>
+            list.length ? `${label}: ${list.map((p) => `${p.name}(${p.kind})`).join(" ")}` : null;
+          return [
+            `## ${o.type}`,
+            o.description ?? "",
+            [ports("inputs", o.inputs), ports("outputs", o.outputs), o.controlOut.length ? `control-outs: ${o.controlOut.join(" ")}` : null]
+              .filter(Boolean)
+              .join(" · "),
+          ].join("\n");
+        })
+        .join("\n\n");
+      const body = `${await content.llmsText()}\n\n---\n\n# Op reference (generated from the live registry)\n\n${reference}\n`;
+      return { status: 200, body };
+    },
+  );
+
+  return [me, manifest, page, raw, opsList, opsGet, modsList, searchIndex, llms, appOp];
 }

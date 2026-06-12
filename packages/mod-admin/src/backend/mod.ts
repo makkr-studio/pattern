@@ -120,6 +120,17 @@ function spaWorkflow(mount: string): Workflow {
 }
 
 /** Create the admin mod (a configured `PatternMod`). */
+
+/** The packaged docs/ chapter (the `docs` contribution points at "admin-docs"). */
+function packagedDocs(engine: Engine): void {
+  try {
+    const dir = fileURLToPath(new URL("../../docs", import.meta.url));
+    if (existsSync(dir)) provideFilesystem(engine, "admin-docs", localFs(dir));
+  } catch {
+    /* packaged without docs — the contribution is simply skipped */
+  }
+}
+
 export function adminMod(options: AdminModOptions = {}): PatternMod {
   const mount = (options.mount ?? "/admin").replace(/\/$/, "") || "/admin";
   const auth = options.auth === true ? true : typeof options.auth === "object" ? options.auth : undefined;
@@ -133,10 +144,12 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
 
   return defineMod({
     name: "@pattern/mod-admin",
+    docs: { filesystem: "admin-docs", title: "Admin", order: 20 },
     ops: adminOps,
     workflows: [...endpointWorkflows(auth), spa],
     frontend: adminFrontend(mount),
     setup: async (engine: Engine) => {
+      packagedDocs(engine);
       const storageFs = resolveFs(options.storage, () => localFs("./.pattern"));
       const assetsFs = resolveFs(options.assets, () => bundledAssets(mount));
       provideFilesystem(engine, ASSETS_FS, assetsFs);

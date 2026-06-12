@@ -150,6 +150,7 @@ export class DocsContent {
 
   invalidate(): void {
     this.chaptersCache = null;
+    this.searchCache = null;
   }
 
   async chapters(): Promise<DocsChapter[]> {
@@ -212,6 +213,69 @@ export class DocsContent {
     } catch {
       return null;
     }
+  }
+
+  /** Every page of a chapter in nav order (index first) — llms/search source. */
+  private pagesOf(chapter: DocsChapter): Array<{ label: string; file: string }> {
+    // A derived group node points at its first child's file — keep the leaf's
+    // label, not the synthetic group's.
+    const flat = (items: DocsNavItem[]): Array<{ label: string; file: string }> =>
+      items.flatMap((i) => {
+        const kids = i.items ? flat(i.items) : [];
+        const self = kids.some((k) => k.file === i.file) ? [] : [{ label: i.label, file: i.file }];
+        return [...self, ...kids];
+      });
+    const seen = new Set<string>();
+    return [{ label: chapter.title, file: chapter.index }, ...flat(chapter.nav)].filter((p) => {
+      if (seen.has(p.file)) return false;
+      seen.add(p.file);
+      return true;
+    });
+  }
+
+  /** The client-side search corpus: one entry per page, with its headings. */
+  async searchIndex(): Promise<Array<{ chapter: string; file: string; title: string; headings: string[] }>> {
+    if (this.opts.cache && this.searchCache) return this.searchCache;
+    const out: Array<{ chapter: string; file: string; title: string; headings: string[] }> = [];
+    for (const chapter of await this.chapters()) {
+      const fs = this.fs(chapter.filesystem);
+      if (!fs) continue;
+      for (const page of this.pagesOf(chapter)) {
+        const doc = await readDoc(fs, page.file);
+        if (!doc) continue;
+        const headings = [...doc.body.matchAll(/^#{1,3}\s+(.+)$/gm)].map((m) => m[1]!.replace(/`/g, ""));
+        out.push({ chapter: chapter.slug, file: page.file, title: page.label, headings });
+      }
+    }
+    if (this.opts.cache) this.searchCache = out;
+    return out;
+  }
+  private searchCache: Array<{ chapter: string; file: string; title: string; headings: string[] }> | null = null;
+
+  /**
+   * The whole doc set as ONE markdown body (agent-readable docs). Chapters in
+   * order, pages in nav order, frontmatter stripped; the caller appends the
+   * generated op reference (terse — no JSON schemas).
+   */
+  async llmsText(): Promise<string> {
+    const parts: string[] = [
+      "# Pattern — documentation (llms.txt)",
+      "",
+      "Everything below is the full documentation of THIS Pattern installation,",
+      "concatenated for machine readers. Chapters come from installed mods.",
+      "",
+    ];
+    for (const chapter of await this.chapters()) {
+      const fs = this.fs(chapter.filesystem);
+      if (!fs) continue;
+      parts.push(`\n---\n\n# Chapter: ${chapter.title} (${chapter.mod})\n`);
+      for (const page of this.pagesOf(chapter)) {
+        const doc = await readDoc(fs, page.file);
+        if (!doc) continue;
+        parts.push(`\n<!-- ${chapter.slug}/${page.file} -->\n\n${doc.body.trim()}\n`);
+      }
+    }
+    return parts.join("\n");
   }
 
   /**

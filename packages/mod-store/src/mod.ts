@@ -8,6 +8,9 @@
  * their collections from `ready` via `docs.ensureCollection`.
  */
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { localFs, provideFilesystem } from "@pattern/runtime-node";
 import { defineMod, type Engine, type PatternMod } from "@pattern/core";
 import { resolveOptions, type StoreOptions } from "./options.js";
 import { storeOps } from "./ops.js";
@@ -18,16 +21,29 @@ import { sqlitePatternStores } from "./store/sqlite.js";
 import { STORE_SERVICE } from "./well-known.js";
 import type { PatternStores } from "./store/types.js";
 
+
+/** The packaged docs/ chapter (the `docs` contribution points at "store-docs"). */
+function packagedDocs(engine: Engine): void {
+  try {
+    const dir = fileURLToPath(new URL("../docs", import.meta.url));
+    if (existsSync(dir)) provideFilesystem(engine, "store-docs", localFs(dir));
+  } catch {
+    /* packaged without docs — the contribution is simply skipped */
+  }
+}
+
 export function storeMod(options: StoreOptions = {}): PatternMod {
   const opts = resolveOptions(options);
   let stores: PatternStores | undefined;
 
   return defineMod({
     name: "@pattern/mod-store",
+    docs: { filesystem: "store-docs", title: "Store", order: 30 },
     ops: storeOps,
     workflows: opts.blobRoute === false ? [] : [blobServeWorkflow(opts.blobRoute.requireAuth)],
     frontend: storeFrontend(),
     setup: async (engine: Engine) => {
+      packagedDocs(engine);
       stores =
         opts.storage === "memory"
           ? memoryPatternStores({ maxBlobBytes: opts.maxBlobBytes })

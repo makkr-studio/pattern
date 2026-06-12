@@ -7,6 +7,9 @@
  * an install error — the Secrets page explains what to set.
  */
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { localFs, provideFilesystem } from "@pattern/runtime-node";
 import { defineMod, type Engine, type PatternMod } from "@pattern/core";
 import { resolveOptions, type VaultOptions } from "./options.js";
 import { DefaultVaultService } from "./service.js";
@@ -15,14 +18,27 @@ import { vaultFrontend } from "./frontend.js";
 import { memoryVaultStore, sqliteVaultStore } from "./store.js";
 import { VAULT_SERVICE } from "./well-known.js";
 
+
+/** The packaged docs/ chapter (the `docs` contribution points at "vault-docs"). */
+function packagedDocs(engine: Engine): void {
+  try {
+    const dir = fileURLToPath(new URL("../docs", import.meta.url));
+    if (existsSync(dir)) provideFilesystem(engine, "vault-docs", localFs(dir));
+  } catch {
+    /* packaged without docs — the contribution is simply skipped */
+  }
+}
+
 export function vaultMod(options: VaultOptions = {}): PatternMod {
   const opts = resolveOptions(options);
 
   return defineMod({
     name: "@pattern/mod-vault",
+    docs: { filesystem: "vault-docs", title: "Vault", order: 31 },
     ops: vaultOps,
     frontend: vaultFrontend(),
     setup: async (engine: Engine) => {
+      packagedDocs(engine);
       const store = opts.storage === "memory" ? memoryVaultStore() : await sqliteVaultStore(opts.storage);
       const service = new DefaultVaultService(store, opts.masterKey, (v) => engine.registerSecretValue(v));
       engine.provideService(VAULT_SERVICE, service);
