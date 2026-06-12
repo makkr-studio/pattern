@@ -48,6 +48,9 @@ export function docsRouteWorkflows(opts: ResolvedDocsOptions): Workflow[] {
     { id: "docs.route.manifest", method: "GET", path: `${api}/manifest`, op: "docs.manifest" },
     { id: "docs.route.page", method: "GET", path: `${api}/page`, op: "docs.page" },
     { id: "docs.route.raw", method: "GET", path: `${opts.mount}/raw`, op: "docs.raw" },
+    { id: "docs.route.ops", method: "GET", path: `${api}/ops`, op: "docs.ops.list" },
+    { id: "docs.route.op", method: "GET", path: `${api}/op`, op: "docs.ops.get" },
+    { id: "docs.route.mods", method: "GET", path: `${api}/mods`, op: "docs.mods.list" },
   ];
   return [
     // /me is ALWAYS open — it answers "who am I / is auth required?" so the

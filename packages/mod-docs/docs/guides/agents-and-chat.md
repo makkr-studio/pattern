@@ -53,6 +53,300 @@ chat's persisted log, future voice surfaces: `text.delta`, `text.done`,
 cards, not crashes), `audio.ref` (reserved), and a **guaranteed terminal**
 `done {stopReason: complete|interrupted|error|cancelled}`.
 
+## The turn pipeline, live
+
+This is the actual `chat.turn.pipeline` workflow that runs every chat turn —
+rendered from its real JSON, not a screenshot. Fork it in the admin and the
+middle (tools, agent, guardrails, compaction) is yours to rewire:
+
+```workflow
+{
+ "id": "chat.turn.pipeline",
+ "name": "Chat \u00b7 turn pipeline",
+ "nodes": [
+  {
+   "id": "in",
+   "op": "boundary.http.request",
+   "ui": {
+    "x": 40,
+    "y": 200
+   }
+  },
+  {
+   "id": "begin",
+   "op": "chat.turn.begin",
+   "comment": "Scope check + conversation lease + turn doc. Conflict \u2192 409 path.",
+   "ui": {
+    "x": 320,
+    "y": 200
+   }
+  },
+  {
+   "id": "gate",
+   "op": "core.flow.branch",
+   "ui": {
+    "x": 600,
+    "y": 120
+   }
+  },
+  {
+   "id": "tools",
+   "op": "agents.tools.workflows",
+   "comment": "Every boundary.tool workflow in the app. Name them here to narrow.",
+   "ui": {
+    "x": 820,
+    "y": 40
+   }
+  },
+  {
+   "id": "agent",
+   "op": "agents.agent",
+   "comment": "THE agent. Edit instructions/model here; wire guardrails/handoffs in.",
+   "ui": {
+    "x": 1080,
+    "y": 40
+   }
+  },
+  {
+   "id": "run",
+   "op": "agents.run",
+   "comment": "Streams turn events; needs OPENAI_API_KEY (or wire vault.read \u2192 apiKey).",
+   "ui": {
+    "x": 1340,
+    "y": 200
+   }
+  },
+  {
+   "id": "sink",
+   "op": "chat.events.sink",
+   "comment": "Persists events + history; notifies WS rooms; guarantees a terminal state.",
+   "ui": {
+    "x": 1620,
+    "y": 80
+   }
+  },
+  {
+   "id": "ok",
+   "op": "boundary.http.response",
+   "ui": {
+    "x": 1620,
+    "y": 320
+   }
+  },
+  {
+   "id": "err",
+   "op": "boundary.http.response",
+   "ui": {
+    "x": 600,
+    "y": 420
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": {
+    "node": "in",
+    "port": "params"
+   },
+   "to": {
+    "node": "begin",
+    "port": "params"
+   }
+  },
+  {
+   "from": {
+    "node": "in",
+    "port": "body"
+   },
+   "to": {
+    "node": "begin",
+    "port": "body"
+   }
+  },
+  {
+   "from": {
+    "node": "in",
+    "port": "headers"
+   },
+   "to": {
+    "node": "begin",
+    "port": "headers"
+   }
+  },
+  {
+   "from": {
+    "node": "in",
+    "port": "user"
+   },
+   "to": {
+    "node": "begin",
+    "port": "user"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "ok"
+   },
+   "to": {
+    "node": "gate",
+    "port": "condition"
+   }
+  },
+  {
+   "from": {
+    "node": "gate",
+    "port": "then"
+   },
+   "to": {
+    "node": "tools",
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "node": "tools",
+    "port": "toolset"
+   },
+   "to": {
+    "node": "agent",
+    "port": "tools"
+   }
+  },
+  {
+   "from": {
+    "node": "agent",
+    "port": "agent"
+   },
+   "to": {
+    "node": "run",
+    "port": "agent"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "input"
+   },
+   "to": {
+    "node": "run",
+    "port": "input"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "history"
+   },
+   "to": {
+    "node": "run",
+    "port": "history"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "turnId"
+   },
+   "to": {
+    "node": "run",
+    "port": "turnId"
+   }
+  },
+  {
+   "from": {
+    "node": "gate",
+    "port": "then"
+   },
+   "to": {
+    "node": "ok",
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "node": "gate",
+    "port": "then"
+   },
+   "to": {
+    "node": "sink",
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "node": "run",
+    "port": "events"
+   },
+   "to": {
+    "node": "ok",
+    "port": "stream"
+   }
+  },
+  {
+   "from": {
+    "node": "run",
+    "port": "events"
+   },
+   "to": {
+    "node": "sink",
+    "port": "events"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "turn"
+   },
+   "to": {
+    "node": "sink",
+    "port": "turn"
+   }
+  },
+  {
+   "from": {
+    "node": "run",
+    "port": "history"
+   },
+   "to": {
+    "node": "sink",
+    "port": "history"
+   }
+  },
+  {
+   "from": {
+    "node": "gate",
+    "port": "else"
+   },
+   "to": {
+    "node": "err",
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "status"
+   },
+   "to": {
+    "node": "err",
+    "port": "status"
+   }
+  },
+  {
+   "from": {
+    "node": "begin",
+    "port": "error"
+   },
+   "to": {
+    "node": "err",
+    "port": "body"
+   }
+  }
+ ]
+}
+```
+
 ## Conversations are yours, not the SDK's
 
 History is pulled from the store, handed to `agents.run`, and the updated

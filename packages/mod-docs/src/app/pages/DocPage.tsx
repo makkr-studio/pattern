@@ -8,6 +8,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, type Chapter, type Page } from "../lib/api";
 import { headingsOf, Markdown } from "../lib/md";
 import { useDocs } from "../shell/Shell";
+import { WorkflowEmbed } from "../components/WorkflowEmbed";
 import type { DocsNavItem } from "../../shared/types";
 
 /** Resolve a relative markdown href against the current file's directory. */
@@ -95,6 +96,7 @@ export function DocPage() {
         <Markdown
           text={page.markdown}
           InternalLink={InternalLink}
+          fence={(lang, body, key) => (lang === "workflow" ? <WorkflowEmbed key={key} source={body} /> : null)}
           resolveLink={(href) => {
             const [path, frag] = href.split("#");
             if (path && /\.md$/.test(path) && !/^[a-z]+:/.test(path) && !path.startsWith("/")) {
