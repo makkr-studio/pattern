@@ -16,6 +16,7 @@ import { Agent, OpenAIProvider, RunState, Runner, type AgentInputItem } from "@o
 import { required, stream, value, z, type OpContext, type OpDefinition } from "@pattern/core";
 import {
   agentSchema,
+  agentsService,
   guardrailSchema,
   historySchema,
   toolsetSchema,
@@ -127,6 +128,22 @@ function softOutputs(outcome: Promise<TurnOutcome>) {
   };
 }
 
+/**
+ * Turn-scoped abort: a STREAMING run settles for the engine before the turn
+ * finishes (the SSE tail flows after result-ready), so engine.cancelRun can't
+ * reach it — a Stop button aborts via AGENTS_SERVICE.abortTurn(turnId)
+ * instead. The run-level ctx.signal still chains in (editor Stop, sub-runs).
+ */
+function turnAbort(ctx: OpContext, turnId: string): { signal: AbortSignal; release: () => void } {
+  const ctrl = new AbortController();
+  const svc = agentsService(ctx);
+  svc.registerTurn(turnId, ctrl);
+  return {
+    signal: AbortSignal.any([ctx.signal, ctrl.signal]),
+    release: () => svc.releaseTurn(turnId),
+  };
+}
+
 /* ── agents.run ────────────────────────────────────────────────────────── */
 
 const runOp: OpDefinition = {
@@ -161,8 +178,11 @@ const runOp: OpDefinition = {
     const items = [...((history ?? []) as AgentInputItem[]), ...turnItems];
     const { maxTurns } = ctx.config as { maxTurns?: number };
 
-    const streamed = await runner.run(agent, items, { stream: true, maxTurns, signal: ctx.signal });
-    const { events, outcome } = pumpTurn(streamed as never, { turnId: turnId ?? ctx.runId, runId: ctx.runId }, ctx.signal);
+    const tid = turnId ?? ctx.runId;
+    const { signal, release } = turnAbort(ctx, tid);
+    const streamed = await runner.run(agent, items, { stream: true, maxTurns, signal });
+    const { events, outcome } = pumpTurn(streamed as never, { turnId: tid, runId: ctx.runId }, signal);
+    void outcome.finally(release);
     return { events, ...softOutputs(outcome) };
   },
 };
@@ -212,8 +232,11 @@ const resumeOp: OpDefinition = {
       else state.reject(item);
     }
 
-    const streamed = await runner.run(agent, state as never, { stream: true, signal: ctx.signal });
-    const { events, outcome } = pumpTurn(streamed as never, { turnId: turnId ?? ctx.runId, runId: ctx.runId }, ctx.signal);
+    const tid = turnId ?? ctx.runId;
+    const { signal, release } = turnAbort(ctx, tid);
+    const streamed = await runner.run(agent, state as never, { stream: true, signal });
+    const { events, outcome } = pumpTurn(streamed as never, { turnId: tid, runId: ctx.runId }, signal);
+    void outcome.finally(release);
     return { events, ...softOutputs(outcome) };
   },
 };

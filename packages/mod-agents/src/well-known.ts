@@ -39,6 +39,15 @@ export interface AgentsService {
   registerOpTool(reg: OpToolRegistration): void;
   listOpTools(): OpToolRegistration[];
   getOpTool(name: string): OpToolRegistration | undefined;
+  /**
+   * Turn-scoped cancellation. A STREAMING run settles for the engine as soon
+   * as its out-gates capture (the SSE tail flows after), so engine.cancelRun
+   * can't reach an in-flight agent turn — providers register an
+   * AbortController per turnId instead, and a Stop button calls `abortTurn`.
+   */
+  registerTurn(turnId: string, controller: AbortController): void;
+  releaseTurn(turnId: string): void;
+  abortTurn(turnId: string, reason?: unknown): boolean;
 }
 
 export function agentsService(ctx: OpContext): AgentsService {

@@ -17,6 +17,7 @@ import type {
 export class AgentsRegistry implements AgentsService {
   private workflowTools = new Map<string, WorkflowToolRegistration>();
   private opTools = new Map<string, OpToolRegistration>();
+  private turns = new Map<string, AbortController>();
 
   constructor(private readonly engine: Engine) {
     for (const wf of engine.workflows.list()) this.index(wf);
@@ -77,5 +78,21 @@ export class AgentsRegistry implements AgentsService {
 
   getOpTool(name: string): OpToolRegistration | undefined {
     return this.opTools.get(name);
+  }
+
+  registerTurn(turnId: string, controller: AbortController): void {
+    this.turns.set(turnId, controller);
+  }
+
+  releaseTurn(turnId: string): void {
+    this.turns.delete(turnId);
+  }
+
+  abortTurn(turnId: string, reason?: unknown): boolean {
+    const ctrl = this.turns.get(turnId);
+    if (!ctrl) return false;
+    this.turns.delete(turnId);
+    ctrl.abort(reason ?? new Error("turn aborted"));
+    return true;
   }
 }

@@ -20,6 +20,7 @@ export default defineConfig({
       "@pattern/mod-vault": r("./packages/mod-vault/src/index.ts"),
       "@pattern/mod-agents": r("./packages/mod-agents/src/index.ts"),
       "@pattern/mod-agents-openai": r("./packages/mod-agents-openai/src/index.ts"),
+      "@pattern/mod-chat": r("./packages/mod-chat/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built
       // JS to spawn workers); its own @pattern/core imports still alias above.
     },

@@ -1,0 +1,49 @@
+{
+  "name": "@pattern/mod-chat",
+  "version": "0.1.21",
+  "description": "A complete chat application for Pattern agents: transcript-style SPA (the strand shows tool calls live), conversations + turn event log in mod-store (refresh mid-turn recovers), lease-guarded turns with Stop, image input, HITL approvals \u2014 the turn pipeline is a workflow you can fork and rewire.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "dist-app",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm build:app",
+    "build:app": "vite build",
+    "dev:app": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pattern/core": "workspace:*",
+    "@pattern/mod-agents": "workspace:*",
+    "@pattern/mod-store": "workspace:*",
+    "zod": "^4.0.0",
+    "@pattern/runtime-node": "workspace:*"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^6.26.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
