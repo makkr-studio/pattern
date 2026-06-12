@@ -8,7 +8,7 @@
  * this store — they never touch the wire directly.
  */
 
-import { api, streamApproval, streamTurn } from "./api";
+import { api, signOut, streamApproval, streamTurn } from "./api";
 import { sfx } from "./sfx";
 import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
 
@@ -16,6 +16,8 @@ export interface ChatState {
   /** Identity + auth policy from /chat/api/me (null until loaded). */
   me: Me | null;
   meLoaded: boolean;
+  /** Voluntary sign-in (guest clicked "Sign in" while auth is optional). */
+  signInOpen: boolean;
   conversations: Conversation[];
   conversationsLoaded: boolean;
   currentId: string | null;
@@ -34,6 +36,7 @@ class ChatStore {
   private state: ChatState = {
     me: null,
     meLoaded: false,
+    signInOpen: false,
     conversations: [],
     conversationsLoaded: false,
     currentId: null,
@@ -71,6 +74,20 @@ class ChatStore {
   /** A 401 mid-session (expired login) — re-ask /me so the sign-in gate shows. */
   private onApiError(err: unknown): void {
     if ((err as { status?: number }).status === 401) void this.loadMe();
+  }
+
+  setSignInOpen(open: boolean): void {
+    this.set({ signInOpen: open });
+  }
+
+  /** Revoke the session, then re-resolve identity + the visible conversations. */
+  async signOut(): Promise<void> {
+    const logoutPath = this.state.me?.login.logoutPath;
+    if (!logoutPath) return;
+    await signOut(logoutPath);
+    // Back to anonymous: the device cookie scopes what we see now.
+    this.set({ currentId: null, turns: [], busy: null, sendError: null });
+    await Promise.all([this.loadMe(), this.loadConversations()]);
   }
 
   async loadConversations(): Promise<void> {

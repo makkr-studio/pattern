@@ -10,7 +10,7 @@ import React, { useState } from "react";
 import { requestMagicLink } from "../lib/api";
 import type { Me } from "../lib/types";
 
-export function SignIn({ me }: { me: Me }) {
+export function SignIn({ me, onDismiss }: { me: Me; onDismiss?: () => void }) {
   const [email, setEmail] = useState("");
   const [phase, setPhase] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
@@ -63,8 +63,9 @@ export function SignIn({ me }: { me: Me }) {
           <form onSubmit={submit}>
             <h1 className="text-[15px] font-medium">Sign in to continue</h1>
             <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: "var(--fg-soft)" }}>
-              This chat is private. Enter your email and we&rsquo;ll send you a one-time sign-in
-              link.
+              {onDismiss
+                ? "Keep your conversations under your account, across devices. We’ll email you a one-time sign-in link."
+                : "This chat is private. Enter your email and we’ll send you a one-time sign-in link."}
             </p>
             <input
               type="email"
@@ -90,6 +91,16 @@ export function SignIn({ me }: { me: Me }) {
               </p>
             )}
           </form>
+        )}
+
+        {onDismiss && (
+          <button
+            onClick={onDismiss}
+            className="mt-4 text-[12.5px] underline-offset-2 hover:underline"
+            style={{ color: "var(--fg-faint)" }}
+          >
+            ← Continue as guest
+          </button>
         )}
       </div>
     </div>

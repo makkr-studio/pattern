@@ -4,7 +4,7 @@
  * in a later round (it consumes events, not the wire).
  */
 
-import React, { useEffect, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { chatStore } from "./lib/store";
 import { connectNotify } from "./lib/ws";
@@ -59,11 +59,16 @@ function App() {
   }, []);
 
   const streaming = state.liveTurnId != null;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // The server says auth is required and we're anonymous → the sign-in gate
   // replaces the app (the API would 401 anyway; this is the nice version).
   if (state.me?.authRequired && !state.me.user) {
     return <SignIn me={state.me} />;
+  }
+  // Voluntary sign-in: a guest clicked "Sign in" while auth is optional.
+  if (state.signInOpen && state.me && !state.me.user) {
+    return <SignIn me={state.me} onDismiss={() => chatStore.setSignInOpen(false)} />;
   }
 
   return (
@@ -72,10 +77,46 @@ function App() {
         conversations={state.conversations}
         currentId={state.currentId}
         me={state.me}
-        onOpen={(id) => void chatStore.open(id)}
-        onNew={() => void chatStore.open(null)}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onOpen={(id) => {
+          setSidebarOpen(false);
+          void chatStore.open(id);
+        }}
+        onNew={() => {
+          setSidebarOpen(false);
+          void chatStore.open(null);
+        }}
       />
       <main className="flex h-full min-w-0 flex-1 flex-col">
+        {/* Mobile top bar — the drawer handle. */}
+        <div
+          className="flex items-center gap-2 border-b px-3 py-2.5 md:hidden"
+          style={{ borderColor: "var(--line-soft)" }}
+        >
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-md p-1.5 transition-colors hover:bg-[var(--line-soft)]"
+            style={{ color: "var(--fg-soft)" }}
+            aria-label="Open menu"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <span className="min-w-0 flex-1 truncate text-center text-[14px] font-medium">
+            {state.conversations.find((c) => c.id === state.currentId)?.title || "Pattern Chat"}
+          </span>
+          <button
+            onClick={() => void chatStore.open(null)}
+            className="rounded-md p-1.5 text-[16px] leading-none transition-colors hover:bg-[var(--line-soft)]"
+            style={{ color: "var(--fg-soft)" }}
+            aria-label="New conversation"
+            title="New conversation"
+          >
+            +
+          </button>
+        </div>
         <div className="min-h-0 flex-1">
           {state.currentId == null && state.turns.length === 0 ? (
             <EmptyState />

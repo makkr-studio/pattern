@@ -35,6 +35,8 @@ export interface ChatModOptions {
    * "/auth/magic-link/request" (mod-auth-magic-link's default mount).
    */
   loginRequestPath?: string;
+  /** Where the chat's Sign out posts. Default "/auth/logout" (mod-identity). */
+  logoutPath?: string;
 }
 
 export interface ResolvedChatOptions {
@@ -46,6 +48,7 @@ export interface ResolvedChatOptions {
   maxTurns: number;
   requireAuth?: unknown;
   loginRequestPath: string;
+  logoutPath: string;
 }
 
 export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOptions {
@@ -64,5 +67,6 @@ export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOption
     maxTurns: options.maxTurns ?? 12,
     requireAuth: options.requireAuth ?? { env: "CHAT_REQUIRE_AUTH" },
     loginRequestPath: options.loginRequestPath ?? "/auth/magic-link/request",
+    logoutPath: options.logoutPath ?? "/auth/logout",
   };
 }

@@ -44,7 +44,7 @@ export type TurnEvent =
 export interface Me {
   user: { id: string; name: string | null; email: string | null; provider: string | null } | null;
   authRequired: boolean;
-  login: { kind: string; requestPath: string };
+  login: { kind: string; requestPath: string; logoutPath: string };
 }
 
 export interface Conversation {

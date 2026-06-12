@@ -158,7 +158,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
       body: {
         user: u?.id ? { id: u.id, name: u.name ?? null, email: u.email ?? null, provider: u.provider ?? null } : null,
         authRequired: requirement !== undefined && requirement !== false,
-        login: { kind: "magic-link", requestPath: opts.loginRequestPath },
+        login: { kind: "magic-link", requestPath: opts.loginRequestPath, logoutPath: opts.logoutPath },
       },
     };
   });
@@ -610,6 +610,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
 interface MeOptions {
   requireAuth?: unknown;
   loginRequestPath: string;
+  logoutPath: string;
 }
 
 export { makeOps as chatOps };
