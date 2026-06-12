@@ -51,6 +51,9 @@ export function docsRouteWorkflows(opts: ResolvedDocsOptions): Workflow[] {
     { id: "docs.route.ops", method: "GET", path: `${api}/ops`, op: "docs.ops.list" },
     { id: "docs.route.op", method: "GET", path: `${api}/op`, op: "docs.ops.get" },
     { id: "docs.route.mods", method: "GET", path: `${api}/mods`, op: "docs.mods.list" },
+    { id: "docs.route.search", method: "GET", path: `${api}/search-index`, op: "docs.search.index" },
+    // Routes beat app mounts in the host, so this wins over the /docs SPA.
+    { id: "docs.route.llms", method: "GET", path: `${opts.mount}/llms.txt`, op: "docs.llms" },
   ];
   return [
     // /me is ALWAYS open — it answers "who am I / is auth required?" so the

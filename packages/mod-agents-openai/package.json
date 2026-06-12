@@ -1,7 +1,7 @@
 {
   "name": "@pattern/mod-agents-openai",
   "version": "0.1.28",
-  "description": "OpenAI Agents SDK provider for Pattern: agent/run ops that reify @pattern/mod-agents descriptors into SDK agents — workflow tools as linked sub-runs, guardrails, MCP servers, streamed turn events, history threading, compaction, HITL approvals, realtime key minting.",
+  "description": "OpenAI Agents SDK provider for Pattern: agent/run ops that reify @pattern/mod-agents descriptors into SDK agents \u2014 workflow tools as linked sub-runs, guardrails, MCP servers, streamed turn events, history threading, compaction, HITL approvals, realtime key minting.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -14,6 +14,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
+    "docs",
     "README.md"
   ],
   "scripts": {
@@ -23,7 +24,8 @@
   "dependencies": {
     "@openai/agents": "^0.11.0",
     "@pattern/core": "workspace:*",
-    "@pattern/mod-agents": "workspace:*"
+    "@pattern/mod-agents": "workspace:*",
+    "@pattern/runtime-node": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

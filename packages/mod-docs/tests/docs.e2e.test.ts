@@ -166,6 +166,42 @@ describe("the generated op reference", () => {
   });
 });
 
+describe("llms.txt + search index (agent-readable docs)", () => {
+  it("serves the whole doc set as one markdown body, chapters in order", async () => {
+    const { base } = await boot();
+    const res = await fetch(`${base}/docs/llms.txt`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/markdown");
+    const text = await res.text();
+
+    // Chapters in order: the handbook before the fake mod's chapter.
+    const handbookAt = text.indexOf("# Chapter: Pattern (@pattern/mod-docs)");
+    const fakeAt = text.indexOf("# Chapter: Fake Mod (@acme/mod-fake)");
+    expect(handbookAt).toBeGreaterThan(-1);
+    expect(fakeAt).toBeGreaterThan(handbookAt);
+    // Page bodies are in, frontmatter is not.
+    expect(text).toContain("How to set up.");
+    expect(text).not.toContain("order: 1\n---");
+    // The generated reference rides along — terse, no JSON schemas.
+    expect(text).toContain("# Op reference (generated from the live registry)");
+    expect(text).toContain("## core.flow.branch");
+    expect(text).not.toContain('"$schema"');
+  });
+
+  it("exposes the ⌘K corpus: pages with headings + op types", async () => {
+    const { base } = await boot();
+    const idx = (await (await fetch(`${base}/docs/api/search-index`)).json()) as {
+      pages: Array<{ chapter: string; file: string; title: string; headings: string[] }>;
+      ops: Array<{ type: string }>;
+    };
+    const setup = idx.pages.find((p) => p.chapter === "fake" && p.file === "guides/setup.md")!;
+    expect(setup.title).toBe("Setting up");
+    expect(setup.headings).toContain("Setup");
+    expect(idx.pages.some((p) => p.chapter === "docs" && p.file === "index.md")).toBe(true);
+    expect(idx.ops.some((o) => o.type === "fake.op")).toBe(true);
+  });
+});
+
 describe("docs auth gate (DOCS_REQUIRE_AUTH)", () => {
   it("default: open to everyone, /me says so", async () => {
     const { base } = await boot();
@@ -182,6 +218,9 @@ describe("docs auth gate (DOCS_REQUIRE_AUTH)", () => {
     expect((await fetch(`${base}/docs/api/manifest`)).status).toBe(401);
     expect((await fetch(`${base}/docs/api/page?chapter=fake&file=index.md`)).status).toBe(401);
     expect((await fetch(`${base}/docs/raw?chapter=fake&file=index.md`)).status).toBe(401);
+    expect((await fetch(`${base}/docs/llms.txt`)).status).toBe(401);
+    expect((await fetch(`${base}/docs/api/search-index`)).status).toBe(401);
+    expect((await fetch(`${base}/docs/api/ops`)).status).toBe(401);
 
     const authed = await fetch(`${base}/docs/api/manifest`, { headers: { "x-user": "benoit" } });
     expect(authed.status).toBe(200);

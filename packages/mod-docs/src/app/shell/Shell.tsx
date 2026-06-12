@@ -6,11 +6,12 @@
 
 import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useOutletContext } from "react-router-dom";
-import { BookOpen, Menu, Monitor, Moon, Sun, X } from "lucide-react";
+import { BookOpen, Menu, Monitor, Moon, Search, Sun, X } from "lucide-react";
 import { api, type Manifest, type Me } from "../lib/api";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import type { DocsNavItem } from "../../shared/types";
 import { SignIn } from "../components/SignIn";
+import { SearchPalette, useSearchHotkey } from "./SearchPalette";
 
 export interface DocsContext {
   manifest: Manifest;
@@ -115,7 +116,9 @@ export function Shell() {
   const [me, setMe] = useState<Me | null>(null);
   const [denied, setDenied] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [searching, setSearching] = useState(false);
   const { mode, toggle } = useTheme();
+  useSearchHotkey(() => setSearching(true));
 
   useEffect(() => {
     void api.me().then(setMe).catch(() => setMe(null));
@@ -151,6 +154,14 @@ export function Shell() {
         </Link>
         <div className="flex-1" />
         <button
+          onClick={() => setSearching(true)}
+          className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12px] text-muted transition-colors hairline hover:text-[var(--fg)]"
+        >
+          <Search size={13} />
+          <span className="hidden sm:inline">Search</span>
+          <kbd className="hidden rounded border px-1 text-[10px] hairline sm:inline">⌘K</kbd>
+        </button>
+        <button
           onClick={toggle}
           className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[12px] text-muted transition-colors hairline hover:text-[var(--fg)]"
           title={`Theme: ${mode} (click to cycle)`}
@@ -158,6 +169,8 @@ export function Shell() {
           {THEME_ICON[mode]}
         </button>
       </header>
+
+      {searching && <SearchPalette onClose={() => setSearching(false)} />}
 
       <div className="flex min-h-0 flex-1">
         {/* Scrim + drawer below md; static rail at md+. */}

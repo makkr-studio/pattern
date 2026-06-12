@@ -60,11 +60,12 @@ const MODPACKS: Modpack[] = [
     id: "studio",
     label: "Studio",
     hint: "engine + visual admin — editor, versions, runs, traces (recommended)",
-    mods: ["@pattern/mod-admin", "./mods/quotes.mjs (app-local)"],
+    mods: ["@pattern/mod-admin", "@pattern/mod-docs", "./mods/quotes.mjs (app-local)"],
     contents: [
       "the admin SPA at /admin — edit, version, deploy, replay workflows",
       "3 editable example workflows seeded on first boot",
       "an app-local mod adding ops AND an admin page (the extension surface, live)",
+      "versioned docs for every installed mod at /docs — op reference generated live",
     ],
     // Secure-by-default is the philosophy — the flagship pack ships locked.
     auth: { default: true },
@@ -93,12 +94,14 @@ const MODPACKS: Modpack[] = [
       "@pattern/mod-store",
       "@pattern/mod-vault",
       "@pattern/mod-admin",
+      "@pattern/mod-docs",
     ],
     contents: [
       "a product chat app at /chat — streaming transcript, tool activity, image input",
       "the turn pipeline is a WORKFLOW: fork it in the admin, add guardrails, swap models",
       "two example tools (get_time, get_weather) — every call is a linked sub-run",
       "vault for the OpenAI API key (encrypted, masked out of run samples)",
+      "self-documenting: /docs shows every installed mod's chapter + the live op reference",
     ],
     auth: { default: true },
     next: ({ name, runCmd, installed, installLine, auth }) =>

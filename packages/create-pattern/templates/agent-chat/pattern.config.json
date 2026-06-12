@@ -6,7 +6,8 @@
     "@pattern/mod-agents",
     "@pattern/mod-agents-openai",
     "@pattern/mod-chat",
-    "@pattern/mod-admin"
+    "@pattern/mod-admin",
+    "@pattern/mod-docs"
   ],
   "workflows": "./workflows"
 }

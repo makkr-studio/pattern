@@ -147,6 +147,9 @@ importers:
       '@pattern/core':
         specifier: workspace:*
         version: link:../core
+      '@pattern/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
       zod:
         specifier: ^4.0.0
         version: 4.4.3
@@ -169,6 +172,9 @@ importers:
       '@pattern/mod-agents':
         specifier: workspace:*
         version: link:../mod-agents
+      '@pattern/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -185,13 +191,13 @@ importers:
       '@pattern/mod-identity':
         specifier: workspace:*
         version: link:../mod-identity
+      '@pattern/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
       zod:
         specifier: ^4.0.0
         version: 4.4.3
     devDependencies:
-      '@pattern/runtime-node':
-        specifier: workspace:*
-        version: link:../runtime-node
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.20
@@ -308,13 +314,13 @@ importers:
       '@pattern/core':
         specifier: workspace:*
         version: link:../core
+      '@pattern/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
       zod:
         specifier: ^4.0.0
         version: 4.4.3
     devDependencies:
-      '@pattern/runtime-node':
-        specifier: workspace:*
-        version: link:../runtime-node
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.20
@@ -343,13 +349,13 @@ importers:
       '@pattern/core':
         specifier: workspace:*
         version: link:../core
+      '@pattern/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
       zod:
         specifier: ^4.0.0
         version: 4.4.3
     devDependencies:
-      '@pattern/runtime-node':
-        specifier: workspace:*
-        version: link:../runtime-node
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.20
@@ -362,6 +368,9 @@ importers:
       '@pattern/core':
         specifier: workspace:*
         version: link:../core
+      '@pattern/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
       zod:
         specifier: ^4.0.0
         version: 4.4.3

@@ -12,3 +12,6 @@ PATTERN_VAULT_KEY=
 # Require sign-in to chat? Unset/false = guests welcome (device-scoped).
 # true = any signed-in user; a comma-separated list = required scopes.
 # CHAT_REQUIRE_AUTH=true
+
+# Require sign-in to READ the docs at /docs? Same semantics as CHAT_REQUIRE_AUTH.
+# DOCS_REQUIRE_AUTH=true

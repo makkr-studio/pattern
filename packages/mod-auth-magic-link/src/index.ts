@@ -17,6 +17,9 @@
  * doesn't matter.
  */
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { localFs, provideFilesystem } from "@pattern/runtime-node";
 import { defineMod, value, z, type Engine, type OpDefinition, type PatternMod, type Workflow } from "@pattern/core";
 import {
   deliverToken,
@@ -126,15 +129,28 @@ export interface MagicLinkOptions {
   label?: string;
 }
 
+
+/** The packaged docs/ chapter (the `docs` contribution points at "magic-link-docs"). */
+function packagedDocs(engine: Engine): void {
+  try {
+    const dir = fileURLToPath(new URL("../docs", import.meta.url));
+    if (existsSync(dir)) provideFilesystem(engine, "magic-link-docs", localFs(dir));
+  } catch {
+    /* packaged without docs — the contribution is simply skipped */
+  }
+}
+
 export function magicLinkMod(options: MagicLinkOptions = {}): PatternMod {
   const mount = (options.mount ?? "/auth").replace(/\/$/, "") || "/auth";
   return defineMod({
     name: "@pattern/mod-auth-magic-link",
+    docs: { filesystem: "magic-link-docs", title: "Magic-link login", order: 41 },
     ops: [requestOp],
     workflows: [requestRoute(mount)],
     // `ready`, not `setup`: the identity service registers in identity's setup,
     // and every setup runs before any ready — order in the config is free.
     ready: (engine: Engine) => {
+      packagedDocs(engine);
       const svc = engine.service<IdentityService>(IDENTITY_SERVICE);
       if (!svc) {
         console.error(
