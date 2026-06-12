@@ -1,0 +1,10 @@
+# Copied to `.env` (gitignored), loaded automatically on boot — existing
+# environment variables always win over this file.
+
+# The agent's model key (or store it encrypted: admin → System → Secrets,
+# then wire a vault.read node into the pipeline's apiKey input).
+OPENAI_API_KEY=
+
+# The vault's master key. Generate ONCE: openssl rand -base64 32
+# Same key forever — it decrypts .pattern-data/vault.db.
+PATTERN_VAULT_KEY=

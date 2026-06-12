@@ -13,7 +13,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Engine, type Workflow } from "@pattern/core";
 import { loadMods } from "./mods.js";
@@ -52,6 +52,34 @@ export interface LoadedProject {
   start: () => Promise<{ ports: number[]; close: () => Promise<void> }>;
 }
 
+/**
+ * Load `.env` from the project dir into process.env (already-set variables
+ * win — the real environment outranks the file, dotenv-style). Hand-rolled
+ * on purpose: KEY=VALUE lines, # comments, optional single/double quotes.
+ * This is where PATTERN_VAULT_KEY / OPENAI_API_KEY live in dev.
+ */
+export function loadDotEnv(baseDir: string, file = ".env"): void {
+  const path = resolve(baseDir, file);
+  if (!existsSync(path)) return;
+  const text = readFileSync(path, "utf8");
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim().replace(/^export\s+/, "");
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
 /** Read & parse every `*.json` workflow in a directory. */
 export async function loadWorkflowDir(dir: string): Promise<Workflow[]> {
   if (!existsSync(dir)) return [];
@@ -87,6 +115,11 @@ export async function loadProject(
     config = configOrPath;
     baseDir = process.cwd();
   }
+
+  // `.env` first (existing env wins), so mods' setup — the vault reading
+  // PATTERN_VAULT_KEY, agents reading OPENAI_API_KEY — and `$env` config
+  // interpolation all see it, whatever entry point launched us.
+  loadDotEnv(baseDir);
 
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
   // The node connection registry up-front means `core.ws.*` ops (notify,

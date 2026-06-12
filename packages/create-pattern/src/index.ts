@@ -105,7 +105,7 @@ const MODPACKS: Modpack[] = [
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        `${pc.dim("$")} export OPENAI_API_KEY=sk-… ${pc.dim("(or use the admin Secrets page later)")}`,
+        `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY there (or use the admin Secrets page later)")}`,
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         `${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`,
@@ -244,6 +244,10 @@ async function copyTemplate(packId: string, targetDir: string, name: string): Pr
   // _gitignore → .gitignore (npm strips .gitignore from published packages).
   if (existsSync(join(targetDir, "_gitignore"))) {
     await rename(join(targetDir, "_gitignore"), join(targetDir, ".gitignore"));
+  }
+  // _env.example → .env.example (same npm-stripping dance for dotfiles).
+  if (existsSync(join(targetDir, "_env.example"))) {
+    await rename(join(targetDir, "_env.example"), join(targetDir, ".env.example"));
   }
   // Replace {{name}} placeholders in text files.
   await replacePlaceholders(targetDir, { name });

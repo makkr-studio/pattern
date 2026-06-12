@@ -15,9 +15,12 @@ npm run dev
 
 ## The API key
 
-Set `OPENAI_API_KEY` in your environment — or open the admin's **Secrets**
-page (System → Secrets), store it encrypted, and wire a `vault.read` node
-into the pipeline's `apiKey` input. Vault values never appear in run samples.
+Copy `.env.example` to `.env` (gitignored, loaded automatically on boot —
+your real environment always wins) and set `OPENAI_API_KEY`. Or store it
+encrypted: admin **Secrets** page (System → Secrets) + a `vault.read` node
+wired into the pipeline's `apiKey` input — vault values never appear in run
+samples. The vault's own master key (`PATTERN_VAULT_KEY`) lives in `.env`
+too: generate it ONCE with `openssl rand -base64 32` and keep it forever.
 
 ## Add a tool
 
