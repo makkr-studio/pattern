@@ -98,6 +98,19 @@ describe("P2 — frontend contribution aggregation", () => {
     const mod = installed.find((m) => m.name === "mod-ops")!;
     expect(mod.opTypes).toContain("x.noop");
   });
+
+  it("retains docs contributions and aggregates them in load order", () => {
+    const engine = new Engine();
+    engine.use({ name: "mod-x", docs: { filesystem: "x-docs", title: "X", order: 5 } });
+    engine.use({ name: "mod-plain" }); // no docs — skipped by the aggregator
+    engine.use({ name: "mod-y", docs: { filesystem: "y-docs", nav: [{ label: "Hi", file: "hi.md" }] } });
+
+    expect(engine.installedMods().find((m) => m.name === "mod-x")!.docs).toMatchObject({ filesystem: "x-docs" });
+    const docs = engine.docs();
+    expect(docs.map((d) => d.mod)).toEqual(["mod-x", "mod-y"]);
+    expect(docs[0]!.docs.title).toBe("X");
+    expect(docs[1]!.docs.nav![0]).toMatchObject({ label: "Hi", file: "hi.md" });
+  });
 });
 
 // ── P3: useAsync installs a config-port mod ──

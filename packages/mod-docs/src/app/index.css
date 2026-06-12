@@ -1,0 +1,270 @@
+@import "tailwindcss";
+
+/* Dark mode driven by a `.dark` class on <html> (toggled by the theme store). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Pattern Docs — the admin's calmer sibling. Same tokens (glass on a neon
+ * mesh, the shared port-kind colors), tuned for READING: a measured prose
+ * column, quieter contrast, generous leading.
+ */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-neon-cyan: #22d3ee;
+  --color-neon-violet: #a78bfa;
+  --color-neon-pink: #f472b6;
+  --color-neon-lime: #a3e635;
+  --color-neon-amber: #fbbf24;
+
+  /* Port kinds — consistent with the admin editor + runtime. */
+  --color-port-value: #22d3ee;
+  --color-port-stream: #a78bfa;
+  --color-port-control: #94a3b8;
+
+  --radius-glass: 16px;
+}
+
+:root {
+  --bg: #f4f6fb;
+  --bg-mesh-1: rgba(34, 211, 238, 0.12);
+  --bg-mesh-2: rgba(167, 139, 250, 0.1);
+  --bg-mesh-3: rgba(244, 114, 182, 0.07);
+  --fg: #0b0d12;
+  --fg-muted: #51607a;
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+  --glass-blur: 14px;
+  --hairline: rgba(15, 23, 42, 0.08);
+  --code-bg: rgba(15, 23, 42, 0.05);
+  --pre-bg: rgba(15, 23, 42, 0.04);
+  --node-surface: color-mix(in srgb, #ffffff 86%, transparent);
+  --node-blur: blur(12px) saturate(1.35);
+}
+
+.dark {
+  --bg: #070910;
+  --bg-mesh-1: rgba(34, 211, 238, 0.1);
+  --bg-mesh-2: rgba(167, 139, 250, 0.12);
+  --bg-mesh-3: rgba(244, 114, 182, 0.06);
+  --fg: #e6e9ef;
+  --fg-muted: #8b97ad;
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-bg-strong: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --glass-blur: 16px;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --code-bg: rgba(255, 255, 255, 0.07);
+  --pre-bg: rgba(255, 255, 255, 0.045);
+  --node-surface: color-mix(in srgb, #0c101a 88%, transparent);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--fg);
+  background: var(--bg);
+  background-image:
+    radial-gradient(60rem 60rem at 12% -10%, var(--bg-mesh-1), transparent 60%),
+    radial-gradient(50rem 50rem at 100% 0%, var(--bg-mesh-2), transparent 55%),
+    radial-gradient(40rem 40rem at 50% 120%, var(--bg-mesh-3), transparent 60%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+@utility glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+@utility glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(calc(var(--glass-blur) + 10px)) saturate(1.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+@utility node-surface {
+  background: var(--node-surface);
+  backdrop-filter: var(--node-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+@utility text-muted {
+  color: var(--fg-muted);
+}
+
+@utility hairline {
+  border-color: var(--hairline);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--glass-border) transparent;
+}
+
+/* ── Reading prose ─────────────────────────────────────────────────────── */
+
+.prose-docs {
+  font-size: 15.5px;
+  line-height: 1.75;
+  max-width: 72ch;
+}
+.prose-docs > :first-child {
+  margin-top: 0;
+}
+.prose-docs h1 {
+  font-size: 1.9em;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0 0 0.8em;
+}
+.prose-docs h2 {
+  font-size: 1.35em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 1.9em 0 0.6em;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--hairline);
+}
+.prose-docs h3 {
+  font-size: 1.12em;
+  font-weight: 600;
+  margin: 1.5em 0 0.5em;
+}
+.prose-docs h4,
+.prose-docs h5,
+.prose-docs h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 1.3em 0 0.4em;
+}
+.prose-docs p {
+  margin: 0 0 1em;
+}
+.prose-docs a {
+  color: var(--color-neon-cyan);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-neon-cyan) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.prose-docs a:hover {
+  text-decoration-color: var(--color-neon-cyan);
+}
+.prose-docs code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--code-bg);
+  border-radius: 5px;
+  padding: 0.12em 0.36em;
+}
+.prose-docs pre {
+  background: var(--pre-bg);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  margin: 0 0 1.1em;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+.prose-docs pre code {
+  background: none;
+  padding: 0;
+  font-size: 1em;
+}
+.prose-docs ul,
+.prose-docs ol {
+  margin: 0 0 1em;
+  padding-left: 1.4em;
+}
+.prose-docs ul {
+  list-style: disc;
+}
+.prose-docs ol {
+  list-style: decimal;
+}
+.prose-docs li {
+  margin: 0.25em 0;
+}
+.prose-docs blockquote {
+  margin: 0 0 1em;
+  padding: 0.1em 1em;
+  border-left: 3px solid var(--color-neon-violet);
+  color: var(--fg-muted);
+}
+.prose-docs hr {
+  border: none;
+  border-top: 1px solid var(--hairline);
+  margin: 2em 0;
+}
+.prose-docs img {
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--hairline);
+}
+.prose-docs .table-wrap {
+  overflow-x: auto;
+  margin: 0 0 1.1em;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+.prose-docs table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.prose-docs th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.55em 0.9em;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--code-bg);
+  white-space: nowrap;
+}
+.prose-docs td {
+  padding: 0.5em 0.9em;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+.prose-docs tr:last-child td {
+  border-bottom: none;
+}
+
+/* Heading anchors — quiet until the heading is hovered. */
+.heading-anchor {
+  margin-left: 0.4em;
+  opacity: 0;
+  color: var(--fg-muted) !important;
+  text-decoration: none !important;
+  transition: opacity 120ms;
+}
+.group:hover .heading-anchor,
+.heading-anchor:focus {
+  opacity: 1;
+}
+
+/* xyflow read-only embeds themed like the admin. */
+.react-flow__attribution {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
