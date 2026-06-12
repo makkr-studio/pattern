@@ -5,3 +5,6 @@ dist/
 
 # Identity/PII data (sqlite) — never commit. (.pattern/ IS committed: workflows.)
 .pattern-data/
+
+# Secrets — .env is loaded automatically by loadProject (existing env wins)
+.env
