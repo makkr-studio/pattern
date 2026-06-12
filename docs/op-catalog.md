@@ -1,3 +1,5 @@
+> **Superseded:** the op reference is now generated from the live registry by `@pattern/mod-docs` (your app's `/docs/ops`) — always current, merged with per-op prose. This table is kept for repo browsing only.
+
 # Op catalog
 
 The ops `@pattern/core` ships (§12). Naming convention: `core.<area>.<op>`.

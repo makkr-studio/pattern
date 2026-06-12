@@ -124,6 +124,48 @@ describe("docs contribution seam (3rd-party e2e)", () => {
   });
 });
 
+describe("the generated op reference", () => {
+  it("lists live registry ops and merges per-op prose by owning mod", async () => {
+    const { base } = await boot();
+
+    // The list: core + fake-mod ops, trimmed (no schemas), with attribution.
+    const list = (await (await fetch(`${base}/docs/api/ops`)).json()) as { ops: Array<Record<string, unknown>> };
+    const fakeInList = list.ops.find((o) => o.type === "fake.op")!;
+    expect(fakeInList).toMatchObject({ mod: "@acme/mod-fake", category: "fake" });
+    expect(list.ops.some((o) => o.type === "core.flow.branch")).toBe(true);
+    expect(JSON.stringify(fakeInList)).not.toContain("configSchema");
+
+    // The detail: full info + prose from the OWNING mod's docs fs.
+    const fake = (await (await fetch(`${base}/docs/api/op?type=fake.op`)).json()) as {
+      info: { type: string; description: string };
+      prose: string | null;
+    };
+    expect(fake.info.description).toBe("Does fake things.");
+    expect(fake.prose).toContain("convincing fakes");
+
+    // A core op picks its prose from mod-docs's own packaged docs/ops/.
+    const branch = (await (await fetch(`${base}/docs/api/op?type=core.flow.branch`)).json()) as {
+      info: { controlOut: string[] };
+      prose: string | null;
+    };
+    expect(branch.info.controlOut).toEqual(expect.arrayContaining(["then", "else"]));
+    expect(branch.prose).toContain("If/else for graphs");
+
+    // Unknown type → 404; prose-less op → prose null.
+    expect((await fetch(`${base}/docs/api/op?type=no.such.op`)).status).toBe(404);
+    const noop = (await (await fetch(`${base}/docs/api/op?type=core.flow.noop`)).json()) as { prose: string | null };
+    expect(noop.prose).toBeNull();
+
+    // Mods list with chapter slugs.
+    const mods = (await (await fetch(`${base}/docs/api/mods`)).json()) as {
+      mods: Array<{ name: string; ops: string[]; chapter?: string }>;
+    };
+    const fakeMod = mods.mods.find((m) => m.name === "@acme/mod-fake")!;
+    expect(fakeMod.ops).toContain("fake.op");
+    expect(fakeMod.chapter).toBe("fake");
+  });
+});
+
 describe("docs auth gate (DOCS_REQUIRE_AUTH)", () => {
   it("default: open to everyone, /me says so", async () => {
     const { base } = await boot();

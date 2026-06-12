@@ -54,6 +54,27 @@ function Sidebar({ manifest, onNavigate }: { manifest: Manifest; onNavigate: () 
   const location = useLocation();
   return (
     <nav className="flex h-full flex-col gap-4 overflow-y-auto px-3 py-4" onClick={onNavigate}>
+      <div>
+        <div className="px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wider text-muted">Reference</div>
+        <div className="mt-1 flex flex-col gap-0.5">
+          {[
+            { to: "/ops", label: "Op reference" },
+            { to: "/mods", label: "Installed mods" },
+          ].map((r) => (
+            <NavLink
+              key={r.to}
+              to={r.to}
+              className={({ isActive }) =>
+                `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
+                  isActive ? "bg-[var(--glass-bg-strong)] font-medium" : "text-muted hover:text-[var(--fg)]"
+                }`
+              }
+            >
+              {r.label}
+            </NavLink>
+          ))}
+        </div>
+      </div>
       {manifest.chapters.map((chapter) => {
         const open = location.pathname === "/" || location.pathname.startsWith(`/${chapter.slug}`);
         return (

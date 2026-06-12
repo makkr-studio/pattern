@@ -17,6 +17,7 @@ import {
   type OpDefinition,
 } from "@pattern/core";
 import type { DocsContent } from "./content.js";
+import { modList, opGet, opListTrimmed } from "./introspect.js";
 import type { ResolvedDocsOptions } from "./options.js";
 import { DOCS_ASSETS_FS } from "./services.js";
 
@@ -156,6 +157,40 @@ export function makeDocsOps(
     execute: (ctx) => ({ app: { ...(ctx.config as object) } }),
   };
 
-  void getEngine; // reserved for the Phase B introspection ops
-  return [me, manifest, page, raw, appOp];
+  /* ── the generated reference (self-reflection) ───────────────────────── */
+
+  const engine = (): Engine => {
+    const e = getEngine();
+    if (!e) throw new Error("docs: engine not ready");
+    return e;
+  };
+
+  const opsList = httpOp(
+    "docs.ops.list",
+    "Every registered op from the LIVE registry — ports, category, contributing mod (schemas trimmed; ask docs.ops.get).",
+    async () => ({ status: 200, body: { ops: opListTrimmed(engine()) } }),
+  );
+
+  const opsGet = httpOp(
+    "docs.ops.get",
+    "One op (?type=) — full registry data merged with the owning mod's ops/<type>.md prose.",
+    async ({ query }) => {
+      const type = String(query.type ?? "");
+      const info = opGet(engine(), type);
+      if (!info) return { status: 404, body: { error: "unknown op type" } };
+      return { status: 200, body: { info, prose: await content.opProse(type, info.mod) } };
+    },
+  );
+
+  const modsList = httpOp(
+    "docs.mods.list",
+    "Installed mods with their contributions + docs chapter slugs.",
+    async () => {
+      const chapters = await content.chapters();
+      const chapterOf = (mod: string) => chapters.find((c) => c.mod === mod)?.slug;
+      return { status: 200, body: { mods: modList(engine(), chapterOf) } };
+    },
+  );
+
+  return [me, manifest, page, raw, opsList, opsGet, modsList, appOp];
 }

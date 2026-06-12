@@ -154,7 +154,9 @@ export class DocsContent {
 
   async chapters(): Promise<DocsChapter[]> {
     if (this.opts.cache && this.chaptersCache) return this.chaptersCache;
-    const seen = new Set<string>();
+    // "ops" / "mods" are the generated-reference routes in the SPA — a mod
+    // whose name slugs onto them gets suffixed instead of shadowed.
+    const seen = new Set<string>(["ops", "mods"]);
     const out: DocsChapter[] = [];
     for (const { mod, docs } of this.engine().docs()) {
       const fs = this.fs(docs.filesystem);
