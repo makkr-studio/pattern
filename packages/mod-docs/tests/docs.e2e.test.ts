@@ -1,0 +1,147 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { Engine, type PatternMod } from "@pattern/core";
+import { createHttpHost, memoryFs, provideFilesystem } from "@pattern/runtime-node";
+import { docsMod } from "../src/index.js";
+
+/**
+ * The docs host over a REAL HTTP host: the 3rd-party contribution seam
+ * (a fake mod ships markdown in a memory fs → its chapter appears), nav
+ * derivation from frontmatter, path-traversal defenses, and the
+ * DOCS_REQUIRE_AUTH gate.
+ */
+
+let closer: (() => Promise<void>) | undefined;
+afterEach(async () => {
+  await closer?.();
+  closer = undefined;
+});
+
+let port = 4970;
+
+/** A pretend 3rd-party mod that documents itself through the public seam. */
+function fakeMod(): PatternMod {
+  return {
+    name: "@acme/mod-fake",
+    ops: [
+      {
+        type: "fake.op",
+        title: "Fake op",
+        description: "Does fake things.",
+        inputs: {},
+        outputs: {},
+        execute: async () => ({}),
+      },
+    ],
+    docs: { filesystem: "fake-docs", title: "Fake Mod", order: 50 },
+    setup: (engine) => {
+      const fs = memoryFs();
+      void fs.write("index.md", "# Fake Mod\n\nThe chapter landing page.");
+      void fs.write("guides/setup.md", "---\ntitle: Setting up\norder: 1\n---\n\n# Setup\n\nHow to set up.");
+      void fs.write("guides/zz-later.md", "# Way later\n\nNo frontmatter — heading title, default order.");
+      void fs.write("ops/fake.op.md", "Use `fake.op` when you need convincing fakes.");
+      provideFilesystem(engine, "fake-docs", fs);
+    },
+  };
+}
+
+async function boot(opts: { env?: Record<string, string>; headerAuth?: boolean; explicitNav?: boolean } = {}) {
+  port += 1;
+  const engine = new Engine({ env: opts.env });
+  if (opts.headerAuth) {
+    engine.registerAuthProvider({
+      name: "header",
+      async authenticate({ headers }) {
+        const id = headers.get("x-user");
+        return id ? { kind: "user", id, provider: "header" } : null;
+      },
+    });
+  }
+  await engine.useAsync(docsMod(), { deferReady: true });
+  const fake = fakeMod();
+  if (opts.explicitNav) {
+    fake.docs = {
+      ...fake.docs!,
+      nav: [{ label: "Only this", file: "guides/setup.md" }],
+    };
+  }
+  await engine.useAsync(fake, { deferReady: true });
+  const host = createHttpHost(engine, { defaultPort: port });
+  const { close } = await host.start();
+  closer = close;
+  return { engine, base: `http://localhost:${port}` };
+}
+
+describe("docs contribution seam (3rd-party e2e)", () => {
+  it("an installed mod's markdown becomes a chapter with frontmatter-derived nav", async () => {
+    const { base } = await boot();
+    const manifest = (await (await fetch(`${base}/docs/api/manifest`)).json()) as {
+      chapters: Array<{ mod: string; slug: string; title: string; nav: Array<{ label: string; file: string; items?: unknown[] }> }>;
+      adminMount: string;
+    };
+
+    // The handbook (mod-docs's own chapter, via the same seam) opens the book.
+    expect(manifest.chapters[0]).toMatchObject({ mod: "@pattern/mod-docs", title: "Pattern", slug: "docs" });
+    expect(manifest.adminMount).toBe("/admin");
+
+    const fake = manifest.chapters.find((c) => c.mod === "@acme/mod-fake")!;
+    expect(fake).toMatchObject({ slug: "fake", title: "Fake Mod" });
+    // Derived nav: guides/ groups; frontmatter title + order beat filename;
+    // ops/*.md never becomes a page.
+    const group = fake.nav.find((n) => n.label === "Guides")!;
+    expect(group.items).toHaveLength(2);
+    expect((group.items as Array<{ label: string }>)[0]!.label).toBe("Setting up");
+    expect((group.items as Array<{ label: string }>)[1]!.label).toBe("Way later");
+    expect(JSON.stringify(fake.nav)).not.toContain("fake.op");
+
+    // Page fetch returns the frontmatter-stripped markdown + resolved title.
+    const page = (await (
+      await fetch(`${base}/docs/api/page?chapter=fake&file=${encodeURIComponent("guides/setup.md")}`)
+    ).json()) as { title: string; markdown: string };
+    expect(page.title).toBe("Setting up");
+    expect(page.markdown).toContain("How to set up.");
+    expect(page.markdown).not.toContain("order: 1");
+  });
+
+  it("explicit nav override wins; unknown files 404; traversal is rejected", async () => {
+    const { base } = await boot({ explicitNav: true });
+    const manifest = (await (await fetch(`${base}/docs/api/manifest`)).json()) as {
+      chapters: Array<{ mod: string; nav: Array<{ label: string }> }>;
+    };
+    const fake = manifest.chapters.find((c) => c.mod === "@acme/mod-fake")!;
+    expect(fake.nav).toEqual([{ label: "Only this", file: "guides/setup.md" }]);
+
+    expect((await fetch(`${base}/docs/api/page?chapter=fake&file=nope.md`)).status).toBe(404);
+    expect((await fetch(`${base}/docs/api/page?chapter=ghost&file=index.md`)).status).toBe(404);
+    for (const evil of ["../secrets.md", "/etc/passwd.md", "a\\b.md", "index.md/../x.md", "no-extension"]) {
+      const res = await fetch(`${base}/docs/api/page?chapter=fake&file=${encodeURIComponent(evil)}`);
+      expect(res.status, evil).toBe(404);
+    }
+    // raw view returns the bytes, frontmatter included
+    const raw = await fetch(`${base}/docs/raw?chapter=fake&file=${encodeURIComponent("guides/setup.md")}`);
+    expect(raw.status).toBe(200);
+    expect(raw.headers.get("content-type")).toContain("text/markdown");
+    expect(await raw.text()).toContain("order: 1");
+  });
+});
+
+describe("docs auth gate (DOCS_REQUIRE_AUTH)", () => {
+  it("default: open to everyone, /me says so", async () => {
+    const { base } = await boot();
+    const me = (await (await fetch(`${base}/docs/api/me`)).json()) as { user: unknown; authRequired: boolean };
+    expect(me).toMatchObject({ user: null, authRequired: false });
+    expect((await fetch(`${base}/docs/api/manifest`)).status).toBe(200);
+  });
+
+  it("DOCS_REQUIRE_AUTH=true gates content but never /me", async () => {
+    const { base } = await boot({ env: { DOCS_REQUIRE_AUTH: "true" }, headerAuth: true });
+    const me = (await (await fetch(`${base}/docs/api/me`)).json()) as { authRequired: boolean };
+    expect(me.authRequired).toBe(true);
+
+    expect((await fetch(`${base}/docs/api/manifest`)).status).toBe(401);
+    expect((await fetch(`${base}/docs/api/page?chapter=fake&file=index.md`)).status).toBe(401);
+    expect((await fetch(`${base}/docs/raw?chapter=fake&file=index.md`)).status).toBe(401);
+
+    const authed = await fetch(`${base}/docs/api/manifest`, { headers: { "x-user": "benoit" } });
+    expect(authed.status).toBe(200);
+  });
+});

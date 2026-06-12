@@ -32,6 +32,7 @@ import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
 import { validateWorkflow } from "./validate.js";
 import type { FrontendContribution, SettingsSection } from "./frontend.js";
+import type { DocsContribution } from "./docs.js";
 import {
   ANONYMOUS,
   type AuthContext,
@@ -69,6 +70,13 @@ export interface PatternMod {
    * `engine.frontend()`. Carried as data; ignored by the engine itself.
    */
   frontend?: FrontendContribution;
+  /**
+   * A documentation chapter: markdown shipped inside the mod's package,
+   * registered as a named filesystem in `setup`, referenced here. Aggregated
+   * by a docs host (@pattern/mod-docs) via `engine.docs()`. Carried as data;
+   * ignored by the engine itself.
+   */
+  docs?: DocsContribution;
   setup?: (engine: Engine) => void | Promise<void>;
   /**
    * Runs after **every** mod of the installation batch is installed (admin-spec
@@ -85,6 +93,7 @@ export interface PatternMod {
 export interface InstalledMod {
   name: string;
   frontend?: FrontendContribution;
+  docs?: DocsContribution;
   /** Op types the mod contributed (for `admin.mod.list`). */
   opTypes: string[];
   /** Workflow ids the mod contributed. */
@@ -446,7 +455,7 @@ export class Engine {
       registerWorkflow(wf);
       workflowIds.push(wf.id);
     }
-    this.mods.push({ name: mod.name, frontend: mod.frontend, opTypes, workflowIds });
+    this.mods.push({ name: mod.name, frontend: mod.frontend, docs: mod.docs, opTypes, workflowIds });
   }
 
   /** Installed mods, in load order (for `admin.mod.list` and frontend aggregation). */
@@ -483,6 +492,19 @@ export class Engine {
     }
     menu.sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label));
     return { assets, menu, pages, commands, settings };
+  }
+
+  /**
+   * The `docs` contributions of every installed mod, in load order. A docs
+   * host (@pattern/mod-docs) builds its chapters from this — content itself
+   * stays in each mod's registered filesystem.
+   */
+  docs(): Array<{ mod: string; docs: DocsContribution }> {
+    const out: Array<{ mod: string; docs: DocsContribution }> = [];
+    for (const mod of this.mods) {
+      if (mod.docs) out.push({ mod: mod.name, docs: mod.docs });
+    }
+    return out;
   }
 
   // ── Observability ──

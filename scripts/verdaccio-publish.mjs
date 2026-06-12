@@ -40,6 +40,7 @@ const PKG_DIRS = [
   "packages/mod-agents",
   "packages/mod-agents-openai",
   "packages/mod-chat",
+  "packages/mod-docs",
   "packages/create-pattern",
 ];
 

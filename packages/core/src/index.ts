@@ -36,6 +36,9 @@ export type {
   SettingsSection,
 } from "./frontend.js";
 
+// Docs contribution contract (docs host: @pattern/mod-docs)
+export type { DocsContribution, DocsNavItem } from "./docs.js";
+
 // Terminal graph rendering (for `pattern graph`)
 export { formatGraph } from "./graph-format.js";
 
