@@ -22,6 +22,7 @@ import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from ".
 import { OpNode } from "../editor/OpNode";
 import { FrameNode } from "../editor/FrameNode";
 import { PortalEdge } from "../editor/PortalEdge";
+import { FlowEdge } from "../editor/FlowEdge";
 import { RunPanel } from "../editor/RunPanel";
 import {
   buildFlow,
@@ -51,7 +52,9 @@ import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
 
 const nodeTypes = { op: OpNode, frame: FrameNode };
-const edgeTypes = { portal: PortalEdge };
+// `default` overrides xyflow's built-in wire so normal edges highlight on
+// port-hover (FlowEdge); portaled edges keep their glyph renderer.
+const edgeTypes = { portal: PortalEdge, default: FlowEdge };
 
 /** MIME type carrying an op across the palette→canvas drag. */
 const DND_TYPE = "application/x-pattern-op";

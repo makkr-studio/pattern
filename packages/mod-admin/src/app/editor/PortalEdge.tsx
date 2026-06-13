@@ -4,12 +4,17 @@
  * skip propagation, diffs all see a normal edge); only the VIEW changes — the
  * wire is replaced by two paired glyphs: `name ▸` at the source port and
  * `▸ name` at the target port. Double-click an edge to toggle (EditorPage);
- * select a glyph to rename. Hovering either glyph ghosts the real wire in so
- * you never lose track of what connects to what.
+ * select a glyph to rename.
+ *
+ * Hover is keyed by PORT, not by glyph (see editor/hover): hovering a glyph —
+ * or the port's dot itself — ghosts in EVERY wire on that port. That's what
+ * makes a port with several portaled edges legible: its glyphs stack at one
+ * point, but lighting one lights all the siblings, not just the topmost.
  */
 
-import React, { useState } from "react";
+import React from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, type EdgeProps } from "@xyflow/react";
+import { useEdgeActive, usePortHover, type PortRef } from "./hover";
 
 function chipColor(kind: string | undefined): string {
   return kind === "stream"
@@ -20,9 +25,14 @@ function chipColor(kind: string | undefined): string {
 }
 
 export function PortalEdge(props: EdgeProps) {
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected } = props;
+  const { id, source, target, sourceHandleId, targetHandleId, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected } = props;
   const rf = useReactFlow();
-  const [hover, setHover] = useState(false);
+  const setHover = usePortHover((s) => s.setHover);
+  const clear = usePortHover((s) => s.clear);
+  const active = useEdgeActive(source, sourceHandleId, target, targetHandleId);
+
+  const outRef: PortRef = { node: source, port: sourceHandleId ?? "", end: "source" };
+  const inRef: PortRef = { node: target, port: targetHandleId ?? "", end: "target" };
 
   const name = (data?.portal as string) || "portal";
   const kind = data?.kind as string | undefined;
@@ -39,10 +49,11 @@ export function PortalEdge(props: EdgeProps) {
       style={{
         transform: `translate(${side === "out" ? "4px" : "calc(-100% - 4px)"}, -50%) translate(${x}px, ${y}px)`,
         color,
-        boxShadow: `0 0 0 1px ${color}40, 0 4px 14px rgba(0,0,0,0.25)`,
+        boxShadow: active ? `0 0 0 1px ${color}, 0 0 10px ${color}66, 0 4px 14px rgba(0,0,0,0.3)` : `0 0 0 1px ${color}40, 0 4px 14px rgba(0,0,0,0.25)`,
+        transition: "box-shadow 140ms",
       }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseEnter={() => setHover(side === "out" ? outRef : inRef)}
+      onMouseLeave={() => clear(side === "out" ? outRef : inRef)}
       title={`portal "${name}" — double-click the glyph to restore the wire`}
       onDoubleClick={(e) => {
         e.stopPropagation();
@@ -80,7 +91,7 @@ export function PortalEdge(props: EdgeProps) {
           stroke: color,
           strokeWidth: 1.5,
           strokeDasharray: "3 5",
-          opacity: hover || selected ? 0.5 : 0,
+          opacity: active || selected ? 0.5 : 0,
           transition: "opacity 150ms",
           pointerEvents: "none",
         }}

@@ -3,6 +3,7 @@ import { Handle, Position, useNodeConnections, useUpdateNodeInternals, type Node
 import { MessageSquare, Settings2 } from "lucide-react";
 import type { PortInfo } from "@pattern/admin-sdk";
 import { CONTROL_IN, CONTROL_OUT, type OpNodeData } from "./graph";
+import { usePortHandlers } from "./hover";
 import { portFill, portTypeLabel } from "../lib/format";
 import { categoryOfType, categoryStyle, humanizeOp } from "../lib/categories";
 import { tip } from "../components/Tooltip";
@@ -75,7 +76,7 @@ const RequiredMark = ({ satisfied }: { satisfied: boolean }) => (
   </span>
 );
 
-const dotStyle = (p: PortInfo, side: "left" | "right", square = false, wired?: boolean): React.CSSProperties => ({
+const dotStyle = (p: PortInfo, side: "left" | "right", square = false, wired?: boolean, active = false): React.CSSProperties => ({
   position: "relative",
   [side]: -2,
   transform: "none",
@@ -85,21 +86,52 @@ const dotStyle = (p: PortInfo, side: "left" | "right", square = false, wired?: b
   // Required inputs ring their dot — AMBER + glow while unwired, quiet white
   // once a wire satisfies them.
   border: p.required ? (wired ? "1.5px solid rgba(255,255,255,0.85)" : "1.5px solid var(--color-neon-amber)") : "none",
-  boxShadow: p.required && !wired ? "0 0 7px var(--color-neon-amber)" : undefined,
+  // Hover-highlight wins: a port lit because it (or its far end) is hovered
+  // glows in its own color; otherwise the required-unwired amber glow stands.
+  boxShadow: active
+    ? `0 0 0 3px ${portFill(p)}55, 0 0 10px 2px ${portFill(p)}`
+    : p.required && !wired
+      ? "0 0 7px var(--color-neon-amber)"
+      : undefined,
   borderRadius: square ? 2 : "50%",
+  transition: "box-shadow 140ms",
+  zIndex: active ? 5 : undefined,
 });
 
 /** One input-port row — a component so it can watch its own connections:
- *  required ports flip from amber (unwired) to calm the moment a wire lands. */
-function InputRow({ p, top, config }: { p: PortInfo; top: number; config?: boolean }) {
+ *  required ports flip from amber (unwired) to calm the moment a wire lands,
+ *  and the dot lights when this port (or the far end of one of its wires) is
+ *  hovered. */
+function InputRow({ nodeId, p, top, config }: { nodeId: string; p: PortInfo; top: number; config?: boolean }) {
   const connections = useNodeConnections({ handleType: "target", handleId: p.name });
   const wired = connections.length > 0;
+  const { active, onMouseEnter, onMouseLeave } = usePortHandlers({ node: nodeId, port: p.name, end: "target" });
   return (
     <div className="absolute left-2.5 flex items-center gap-1.5 text-[10px]" style={{ top }} {...portTip(p, config ? "config — resolved once at registration" : undefined)}>
-      <Handle type="target" position={Position.Left} id={p.name} style={dotStyle(p, "left", config, wired)} />
+      <Handle type="target" position={Position.Left} id={p.name} style={dotStyle(p, "left", config, wired, active)} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} />
       {config && <Settings2 size={9} className="text-muted shrink-0" />}
       <span className="text-muted font-mono">{p.name}</span>
       {p.required && <RequiredMark satisfied={wired} />}
+    </div>
+  );
+}
+
+/** One output-port row (value output or declared control-out). A component so
+ *  each dot can light when its port — or the far end of a wire from it — is
+ *  hovered. */
+function OutputRow({ nodeId, p, top, control = false }: { nodeId: string; p: PortInfo; top: number; control?: boolean }) {
+  const { active, onMouseEnter, onMouseLeave } = usePortHandlers({ node: nodeId, port: p.name, end: "source" });
+  return (
+    <div className="absolute right-2.5 flex items-center gap-1.5 text-[10px]" style={{ top }} {...portTip(p)}>
+      <span className={`text-muted font-mono ${control ? "italic" : ""}`}>{p.name}</span>
+      <Handle
+        type="source"
+        position={Position.Right}
+        id={p.name}
+        style={control ? { ...dotStyle(p, "right", false, undefined, active), borderRadius: 3, border: "1px dashed rgba(255,255,255,0.5)" } : dotStyle(p, "right", false, undefined, active)}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      />
     </div>
   );
 }
@@ -124,6 +156,11 @@ export function OpNode({ id, data, selected }: NodeProps<Node<OpNodeData>>) {
   const height = HEADER + rows * HANDLE_GAP + 12;
   const { Icon } = cat;
   const replay = data.replay ? REPLAY[data.replay] : undefined;
+
+  // Run-port (implicit control) hover wiring — computed unconditionally so the
+  // hooks run even when a tab is shadowed/absent (rules of hooks).
+  const ctrlIn = usePortHandlers({ node: id, port: CONTROL_IN, end: "target" });
+  const ctrlOut = usePortHandlers({ node: id, port: CONTROL_OUT, end: "source" });
 
   // The implicit control ports — shadowed by any declared port of the same name
   // (stream ops legitimately call their data ports `in`/`out`). Triggers have no
@@ -156,8 +193,21 @@ export function OpNode({ id, data, selected }: NodeProps<Node<OpNodeData>>) {
     justifyContent: "center",
     zIndex: 2,
   });
-  const runDot = (side: "top" | "bottom") => (
-    <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--color-port-control)", pointerEvents: "none", [side === "top" ? "marginTop" : "marginBottom"]: 3 } as React.CSSProperties} />
+  const runDot = (side: "top" | "bottom", active = false) => (
+    <span
+      style={
+        {
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: "var(--color-port-control)",
+          pointerEvents: "none",
+          boxShadow: active ? "0 0 8px 2px var(--color-port-control)" : undefined,
+          transition: "box-shadow 140ms",
+          [side === "top" ? "marginTop" : "marginBottom"]: 3,
+        } as React.CSSProperties
+      }
+    />
   );
   /** The notch interior: continues the exact paint stack of the surface it
    *  grows out of — header tint over node surface at the top, plain node
@@ -202,8 +252,10 @@ export function OpNode({ id, data, selected }: NodeProps<Node<OpNodeData>>) {
           id={CONTROL_IN}
           {...portTip({ name: "in", kind: "control", description: "Run after — a dataless control pulse. Wire any node's run-then port here to sequence without passing a value." })}
           style={runTab("top")}
+          onMouseEnter={ctrlIn.onMouseEnter}
+          onMouseLeave={ctrlIn.onMouseLeave}
         >
-          {runDot("top")}
+          {runDot("top", ctrlIn.active)}
         </Handle>
       )}
 
@@ -228,28 +280,25 @@ export function OpNode({ id, data, selected }: NodeProps<Node<OpNodeData>>) {
 
       {/* config inputs (registration-time, square dots), then run inputs */}
       {data.configInputs.map((p, i) => (
-        <InputRow key={`cfg-${p.name}`} p={p} top={HEADER + 8 + i * HANDLE_GAP} config />
+        <InputRow key={`cfg-${p.name}`} nodeId={id} p={p} top={HEADER + 8 + i * HANDLE_GAP} config />
       ))}
       {data.inputs.map((p, i) => (
-        <InputRow key={`in-${p.name}`} p={p} top={HEADER + 8 + (data.configInputs.length + i) * HANDLE_GAP} />
+        <InputRow key={`in-${p.name}`} nodeId={id} p={p} top={HEADER + 8 + (data.configInputs.length + i) * HANDLE_GAP} />
       ))}
 
       {/* outputs, then declared control-outs (branch/switch paths) */}
       {data.outputs.map((p, i) => (
-        <div key={`out-${p.name}`} className="absolute right-2.5 flex items-center gap-1.5 text-[10px]" style={{ top: HEADER + 8 + i * HANDLE_GAP }} {...portTip(p)}>
-          <span className="text-muted font-mono">{p.name}</span>
-          <Handle type="source" position={Position.Right} id={p.name} style={dotStyle(p, "right")} />
-        </div>
+        <OutputRow key={`out-${p.name}`} nodeId={id} p={p} top={HEADER + 8 + i * HANDLE_GAP} />
       ))}
-      {data.controlOuts.map((co, i) => {
-        const p: PortInfo = { name: co, kind: "control", description: "Control path — pulses when this branch is taken." };
-        return (
-          <div key={`co-${co}`} className="absolute right-2.5 flex items-center gap-1.5 text-[10px]" style={{ top: HEADER + 8 + (data.outputs.length + i) * HANDLE_GAP }} {...portTip(p)}>
-            <span className="text-muted font-mono italic">{co}</span>
-            <Handle type="source" position={Position.Right} id={co} style={{ ...dotStyle(p, "right"), borderRadius: 3, border: "1px dashed rgba(255,255,255,0.5)" }} />
-          </div>
-        );
-      })}
+      {data.controlOuts.map((co, i) => (
+        <OutputRow
+          key={`co-${co}`}
+          nodeId={id}
+          p={{ name: co, kind: "control", description: "Control path — pulses when this branch is taken." }}
+          top={HEADER + 8 + (data.outputs.length + i) * HANDLE_GAP}
+          control
+        />
+      ))}
 
       {/* run-then: the implicit control-out (§2) — pulses on completion */}
       {hasControlOut && (
@@ -259,8 +308,10 @@ export function OpNode({ id, data, selected }: NodeProps<Node<OpNodeData>>) {
           id={CONTROL_OUT}
           {...portTip({ ...controlSpec, name: "out", description: "Run then — pulses when this node completes. Wire into another node's run-after port to sequence without passing a value." })}
           style={runTab("bottom")}
+          onMouseEnter={ctrlOut.onMouseEnter}
+          onMouseLeave={ctrlOut.onMouseLeave}
         >
-          {runDot("bottom")}
+          {runDot("bottom", ctrlOut.active)}
         </Handle>
       )}
 
