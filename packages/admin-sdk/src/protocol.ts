@@ -97,6 +97,8 @@ export interface WorkflowDoc {
   source?: Source;
   nodes: Array<{ id: string; op: string; title?: string; comment?: string; config?: unknown; ui?: { x: number; y: number; [k: string]: unknown } }>;
   edges: Array<{ from: { node: string; port: string }; to: { node: string; port: string } }>;
+  /** Visual annotation boxes (data-only; engine-ignored, hash-ignored). */
+  frames?: Array<{ id: string; label?: string; comment?: string; x: number; y: number; w: number; h: number; hue?: number }>;
 }
 
 export interface ValidationIssue {

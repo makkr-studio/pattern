@@ -20,9 +20,12 @@ import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
 import { OpNode } from "../editor/OpNode";
+import { FrameNode } from "../editor/FrameNode";
 import { RunPanel } from "../editor/RunPanel";
 import {
   buildFlow,
+  FRAME_TYPE,
+  makeFrameNode,
   edgeStyle,
   outputKind,
   portOnNode,
@@ -38,14 +41,14 @@ import { FormFromSchema, RawJson, type FieldOverride } from "../components/FormF
 import { SchemaBuilder } from "../components/SchemaBuilder";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
-import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2 } from "../components/icon";
+import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
 import { Braces, Lock } from "lucide-react";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
 
-const nodeTypes = { op: OpNode };
+const nodeTypes = { op: OpNode, frame: FrameNode };
 
 /** MIME type carrying an op across the palette→canvas drag. */
 const DND_TYPE = "application/x-pattern-op";
@@ -175,6 +178,8 @@ function EditorInner() {
   const opMap: OpMap = useMemo(() => new Map((opsData ?? []).map((o) => [o.type, o])), [opsData]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode<OpNodeData>>([]);
+  /** Live while a frame is being dragged: the op nodes it carries. */
+  const frameDrag = useRef<{ frameId: string; start: { x: number; y: number }; carried: Map<string, { x: number; y: number }> } | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
@@ -620,7 +625,7 @@ function EditorInner() {
 
   /** Snapshot the current selection to the shared clipboard. False when empty. */
   const copySelection = useCallback((): boolean => {
-    const sel = rf.getNodes().filter((n) => n.selected);
+    const sel = rf.getNodes().filter((n) => n.selected && n.type !== FRAME_TYPE);
     if (sel.length === 0) return false;
     const ids = new Set(sel.map((n) => n.id));
     const payload: ClipboardPayload = {
@@ -870,6 +875,30 @@ function EditorInner() {
     sfx.play("open");
   }, [rf, setNodes, pushHistory]);
 
+  /** A frame around the selection (with padding), or a default box at the center. */
+  const onAddFrame = useCallback(() => {
+    pushHistory();
+    const sel = rf.getNodes().filter((n) => n.selected && n.type !== FRAME_TYPE);
+    let rect: { x: number; y: number; w: number; h: number };
+    if (sel.length) {
+      const xs = sel.map((n) => n.position.x);
+      const ys = sel.map((n) => n.position.y);
+      const xe = sel.map((n) => n.position.x + (n.measured?.width ?? 180));
+      const ye = sel.map((n) => n.position.y + (n.measured?.height ?? 100));
+      rect = {
+        x: Math.min(...xs) - 28,
+        y: Math.min(...ys) - 44, // headroom for the label
+        w: Math.max(...xe) - Math.min(...xs) + 56,
+        h: Math.max(...ye) - Math.min(...ys) + 72,
+      };
+    } else {
+      const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      rect = { x: c.x - 240, y: c.y - 140, w: 480, h: 280 };
+    }
+    setNodes((ns) => [makeFrameNode(rect), ...ns.map((n) => ({ ...n, selected: false }))]);
+    sfx.play("open");
+  }, [rf, setNodes, pushHistory]);
+
   const currentDoc = (): WorkflowDoc => {
     const targetSlug = slug ?? (newSlug || "untitled");
     return { ...toDoc(baseDoc.current, nodes, edges), id: targetSlug, name: baseDoc.current.name ?? targetSlug };
@@ -1038,6 +1067,15 @@ function EditorInner() {
           <NeonButton variant="ghost" className="!px-2" aria-label="Auto-tidy layout" title="Auto-tidy layout" onClick={onTidy} disabled={nodes.length === 0}>
             <Wand2 size={14} />
           </NeonButton>
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Add a frame"
+            title="Frame: a named box around the selection (visual only)"
+            onClick={onAddFrame}
+          >
+            <Frame size={14} />
+          </NeonButton>
           {slug && !isCode && (
             <NeonButton
               variant="ghost"
@@ -1187,7 +1225,45 @@ function EditorInner() {
             onConnectEnd={onConnectEnd}
             onBeforeDelete={onBeforeDelete}
             isValidConnection={isValidConnection}
-            onNodeDragStart={() => pushHistory()}
+            onNodeDragStart={(_e, n) => {
+              pushHistory();
+              // A frame drags its CONTENTS: snapshot which op nodes sit inside
+              // it (by center point) + their positions, replayed per move.
+              if (n.type === FRAME_TYPE) {
+                const w = n.width ?? n.measured?.width ?? 0;
+                const h = n.height ?? n.measured?.height ?? 0;
+                const inside = rf.getNodes().filter((m) => {
+                  if (m.id === n.id || m.type === FRAME_TYPE || m.selected) return false;
+                  const mw = m.measured?.width ?? 0;
+                  const mh = m.measured?.height ?? 0;
+                  const cx = m.position.x + mw / 2;
+                  const cy = m.position.y + mh / 2;
+                  return cx >= n.position.x && cx <= n.position.x + w && cy >= n.position.y && cy <= n.position.y + h;
+                });
+                frameDrag.current = {
+                  frameId: n.id,
+                  start: { ...n.position },
+                  carried: new Map(inside.map((m) => [m.id, { ...m.position }])),
+                };
+              } else {
+                frameDrag.current = null;
+              }
+            }}
+            onNodeDrag={(_e, n) => {
+              const fd = frameDrag.current;
+              if (!fd || n.id !== fd.frameId) return;
+              const dx = n.position.x - fd.start.x;
+              const dy = n.position.y - fd.start.y;
+              setNodes((ns) =>
+                ns.map((m) => {
+                  const orig = fd.carried.get(m.id);
+                  return orig ? { ...m, position: { x: orig.x + dx, y: orig.y + dy } } : m;
+                }),
+              );
+            }}
+            onNodeDragStop={() => {
+              frameDrag.current = null;
+            }}
             onNodeClick={(_e, n) => setSelected(n.id)}
             onPaneClick={() => setSelected(null)}
             // Marquee: Shift+drag draws a selection rectangle (drag alone still
@@ -1205,6 +1281,7 @@ function EditorInner() {
               pannable
               zoomable
               nodeColor={(n) => {
+                if (n.type === FRAME_TYPE) return "color-mix(in srgb, var(--fg) 12%, transparent)";
                 const d = n.data as OpNodeData;
                 return d?.boundary ? "#22d3ee" : categoryStyle(categoryOfType(d.op)).color;
               }}

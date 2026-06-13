@@ -5,11 +5,12 @@ import type { SpanData } from "@pattern/admin-sdk";
 import { useOps, useRun, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap, type ReplayState } from "../editor/graph";
 import { OpNode } from "../editor/OpNode";
+import { FrameNode } from "../editor/FrameNode";
 import { Badge, GlassPanel, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { ms, statusColor } from "../lib/format";
 import { Pause, Play, SkipBack, SkipForward } from "../components/icon";
 
-const nodeTypes = { op: OpNode };
+const nodeTypes = { op: OpNode, frame: FrameNode };
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
 function nodeIdOf(span: SpanData): string | undefined {
