@@ -31,7 +31,8 @@ function sortKeys(value: unknown): unknown {
 function structural(doc: Workflow): unknown {
   return {
     nodes: doc.nodes.map((n) => ({ id: n.id, op: n.op, config: n.config ?? {} })),
-    edges: doc.edges,
+    // Edge `ui` (portals) is annotation — behavior is from/to only.
+    edges: doc.edges.map((e) => ({ from: e.from, to: e.to })),
   };
 }
 

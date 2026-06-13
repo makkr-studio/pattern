@@ -399,6 +399,13 @@ export const EdgeEndpointSchema = z.object({
 export const EdgeSchema = z.object({
   from: EdgeEndpointSchema,
   to: EdgeEndpointSchema,
+  /**
+   * View-only hints for the edge (T3) — e.g. `portal: "name"` renders the
+   * wire as a pair of named glyphs in the editor instead of a long line.
+   * Data-only: never read by the engine, ignored by the version hash. The
+   * edge itself stays the single source of truth for dataflow.
+   */
+  ui: z.object({ portal: z.string().optional() }).loose().optional(),
 });
 
 /**

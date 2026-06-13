@@ -21,11 +21,13 @@ import { api } from "../lib/api";
 import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
 import { OpNode } from "../editor/OpNode";
 import { FrameNode } from "../editor/FrameNode";
+import { PortalEdge } from "../editor/PortalEdge";
 import { RunPanel } from "../editor/RunPanel";
 import {
   buildFlow,
   FRAME_TYPE,
   makeFrameNode,
+  PORTAL_TYPE,
   edgeStyle,
   outputKind,
   portOnNode,
@@ -49,6 +51,7 @@ import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
 
 const nodeTypes = { op: OpNode, frame: FrameNode };
+const edgeTypes = { portal: PortalEdge };
 
 /** MIME type carrying an op across the palette→canvas drag. */
 const DND_TYPE = "application/x-pattern-op";
@@ -875,6 +878,26 @@ function EditorInner() {
     sfx.play("open");
   }, [rf, setNodes, pushHistory]);
 
+  /** Double-click an edge: collapse it into a named PORTAL pair (or restore
+   *  the wire). Pure view — the edge stays in the doc; default name = the
+   *  source port. */
+  const onEdgeDoubleClick = useCallback(
+    (_e: React.MouseEvent, edge: RFEdge) => {
+      pushHistory();
+      setEdges((es) =>
+        es.map((x) => {
+          if (x.id !== edge.id) return x;
+          const isPortal = x.type === PORTAL_TYPE;
+          return isPortal
+            ? { ...x, type: "default", data: { ...x.data, portal: undefined } }
+            : { ...x, type: PORTAL_TYPE, data: { ...x.data, portal: (x.data?.portal as string) ?? x.sourceHandle ?? "value" } };
+        }),
+      );
+      sfx.play("open");
+    },
+    [setEdges, pushHistory],
+  );
+
   /** A frame around the selection (with padding), or a default box at the center. */
   const onAddFrame = useCallback(() => {
     pushHistory();
@@ -1265,6 +1288,8 @@ function EditorInner() {
               frameDrag.current = null;
             }}
             onNodeClick={(_e, n) => setSelected(n.id)}
+            onEdgeDoubleClick={onEdgeDoubleClick}
+            edgeTypes={edgeTypes}
             onPaneClick={() => setSelected(null)}
             // Marquee: Shift+drag draws a selection rectangle (drag alone still
             // pans); touching a node is enough to take it (Partial). The

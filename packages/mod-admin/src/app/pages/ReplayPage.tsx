@@ -6,11 +6,13 @@ import { useOps, useRun, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap, type ReplayState } from "../editor/graph";
 import { OpNode } from "../editor/OpNode";
 import { FrameNode } from "../editor/FrameNode";
+import { PortalEdge } from "../editor/PortalEdge";
 import { Badge, GlassPanel, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { ms, statusColor } from "../lib/format";
 import { Pause, Play, SkipBack, SkipForward } from "../components/icon";
 
 const nodeTypes = { op: OpNode, frame: FrameNode };
+const edgeTypes = { portal: PortalEdge };
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
 function nodeIdOf(span: SpanData): string | undefined {
@@ -187,6 +189,7 @@ export function ReplayPage() {
             nodes={decorated.nodes}
             edges={decorated.edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             fitView
             nodesDraggable={false}
             nodesConnectable={false}
