@@ -29,6 +29,8 @@ export interface OpNodeData extends Record<string, unknown> {
   pairId?: string;
   /** Set only on replay canvases — drives the node's status treatment. */
   replay?: ReplayState;
+  /** Set ONLY on `type:"frame"` canvas nodes — the visual annotation box. */
+  frame?: { label?: string; comment?: string; hue?: number };
 }
 
 const KIND_FALLBACK: PortInfo["kind"] = "value";
@@ -134,10 +136,51 @@ function autoLayout(doc: WorkflowDoc): Map<string, { x: number; y: number }> {
   return pos;
 }
 
+/** Canvas node type for visual annotation frames (drawn under op nodes). */
+export const FRAME_TYPE = "frame";
+const FRAME_PREFIX = "frame:";
+
+const emptyOpData = (frame: { label?: string; comment?: string; hue?: number }): OpNodeData => ({
+  op: "__frame__",
+  config: {},
+  inputs: [],
+  outputs: [],
+  configInputs: [],
+  controlOuts: [],
+  frame,
+});
+
+/** doc.frames → low-z, resizable canvas nodes (ids namespaced to avoid op-node collisions). */
+export function frameFlowNodes(doc: WorkflowDoc): RFNode<OpNodeData>[] {
+  return (doc.frames ?? []).map((f) => ({
+    id: `${FRAME_PREFIX}${f.id}`,
+    type: FRAME_TYPE,
+    position: { x: f.x, y: f.y },
+    width: f.w,
+    height: f.h,
+    zIndex: -10,
+    data: emptyOpData({ label: f.label, comment: f.comment, hue: f.hue }),
+  }));
+}
+
+/** A fresh frame canvas node (editor "Frame" button). */
+export function makeFrameNode(rect: { x: number; y: number; w: number; h: number }, label = ""): RFNode<OpNodeData> {
+  return {
+    id: `${FRAME_PREFIX}${Math.random().toString(36).slice(2, 10)}`,
+    type: FRAME_TYPE,
+    position: { x: rect.x, y: rect.y },
+    width: rect.w,
+    height: rect.h,
+    zIndex: -10,
+    data: emptyOpData({ label }),
+    selected: true,
+  };
+}
+
 /** Convert a workflow document into React Flow nodes + edges. */
 export function buildFlow(doc: WorkflowDoc, opMap: OpMap): { nodes: RFNode<OpNodeData>[]; edges: RFEdge[] } {
   const layout = autoLayout(doc);
-  const nodes: RFNode<OpNodeData>[] = doc.nodes.map((n) => {
+  const opNodes: RFNode<OpNodeData>[] = doc.nodes.map((n) => {
     const op = opMap.get(n.op);
     const { inputs, outputs, configInputs, controlOuts } = handlesFor(n.id, op, doc);
     const ui = n.ui ?? layout.get(n.id) ?? { x: 0, y: 0 };
@@ -175,7 +218,7 @@ export function buildFlow(doc: WorkflowDoc, opMap: OpMap): { nodes: RFNode<OpNod
       style: edgeStyle(kind),
     };
   });
-  return { nodes, edges };
+  return { nodes: [...frameFlowNodes(doc), ...opNodes], edges };
 }
 
 export function edgeStyle(kind: PortInfo["kind"]): React.CSSProperties {
@@ -194,7 +237,9 @@ function nodeHeight(data: OpNodeData): number {
  * barycenter passes to order each layer (crossing reduction), columns centered
  * vertically. Pure — returns new positions keyed by node id.
  */
-export function tidyLayout(nodes: RFNode<OpNodeData>[], edges: RFEdge[]): Map<string, { x: number; y: number }> {
+export function tidyLayout(allNodes: RFNode<OpNodeData>[], edges: RFEdge[]): Map<string, { x: number; y: number }> {
+  // Frames are annotation, not graph — tidy never moves them.
+  const nodes = allNodes.filter((n) => n.type !== FRAME_TYPE);
   const X_GAP = 300;
   const Y_GAP = 48;
 
@@ -263,9 +308,23 @@ export function tidyLayout(nodes: RFNode<OpNodeData>[], edges: RFEdge[]): Map<st
 
 /** Convert React Flow state back into a workflow document. */
 export function toDoc(base: WorkflowDoc, nodes: RFNode<OpNodeData>[], edges: RFEdge[]): WorkflowDoc {
+  const frames = nodes
+    .filter((n) => n.type === FRAME_TYPE)
+    .map((n) => ({
+      id: n.id.startsWith(FRAME_PREFIX) ? n.id.slice(FRAME_PREFIX.length) : n.id,
+      ...(n.data.frame?.label ? { label: n.data.frame.label } : {}),
+      ...(n.data.frame?.comment ? { comment: n.data.frame.comment } : {}),
+      ...(n.data.frame?.hue !== undefined ? { hue: n.data.frame.hue } : {}),
+      x: Math.round(n.position.x),
+      y: Math.round(n.position.y),
+      w: Math.round(n.width ?? n.measured?.width ?? 480),
+      h: Math.round(n.height ?? n.measured?.height ?? 280),
+    }));
+  const opNodes = nodes.filter((n) => n.type !== FRAME_TYPE);
   return {
     ...base,
-    nodes: nodes.map((n) => ({
+    ...(frames.length ? { frames } : { frames: undefined }),
+    nodes: opNodes.map((n) => ({
       id: n.id,
       op: n.data.op,
       title: n.data.title,

@@ -429,6 +429,26 @@ export const WorkflowNodeSchema = z.object({
 export const WorkflowSourceSchema = z.enum(["code", "file", "db"]);
 export type WorkflowSource = z.infer<typeof WorkflowSourceSchema>;
 
+/**
+ * A purely visual, named box drawn UNDER a group of nodes on the editor
+ * canvas (T3). Like `node.comment`, it's annotation: never read by the
+ * engine, never affects execution, ignored by the version content hash —
+ * it exists so complex workflows can be tidied and narrated visually.
+ */
+export const FrameSchema = z
+  .object({
+    id: z.string(),
+    label: z.string().optional(),
+    comment: z.string().optional(),
+    x: z.number(),
+    y: z.number(),
+    w: z.number(),
+    h: z.number(),
+    /** A hue (0-360) tinting the frame; default = neutral. */
+    hue: z.number().optional(),
+  })
+  .loose();
+
 export const WorkflowSchema = z.object({
   $schema: z.string().optional(),
   id: z.string(),
@@ -449,12 +469,15 @@ export const WorkflowSchema = z.object({
   source: WorkflowSourceSchema.optional(),
   nodes: z.array(WorkflowNodeSchema),
   edges: z.array(EdgeSchema),
+  /** Visual annotation boxes (T3). Data-only; engine-ignored. */
+  frames: z.array(FrameSchema).optional(),
 });
 
 export type EdgeEndpoint = z.infer<typeof EdgeEndpointSchema>;
 export type Edge = z.infer<typeof EdgeSchema>;
 export type NodeUi = z.infer<typeof NodeUiSchema>;
 export type WorkflowNode = z.infer<typeof WorkflowNodeSchema>;
+export type Frame = z.infer<typeof FrameSchema>;
 export type Workflow = z.infer<typeof WorkflowSchema>;
 
 // ────────────────────────────────────────────────────────────────────────────
