@@ -156,10 +156,10 @@ describe("the generated op reference", () => {
     )!;
     expect(condition.dataType).toBe("boolean");
 
-    // Unknown type → 404; prose-less op → prose null.
+    // Unknown type → 404; a trivial op with no prose file → prose null.
     expect((await fetch(`${base}/docs/api/op?type=no.such.op`)).status).toBe(404);
-    const noop = (await (await fetch(`${base}/docs/api/op?type=core.flow.noop`)).json()) as { prose: string | null };
-    expect(noop.prose).toBeNull();
+    const xor = (await (await fetch(`${base}/docs/api/op?type=core.bool.xor`)).json()) as { prose: string | null };
+    expect(xor.prose).toBeNull();
 
     // Mods list with chapter slugs.
     const mods = (await (await fetch(`${base}/docs/api/mods`)).json()) as {
