@@ -33,14 +33,47 @@ function jsonSchema(schema: z.ZodType | undefined): unknown {
   }
 }
 
+/**
+ * A human label for what FLOWS through a port, derived from its JSON schema —
+ * "string" / "number" / "object" / "string[]" / "string | number" / "any".
+ * Control ports carry nothing; missing/unconstrained schemas are "any".
+ */
+export function dataTypeOf(schema: unknown): string {
+  const of = (s: unknown): string => {
+    if (!s || typeof s !== "object") return "any";
+    const o = s as Record<string, unknown>;
+    if (Array.isArray(o.type)) return (o.type as string[]).join(" | ");
+    if (o.type === "array") {
+      const item = o.items ? of(o.items) : "any";
+      return item === "any" ? "array" : `${item}[]`;
+    }
+    if (typeof o.type === "string") return o.type;
+    const union = (o.anyOf ?? o.oneOf) as unknown[] | undefined;
+    if (union) {
+      const parts = [...new Set(union.map(of))];
+      return parts.length <= 3 ? parts.join(" | ") : "any";
+    }
+    if (o.properties || o.additionalProperties) return "object";
+    if (o.enum) return "enum";
+    if (o.const !== undefined) return JSON.stringify(o.const);
+    return "any";
+  };
+  return of(schema);
+}
+
 function portInfos(def: OpDefinition["inputs"], config: unknown): PortInfo[] {
-  return Object.entries(resolvePorts(def, config)).map(([name, spec]) => ({
-    name,
-    kind: spec.kind,
-    required: spec.required,
-    description: spec.description,
-    schema: jsonSchema(spec.schema),
-  }));
+  return Object.entries(resolvePorts(def, config)).map(([name, spec]) => {
+    const schema = jsonSchema(spec.schema);
+    return {
+      name,
+      kind: spec.kind,
+      required: spec.required,
+      description: spec.description,
+      schema,
+      // Control ports are dataless; value/stream ports show what flows.
+      dataType: spec.kind === "control" ? undefined : dataTypeOf(schema),
+    };
+  });
 }
 
 function usedByWorkflows(engine: Engine, type: string): string[] {

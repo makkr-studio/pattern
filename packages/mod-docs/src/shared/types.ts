@@ -23,6 +23,8 @@ export interface PortInfo {
   required?: boolean;
   description?: string;
   schema?: unknown;
+  /** What flows through a value/stream port ("string", "object", "string[]", "any"…). */
+  dataType?: string;
 }
 
 export interface OpInfo {
