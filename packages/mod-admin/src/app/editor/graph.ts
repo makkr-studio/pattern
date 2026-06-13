@@ -138,6 +138,9 @@ function autoLayout(doc: WorkflowDoc): Map<string, { x: number; y: number }> {
 
 /** Canvas node type for visual annotation frames (drawn under op nodes). */
 export const FRAME_TYPE = "frame";
+
+/** Canvas edge type for portal-rendered edges (named glyphs, no wire). */
+export const PORTAL_TYPE = "portal";
 const FRAME_PREFIX = "frame:";
 
 const emptyOpData = (frame: { label?: string; comment?: string; hue?: number }): OpNodeData => ({
@@ -205,6 +208,7 @@ export function buildFlow(doc: WorkflowDoc, opMap: OpMap): { nodes: RFNode<OpNod
   });
   const edges: RFEdge[] = doc.edges.map((e, i) => {
     const kind = outputKind(e.from.node, e.from.port, doc, opMap);
+    const portal = e.ui?.portal;
     return {
       id: `e${i}-${e.from.node}.${e.from.port}-${e.to.node}.${e.to.port}`,
       source: e.from.node,
@@ -212,9 +216,11 @@ export function buildFlow(doc: WorkflowDoc, opMap: OpMap): { nodes: RFNode<OpNod
       sourceHandle: e.from.port,
       targetHandle: e.to.port,
       // Fluid bezier curves — they fan out instead of stacking like step edges.
-      type: "default",
+      // A `portal` annotation swaps the wire for paired named glyphs; the edge
+      // (and everything derived from it) is untouched — it's a VIEW.
+      type: portal ? PORTAL_TYPE : "default",
       animated: kind === "stream",
-      data: { kind },
+      data: { kind, ...(portal ? { portal } : {}), edgeUi: e.ui },
       style: edgeStyle(kind),
     };
   });
@@ -336,9 +342,16 @@ export function toDoc(base: WorkflowDoc, nodes: RFNode<OpNodeData>[], edges: RFE
         ...(n.data.pairId ? { pair: n.data.pairId } : {}),
       },
     })),
-    edges: edges.map((e) => ({
-      from: { node: e.source, port: e.sourceHandle ?? CONTROL_OUT },
-      to: { node: e.target, port: e.targetHandle ?? CONTROL_IN },
-    })),
+    edges: edges.map((e) => {
+      const prior = (e.data?.edgeUi ?? {}) as Record<string, unknown>;
+      const portal = e.data?.portal as string | undefined;
+      const ui = { ...prior, portal };
+      if (ui.portal === undefined) delete ui.portal;
+      return {
+        from: { node: e.source, port: e.sourceHandle ?? CONTROL_OUT },
+        to: { node: e.target, port: e.targetHandle ?? CONTROL_IN },
+        ...(Object.keys(ui).length ? { ui } : {}),
+      };
+    }),
   };
 }

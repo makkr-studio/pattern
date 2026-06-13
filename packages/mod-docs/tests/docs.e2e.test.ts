@@ -16,7 +16,7 @@ afterEach(async () => {
   closer = undefined;
 });
 
-let port = 4970;
+let port = 5040;
 
 /** A pretend 3rd-party mod that documents itself through the public seam. */
 function fakeMod(): PatternMod {
