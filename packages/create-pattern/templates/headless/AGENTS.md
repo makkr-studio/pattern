@@ -15,6 +15,9 @@ usually: add a route, or add an op. Recipes below.
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`,
    and `npx pattern graph <file>` to see the graph in the terminal.
 3. `npm run dev` hot-reloads on file changes (workflows and mods included).
+4. **Measure before optimizing:** `npx pattern load load.example.json` drives
+   open-loop HTTP load and reports per-node engine time (where the latency
+   actually goes); `--sweep` finds the max sustainable rps.
 
 ## Mental model (60 seconds)
 

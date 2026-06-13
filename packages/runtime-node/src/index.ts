@@ -36,5 +36,23 @@ export {
   type LoadedProject,
 } from "./project.js";
 
+// Load testing (`pattern load`): open-loop generator + the engine flight recorder.
+export {
+  runLoad,
+  loadScenario,
+  resolveScenario,
+  FlightRecorder,
+  runStage,
+  summarize,
+  type LoadOptions,
+  type LoadReport,
+  type LoadScenario,
+  type LoadStage,
+  type LoadRequest,
+  type RequestSample,
+  type FlightRecording,
+  type OpStat,
+} from "./load/index.js";
+
 // Re-export the Engine for convenience so apps can `import { Engine } from "@pattern/runtime-node"`.
 export { Engine, createEngine } from "@pattern/core";
