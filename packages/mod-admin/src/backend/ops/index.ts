@@ -66,6 +66,14 @@ function adminOp(type: string, description: string, handler: Handler): OpDefinit
   };
 }
 
+/** A display author for version snapshots: name, else email, else the id. */
+function authorOf(principal: { kind: string; id?: string; claims?: Record<string, unknown> }): string | undefined {
+  if (principal.kind !== "user") return undefined;
+  const name = typeof principal.claims?.name === "string" ? principal.claims.name : undefined;
+  const email = typeof principal.claims?.email === "string" ? principal.claims.email : undefined;
+  return name || email || principal.id;
+}
+
 const str = (v: unknown, name: string): string => {
   if (typeof v !== "string" || !v) throw new Error(`missing "${name}"`);
   return v;
@@ -103,17 +111,22 @@ const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live 
   return { meta, liveDoc, latestDoc, safeConfigs };
 });
 
-const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an immutable version snapshot.", async (args, { controlPlane, engine }) => {
+const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an immutable version snapshot.", async (args, { controlPlane, engine }, ctx) => {
   const slug = str(args.slug, "slug");
   const doc = args.doc as Workflow;
   if (!doc || typeof doc !== "object") throw new Error('missing "doc"');
   const issues = collectIssues(doc, engine.ops).issues;
   if (issues.length) return { issues };
-  const version = await controlPlane.store.saveVersion(slug, { ...doc, source: "file" }, { note: args.note as string | undefined });
+  // Versions are attributed: who saved this is part of the snapshot's story.
+  const version = await controlPlane.store.saveVersion(
+    slug,
+    { ...doc, source: "file" },
+    { note: args.note as string | undefined, author: authorOf(ctx.principal), principal: ctx.principal },
+  );
   return { version, issues: [] };
 });
 
-const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON → validate → new file workflow.", async (args, { controlPlane, engine }) => {
+const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON → validate → new file workflow.", async (args, { controlPlane, engine }, ctx) => {
   const raw = typeof args.json === "string" ? (JSON.parse(args.json) as Workflow) : (args.json as Workflow);
   if (!raw || typeof raw !== "object" || !raw.id) throw new Error("invalid workflow JSON (needs an id)");
   // The imported id becomes a storage path segment — reject path-like ids here
@@ -121,7 +134,7 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
   const slug = safeSegment(raw.id, "workflow id");
   const issues = collectIssues(raw, engine.ops).issues;
   if (!issues.length) {
-    await controlPlane.store.saveVersion(slug, { ...raw, source: "file" }, { note: "imported" });
+    await controlPlane.store.saveVersion(slug, { ...raw, source: "file" }, { note: "imported", author: authorOf(ctx.principal), principal: ctx.principal });
   }
   return { slug, issues };
 });
@@ -163,8 +176,8 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
   return { ok: true };
 });
 
-const workflowDeploy = adminOp("admin.workflow.deploy", "Activate a version (route-conflict checked).", (args, { controlPlane }) =>
-  controlPlane.deploy(str(args.slug, "slug"), str(args.version, "version"), { swap: Boolean(args.swap) }),
+const workflowDeploy = adminOp("admin.workflow.deploy", "Activate a version (route-conflict checked).", (args, { controlPlane }, ctx) =>
+  controlPlane.deploy(str(args.slug, "slug"), str(args.version, "version"), { swap: Boolean(args.swap), principal: ctx.principal }),
 );
 
 const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", async (args, { controlPlane }) => {

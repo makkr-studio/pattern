@@ -13,7 +13,7 @@
  */
 
 import type { Filesystem } from "@pattern/runtime-node";
-import type { Workflow } from "@pattern/core";
+import type { Principal, Workflow } from "@pattern/core";
 import { contentHash } from "./versioning.js";
 import type {
   AuditEntry,
@@ -141,15 +141,16 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     return text == null ? null : (JSON.parse(text) as WorkflowDoc);
   }
 
-  saveVersion(slug: string, doc: WorkflowDoc, info: { note?: string; author?: string }): Promise<VersionInfo> {
+  saveVersion(slug: string, doc: WorkflowDoc, info: { note?: string; author?: string; principal?: Principal }): Promise<VersionInfo> {
     return this.withSlugLock(slug, () => this.saveVersionLocked(slug, doc, info));
   }
 
   private async saveVersionLocked(
     slug: string,
     doc: WorkflowDoc,
-    info: { note?: string; author?: string },
+    info: { note?: string; author?: string; principal?: Principal },
   ): Promise<VersionInfo> {
+    const principal: Principal = info.principal ?? { kind: "anonymous" };
     let meta = await this.getMeta(slug);
     const hash = contentHash(doc);
 
@@ -164,7 +165,7 @@ export class FlystorageWorkflowStore implements WorkflowStore {
         route: extractRoute(doc),
         tags: doc.tags,
         versions: [],
-        audit: [{ at: this.now(), principal: { kind: "anonymous" }, action: "create" }],
+        audit: [{ at: this.now(), principal, action: "create" }],
       };
     }
 
@@ -186,7 +187,7 @@ export class FlystorageWorkflowStore implements WorkflowStore {
       meta.tags = doc.tags ?? meta.tags;
       meta.route = extractRoute(doc);
       if (JSON.stringify([meta.name, meta.description, meta.tags, meta.route]) !== before) {
-        meta.audit.push({ at: this.now(), principal: { kind: "anonymous" }, action: "save", version: existing.id, note: "metadata update" });
+        meta.audit.push({ at: this.now(), principal, action: "save", version: existing.id, note: "metadata update" });
       }
       await this.saveMeta(meta);
       return existing;
@@ -210,7 +211,7 @@ export class FlystorageWorkflowStore implements WorkflowStore {
     meta.description = doc.description ?? meta.description;
     meta.tags = doc.tags ?? meta.tags;
     meta.route = extractRoute(doc);
-    meta.audit.push({ at: this.now(), principal: { kind: "anonymous" }, action: "save", version: id, note: info.note });
+    meta.audit.push({ at: this.now(), principal, action: "save", version: id, note: info.note });
     await this.saveMeta(meta);
     return version;
   }
