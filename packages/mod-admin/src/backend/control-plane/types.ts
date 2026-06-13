@@ -84,7 +84,7 @@ export interface WorkflowStore {
   list(): Promise<WorkflowMeta[]>;
   getMeta(slug: string): Promise<WorkflowMeta | null>;
   getVersion(slug: string, v: VersionId): Promise<WorkflowDoc | null>;
-  saveVersion(slug: string, doc: WorkflowDoc, info: { note?: string; author?: string }): Promise<VersionInfo>;
+  saveVersion(slug: string, doc: WorkflowDoc, info: { note?: string; author?: string; principal?: Principal }): Promise<VersionInfo>;
   setLive(slug: string, v: VersionId): Promise<void>;
   setEnabled(slug: string, enabled: boolean): Promise<void>;
   appendAudit(slug: string, entry: AuditEntry): Promise<void>;

@@ -58,6 +58,19 @@ describe("M2 — save → version → activate → disable round-trip", () => {
     expect((await store.getMeta("greet"))?.enabled).toBe(false);
   });
 
+  it("attributes versions to their author and audits the real principal", async () => {
+    const { store } = setup();
+    const benoit = { kind: "user" as const, id: "u1", provider: "test", claims: { name: "Benoit", email: "b@x.dev" } };
+    const v1 = await store.saveVersion("a", httpWorkflow("a", "/a"), { author: "Benoit", principal: benoit });
+    expect(v1.author).toBe("Benoit");
+    const meta = await store.getMeta("a");
+    expect(meta!.versions[0]!.author).toBe("Benoit");
+    expect(meta!.audit.at(-1)).toMatchObject({ action: "save", principal: { kind: "user", id: "u1" } });
+    // No principal → anonymous audit, no author (legacy/headless saves).
+    const v2 = await store.saveVersion("a", httpWorkflow("a", "/a", "other"), {});
+    expect(v2.author).toBeUndefined();
+  });
+
   it("rolls back instantly by repointing live to a prior version", async () => {
     const { engine, store, cp } = setup();
     await store.saveVersion("p", httpWorkflow("p", "/p", "one"), {});
