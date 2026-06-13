@@ -9,14 +9,9 @@ import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, hasAdminAccess } from "../lib/api";
 import { Markdown } from "../lib/md";
+import { highlight } from "../lib/highlight";
 import { useDocs } from "../shell/Shell";
 import type { OpInfo, PortInfo } from "../../shared/types";
-
-const KIND_DOT: Record<string, string> = {
-  value: "var(--color-port-value)",
-  stream: "var(--color-port-stream)",
-  control: "var(--color-port-control)",
-};
 
 /** Port data-type → the admin's type colors (arrays take their element hue family). */
 function typeColor(dataType: string): string {
@@ -32,6 +27,17 @@ function typeColor(dataType: string): string {
     enum: "var(--color-type-string)",
   };
   return map[base] ?? "var(--color-type-any)";
+}
+
+/**
+ * The port's dot color — the admin's convention: a value port shows what
+ * FLOWS through it (its data type), while stream/control keep their kind hue
+ * (those carry meaning the type label can't, and the kind is shown anyway).
+ */
+function dotColor(p: PortInfo): string {
+  if (p.kind === "stream") return "var(--color-port-stream)";
+  if (p.kind === "control") return "var(--color-port-control)";
+  return p.dataType ? typeColor(p.dataType) : "var(--color-port-value)";
 }
 
 /** True when the schema says more than the dataType label already does. */
@@ -51,7 +57,7 @@ function PortTable({ title, ports }: { title: string; ports: PortInfo[] }) {
           <div key={p.name} className="border-b px-4 py-2 hairline last:border-b-0">
             <div className="flex items-baseline gap-3">
               <span className="flex shrink-0 items-center gap-2">
-                <span className="h-2 w-2 rounded-full" style={{ background: KIND_DOT[p.kind] }} title={`${p.kind} port`} />
+                <span className="h-2 w-2 rounded-full" style={{ background: dotColor(p) }} title={`${p.kind} port`} />
                 <code className="text-[13px]">{p.name}</code>
               </span>
               {p.dataType && (
@@ -67,7 +73,7 @@ function PortTable({ title, ports }: { title: string; ports: PortInfo[] }) {
               <details className="mt-1">
                 <summary className="cursor-pointer text-[11px] text-muted hover:text-[var(--fg)]">schema</summary>
                 <pre className="mt-1 overflow-x-auto rounded-lg px-3 py-2 text-[11px] leading-relaxed" style={{ background: "var(--pre-bg)" }}>
-                  <code>{JSON.stringify(p.schema, null, 2)}</code>
+                  <code>{highlight(JSON.stringify(p.schema, null, 2), "json")}</code>
                 </pre>
               </details>
             )}
@@ -156,7 +162,7 @@ export function OpPage() {
         <section className="mt-6">
           <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted">Config schema</h2>
           <pre className="glass mt-2 overflow-x-auto rounded-2xl px-4 py-3 text-[12px] leading-relaxed">
-            <code>{JSON.stringify(info.configSchema, null, 2)}</code>
+            <code>{highlight(JSON.stringify(info.configSchema, null, 2), "json")}</code>
           </pre>
         </section>
       )}
