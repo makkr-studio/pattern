@@ -77,7 +77,14 @@ function Sidebar({ manifest, onNavigate }: { manifest: Manifest; onNavigate: () 
         </div>
       </div>
       {manifest.chapters.map((chapter) => {
-        const open = location.pathname === "/" || location.pathname.startsWith(`/${chapter.slug}`);
+        // Only the active chapter expands. On the home page that's the
+        // handbook (the first chapter, whose overview IS the home page) —
+        // not every chapter at once.
+        const firstSlug = manifest.chapters[0]?.slug;
+        const open =
+          location.pathname === "/"
+            ? chapter.slug === firstSlug
+            : location.pathname.startsWith(`/${chapter.slug}`);
         return (
           <div key={chapter.slug}>
             <NavLink

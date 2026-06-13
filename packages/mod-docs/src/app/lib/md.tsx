@@ -8,6 +8,7 @@
  */
 
 import React from "react";
+import { highlight } from "./highlight";
 
 type Node = React.ReactNode;
 
@@ -107,18 +108,24 @@ export function Markdown({ text, ...opts }: { text: string } & MdOptions): React
   while (i < lines.length) {
     const line = lines[i]!;
 
-    if (line.startsWith("```")) {
-      const lang = line.slice(3).trim();
+    // Variable-length fences (CommonMark): the opener's backtick run sets the
+    // close length, so a ````markdown wrapper can show ```workflow LITERALLY
+    // (the inner shorter fence is content, not a close — and not a live embed).
+    const fenceOpen = /^(`{3,})(.*)$/.exec(line);
+    if (fenceOpen) {
+      const ticks = fenceOpen[1]!.length;
+      const lang = fenceOpen[2]!.trim();
+      const closeRe = new RegExp("^`{" + ticks + ",}\\s*$");
       const fence: string[] = [];
       i++;
-      while (i < lines.length && !lines[i]!.startsWith("```")) fence.push(lines[i++]!);
+      while (i < lines.length && !closeRe.test(lines[i]!)) fence.push(lines[i++]!);
       i++; // closing fence (or EOF)
       const body = fence.join("\n");
       const custom = lang ? opts.fence?.(lang, body, `f${k}`) : null;
       blocks.push(
         custom ?? (
           <pre key={k++} data-lang={lang || undefined}>
-            <code>{body}</code>
+            <code>{highlight(body, lang)}</code>
           </pre>
         ),
       );
