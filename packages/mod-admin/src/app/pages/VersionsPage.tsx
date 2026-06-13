@@ -125,7 +125,8 @@ export function VersionsPage() {
                   {v.id === live && <Badge hue={150}>live</Badge>}
                   {v.id === newest && v.id !== live && <Badge hue={200}>newest</Badge>}
                 </span>
-                <span className="text-muted truncate text-xs">{v.note || "—"}{v.author ? ` · by ${v.author}` : ""} · {v.createdAt ? ago(Date.parse(v.createdAt)) : ""}</span>
+                <span className="text-muted truncate text-xs">{v.note || "—"} · {v.createdAt ? ago(Date.parse(v.createdAt)) : ""}</span>
+                {v.author && <span className="text-muted break-all text-[11px] leading-snug">by {v.author}</span>}
               </div>
               <div className="ml-auto flex items-center gap-1">
                 <NeonButton
