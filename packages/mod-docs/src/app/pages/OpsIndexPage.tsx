@@ -54,7 +54,7 @@ export function OpsIndexPage() {
       {groups.map(([category, items]) => (
         <section key={category} className="mt-8">
           <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted">{category}</h2>
-          <div className="mt-2 overflow-hidden rounded-2xl border hairline">
+          <div className="glass mt-2 overflow-hidden rounded-2xl">
             {items.map((op) => (
               <Link
                 key={op.type}

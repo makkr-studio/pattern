@@ -39,7 +39,7 @@ function NavLeaf({ slug, item, depth }: { slug: string; item: DocsNavItem; depth
         to={routeOf(slug, item.file)}
         className={({ isActive }) =>
           `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
-            isActive ? "bg-[var(--glass-bg-strong)] font-medium" : "text-muted hover:text-[var(--fg)]"
+            isActive ? "nav-active" : "text-muted hover:text-[var(--fg)]"
           }`
         }
         style={{ paddingLeft: `${10 + depth * 12}px` }}
@@ -67,7 +67,7 @@ function Sidebar({ manifest, onNavigate }: { manifest: Manifest; onNavigate: () 
               to={r.to}
               className={({ isActive }) =>
                 `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
-                  isActive ? "bg-[var(--glass-bg-strong)] font-medium" : "text-muted hover:text-[var(--fg)]"
+                  isActive ? "nav-active" : "text-muted hover:text-[var(--fg)]"
                 }`
               }
             >
@@ -93,7 +93,7 @@ function Sidebar({ manifest, onNavigate }: { manifest: Manifest; onNavigate: () 
                   end
                   className={({ isActive }) =>
                     `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
-                      isActive ? "bg-[var(--glass-bg-strong)] font-medium" : "text-muted hover:text-[var(--fg)]"
+                      isActive ? "nav-active" : "text-muted hover:text-[var(--fg)]"
                     }`
                   }
                 >
@@ -178,7 +178,7 @@ export function Shell() {
           <div className="fixed inset-0 z-40 bg-black/35 md:hidden" onClick={() => setDrawer(false)} aria-hidden />
         )}
         <aside
-          className={`glass-strong fixed inset-y-0 left-0 z-50 w-[270px] transition-transform duration-200 md:static md:z-auto md:block md:w-[260px] md:translate-x-0 md:bg-transparent md:shadow-none md:backdrop-filter-none md:transition-none ${
+          className={`glass-strong fixed inset-y-0 left-0 z-50 w-[270px] transition-transform duration-200 md:static md:z-auto md:block md:w-[260px] md:translate-x-0 md:transition-none ${
             drawer ? "translate-x-0" : "-translate-x-full"
           }`}
           style={{ borderRadius: 0 }}

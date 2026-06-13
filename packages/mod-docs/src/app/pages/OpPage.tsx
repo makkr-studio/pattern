@@ -18,21 +18,59 @@ const KIND_DOT: Record<string, string> = {
   control: "var(--color-port-control)",
 };
 
+/** Port data-type → the admin's type colors (arrays take their element hue family). */
+function typeColor(dataType: string): string {
+  if (dataType.includes("|") || dataType === "any") return "var(--color-type-any)";
+  if (dataType.endsWith("[]") || dataType === "array") return "var(--color-type-array)";
+  const base = dataType.replace(/\[\]$/, "");
+  const map: Record<string, string> = {
+    string: "var(--color-type-string)",
+    number: "var(--color-type-number)",
+    integer: "var(--color-type-number)",
+    boolean: "var(--color-type-boolean)",
+    object: "var(--color-type-object)",
+    enum: "var(--color-type-string)",
+  };
+  return map[base] ?? "var(--color-type-any)";
+}
+
+/** True when the schema says more than the dataType label already does. */
+function schemaWorthExpanding(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") return false;
+  const keys = Object.keys(schema as object).filter((k) => k !== "type");
+  return keys.length > 0;
+}
+
 function PortTable({ title, ports }: { title: string; ports: PortInfo[] }) {
   if (!ports.length) return null;
   return (
     <section className="mt-6">
       <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted">{title}</h2>
-      <div className="mt-2 overflow-hidden rounded-2xl border hairline">
+      <div className="glass mt-2 overflow-hidden rounded-2xl">
         {ports.map((p) => (
-          <div key={p.name} className="flex items-baseline gap-3 border-b px-4 py-2 hairline last:border-b-0">
-            <span className="flex shrink-0 items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ background: KIND_DOT[p.kind] }} title={p.kind} />
-              <code className="text-[13px]">{p.name}</code>
-            </span>
-            <span className="shrink-0 text-[11px] text-muted">{p.kind}</span>
-            {p.required && <span className="shrink-0 text-[11px] text-[var(--color-neon-amber)]">required</span>}
-            <span className="min-w-0 flex-1 text-[12.5px] text-muted">{p.description}</span>
+          <div key={p.name} className="border-b px-4 py-2 hairline last:border-b-0">
+            <div className="flex items-baseline gap-3">
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="h-2 w-2 rounded-full" style={{ background: KIND_DOT[p.kind] }} title={`${p.kind} port`} />
+                <code className="text-[13px]">{p.name}</code>
+              </span>
+              {p.dataType && (
+                <code className="shrink-0 text-[11.5px]" style={{ color: typeColor(p.dataType) }}>
+                  {p.dataType}
+                </code>
+              )}
+              <span className="shrink-0 text-[11px] text-muted">{p.kind === "value" ? "" : p.kind}</span>
+              {p.required && <span className="shrink-0 text-[11px] text-[var(--color-neon-amber)]">required</span>}
+              <span className="min-w-0 flex-1 text-[12.5px] text-muted">{p.description}</span>
+            </div>
+            {schemaWorthExpanding(p.schema) && (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-[11px] text-muted hover:text-[var(--fg)]">schema</summary>
+                <pre className="mt-1 overflow-x-auto rounded-lg px-3 py-2 text-[11px] leading-relaxed" style={{ background: "var(--pre-bg)" }}>
+                  <code>{JSON.stringify(p.schema, null, 2)}</code>
+                </pre>
+              </details>
+            )}
           </div>
         ))}
       </div>
@@ -92,7 +130,7 @@ export function OpPage() {
       {info.description && <p className="mt-1.5 max-w-[65ch] text-[14.5px] text-muted">{info.description}</p>}
 
       {prose && (
-        <div className="mt-5 rounded-2xl border px-5 py-4 hairline" style={{ background: "var(--glass-bg)" }}>
+        <div className="glass mt-5 rounded-2xl px-5 py-4">
           <Markdown text={prose} />
         </div>
       )}
@@ -117,7 +155,7 @@ export function OpPage() {
       {info.configSchema != null && (
         <section className="mt-6">
           <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted">Config schema</h2>
-          <pre className="mt-2 overflow-x-auto rounded-2xl border px-4 py-3 text-[12px] leading-relaxed hairline" style={{ background: "var(--pre-bg)" }}>
+          <pre className="glass mt-2 overflow-x-auto rounded-2xl px-4 py-3 text-[12px] leading-relaxed">
             <code>{JSON.stringify(info.configSchema, null, 2)}</code>
           </pre>
         </section>

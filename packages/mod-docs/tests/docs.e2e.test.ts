@@ -150,6 +150,11 @@ describe("the generated op reference", () => {
     };
     expect(branch.info.controlOut).toEqual(expect.arrayContaining(["then", "else"]));
     expect(branch.prose).toContain("If/else for graphs");
+    // Ports carry a derived data TYPE, not just the kind.
+    const condition = (branch.info as unknown as { inputs: Array<{ name: string; dataType?: string }> }).inputs.find(
+      (p) => p.name === "condition",
+    )!;
+    expect(condition.dataType).toBe("boolean");
 
     // Unknown type → 404; prose-less op → prose null.
     expect((await fetch(`${base}/docs/api/op?type=no.such.op`)).status).toBe(404);
