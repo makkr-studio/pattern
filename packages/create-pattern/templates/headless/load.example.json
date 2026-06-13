@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "warmup": { "rate": 10, "durationMs": 1500 },
+  "stages": [{ "rate": 200, "durationMs": 8000 }],
+  "requests": [
+    { "weight": 3, "method": "GET", "path": "/health" },
+    { "weight": 2, "method": "GET", "path": "/hello/world" },
+    { "weight": 1, "method": "POST", "path": "/echo", "body": { "msg": "load" } }
+  ]
+}

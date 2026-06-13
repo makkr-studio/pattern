@@ -52,6 +52,8 @@ async function main(): Promise<void> {
       return cmdValidate(rest[0]);
     case "dev":
       return cmdDev(rest[0]);
+    case "load":
+      return cmdLoad(rest);
     case undefined:
     case "help":
     case "--help":
@@ -72,6 +74,9 @@ function usage(): void {
   ${pc.cyan("pattern graph")} <file.json>     print a workflow's graph
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
+  ${pc.cyan("pattern load")} <scenario.json>  open-loop load test with engine flight-recording
+                              ${pc.dim("--sweep  find max sustainable rps   --url <u>  target a running server")}
+                              ${pc.dim("--out <file>  write the JSON report   --p99 <ms>  sweep knee budget")}
 `);
 }
 
@@ -238,6 +243,50 @@ async function cmdOps(query: string | undefined): Promise<void> {
     console.log("");
   }
   console.log(pc.dim(`  ${matched.length} ops — \`pattern ops <type>\` for ports + config.\n`));
+}
+
+// ── pattern load ─────────────────────────────────────────────────────────────
+
+async function cmdLoad(args: string[]): Promise<void> {
+  const { loadScenario, runLoad, resolveScenario } = await import("../load/index.js");
+  const flag = (name: string): string | undefined => {
+    const i = args.indexOf(name);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
+  const file = args.find((a) => !a.startsWith("-") && a !== flag("--url") && a !== flag("--out") && a !== flag("--p99"));
+  if (!file) {
+    console.error(pc.red("expected a scenario file: pattern load <scenario.json>"));
+    process.exit(1);
+  }
+  let scenario;
+  try {
+    scenario = loadScenario(resolveScenario(file));
+  } catch (err) {
+    console.error(pc.red(`✗ ${(err as Error).message}`));
+    process.exit(1);
+  }
+  const sweep = args.includes("--sweep");
+  const out = flag("--out");
+  const url = flag("--url");
+  const p99 = flag("--p99");
+
+  console.log(`${pc.bold("pattern load")} ${pc.dim(file)}${sweep ? pc.yellow("  (saturation sweep)") : ""}`);
+  const startedAt = Date.now();
+  const report = await runLoad(
+    scenario,
+    { sweep, out, baseUrl: url, p99BudgetMs: p99 ? Number(p99) : undefined },
+    startedAt,
+  );
+  report.scenario = file;
+
+  if (out) {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(out, JSON.stringify(report, null, 2));
+    console.log(`\n  ${pc.green("✓")} report written to ${pc.cyan(out)}`);
+  }
+  const anyErrors = report.stages.some((s) => s.errors > 0);
+  console.log("");
+  process.exit(anyErrors ? 1 : 0);
 }
 
 function cmdDev(entryArg: string | undefined): void {
