@@ -160,14 +160,26 @@ export function Table<T>({ columns, rows, onRow, getKey }: { columns: Column<T>[
 /** Read-only JSON with syntax highlighting + a line-number gutter. */
 export function JsonView({ value, className = "" }: { value: unknown; className?: string }) {
   const text = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "undefined");
-  const lineCount = Math.max(1, text.split("\n").length);
+  const lines = text.split("\n");
+  // One row per LOGICAL line: a long line soft-wraps inside its own cell (no
+  // horizontal overflow — the layout never breaks), and the gutter number stays
+  // pinned to the top of that line however many visual rows it wraps to.
   return (
-    <div className={`glass flex overflow-auto rounded-xl font-mono text-xs leading-relaxed ${className}`}>
-      {/* sticky so the numbers survive horizontal scrolling of long lines */}
-      <pre className="sticky left-0 select-none border-r hairline px-2 py-3 text-right text-[var(--fg-muted)]" style={{ background: "var(--tip-bg)", opacity: 0.85 }}>
-        {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
-      </pre>
-      <pre className="min-w-0 flex-1 whitespace-pre px-3 py-3">{highlight(text)}</pre>
+    <div className={`glass overflow-y-auto rounded-xl py-2 font-mono text-xs leading-relaxed ${className}`}>
+      {lines.map((line, i) => (
+        <div key={i} className="flex">
+          <span
+            aria-hidden
+            className="sticky left-0 shrink-0 select-none border-r hairline px-2 text-right text-[var(--fg-muted)]"
+            style={{ background: "var(--tip-bg)", opacity: 0.85, minWidth: "2.25rem" }}
+          >
+            {i + 1}
+          </span>
+          <span className="min-w-0 flex-1 whitespace-pre-wrap px-3" style={{ overflowWrap: "anywhere" }}>
+            {highlight(line)}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
