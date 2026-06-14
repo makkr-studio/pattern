@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Engine, type Workflow } from "@pattern/core";
 import { createHttpHost } from "@pattern/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
-import { agentsMod, type TurnEvent } from "@pattern/mod-agents";
+import { agentsMod, AGENTS_SERVICE, type AgentsService, type TurnEvent } from "@pattern/mod-agents";
 import { agentsOpenAIMod, MODEL_PROVIDER_SERVICE } from "@pattern/mod-agents-openai";
 import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
 import { scriptedProvider, type ScriptedTurn } from "../../mod-agents-openai/tests/scripted-model.js";
@@ -44,7 +44,15 @@ let port = 4940;
 
 async function boot(
   turns: ScriptedTurn[],
-  opts: { gatedTool?: boolean; env?: Record<string, string>; headerAuth?: boolean } = {},
+  opts: {
+    gatedTool?: boolean;
+    env?: Record<string, string>;
+    headerAuth?: boolean;
+    /** The professional-conduct guardrail is OFF by default here so these
+     *  exact-scripted-turn tests stay deterministic; the guardrail test flips
+     *  it on (and scripts the extra classifier model call). */
+    guardrail?: boolean | { enabled?: boolean; model?: string; instructions?: string };
+  } = {},
 ) {
   port += 1;
   const engine = new Engine({ env: opts.env });
@@ -60,7 +68,7 @@ async function boot(
   await engine.useAsync(storeMod({ storage: "memory" }), { deferReady: true });
   await engine.useAsync(agentsMod(), { deferReady: true });
   await engine.useAsync(agentsOpenAIMod(), { deferReady: true });
-  const chat = chatMod();
+  const chat = chatMod({ guardrail: opts.guardrail ?? false });
   await engine.useAsync(chat, { deferReady: true });
   await chat.ready?.(engine);
   engine.provideService(MODEL_PROVIDER_SERVICE, scriptedProvider(turns));
@@ -430,5 +438,51 @@ describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
     });
     expect(denied.status).toBe(401);
     expect(await denied.text()).toContain("member");
+  });
+});
+
+describe("professional-conduct guardrail", () => {
+  it("classifier verdict → { tripwire, info }: BLOCK trips, ALLOW passes", async () => {
+    // Two classifier runs from one boot: the queue feeds BLOCK then ALLOW.
+    const { engine } = await boot(
+      [
+        { kind: "text", text: "BLOCK: raises a non-workplace subject" },
+        { kind: "text", text: "ALLOW" },
+      ],
+      { guardrail: true },
+    );
+
+    // Invoke the classifier workflow exactly as reifyGuardrail does.
+    const blocked = await engine.run("chat.guardrail.professional", {
+      input: { args: { input: "something off-limits", direction: "input" } },
+    });
+    const blockedOut = Object.assign({}, ...Object.values(blocked.outputs)) as { result: { tripwire: boolean; info: unknown } };
+    expect(blockedOut.result).toMatchObject({ tripwire: true });
+    expect(String(blockedOut.result.info)).toContain("BLOCK");
+
+    const allowed = await engine.run("chat.guardrail.professional", {
+      input: { args: { input: "the quarterly report", direction: "input" } },
+    });
+    const allowedOut = Object.assign({}, ...Object.values(allowed.outputs)) as { result: { tripwire: boolean } };
+    expect(allowedOut.result).toMatchObject({ tripwire: false });
+  });
+
+  it("env-gated wiring: enabled adds the guard node + edge into the agent; disabled omits it", async () => {
+    const on = await boot([], { guardrail: true });
+    const onWf = on.engine.workflows.get("chat.turn.pipeline")!;
+    expect(onWf.nodes.some((n) => n.id === "guard" && n.op === "agents.guardrail")).toBe(true);
+    expect(
+      onWf.edges.some((e) => e.from.node === "guard" && e.to.node === "agent" && e.to.port === "guardrails"),
+    ).toBe(true);
+    // The classifier ships marked guardrail-only — resolvable, never a callable tool.
+    const svc = on.engine.service<AgentsService>(AGENTS_SERVICE)!;
+    expect(svc.getWorkflowTool("professional_conduct")?.guardrail).toBe(true);
+    await closer?.();
+    closer = undefined;
+
+    const off = await boot([], { guardrail: false });
+    const offWf = off.engine.workflows.get("chat.turn.pipeline")!;
+    expect(offWf.nodes.some((n) => n.id === "guard")).toBe(false);
+    expect(offWf.edges.some((e) => e.to.port === "guardrails")).toBe(false);
   });
 });

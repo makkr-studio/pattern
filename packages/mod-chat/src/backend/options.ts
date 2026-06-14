@@ -17,6 +17,17 @@ export interface ChatModOptions {
   };
   /** Register the built-in turn pipeline workflow. Default true. */
   turnPipeline?: boolean;
+  /**
+   * The professional-conduct input guardrail: a small model classifies each
+   * user message and trips when it raises a subject not permitted in a
+   * professional environment, so the agent never answers it.
+   *
+   * Enabled by default; the `CHAT_GUARDRAIL` env var is the on/off switch
+   * (set it to `false`/`0`/`off` to disable the WIRING in the turn pipeline —
+   * the classifier workflow still ships, ready to wire by hand). Pass a boolean
+   * to override the env, or an object to also tune the model/instructions.
+   */
+  guardrail?: boolean | { enabled?: boolean; model?: string; instructions?: string };
   /** Lease TTL for a running turn in ms (crash backstop). Default 5 min. */
   turnTtlMs?: number;
   /** Max model↔tool round-trips per turn. Default 12. */
@@ -46,9 +57,27 @@ export interface ResolvedChatOptions {
   turnPipeline: boolean;
   turnTtlMs: number;
   maxTurns: number;
+  guardrail: { enabled: boolean; model: string; instructions: string };
   requireAuth?: unknown;
   loginRequestPath: string;
   logoutPath: string;
+}
+
+/** The shipped classifier prompt. Replies on one line: `ALLOW`, or `BLOCK: <reason>`.
+ *  A single-token verdict is read with a plain substring test — far more robust
+ *  than parsing JSON out of free-form model text, and it fails OPEN (no BLOCK
+ *  token ⇒ allowed) if the model ever rambles. */
+const DEFAULT_GUARDRAIL_INSTRUCTIONS =
+  "You are a conduct classifier guarding a professional, workplace assistant. Decide whether the user's " +
+  "message raises a subject that is NOT appropriate for a professional environment — for example sexual or " +
+  "explicit content, hate speech or harassment, graphic violence, illegal activity, or self-harm. " +
+  "Reply on a single line: write `BLOCK: <short reason>` if the message is not permitted, or the single word " +
+  "`ALLOW` otherwise. Ordinary workplace conversation is ALLOW; when in doubt, ALLOW.";
+
+/** Parse `CHAT_GUARDRAIL` — anything falsy-looking turns the wiring off. */
+function envEnabled(): boolean {
+  const raw = process.env.CHAT_GUARDRAIL;
+  return !(raw && /^(false|0|off|no)$/i.test(raw.trim()));
 }
 
 export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOptions {
@@ -65,6 +94,15 @@ export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOption
     turnPipeline: options.turnPipeline ?? true,
     turnTtlMs: options.turnTtlMs ?? 5 * 60 * 1000,
     maxTurns: options.maxTurns ?? 12,
+    guardrail: (() => {
+      const g = typeof options.guardrail === "object" ? options.guardrail : {};
+      const explicit = typeof options.guardrail === "boolean" ? options.guardrail : g.enabled;
+      return {
+        enabled: explicit ?? envEnabled(),
+        model: g.model ?? "gpt-4.1-mini",
+        instructions: g.instructions ?? DEFAULT_GUARDRAIL_INSTRUCTIONS,
+      };
+    })(),
     requireAuth: options.requireAuth ?? { env: "CHAT_REQUIRE_AUTH" },
     loginRequestPath: options.loginRequestPath ?? "/auth/magic-link/request",
     logoutPath: options.logoutPath ?? "/auth/logout",

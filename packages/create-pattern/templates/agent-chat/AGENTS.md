@@ -65,7 +65,16 @@ A guardrail is a tool workflow returning `{ tripwire: boolean, info? }`.
 Wire it: add an `agents.guardrail` node (config: `tool` = the tool's name,
 `direction`: input|output) and connect its `guardrail` output into the
 `agents.agent` node's `guardrails` input. A tripped guardrail renders as an
-inline card in the chat — never a crash.
+inline card in the chat — never a crash. Mark the tool's `boundary.tool`
+config `guardrail: true` so it stays a guardrail and is never offered to the
+model as a callable tool.
+
+**Shipped by default:** a professional-conduct input guardrail
+(`chat.guardrail.professional`) runs a small classifier (gpt-4.1-mini) on each
+message and trips on subjects not appropriate at work. It's wired into the
+turn pipeline unless `CHAT_GUARDRAIL=false` (see `.env`). Tune its model or
+prompt via the `chatMod({ guardrail: { model, instructions } })` option, or
+just edit the `chat.guardrail.professional` workflow in the admin.
 
 ### Require sign-in to chat
 

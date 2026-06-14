@@ -13,5 +13,10 @@ PATTERN_VAULT_KEY=
 # true = any signed-in user; a comma-separated list = required scopes.
 # CHAT_REQUIRE_AUTH=true
 
+# Professional-conduct guardrail: a small model screens each message and trips
+# on subjects not allowed at work. ON by default — set to false/0/off to drop
+# it from the turn pipeline (the classifier workflow still ships, wire-by-hand).
+# CHAT_GUARDRAIL=false
+
 # Require sign-in to READ the docs at /docs? Same semantics as CHAT_REQUIRE_AUTH.
 # DOCS_REQUIRE_AUTH=true

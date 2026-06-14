@@ -58,6 +58,13 @@ export const toolTrigger: OpDefinition = {
     params: jsonSchema.optional(),
     /** Pause for human approval before each call (HITL). */
     needsApproval: z.boolean().optional(),
+    /**
+     * Reserve this tool for use as a GUARDRAIL (or other by-name invocation)
+     * only — it's still resolvable via `agents.guardrail`, but the default
+     * `agents.tools.workflows` toolset leaves it out, so the model is never
+     * offered it as a callable tool. Name it explicitly to include it anyway.
+     */
+    guardrail: z.boolean().optional(),
   }),
   execute: () => ({}),
 };

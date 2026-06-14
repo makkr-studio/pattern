@@ -19,6 +19,8 @@ export interface WorkflowToolRegistration {
   description?: string;
   params?: Record<string, unknown>;
   needsApproval?: boolean;
+  /** Guardrail-only: resolvable by name, but excluded from the default toolset. */
+  guardrail?: boolean;
 }
 
 /** A code tool a mod contributes directly (registered in its `setup`). */

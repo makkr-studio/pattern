@@ -21,6 +21,7 @@ import {
   approvalPipelineWorkflow,
   blobUploadWorkflow,
   crudWorkflows,
+  guardrailToolWorkflow,
   spaWorkflow,
   turnPipelineWorkflow,
 } from "./workflows.js";
@@ -83,7 +84,9 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
     spaWorkflow(opts.mount),
     ...crudWorkflows(opts),
     blobUploadWorkflow(opts),
-    ...(opts.turnPipeline ? [turnPipelineWorkflow(opts), approvalPipelineWorkflow(opts)] : []),
+    ...(opts.turnPipeline
+      ? [turnPipelineWorkflow(opts), approvalPipelineWorkflow(opts), guardrailToolWorkflow(opts)]
+      : []),
   ];
 
   return defineMod({
