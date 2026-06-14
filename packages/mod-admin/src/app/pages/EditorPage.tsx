@@ -11,6 +11,7 @@ import {
   useEdgesState,
   useReactFlow,
   SelectionMode,
+  type Viewport,
   type Connection,
   type Edge as RFEdge,
   type Node as RFNode,
@@ -125,6 +126,34 @@ function writeDraft(key: string, d: EditorDraft | null): void {
 }
 const removeDraft = (key: string): void => writeDraft(key, null);
 
+// ── Per-tab viewport (zoom + pan). Persisted so switching back to a tab — or
+// reloading — restores exactly where you left off, instead of snapping to the
+// default. Absent (first open of a workflow) ⇒ the editor fits the graph. ──
+const VIEWPORT_PREFIX = "pattern.admin.editor.viewport.";
+function readViewport(key: string): Viewport | null {
+  try {
+    const raw = localStorage.getItem(VIEWPORT_PREFIX + key);
+    const v = raw ? (JSON.parse(raw) as Viewport) : null;
+    return v && Number.isFinite(v.zoom) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeViewport(key: string, v: Viewport): void {
+  try {
+    localStorage.setItem(VIEWPORT_PREFIX + key, JSON.stringify(v));
+  } catch {
+    /* best-effort */
+  }
+}
+const removeViewport = (key: string): void => {
+  try {
+    localStorage.removeItem(VIEWPORT_PREFIX + key);
+  } catch {
+    /* best-effort */
+  }
+};
+
 function readTabs(): EditorTabs {
   migrateLegacyDraft();
   try {
@@ -231,6 +260,8 @@ function EditorInner() {
   /** Normal-form snapshot of the last *saved* doc (dirty = current ≠ this). */
   const savedRef = useRef<string>("__unsaved__");
   const loadedFor = useRef<string | null>(null);
+  /** Tab whose framing we've already applied (re-applied on tab switch). */
+  const viewportFor = useRef<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
 
   // ── Resizable panels: palette | canvas | inspector, widths persisted. ──
@@ -339,6 +370,9 @@ function EditorInner() {
       } else {
         savedRef.current = "__unsaved__";
       }
+      // A freshly (re)mounted doc wants its framing re-applied; the viewport
+      // effect does it once these nodes have measured.
+      viewportFor.current = null;
     },
     [opMap, setNodes, setEdges],
   );
@@ -391,6 +425,40 @@ function EditorInner() {
     mountDoc(serverDoc ?? { id: slug ?? "untitled", name: slug, nodes: [], edges: [] }, { saved: serverDoc });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opMap, slug, wfData, isNew, template, loadDoc, initTick, mountDoc, navigate, tabKey]);
+
+  // ── Viewport framing (per tab). When this tab's nodes commit, wait — via rAF
+  // — until they've actually MEASURED (fitView is a no-op on unmeasured nodes,
+  // which is why a plain timeout was flaky on first paint), then restore the
+  // tab's saved zoom/pan or fit the graph (never the over-zoomed default).
+  // Guarded so a fast tab switch can't apply a stale tab's framing. ──
+  useEffect(() => {
+    if (loadedFor.current !== tabKey || viewportFor.current === tabKey || !nodes.length) return;
+    // Restoring a saved zoom/pan is just a transform — apply it right away (no
+    // measurement needed). FITTING needs measured node sizes, so for a first
+    // open we poll until the nodes have measured, then fit.
+    const saved = readViewport(tabKey);
+    if (saved) {
+      viewportFor.current = tabKey;
+      void rf.setViewport(saved);
+      return;
+    }
+    let timer = 0;
+    let tries = 0;
+    const fit = () => {
+      if (loadedFor.current !== tabKey) return; // a newer tab took over
+      const ns = rf.getNodes();
+      const measured = ns.length > 0 && ns.every((n) => (n.measured?.width ?? 0) > 0);
+      if (!measured && tries++ < 60) {
+        timer = window.setTimeout(fit, 50);
+        return;
+      }
+      if (!ns.length) return;
+      viewportFor.current = tabKey;
+      void rf.fitView({ padding: 0.2 });
+    };
+    timer = window.setTimeout(fit, 0);
+    return () => clearTimeout(timer);
+  }, [nodes, tabKey, rf]);
 
   // ── Persist the canvas continuously (debounced, per tab) — never lost. ──
   useEffect(() => {
@@ -478,6 +546,7 @@ function EditorInner() {
   const doCloseTab = useCallback(
     (key: string) => {
       removeDraft(key);
+      removeViewport(key);
       setClosingTab(null);
       setTabs((prev) => {
         const idx = prev.indexOf(key);
@@ -1294,13 +1363,18 @@ function EditorInner() {
             onEdgeDoubleClick={onEdgeDoubleClick}
             edgeTypes={edgeTypes}
             onPaneClick={() => setSelected(null)}
+            // Remember each tab's framing — restored on switch-back (see effect).
+            onMoveEnd={(_e, vp) => {
+              if (loadedFor.current === tabKey) writeViewport(tabKey, vp);
+            }}
             // Marquee: Shift+drag draws a selection rectangle (drag alone still
             // pans); touching a node is enough to take it (Partial). The
             // inspector shows ONE node — clear it when a box grabs several.
             selectionMode={SelectionMode.Partial}
             onSelectionChange={onSelectionChange}
             nodeTypes={nodeTypes}
-            fitView
+            // Initial framing is handled per-tab by the viewport effect (restore
+            // saved zoom/pan, else fit) — not xyflow's one-shot fitView.
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={22} size={1.6} color="var(--canvas-dot)" />
