@@ -27,7 +27,10 @@ const toolsWorkflows: OpDefinition = {
     const all = svc.listWorkflowTools();
     const picked =
       wanted.length === 0
-        ? all
+        ? // Auto-pickup offers every tool to the model EXCEPT guardrail-only
+          // ones (a moderation classifier must not become a callable tool).
+          // Name one explicitly below to include it anyway.
+          all.filter((t) => !t.guardrail)
         : wanted.map((name) => {
             const reg = svc.getWorkflowTool(name);
             if (!reg) {

@@ -120,6 +120,44 @@ describe("toolset ops", () => {
     expect(structuredClone(toolset)).toEqual(toolset);
   });
 
+  it("agents.tools.workflows excludes guardrail-only tools from the default toolset", async () => {
+    const { engine, svc } = await boot();
+    engine.registerWorkflow(weatherTool);
+    engine.registerWorkflow({
+      ...weatherTool,
+      id: "tool-moderation",
+      nodes: weatherTool.nodes.map((n) =>
+        n.id === "in" ? { ...n, config: { ...(n.config as object), name: "moderation", guardrail: true } } : n,
+      ),
+    });
+    // Resolvable by name (so agents.guardrail can wrap it)…
+    expect(svc.getWorkflowTool("moderation")?.guardrail).toBe(true);
+
+    const pickWith = (tools: string[]): Workflow => ({
+      id: `pick-${tools.join("-") || "all"}`,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["go"] } },
+        { id: "pick", op: "agents.tools.workflows", config: { tools } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "out" }, to: { node: "pick", port: "in" } },
+        { from: { node: "pick", port: "toolset" }, to: { node: "out", port: "value" } },
+      ],
+    });
+    const names = async (tools: string[]) => {
+      const wf = pickWith(tools);
+      engine.registerWorkflow(wf);
+      const res = await engine.run(wf.id, { input: { go: true } });
+      const merged = Object.assign({}, ...Object.values(res.outputs));
+      return toolsetSchema.parse(merged.value).tools.map((t) => t.name);
+    };
+    // …but the default (empty) toolset leaves it out — the model never sees it.
+    expect(await names([])).toEqual(["get_weather"]);
+    // Naming it explicitly is the escape hatch (still includable on purpose).
+    expect(await names(["moderation"])).toEqual(["moderation"]);
+  });
+
   it("agents.tools.merge concatenates and de-dups", async () => {
     const { engine } = await boot();
     engine.registerWorkflow(weatherTool);

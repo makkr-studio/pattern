@@ -104,8 +104,98 @@ export function blobUploadWorkflow(opts: ResolvedChatOptions): Workflow {
   };
 }
 
+/** The tool name the guardrail node resolves, and this workflow declares. */
+export const GUARDRAIL_TOOL_NAME = "professional_conduct";
+
+/**
+ * The professional-conduct guardrail: a `boundary.tool` workflow (marked
+ * `guardrail: true` so it's NOT offered to the model as a callable tool) that
+ * runs a small classifier model on the user's message and returns
+ * `{ tripwire, info }`. `agents.guardrail` wraps it; a trip surfaces as an
+ * inline card in the chat instead of an answer. Always shipped; the turn
+ * pipeline only WIRES it when `opts.guardrail.enabled`.
+ */
+export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
+  return {
+    id: "chat.guardrail.professional",
+    name: "Chat · guardrail · professional conduct",
+    description:
+      "Input guardrail: a small model decides whether the user's message raises a subject not permitted in a " +
+      "professional environment. Returns { tripwire, info }. Wired into the turn pipeline when CHAT_GUARDRAIL is on.",
+    source: "code",
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.tool",
+        config: {
+          name: GUARDRAIL_TOOL_NAME,
+          description: "Classify whether a message is appropriate for a professional environment.",
+          guardrail: true,
+          params: {
+            type: "object",
+            properties: {
+              input: { type: "string", description: "The message to classify." },
+              direction: { type: "string", description: "input | output" },
+            },
+            required: ["input"],
+          },
+        },
+        ui: { x: 40, y: 160, pair: "out" },
+      },
+      {
+        id: "text",
+        op: "core.object.get",
+        config: { path: "input" },
+        comment: "Pull the message text out of the guardrail args.",
+        ui: { x: 300, y: 160 },
+      },
+      {
+        id: "agent",
+        op: "agents.agent",
+        config: { name: "Conduct classifier", instructions: opts.guardrail.instructions, model: opts.guardrail.model },
+        comment: "Small, fast classifier (gpt-4.1-mini by default). Replies ALLOW or BLOCK: <reason>.",
+        ui: { x: 300, y: 340 },
+      },
+      {
+        id: "run",
+        op: "agents.run",
+        comment: "One-shot classification; apiKey resolves from env/vault like the main run.",
+        ui: { x: 560, y: 240 },
+      },
+      { id: "upper", op: "core.string.upper", comment: "Case-fold the verdict.", ui: { x: 820, y: 120 } },
+      { id: "flag", op: "core.const.json", config: { value: "BLOCK" }, comment: "The trip token to look for.", ui: { x: 820, y: 280 } },
+      {
+        id: "verdict",
+        op: "core.string.includes",
+        comment: "tripwire = the verdict contains BLOCK (fails open: no BLOCK ⇒ allowed).",
+        ui: { x: 1060, y: 160 },
+      },
+      {
+        id: "result",
+        op: "core.object.build",
+        config: { keys: ["tripwire", "info"] },
+        comment: "{ tripwire, info } — info carries the model's one-line reason for the chat card.",
+        ui: { x: 1300, y: 240 },
+      },
+      { id: "out", op: "boundary.tool.return", ui: { x: 1540, y: 240, pair: "in" } },
+    ],
+    edges: [
+      { from: { node: "in", port: "args" }, to: { node: "text", port: "object" } },
+      { from: { node: "text", port: "out" }, to: { node: "run", port: "input" } },
+      { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
+      { from: { node: "run", port: "output" }, to: { node: "upper", port: "value" } },
+      { from: { node: "upper", port: "out" }, to: { node: "verdict", port: "value" } },
+      { from: { node: "flag", port: "out" }, to: { node: "verdict", port: "search" } },
+      { from: { node: "verdict", port: "out" }, to: { node: "result", port: "tripwire" } },
+      { from: { node: "run", port: "output" }, to: { node: "result", port: "info" } },
+      { from: { node: "result", port: "out" }, to: { node: "out", port: "result" } },
+    ],
+  };
+}
+
 /** The flagship: the user-visible agent pipeline behind every chat turn. */
 export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
+  const guard = opts.guardrail.enabled;
   return {
     id: "chat.turn.pipeline",
     name: "Chat · turn pipeline",
@@ -150,6 +240,17 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         comment: "THE agent. Edit instructions/model here; wire guardrails/handoffs in.",
         ui: { x: 1080, y: 40 },
       },
+      ...(guard
+        ? [
+            {
+              id: "guard",
+              op: "agents.guardrail",
+              config: { tool: GUARDRAIL_TOOL_NAME, direction: "input" as const },
+              comment: "Professional-conduct input guardrail (CHAT_GUARDRAIL=off to drop this).",
+              ui: { x: 1080, y: 300 },
+            },
+          ]
+        : []),
       {
         id: "run",
         op: "agents.run",
@@ -175,6 +276,14 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       // ok path
       { from: { node: "gate", port: "then" }, to: { node: "tools", port: "in" } },
       { from: { node: "tools", port: "toolset" }, to: { node: "agent", port: "tools" } },
+      // Guardrail (when enabled): gated on the ok path like tools, its descriptor
+      // wires into the agent — the classifier model only runs once the agent does.
+      ...(guard
+        ? [
+            { from: { node: "gate", port: "then" }, to: { node: "guard", port: "in" } },
+            { from: { node: "guard", port: "guardrail" }, to: { node: "agent", port: "guardrails" } },
+          ]
+        : []),
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
       { from: { node: "begin", port: "input" }, to: { node: "run", port: "input" } },
       { from: { node: "begin", port: "history" }, to: { node: "run", port: "history" } },
