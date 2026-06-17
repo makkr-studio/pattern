@@ -1,0 +1,56 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "agent-answer",
+  "name": "POST /ask — agent answers (with a tool)",
+  "description": "An agentic workflow as an HTTP route: pull the question, build an agent + its toolset, run it, return the answer. Every tool call is a linked sub-run in the admin.",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": { "method": "POST", "path": "/ask" },
+      "comment": "POST /ask  { \"question\": \"...\" }",
+      "ui": { "x": 40, "y": 160, "pair": "out" }
+    },
+    {
+      "id": "question",
+      "op": "core.object.get",
+      "config": { "path": "question" },
+      "comment": "pull one field out of the body",
+      "ui": { "x": 300, "y": 160 }
+    },
+    {
+      "id": "tools",
+      "op": "agents.tools.workflows",
+      "comment": "every boundary.tool workflow becomes a callable tool",
+      "ui": { "x": 300, "y": 360 }
+    },
+    {
+      "id": "agent",
+      "op": "agents.agent",
+      "config": {
+        "name": "assistant",
+        "instructions": "You are a concise assistant. Use a tool when it helps answer accurately.",
+        "model": "gpt-4.1-mini"
+      },
+      "ui": { "x": 580, "y": 280 }
+    },
+    {
+      "id": "run",
+      "op": "agents.run",
+      "comment": "runs the agent; tool calls are linked sub-runs",
+      "ui": { "x": 840, "y": 200 }
+    },
+    {
+      "id": "out",
+      "op": "boundary.http.response",
+      "ui": { "x": 1100, "y": 200, "pair": "in" }
+    }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "body" }, "to": { "node": "question", "port": "object" } },
+    { "from": { "node": "tools", "port": "toolset" }, "to": { "node": "agent", "port": "tools" } },
+    { "from": { "node": "agent", "port": "agent" }, "to": { "node": "run", "port": "agent" } },
+    { "from": { "node": "question", "port": "out" }, "to": { "node": "run", "port": "input" } },
+    { "from": { "node": "run", "port": "output" }, "to": { "node": "out", "port": "body" } }
+  ]
+}
