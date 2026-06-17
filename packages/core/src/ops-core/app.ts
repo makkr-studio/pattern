@@ -19,7 +19,9 @@ export const staticApp: OpDefinition = {
   title: "core.app.static",
   description:
     "Builds an app object serving a registered filesystem's assets: { filesystem, spaFallback, " +
-    "immutableAssets }. Wire its `app` output into `boundary.http.app.serve`.",
+    "immutableAssets }. `filesystem` is a NAME registered via provideFilesystem, not a path; the " +
+    "host resolves it once at registration (rebuilt assets need a restart). Wire its `app` output " +
+    "into `boundary.http.app.serve`.",
   inputs: {},
   outputs: { app: value(appDescriptorSchema) },
   config: z.object({

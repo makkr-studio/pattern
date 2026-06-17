@@ -52,6 +52,11 @@ pipeline's `agents.tools.workflows` node picks up every tool by default.
 Set `"needsApproval": true` on the trigger config to gate it behind a human
 Approve/Deny in the chat (HITL).
 
+Adding your own REST routes or a custom frontend alongside the chat? The
+bundled docs (`@pattern/mod-docs` → `/docs`) cover the discipline: *Designing
+your API* (one workflow per action, ops stay HTTP-free, decompose inputs / keep
+outputs whole) and *Create an app* (serving a built SPA via the app trio).
+
 ### Tune the agent (instructions, model)
 
 Open `/admin` → Workflows → `chat.turn.pipeline` → the `agents.agent` node:

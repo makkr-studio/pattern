@@ -83,6 +83,61 @@ existing files are canonical examples:
 - `workflows/shout.json` — uses the app-local mod op `app.shout`
 - `workflows/health.json` — separate port via `$env`, control-port edge
 
+## Designing your API (read this before writing routes)
+
+The shape to aim for — and the traps that look like progress:
+
+1. **One workflow per action.** `POST /api/members`, `PATCH /api/members/:id`, …
+   each its own route workflow = one traced run. Never a fat
+   `POST /api/command` that switches on `{ entity, action }` — you lose
+   per-action tracing and per-route validation.
+2. **Ops never see HTTP.** The boundary owns validation (JSON-Schema → 400),
+   auth (`requireAuth` → 401/403), and status (defaults 200). An op that takes
+   `body`/`params`, returns `{ status, body }`, or checks scopes inside is
+   coupled to HTTP and unusable from a CLI / schedule / another workflow. Keep
+   it a pure domain function speaking domain ports.
+3. **Decompose inputs, keep outputs whole** (the key asymmetry). Extract each
+   field with a `core.object.get` (`object ← request.body`/`params`) so the
+   request→op mapping is visible edges. But wire the op's single domain output
+   (`member`, `client`, `state`) straight to `boundary.http.response.body` —
+   reach for `core.object.build` only for a deliberate projection
+   (rename/pick/merge) or a multi-op response, never to rebuild an entity the op
+   already returns.
+4. **Declare each input schema in ONE place.** A JSON-Schema on `request.body`
+   *and* a Zod schema on the op's port makes the edge fail the validator
+   (`… not assignable … (schema mismatch)`). Put it on the boundary (it returns
+   the 400); keep op ports plain `value()` and guard invariants in your store
+   layer.
+
+## Recipe: serve a frontend
+
+A built SPA is **just a workflow** — no server code. Register the assets as a
+named filesystem in a mod's `setup`, then declare the app trio:
+
+```js
+// in a mod's setup(engine):
+import { provideFilesystem, localFs } from "@pattern/runtime-node";
+provideFilesystem(engine, "my-app", localFs("./app/dist"));
+```
+
+```jsonc
+// workflows/app.json — boundary.http.app → core.app.static → boundary.http.app.serve
+// edges: mount.out → assets.in,  assets.app → serve.app
+{ "nodes": [
+    { "id": "mount",  "op": "boundary.http.app",       "config": { "mount": "/" } },
+    { "id": "assets", "op": "core.app.static",          "config": { "filesystem": "my-app", "spaFallback": "index.html" } },
+    { "id": "serve",  "op": "boundary.http.app.serve" } ] }
+```
+
+`core.app.static.config.filesystem` is the **name** you registered, not a path.
+The host resolves the app **once at registration**, so a rebuilt SPA needs a
+restart — in dev, run the frontend's own dev server (Vite) for HMR and proxy
+`/api` + `/auth` to the backend (`changeOrigin: false`, so magic-link callbacks
+resolve to the dev origin). `app/dist` must exist at boot, so build it first.
+(`@pattern/mod-admin` is the living example of this same trio — it just
+registers imperatively because it ships as a package; an app author declares the
+workflow file instead.)
+
 ## Recipe: add an op
 
 Ops live in **mods**. This project has an app-local mod at
@@ -124,11 +179,16 @@ workflow and `npx pattern validate` it.
 `npm i @pattern/mod-identity @pattern/mod-auth-magic-link`, list both in
 `pattern.config.json` mods. Then on any route trigger:
 `"config": { …, "requireAuth": true }` (or `{ "scopes": ["admin"] }`).
-First boot prints a one-time bootstrap link (first user = admin); magic-link
+First boot prints a one-time bootstrap link; **bootstrap is a two-step
+interactive flow** — the `GET /auth/bootstrap?t=…` renders a form, the `POST`
+creates the first admin (not a one-click GET). Magic-link and invite links are
+**path-only on the console** (`/auth/token?t=…`); `identity.users.invite`
+returns the link in its result as `copy` (handy for scripted/seed flows), and
 sign-ins print to the console until you subscribe a delivery workflow to the
 `identity.deliverToken` hook. The trigger's `user` output port carries
-`{ id, email?, scopes } | null` — wire it to scope data per user. Identity
-data lands in gitignored `./.pattern-data/`.
+`{ id, email?, scopes } | null` — wire it to scope data per user. To add app
+scopes, wrap the mod: `identityMod({ roles: { editor: ["edit","read"] } })` is
+the standard way. Identity data lands in gitignored `./.pattern-data/`.
 
 ## Project layout
 
