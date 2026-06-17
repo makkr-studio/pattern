@@ -1,15 +1,19 @@
 /**
  * @pattern/mod-admin — endpoint workflows (mod-admin-spec §11).
  *
- * The admin API *is* a set of Pattern workflows: each route is
- * `http.request → admin.<op> → http.response`. The HTTP host derives its routes
- * by scanning these, so the admin's own backend is visible and editable inside
- * the admin (total self-reflection). The request's params/query/body are wired
- * uniformly into the op; the op's result becomes the response body (or an SSE
- * stream for the live tail).
+ * The admin API *is* a set of Pattern workflows, and each one is a worked
+ * example of the idiom: the op is a PURE domain function with discrete, named
+ * ports; the WORKFLOW is the service. So a route is
+ * `http.request → core.object.extract (decompose) → admin.<op> → http.response`.
+ * The trigger declares the input schema (derived from the op's port schemas);
+ * each request part (params/query/body) is decomposed into the op's input ports
+ * with `core.object.extract`; the op's named output becomes the response body
+ * (or an SSE stream for the live tail). The host derives its routes by scanning
+ * these, so the admin's own backend stays visible + editable inside the admin.
  */
 
-import type { Workflow } from "@pattern/core";
+import { z, type Workflow } from "@pattern/core";
+import { adminOpRoutes, type InSpec } from "../ops/index.js";
 
 export interface EndpointSpec {
   id: string;
@@ -20,28 +24,80 @@ export interface EndpointSpec {
 }
 
 const API = "/admin/api";
+const SRCS = ["params", "query", "body"] as const;
 
-/** Build one `http.request → op → http.response` endpoint workflow. */
+/** A permissive JSON-Schema type for one port (probe-based — no brittle introspection). */
+function jsonType(s: z.ZodType): Record<string, unknown> {
+  const ok = (v: unknown) => s.safeParse(v).success;
+  if (ok("x") && !ok(1) && !ok(true)) return { type: "string" };
+  if (ok(1) && !ok("x")) return { type: "number" };
+  if (ok(true) && !ok("x") && !ok(1)) return { type: "boolean" };
+  if (ok({}) && !ok("x") && !ok(1)) return { type: "object" };
+  return {}; // unknown / union → any (still declared as a property)
+}
+
+/** A request part's JSON Schema, from the op's ports sourced there (no additionalProperties — the SPA may send extra). */
+function schemaFor(ports: Array<[string, InSpec]>): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const [name, spec] of ports) {
+    properties[name] = jsonType(spec.schema);
+    if (!spec.schema.safeParse(undefined).success) required.push(name);
+  }
+  return { type: "object", properties, ...(required.length ? { required } : {}) };
+}
+
+/**
+ * Build one endpoint workflow: declare the schema, decompose the request into
+ * the op's input ports, run the op, name the response.
+ */
 function endpoint(spec: EndpointSpec): Workflow {
+  const io = adminOpRoutes[spec.op];
+  if (!io) throw new Error(`admin endpoint "${spec.id}": no route I/O registered for op "${spec.op}"`);
   const sse = spec.mode === "sse";
-  return {
-    id: spec.id,
-    name: `Admin · ${spec.method} ${spec.path}`,
-    source: "code",
-    nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path } },
-      { id: "call", op: spec.op },
-      { id: "out", op: "boundary.http.response", config: { mode: sse ? "sse" : "buffered" } },
-    ],
-    edges: [
-      { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
-      { from: { node: "in", port: "query" }, to: { node: "call", port: "query" } },
-      { from: { node: "in", port: "body" }, to: { node: "call", port: "body" } },
-      sse
-        ? { from: { node: "call", port: "out" }, to: { node: "out", port: "stream" } }
-        : { from: { node: "call", port: "out" }, to: { node: "out", port: "body" } },
-    ],
-  };
+  const entries = Object.entries(io.in);
+  const bySrc = Object.fromEntries(SRCS.map((s) => [s, entries.filter(([, v]) => v.src === s)])) as Record<
+    (typeof SRCS)[number],
+    Array<[string, InSpec]>
+  >;
+
+  // Trigger config: route + a declared input schema for each non-empty part.
+  const triggerConfig: Record<string, unknown> = { method: spec.method, path: spec.path };
+  for (const src of SRCS) if (bySrc[src].length) triggerConfig[src] = schemaFor(bySrc[src]);
+
+  const nodes: Workflow["nodes"] = [
+    { id: "in", op: "boundary.http.request", config: triggerConfig },
+    { id: "call", op: spec.op },
+    { id: "out", op: "boundary.http.response", config: { mode: sse ? "sse" : "buffered" } },
+  ];
+  const edges: Workflow["edges"] = [];
+
+  // Decompose: one core.object.extract per request part → the op's input ports.
+  let anyInput = false;
+  for (const src of SRCS) {
+    const ports = bySrc[src];
+    if (!ports.length) continue;
+    anyInput = true;
+    const ex = `ex_${src}`;
+    nodes.push({ id: ex, op: "core.object.extract", config: { keys: ports.map(([n]) => n) } });
+    edges.push({ from: { node: "in", port: src }, to: { node: ex, port: "object" } });
+    for (const [name] of ports) edges.push({ from: { node: ex, port: name }, to: { node: "call", port: name } });
+  }
+  // No-input op: sequence it after the trigger with a control pulse.
+  if (!anyInput) edges.push({ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } });
+
+  // Recompose: a single named output → body/stream; multiple → core.object.build.
+  if (sse) {
+    edges.push({ from: { node: "call", port: io.out as string }, to: { node: "out", port: "stream" } });
+  } else if (typeof io.out === "string") {
+    edges.push({ from: { node: "call", port: io.out }, to: { node: "out", port: "body" } });
+  } else {
+    nodes.push({ id: "body", op: "core.object.build", config: { keys: io.out } });
+    for (const k of io.out) edges.push({ from: { node: "call", port: k }, to: { node: "body", port: k } });
+    edges.push({ from: { node: "body", port: "out" }, to: { node: "out", port: "body" } });
+  }
+
+  return { id: spec.id, name: `Admin · ${spec.method} ${spec.path}`, source: "code", nodes, edges };
 }
 
 /**
