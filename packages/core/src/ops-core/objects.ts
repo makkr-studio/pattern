@@ -208,4 +208,20 @@ export const objectOps: OpDefinition[] = [
       return { out: Object.fromEntries(entries) };
     },
   }),
+  defineOp({
+    type: "core.object.extract",
+    title: "core.object.extract",
+    description:
+      "Extract values from the input `object` into one output port per config.keys entry — the inverse of core.object.build. Missing keys output undefined. Use it to decompose a request body/params into discrete op inputs.",
+    inputs: { object: required(obj) },
+    // One output port per key — the editor re-resolves ports from config, same
+    // as build's inputs. Default keeps a fresh node showing one visible port.
+    outputs: (config: { keys?: string[] }): Ports => Object.fromEntries((config.keys ?? ["value"]).map((k) => [k, value()])),
+    config: z.object({ keys: z.array(z.string()).default(["value"]) }),
+    execute: async (ctx) => {
+      const { keys } = ctx.config as { keys: string[] };
+      const source = (await ctx.input.value<Record<string, unknown>>("object")) ?? {};
+      return Object.fromEntries(keys.map((k) => [k, source[k]]));
+    },
+  }),
 ];

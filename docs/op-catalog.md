@@ -241,6 +241,7 @@ them together. The app trio (`boundary.http.app` → `core.app.static` →
 | `core.object.clone` | ◆object | ◆out | — |
 | `core.object.delete` | ◆object | ◆out | — |
 | `core.object.entries` | ◆object | ◆out | — |
+| `core.object.extract` | ◆object | ◆(one per config.key) | — |
 | `core.object.fromEntries` | ◆entries | ◆out | — |
 | `core.object.get` | ◆object | ◆out | — |
 | `core.object.has` | ◆object | ◆out | — |
