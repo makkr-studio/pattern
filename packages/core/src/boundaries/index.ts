@@ -245,19 +245,40 @@ export const httpResponse = outgate({
 });
 
 /**
+ * Marker for a domain "outcome" — collision-proof: real payloads never set this
+ * key, so a result that merely HAS an `error` field (e.g. a run's failure
+ * message) is NOT mistaken for a 4xx. Build one with `httpOutcome(code, body?)`.
+ */
+const HTTP_OUTCOME = "__patternHttpStatus__";
+
+/** A non-2xx domain outcome for `boundary.http.status` (e.g. `httpOutcome("not_found")`). */
+export function httpOutcome(code: string, body?: unknown): Record<string, unknown> {
+  return { [HTTP_OUTCOME]: { code, body } };
+}
+
+/** Read the outcome marker off a value (null when it isn't one). */
+function readOutcome(result: unknown): { code: string; body?: unknown } | null {
+  const o = result && typeof result === "object" ? (result as Record<string, unknown>)[HTTP_OUTCOME] : undefined;
+  return o && typeof o === "object" && typeof (o as { code?: unknown }).code === "string" ? (o as { code: string; body?: unknown }) : null;
+}
+
+/**
  * Map a domain outcome → { status, body } for boundary.http.response — so a
- * domain op stays network-unaware (it returns "not_found", never "404"). A
- * result shaped `{ error: <code> }` takes its status from config.map (defaults:
+ * domain op stays network-unaware (it returns `httpOutcome("not_found")`, never
+ * "404"). An outcome's code takes its status from config.map (defaults:
  * not_found→404, forbidden→403, unauthorized→401, conflict→409, invalid→400);
  * anything else is `config.ok` (default 200). One node per route — not a branch.
+ * Collision-proof: a plain result that happens to carry an `error` field is a
+ * normal 200 body, NOT a 4xx.
  */
 export const httpStatus: OpDefinition = {
   type: "boundary.http.status",
   title: "boundary.http.status",
   description:
-    "Map a conventioned domain outcome to { status, body } for boundary.http.response. `{ error: <code> }` → a " +
-    "status from config.map (defaults: not_found→404, forbidden→403, unauthorized→401, conflict→409, invalid→400); " +
-    "otherwise config.ok (default 200). Keeps domain ops network-unaware: they return outcomes, this maps to HTTP.",
+    "Map a conventioned domain outcome to { status, body } for boundary.http.response. An `httpOutcome(code)` value " +
+    "→ a status from config.map (defaults: not_found→404, forbidden→403, unauthorized→401, conflict→409, invalid→400); " +
+    "anything else → config.ok (default 200, body = the value). Keeps domain ops network-unaware. The outcome marker " +
+    "is collision-proof — a normal payload with an `error` field is a 200, not a 4xx.",
   inputs: { result: value() },
   outputs: { status: value(z.number()), body: value() },
   config: z.object({
@@ -268,11 +289,9 @@ export const httpStatus: OpDefinition = {
     const result = await ctx.input.value("result");
     const { ok, map } = ctx.config as { ok: number; map: Record<string, number> };
     const defaults: Record<string, number> = { not_found: 404, forbidden: 403, unauthorized: 401, conflict: 409, invalid: 400 };
-    const code =
-      result && typeof result === "object" && typeof (result as { error?: unknown }).error === "string"
-        ? (result as { error: string }).error
-        : null;
-    return code ? { status: map[code] ?? defaults[code] ?? 400, body: result } : { status: ok, body: result };
+    const outcome = readOutcome(result);
+    if (!outcome) return { status: ok, body: result };
+    return { status: map[outcome.code] ?? defaults[outcome.code] ?? 400, body: outcome.body !== undefined ? outcome.body : { error: outcome.code } };
   },
 };
 

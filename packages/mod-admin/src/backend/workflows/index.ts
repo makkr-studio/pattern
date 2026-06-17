@@ -86,11 +86,18 @@ function endpoint(spec: EndpointSpec): Workflow {
   // No-input op: sequence it after the trigger with a control pulse.
   if (!anyInput) edges.push({ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } });
 
-  // Recompose: a single named output → body/stream; multiple → core.object.build.
+  // Recompose:
+  //  - SSE: the stream goes straight to the response (status defaults 200).
+  //  - single output: through boundary.http.status, so a domain outcome
+  //    (httpOutcome) becomes the right 4xx and data stays a 200.
+  //  - multiple outputs: core.object.build (these ops have no domain-error case).
   if (sse) {
     edges.push({ from: { node: "call", port: io.out as string }, to: { node: "out", port: "stream" } });
   } else if (typeof io.out === "string") {
-    edges.push({ from: { node: "call", port: io.out }, to: { node: "out", port: "body" } });
+    nodes.push({ id: "status", op: "boundary.http.status" });
+    edges.push({ from: { node: "call", port: io.out }, to: { node: "status", port: "result" } });
+    edges.push({ from: { node: "status", port: "status" }, to: { node: "out", port: "status" } });
+    edges.push({ from: { node: "status", port: "body" }, to: { node: "out", port: "body" } });
   } else {
     nodes.push({ id: "body", op: "core.object.build", config: { keys: io.out } });
     for (const k of io.out) edges.push({ from: { node: "call", port: k }, to: { node: "body", port: k } });

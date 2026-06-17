@@ -11,6 +11,7 @@
 import {
   boundaries,
   collectIssues,
+  httpOutcome,
   resolvePorts,
   stream,
   value,
@@ -87,10 +88,29 @@ function adminOp(
       const keys = Object.keys(inSpec);
       const args: Record<string, unknown> = {};
       await Promise.all(keys.map(async (k) => void (args[k] = await ctx.input.value(k))));
-      const result = await handler(args, adminServices(ctx), ctx);
-      return typeof io.out === "string" ? { [io.out]: result } : (result as Record<string, unknown>);
+      try {
+        const result = await handler(args, adminServices(ctx), ctx);
+        return typeof io.out === "string" ? { [io.out]: result } : (result as Record<string, unknown>);
+      } catch (err) {
+        // A DOMAIN error (not-found, bad input) becomes a collision-proof
+        // outcome the route's boundary.http.status maps to a 4xx — the op stays
+        // network-unaware. Real failures rethrow (→ 500). Multi-output ops have
+        // no domain-error case, so they always rethrow.
+        if (err instanceof DomainError && typeof io.out === "string") return { [io.out]: httpOutcome(err.code, { error: err.code, message: err.message }) };
+        throw err;
+      }
     },
   };
+}
+
+/** A domain error with an outcome code (not_found, forbidden, invalid, conflict…). */
+class DomainError extends Error {
+  constructor(
+    readonly code: string,
+    message?: string,
+  ) {
+    super(message ?? code);
+  }
 }
 
 /** A display author for version snapshots: name, else email, else the id. */
@@ -102,7 +122,7 @@ function authorOf(principal: { kind: string; id?: string; claims?: Record<string
 }
 
 const str = (v: unknown, name: string): string => {
-  if (typeof v !== "string" || !v) throw new Error(`missing "${name}"`);
+  if (typeof v !== "string" || !v) throw new DomainError("invalid", `missing "${name}"`);
   return v;
 };
 
@@ -185,7 +205,7 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
       return { ok: true };
     }
     const meta = await controlPlane.store.getMeta(slug);
-    if (!meta?.live) throw new Error(`"${slug}" has no live version to enable`);
+    if (!meta?.live) throw new DomainError("invalid", `"${slug}" has no live version to enable`);
     const res = await controlPlane.deploy(slug, meta.live);
     return { ok: res.ok, ...(res.ok ? {} : { conflicts: res.conflicts }) };
   }
@@ -194,7 +214,7 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
   const meta = await controlPlane.store.getMeta(slug);
   if (!meta) {
     const doc = engine.workflows.get(slug);
-    if (!doc) throw new Error(`workflow "${slug}" not found`);
+    if (!doc) throw new DomainError("not_found", `workflow "${slug}" not found`);
     parkedCode.set(slug, doc);
     engine.unregisterWorkflow(slug);
     return { ok: true };
@@ -217,7 +237,7 @@ const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a work
 const workflowExplain = adminOp("admin.workflow.explain", "Deterministic structural summary of a workflow.", { in: { slug: P() }, out: "explanation" }, async (args, { engine, controlPlane }) => {
   const slug = str(args.slug, "slug");
   const doc = engine.workflows.get(slug) ?? (await loadLive(controlPlane, slug));
-  if (!doc) throw new Error(`workflow "${slug}" not found`);
+  if (!doc) throw new DomainError("not_found", `workflow "${slug}" not found`);
   return { text: explain(engine, doc) };
 });
 
@@ -228,21 +248,27 @@ const versionList = adminOp("admin.version.list", "List a workflow's version his
   return meta?.versions ?? [];
 });
 
-const versionGet = adminOp("admin.version.get", "Get a specific version snapshot.", { in: { slug: P(), v: P() }, out: "version" }, (args, { controlPlane }) =>
-  controlPlane.store.getVersion(str(args.slug, "slug"), str(args.v, "v")),
-);
+const versionGet = adminOp("admin.version.get", "Get a specific version snapshot.", { in: { slug: P(), v: P() }, out: "version" }, async (args, { controlPlane }) => {
+  const version = await controlPlane.store.getVersion(str(args.slug, "slug"), str(args.v, "v"));
+  if (!version) throw new DomainError("not_found", "version not found");
+  return version;
+});
 
 const versionDiff = adminOp("admin.version.diff", "Structural JSON diff between two versions.", { in: { slug: P(), a: Q(S), b: Q(S), ignoreUi: Q(z.boolean().optional()) }, out: "diff" }, async (args, { controlPlane }) => {
   const slug = str(args.slug, "slug");
   const [a, b] = [await controlPlane.store.getVersion(slug, str(args.a, "a")), await controlPlane.store.getVersion(slug, str(args.b, "b"))];
-  if (!a || !b) throw new Error("one or both versions not found");
+  if (!a || !b) throw new DomainError("not_found", "one or both versions not found");
   return diffWorkflows(a, b, Boolean(args.ignoreUi));
 });
 
 // ── Ops / ports ──
 
 const opListOp = adminOp("admin.op.list", "List all ops (base + mod) with ports + config schema.", { out: "ops" }, (_args, { engine }) => opList(engine));
-const opGetOp = adminOp("admin.op.get", "Get one op's definition (config → JSON Schema).", { in: { type: P() }, out: "op" }, (args, { engine }) => opGet(engine, str(args.type, "type")));
+const opGetOp = adminOp("admin.op.get", "Get one op's definition (config → JSON Schema).", { in: { type: P() }, out: "op" }, (args, { engine }) => {
+  const info = opGet(engine, str(args.type, "type"));
+  if (!info) throw new DomainError("not_found", "unknown op type");
+  return info;
+});
 const portsCompatibleOp = adminOp("admin.ports.compatible", "Check whether two ports can connect (T2).", { in: { from: Bd(z.unknown()), to: Bd(z.unknown()) }, out: "result" }, (args, { engine }) =>
   portsCompatible(engine, args.from as never, args.to as never),
 );
@@ -314,7 +340,7 @@ const settingsSet = adminOp(
     const obs = (args.observability ?? args) as { capacity?: unknown; exclude?: unknown; sampleIo?: unknown };
     if (obs.capacity != null) {
       const n = Number(obs.capacity);
-      if (!Number.isFinite(n) || n < 10 || n > 10_000) throw new Error("capacity must be between 10 and 10000");
+      if (!Number.isFinite(n) || n < 10 || n > 10_000) throw new DomainError("invalid", "capacity must be between 10 and 10000");
       sink.setCapacity(n);
     }
     if (obs.exclude !== undefined) {
@@ -322,7 +348,7 @@ const settingsSet = adminOp(
       try {
         sink.setExclude(pattern);
       } catch (err) {
-        throw new Error(`invalid exclude regex: ${err instanceof Error ? err.message : String(err)}`);
+        throw new DomainError("invalid", `invalid exclude regex: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     // Sample every run's node I/O (bounded + secret-masked previews, T1) —
@@ -353,13 +379,13 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
 const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", { in: { source: Bd(S), input: Bd(z.unknown().optional()) }, out: "result" }, async (args, { engine }, ctx) => {
   const source = str(args.source, "source");
   const op = engine.ops.get(source);
-  if (!op) throw new Error(`unknown op "${source}"`);
+  if (!op) throw new DomainError("not_found", `unknown op "${source}"`);
   // ACL: this endpoint backs declarative-page *data sources*. Refuse control-plane
   // internals (every `admin.*` op mutates or reads privileged state — the purpose-
   // built routes own those), boundaries (meaningless to invoke), and any op an
   // author marked `reusable: false` (declared "not meant to be wired arbitrarily").
   if (source.startsWith("admin.") || source.startsWith("boundary.") || op.reusable === false) {
-    throw new Error(`op "${source}" cannot be invoked as a page data source`);
+    throw new DomainError("forbidden", `op "${source}" cannot be invoked as a page data source`);
   }
   // Decompose the page's `input` object onto the source op's ports. Pure
   // domain-port ops get one key per port via core.object.extract (the same
@@ -418,7 +444,7 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
   const doc = args.doc as Workflow | undefined;
   const slug = args.slug as string | undefined;
   const raw = doc ?? (slug ? engine.workflows.get(slug) : undefined);
-  if (!raw) throw new Error("provide a `doc` or a known `slug`");
+  if (!raw) throw new DomainError("invalid", "provide a `doc` or a known `slug`");
   const issues = collectIssues(raw, engine.ops).issues;
   if (issues.length) return { ok: false, issues };
   // A draft doc never went through registration — run the resolve phase here so
@@ -450,7 +476,7 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
 /** Per-node ports for a doc, config-resolved — the editor's dynamic-port source. */
 const docPortsOp = adminOp("admin.doc.ports", "Resolve every node's ports against its config (dynamic-port ops).", { in: { doc: Bd(objSchema) }, out: "ports" }, (args, { engine }) => {
   const doc = args.doc as { nodes: Array<{ id: string; op: string; config?: unknown }> } | undefined;
-  if (!doc || !Array.isArray(doc.nodes)) throw new Error('missing "doc"');
+  if (!doc || !Array.isArray(doc.nodes)) throw new DomainError("invalid", 'missing "doc"');
   return docPorts(engine, doc);
 });
 
@@ -461,7 +487,11 @@ const templateList = adminOp("admin.template.list", "List built-in workflow temp
 // ── Fixtures ──
 
 const fixtureList = adminOp("admin.fixture.list", "List a workflow's saved test fixtures.", { in: { slug: P() }, out: "fixtures" }, (args, { controlPlane }) => controlPlane.store.listFixtures(str(args.slug, "slug")));
-const fixtureGet = adminOp("admin.fixture.get", "Get a saved fixture.", { in: { slug: P(), name: P() }, out: "fixture" }, (args, { controlPlane }) => controlPlane.store.getFixture(str(args.slug, "slug"), str(args.name, "name")));
+const fixtureGet = adminOp("admin.fixture.get", "Get a saved fixture.", { in: { slug: P(), name: P() }, out: "fixture" }, async (args, { controlPlane }) => {
+  const fixture = await controlPlane.store.getFixture(str(args.slug, "slug"), str(args.name, "name"));
+  if (!fixture) throw new DomainError("not_found", "fixture not found");
+  return fixture;
+});
 const fixtureSave = adminOp("admin.fixture.save", "Save a test fixture.", { in: { slug: P(), name: P(), fixture: Bd(z.unknown().optional()) }, out: "result" }, async (args, { controlPlane }) => {
   await controlPlane.store.saveFixture(str(args.slug, "slug"), str(args.name, "name"), (args.fixture ?? {}) as never);
   return { ok: true };
