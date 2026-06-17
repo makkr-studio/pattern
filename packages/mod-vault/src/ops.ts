@@ -37,28 +37,30 @@ function requireScope(ctx: OpContext, scope: string): void {
   }
 }
 
-const obj = (v: unknown): Record<string, unknown> =>
-  v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-
+/**
+ * An admin data op: a PURE domain function (discrete named inputs, a named
+ * output) guarded by the `admin` scope in-op. Invoked by the admin's
+ * declarative pages via admin.invoke (which decomposes the page input onto
+ * these ports). NOT reusable:false — invoke must be able to call it.
+ */
 function adminOp(
   type: string,
   description: string,
+  io: { in?: Record<string, z.ZodType>; out: string },
   handler: (args: Record<string, unknown>, ctx: OpContext) => unknown | Promise<unknown>,
 ): OpDefinition {
+  const inSpec = io.in ?? {};
   return {
     type,
     title: type,
     description,
-    inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
-    outputs: { out: value() },
+    inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
+    outputs: { [io.out]: value() },
     execute: async (ctx) => {
       requireScope(ctx, "admin");
-      const [params, query, body] = await Promise.all([
-        ctx.input.has("params") ? ctx.input.value("params") : undefined,
-        ctx.input.has("query") ? ctx.input.value("query") : undefined,
-        ctx.input.has("body") ? ctx.input.value("body") : undefined,
-      ]);
-      return { out: await handler({ ...obj(query), ...obj(params), ...obj(body) }, ctx) };
+      const args: Record<string, unknown> = {};
+      await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
+      return { [io.out]: await handler(args, ctx) };
     },
   };
 }
@@ -66,6 +68,7 @@ function adminOp(
 const adminList = adminOp(
   "vault.admin.list",
   "Secret names + dates (never values). Shows a setup hint when no master key is configured.",
+  { out: "secrets" },
   async (_args, ctx) => {
     const svc = vaultService(ctx);
     const rows = await svc.list();
@@ -93,6 +96,7 @@ const adminList = adminOp(
 const adminWrite = adminOp(
   "vault.admin.write",
   "Create or rotate a secret (write-only: the value is encrypted and never shown again).",
+  { in: { name: z.string(), value: z.string() }, out: "result" },
   async (args, ctx) => {
     const name = String(args.name ?? "").trim();
     const valueStr = String(args.value ?? "");
@@ -103,7 +107,7 @@ const adminWrite = adminOp(
   },
 );
 
-const adminDelete = adminOp("vault.admin.delete", "Delete a secret.", async (args, ctx) => ({
+const adminDelete = adminOp("vault.admin.delete", "Delete a secret.", { in: { name: z.string() }, out: "result" }, async (args, ctx) => ({
   ok: await vaultService(ctx).delete(String(args.name ?? "")),
 }));
 

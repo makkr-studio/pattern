@@ -128,7 +128,7 @@ describe("vault service + ops", () => {
       ],
       edges: [
         { from: { node: "in", port: "out" }, to: { node: "list", port: "in" } }, // control pulse
-        { from: { node: "list", port: "out" }, to: { node: "out", port: "value" } },
+        { from: { node: "list", port: "secrets" }, to: { node: "out", port: "value" } },
       ],
     });
     // Anonymous principal → scope check trips.

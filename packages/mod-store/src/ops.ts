@@ -304,21 +304,26 @@ const obj = (v: unknown): Record<string, unknown> =>
 
 type JsonHandler = (args: Record<string, unknown>, ctx: OpContext) => unknown | Promise<unknown>;
 
-function adminOp(type: string, description: string, handler: JsonHandler): OpDefinition {
+/**
+ * An admin data op: a PURE domain function (discrete named inputs, a named
+ * output) guarded by the `admin` scope in-op (deliberate defense-in-depth — an
+ * open admin can't leak it). Invoked by the admin's declarative Data pages via
+ * admin.invoke, which decomposes the page input onto these ports. NOT
+ * reusable:false — invoke must be able to call it.
+ */
+function adminOp(type: string, description: string, io: { in?: Record<string, z.ZodType>; out: string }, handler: JsonHandler): OpDefinition {
+  const inSpec = io.in ?? {};
   return {
     type,
     title: type,
     description,
-    inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
-    outputs: { out: value() },
+    inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
+    outputs: { [io.out]: value() },
     execute: async (ctx) => {
       requireScope(ctx, "admin");
-      const [params, query, body] = await Promise.all([
-        maybe<Record<string, unknown>>(ctx, "params"),
-        maybe<Record<string, unknown>>(ctx, "query"),
-        maybe(ctx, "body"),
-      ]);
-      return { out: await handler({ ...obj(query), ...obj(params), ...obj(body) }, ctx) };
+      const args: Record<string, unknown> = {};
+      await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
+      return { [io.out]: await handler(args, ctx) };
     },
   };
 }
@@ -326,6 +331,7 @@ function adminOp(type: string, description: string, handler: JsonHandler): OpDef
 const adminCollections = adminOp(
   "store.admin.collections",
   "Collections with declared indexes and document counts (admin).",
+  { out: "collections" },
   async (_args, ctx) => {
     const cols = await storeService(ctx).docs.listCollections();
     return cols.map((c) => ({ name: c.name, indexes: c.indexes.join(", "), docs: c.docCount }));
@@ -335,6 +341,7 @@ const adminCollections = adminOp(
 const adminDocs = adminOp(
   "store.admin.docs",
   "Documents of a collection, newest first (admin).",
+  { in: { collection: z.string(), limit: z.number().optional(), offset: z.number().optional() }, out: "documents" },
   async (args, ctx) => {
     const collection = String(args.collection ?? "");
     const docs = await storeService(ctx).docs.query({
@@ -357,13 +364,14 @@ const adminDocs = adminOp(
 const adminDocGet = adminOp(
   "store.admin.doc.get",
   "One document, full JSON (admin).",
+  { in: { collection: z.string(), id: z.string() }, out: "document" },
   async (args, ctx) => {
     const row = await storeService(ctx).docs.get(String(args.collection ?? ""), String(args.id ?? ""));
     return row ?? { error: "not found" };
   },
 );
 
-const adminBlobs = adminOp("store.admin.blobs", "Stored blobs, newest first (admin).", async (args, ctx) => {
+const adminBlobs = adminOp("store.admin.blobs", "Stored blobs, newest first (admin).", { in: { limit: z.number().optional() }, out: "blobs" }, async (args, ctx) => {
   const blobs = await storeService(ctx).blobs.list({ limit: Math.min(Number(args.limit ?? 100), 500) });
   return blobs.map((b) => ({
     id: b.id,
@@ -374,12 +382,12 @@ const adminBlobs = adminOp("store.admin.blobs", "Stored blobs, newest first (adm
   }));
 });
 
-const adminDocDelete = adminOp("store.admin.doc.delete", "Delete a document (admin).", async (args, ctx) => {
+const adminDocDelete = adminOp("store.admin.doc.delete", "Delete a document (admin).", { in: { collection: z.string(), id: z.string() }, out: "result" }, async (args, ctx) => {
   const ok = await storeService(ctx).docs.delete(String(args.collection ?? ""), String(args.id ?? ""));
   return { ok };
 });
 
-const adminBlobDelete = adminOp("store.admin.blob.delete", "Delete a blob (admin).", async (args, ctx) => ({
+const adminBlobDelete = adminOp("store.admin.blob.delete", "Delete a blob (admin).", { in: { id: z.string() }, out: "result" }, async (args, ctx) => ({
   ok: await storeService(ctx).blobs.delete(String(args.id ?? "")),
 }));
 
