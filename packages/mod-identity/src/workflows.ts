@@ -16,35 +16,64 @@ interface EndpointSpec {
   method: string;
   path: string;
   op: string;
-  /** "http" wires headers in and status/headers/body out; "json" wires body only. */
+  /**
+   * "http" — an auth-page/redirect op where Set-Cookie + Location ARE the result
+   * (the documented exception): wires headers in, status/headers/body out.
+   * "json" — a PURE op: its named output → boundary.http.status → response.
+   */
   shape: "http" | "json";
+  /** For json routes: the op's named output port, and which query keys it reads. */
+  out?: string;
+  query?: string[];
 }
 
 function endpoint(spec: EndpointSpec): Workflow {
-  const httpShape = spec.shape === "http";
-  return {
-    id: spec.id,
-    name: `Identity · ${spec.method} ${spec.path}`,
-    source: "code",
-    nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path } },
-      { id: "call", op: spec.op },
-      { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
-    ],
-    edges: [
-      { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
-      { from: { node: "in", port: "query" }, to: { node: "call", port: "query" } },
-      { from: { node: "in", port: "body" }, to: { node: "call", port: "body" } },
-      ...(httpShape
-        ? [
-            { from: { node: "in", port: "headers" }, to: { node: "call", port: "headers" } },
-            { from: { node: "call", port: "status" }, to: { node: "out", port: "status" } },
-            { from: { node: "call", port: "headers" }, to: { node: "out", port: "headers" } },
-            { from: { node: "call", port: "body" }, to: { node: "out", port: "body" } },
-          ]
-        : [{ from: { node: "call", port: "out" }, to: { node: "out", port: "body" } }]),
-    ],
-  };
+  if (spec.shape === "http") {
+    // Auth pages + redirects: the HTTP response IS the op's output (the
+    // documented exception — Set-Cookie/Location are the result).
+    return {
+      id: spec.id,
+      name: `Identity · ${spec.method} ${spec.path}`,
+      source: "code",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path } },
+        { id: "call", op: spec.op },
+        { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
+      ],
+      edges: [
+        { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
+        { from: { node: "in", port: "query" }, to: { node: "call", port: "query" } },
+        { from: { node: "in", port: "body" }, to: { node: "call", port: "body" } },
+        { from: { node: "in", port: "headers" }, to: { node: "call", port: "headers" } },
+        { from: { node: "call", port: "status" }, to: { node: "out", port: "status" } },
+        { from: { node: "call", port: "headers" }, to: { node: "out", port: "headers" } },
+        { from: { node: "call", port: "body" }, to: { node: "out", port: "body" } },
+      ],
+    };
+  }
+
+  // JSON route: decompose the query into the pure op's ports, run it, map its
+  // outcome with boundary.http.status (the op never sees HTTP).
+  const out = spec.out ?? "out";
+  const query = spec.query ?? [];
+  const nodes: Workflow["nodes"] = [
+    { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path } },
+    { id: "call", op: spec.op },
+    { id: "status", op: "boundary.http.status" },
+    { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
+  ];
+  const edges: Workflow["edges"] = [];
+  if (query.length) {
+    nodes.push({ id: "ex_query", op: "core.object.extract", config: { keys: query } });
+    edges.push({ from: { node: "in", port: "query" }, to: { node: "ex_query", port: "object" } });
+    for (const k of query) edges.push({ from: { node: "ex_query", port: k }, to: { node: "call", port: k } });
+  } else {
+    edges.push({ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } });
+  }
+  edges.push({ from: { node: "call", port: out }, to: { node: "status", port: "result" } });
+  edges.push({ from: { node: "status", port: "status" }, to: { node: "out", port: "status" } });
+  edges.push({ from: { node: "status", port: "body" }, to: { node: "out", port: "body" } });
+  return { id: spec.id, name: `Identity · ${spec.method} ${spec.path}`, source: "code", nodes, edges };
 }
 
 /** The identity routes under `mount` (default /auth). */
@@ -53,7 +82,7 @@ export function endpointWorkflows(mount: string): Workflow[] {
     { id: "identity.route.login", method: "GET", path: `${mount}/login`, op: "identity.login.page", shape: "http" },
     { id: "identity.route.token", method: "GET", path: `${mount}/token`, op: "identity.token.callback", shape: "http" },
     { id: "identity.route.logout", method: "POST", path: `${mount}/logout`, op: "identity.logout", shape: "http" },
-    { id: "identity.route.whoami", method: "GET", path: `${mount}/whoami`, op: "identity.whoami", shape: "json" },
+    { id: "identity.route.whoami", method: "GET", path: `${mount}/whoami`, op: "identity.whoami", shape: "json", out: "whoami" },
     { id: "identity.route.welcome", method: "GET", path: `${mount}/welcome`, op: "identity.welcome.page", shape: "http" },
     { id: "identity.route.bootstrap", method: "GET", path: `${mount}/bootstrap`, op: "identity.bootstrap.page", shape: "http" },
     { id: "identity.route.bootstrap.submit", method: "POST", path: `${mount}/bootstrap`, op: "identity.bootstrap.submit", shape: "http" },
