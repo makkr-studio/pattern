@@ -6,6 +6,7 @@
  */
 
 import type { Workflow } from "@pattern/core";
+import { docsOpRoutes, type DocsInSpec } from "./ops.js";
 import type { ResolvedDocsOptions } from "./options.js";
 
 interface RouteSpec {
@@ -15,31 +16,57 @@ interface RouteSpec {
   op: string;
 }
 
+/**
+ * A route: decompose the request (query → discrete op ports, `user` straight
+ * through), run the pure op, map its outcome to a status with
+ * `boundary.http.status`, and set the content-type for markdown routes. The op
+ * never touches HTTP.
+ */
 function route(spec: RouteSpec, requireAuth?: unknown): Workflow {
-  return {
-    id: spec.id,
-    name: `Docs · ${spec.method} ${spec.path}`,
-    source: "code",
-    nodes: [
-      {
-        id: "in",
-        op: "boundary.http.request",
-        config: { method: spec.method, path: spec.path, ...(requireAuth !== undefined ? { requireAuth } : {}) },
-      },
-      { id: "call", op: spec.op },
-      { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
-    ],
-    edges: [
-      { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
-      { from: { node: "in", port: "query" }, to: { node: "call", port: "query" } },
-      { from: { node: "in", port: "body" }, to: { node: "call", port: "body" } },
-      { from: { node: "in", port: "headers" }, to: { node: "call", port: "headers" } },
-      { from: { node: "in", port: "user" }, to: { node: "call", port: "user" } },
-      { from: { node: "call", port: "status" }, to: { node: "out", port: "status" } },
-      { from: { node: "call", port: "headers" }, to: { node: "out", port: "headers" } },
-      { from: { node: "call", port: "body" }, to: { node: "out", port: "body" } },
-    ],
-  };
+  const io = docsOpRoutes[spec.op];
+  if (!io) throw new Error(`docs route "${spec.id}": no I/O for op "${spec.op}"`);
+  const entries = Object.entries(io.in);
+  const groups: Record<string, Array<[string, DocsInSpec]>> = { query: [], params: [] };
+  const userPorts: string[] = [];
+  for (const [name, spec2] of entries) {
+    if (spec2.src === "user") userPorts.push(name);
+    else groups[spec2.src]!.push([name, spec2]);
+  }
+
+  const nodes: Workflow["nodes"] = [
+    { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path, ...(requireAuth !== undefined ? { requireAuth } : {}) } },
+    { id: "call", op: spec.op },
+    { id: "status", op: "boundary.http.status" },
+    { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
+  ];
+  const edges: Workflow["edges"] = [];
+
+  let wired = false;
+  for (const src of ["query", "params"] as const) {
+    const ports = groups[src]!;
+    if (!ports.length) continue;
+    wired = true;
+    const ex = `ex_${src}`;
+    nodes.push({ id: ex, op: "core.object.extract", config: { keys: ports.map(([n]) => n) } });
+    edges.push({ from: { node: "in", port: src }, to: { node: ex, port: "object" } });
+    for (const [name] of ports) edges.push({ from: { node: ex, port: name }, to: { node: "call", port: name } });
+  }
+  for (const p of userPorts) {
+    wired = true;
+    edges.push({ from: { node: "in", port: "user" }, to: { node: "call", port: p } });
+  }
+  if (!wired) edges.push({ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } });
+
+  edges.push({ from: { node: "call", port: io.out }, to: { node: "status", port: "result" } });
+  edges.push({ from: { node: "status", port: "status" }, to: { node: "out", port: "status" } });
+  edges.push({ from: { node: "status", port: "body" }, to: { node: "out", port: "body" } });
+
+  if (io.contentType) {
+    nodes.push({ id: "ct", op: "core.const.object", config: { value: { "content-type": io.contentType } } });
+    edges.push({ from: { node: "ct", port: "out" }, to: { node: "out", port: "headers" } });
+  }
+
+  return { id: spec.id, name: `Docs · ${spec.method} ${spec.path}`, source: "code", nodes, edges };
 }
 
 export function docsRouteWorkflows(opts: ResolvedDocsOptions): Workflow[] {
