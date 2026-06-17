@@ -1,6 +1,6 @@
 {
   "name": "@pattern/core",
-  "version": "0.1.40",
+  "version": "0.1.42",
   "description": "Pattern execution engine — runtime-neutral core (Web-standard APIs only).",
   "type": "module",
   "license": "MIT",
