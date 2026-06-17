@@ -39,15 +39,20 @@ interface Modpack {
   label: string;
   /** One-liner shown as the select hint. */
   hint: string;
-  /** The mods the pack wires up (shown in the pack card). */
+  /** Technical one-liner under the card title — what this actually is. */
+  tagline: string;
+  /** The mods the pack wires up (display names; roles from MOD_ROLES). */
   mods: string[];
-  /** "What's in the box" bullet lines — with example content included. */
-  contents: string[];
-  /**
-   * "What's in the box" when examples are OFF: the platform still runs, you
-   * just get the scaffold to add your own. Falls back to a generic line.
-   */
-  bareContents?: string[];
+  /** Names the actual example artifacts — for the examples question + card. */
+  exampleSummary: string;
+  /** Endpoints the running app exposes (the card's "serves" line). */
+  serves: (examples: boolean) => string[];
+  /** Env vars the pack needs (the card's "needs" line). */
+  env: string[];
+  /** Key generated paths shown as the card's file tree. */
+  generates: (examples: boolean) => string[];
+  /** A workflow file to render as an inline graph (when examples are on). */
+  showcase?: string;
   /**
    * Auth is a DIMENSION, not a pack: packs that serve HTTP can opt into the
    * identity brick (magic-link login, users/sessions, secured admin). Absent
@@ -70,96 +75,61 @@ const AUTH_MODS = ["@pattern/mod-identity", "@pattern/mod-auth-magic-link"];
 /** What the docs toggle adds: self-reflecting documentation at /docs. */
 const DOCS_MOD = "@pattern/mod-docs";
 
+/** One-line technical role per mod — shown beside each in the manifest card. */
+const MOD_ROLES: Record<string, string> = {
+  "@pattern/mod-admin": "visual editor, run traces, /admin control plane",
+  "@pattern/mod-agents": "agent ops: agent · run · tools · guardrail",
+  "@pattern/mod-agents-openai": "OpenAI provider for the agent ops",
+  "@pattern/mod-agents(-openai)": "agent ops (agent · run · tools) on OpenAI",
+  "@pattern/mod-store": "durable state (sqlite): conversations, blobs, leases",
+  "@pattern/mod-vault": "encrypted secrets — holds OPENAI_API_KEY",
+  "@pattern/mod-chat": "the /chat product; its turn pipeline is a workflow",
+  "@pattern/mod-identity": "users, sessions, roles → scopes",
+  "@pattern/mod-auth-magic-link": "magic-link login (console fallback in dev)",
+  "@pattern/mod-docs": "/docs: handbook + a live op reference",
+  "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
+  "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
+};
+
+/** Ladder order (ascending capability) for the picker + --list. */
+const LADDER = ["blank", "headless", "studio", "agentic", "agent-chat"];
+
 const MODPACKS: Modpack[] = [
   {
-    id: "studio",
-    label: "Studio",
-    hint: "a visual workspace at /admin — build, version, run & trace workflows in the browser (recommended)",
-    mods: ["@pattern/mod-admin", "./mods/quotes.mjs (app-local)"],
-    contents: [
-      "the admin SPA at /admin — edit, version, deploy, replay workflows",
-      "3 editable example workflows seeded on first boot",
-      "an app-local mod adding ops AND an admin page (the extension surface, live)",
-    ],
-    bareContents: [
-      "the admin SPA at /admin — edit, version, deploy, replay workflows (fully live)",
-      "an empty workflow store + a mods/ scaffold — AGENTS.md shows how to add ops, routes & admin pages",
-    ],
-    // Secure-by-default is the philosophy — the flagship pack ships locked.
-    auth: { default: true },
-    docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
+    id: "blank",
+    label: "Engine only",
+    hint: "no web server, no UI — run a workflow from code and watch it print; best for learning or embedding",
+    tagline: "the engine in-process — run workflows from code, no server",
+    mods: [],
+    exampleSummary: "one runnable example workflow (greeting)",
+    serves: () => [],
+    env: [],
+    generates: (ex) => (ex ? ["workflows/greeting.json", "src/index.ts"] : ["workflows/ (your workflows)", "src/index.ts"]),
+    showcase: "workflows/greeting.json",
+    next: ({ name, runCmd, installed, installLine, examples }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        `${pc.dim("$")} ${runCmd} dev`,
-        "",
-        ...(auth
-          ? [
-              `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} in the console — click it, you're the owner`,
-              `${pc.cyan("→")} then ${pc.bold("http://localhost:3000/admin")} ${pc.dim("(sign-in links print to the console too)")}`,
-            ]
-          : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        examples
-          ? `${pc.cyan("→")} curl localhost:3000/hello/world`
-          : `${pc.cyan("→")} build your first workflow in the editor ${pc.dim("(or drop JSON in workflows/ — see AGENTS.md)")}`,
-      ].filter((l) => l !== ""),
-  },
-  {
-    id: "agent-chat",
-    label: "Studio + Agentic Chat",
-    hint: "a full AI chat app at /chat — tools, guardrails, HITL — on top of Studio; every turn is a workflow you can open",
-    mods: [
-      "@pattern/mod-chat",
-      "@pattern/mod-agents(-openai)",
-      "@pattern/mod-store",
-      "@pattern/mod-vault",
-      "@pattern/mod-admin",
-    ],
-    contents: [
-      "a product chat app at /chat — streaming transcript, tool activity, image input",
-      "the turn pipeline is a WORKFLOW: fork it in the admin, add guardrails, swap models",
-      "two example tools (get_time, get_weather) — every call is a linked sub-run",
-      "vault for the OpenAI API key (encrypted, masked out of run samples)",
-    ],
-    bareContents: [
-      "a product chat app at /chat — streaming transcript, tool activity, image input (fully working)",
-      "the turn pipeline is a WORKFLOW: fork it in the admin, add guardrails, swap models",
-      "no example tools — AGENTS.md shows how to add your own (a workflow with a boundary.tool trigger)",
-      "vault for the OpenAI API key (encrypted, masked out of run samples)",
-    ],
-    auth: { default: true },
-    docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
-      [
-        `${pc.dim("$")} cd ${name}`,
-        installed ? "" : installLine,
-        `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY there (or use the admin Secrets page later)")}`,
-        `${pc.dim("$")} ${runCmd} dev`,
-        "",
-        `${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`,
-        ...(auth
-          ? [`${pc.cyan("→")} the admin (the kitchen) is locked — first boot prints a one-time owner link`]
-          : [`${pc.cyan("→")} the admin (the kitchen) at ${pc.bold("http://localhost:3000/admin")}`]),
-        examples
-          ? `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} — watch the tool bud on the strand`
-          : `${pc.cyan("→")} add a tool workflow (see AGENTS.md), then ask the agent to use it`,
+        `${pc.dim("$")} ${runCmd} dev   ${pc.dim(examples ? "— runs the greeting workflow, prints the result" : "— boots the engine")}`,
+        ...(examples
+          ? [`${pc.cyan("→")} edit ${pc.bold("workflows/greeting.json")} ${pc.dim("(hot-reloaded), or wire in core.string.* / core.math.* ops")}`]
+          : ["", `${pc.cyan("→")} add a workflow in ${pc.bold("workflows/")} ${pc.dim("(see AGENTS.md), then engine.run() it from src/index.ts")}`]),
       ].filter((l) => l !== ""),
   },
   {
     id: "headless",
     label: "Headless server",
-    hint: "a running server with no UI — serve HTTP, WebSocket, scheduled or CLI workflows; routes are JSON",
+    hint: "a running server, no UI — serve HTTP, WebSocket, scheduled or CLI workflows; routes are JSON",
+    tagline: "the engine + the HTTP/WS/CLI host — serve workflows as endpoints, no UI",
     mods: ["./mods/uppercase.mjs (app-local)"],
-    contents: [
-      "4 routes declared inside workflow JSON — no route table",
-      "JSON-Schema request validation + env-interpolated config",
-      "an app-local mod contributing the `app.shout` op",
-    ],
-    bareContents: [
-      "the engine + HTTP/WS/CLI host — boots and ready to serve",
-      "an empty workflows/ + mods/ scaffold — AGENTS.md shows how to add a route or trigger",
-    ],
+    exampleSummary: "4 example routes (hello/echo/shout/health) + the app.shout mod",
+    serves: (ex) => (ex ? ["/hello/:name", "/echo", "/shout/:text", "/health"] : []),
+    env: [],
+    generates: (ex) =>
+      ex
+        ? ["workflows/hello.json + echo, shout, health", "mods/uppercase.mjs", "src/index.ts"]
+        : ["workflows/ (your routes)", "mods/ (your ops)", "src/index.ts"],
+    showcase: "workflows/hello.json",
     // APIs often start behind a gateway — opt in with one keystroke.
     auth: { default: false },
     docs: { default: true },
@@ -174,29 +144,117 @@ const MODPACKS: Modpack[] = [
               `${pc.cyan("→")} curl localhost:3000/hello/world`,
               `${pc.cyan("→")} curl -XPOST localhost:3000/echo -H 'content-type: application/json' -d '{"message":"hi"}'`,
             ]
-          : [`${pc.cyan("→")} add a route in ${pc.bold("workflows/")} ${pc.dim("(boundary.http.request → boundary.http.response — see AGENTS.md)")}`]),
+          : [`${pc.cyan("→")} add a route: a workflow with ${pc.bold("boundary.http.request → boundary.http.response")} in workflows/ (see AGENTS.md)`]),
         ...(auth
-          ? [
-              `${pc.cyan("→")} curl localhost:3000/whoami ${pc.dim("— 401 until you log in (first boot prints a one-time link)")}`,
-            ]
+          ? [`${pc.cyan("→")} curl localhost:3000/whoami ${pc.dim("— 401 until you sign in (first boot prints a one-time link)")}`]
           : []),
       ].filter((l) => l !== ""),
   },
   {
-    id: "blank",
-    label: "Engine only",
-    hint: "no web server, no UI — run a workflow in code and watch it print; best for learning or embedding",
-    mods: [],
-    contents: ["the smallest possible Pattern program: one JSON workflow, one `engine.run()`"],
-    bareContents: ["just the engine — an empty workflows/ scaffold; AGENTS.md shows the workflow-JSON shape"],
-    next: ({ name, runCmd, installed, installLine, examples }) =>
+    id: "studio",
+    label: "Studio",
+    hint: "a visual workspace at /admin — build, version, run & trace workflows in the browser (recommended)",
+    tagline: "the engine + mod-admin — a visual editor, run traces & a versioned workflow store at /admin",
+    mods: ["@pattern/mod-admin", "./mods/quotes.mjs (app-local)"],
+    exampleSummary: "3 editable example workflows + an app-local mod (ops + an admin page)",
+    serves: () => ["/admin"],
+    env: [],
+    generates: (ex) =>
+      ex
+        ? ["3 seeded workflows (in the admin store)", "mods/quotes.mjs", "src/index.ts"]
+        : ["workflows/ (file workflows)", "mods/ (your ops)", "src/index.ts"],
+    // Secure-by-default is the philosophy — the flagship pack ships locked.
+    auth: { default: true },
+    docs: { default: true },
+    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
         `${pc.dim("$")} ${runCmd} dev`,
-        ...(examples
-          ? []
-          : ["", `${pc.cyan("→")} add a workflow in ${pc.bold("workflows/")} ${pc.dim("(see AGENTS.md), then engine.run() it from src/index.ts")}`]),
+        "",
+        ...(auth
+          ? [
+              `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} in the console — open it, you're the owner`,
+              `${pc.cyan("→")} then ${pc.bold("http://localhost:3000/admin")} ${pc.dim("(sign-in links print to the console too)")}`,
+            ]
+          : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
+        examples
+          ? `${pc.cyan("→")} the editor opens with 3 example workflows — fork one, or ${pc.dim("curl localhost:3000/hello/world")}`
+          : `${pc.cyan("→")} build your first workflow in the editor ${pc.dim("(or drop JSON in workflows/ — see AGENTS.md)")}`,
+      ].filter((l) => l !== ""),
+  },
+  {
+    id: "agentic",
+    label: "Studio + Agents",
+    hint: "build agentic workflows in the editor — agent/run/tools ops + vault + store; no chat UI",
+    tagline: "Studio + the agent stack — build agentic workflows (agent · run · tools) in the editor",
+    mods: [
+      "@pattern/mod-agents(-openai)",
+      "@pattern/mod-store",
+      "@pattern/mod-vault",
+      "@pattern/mod-admin",
+    ],
+    exampleSummary: "an agentic workflow (POST /ask → agent + tool) + a get_time tool",
+    serves: (ex) => (ex ? ["/admin", "/ask"] : ["/admin"]),
+    env: ["OPENAI_API_KEY", "PATTERN_VAULT_KEY"],
+    generates: (ex) =>
+      ex
+        ? ["workflows/agent-answer.json", "workflows/tool-time.json", "src/index.ts", ".env.example"]
+        : ["workflows/ (your agentic flows)", "src/index.ts", ".env.example"],
+    showcase: "workflows/agent-answer.json",
+    auth: { default: true },
+    docs: { default: true },
+    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
+      [
+        `${pc.dim("$")} cd ${name}`,
+        installed ? "" : installLine,
+        `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY (or store it on the admin Secrets page)")}`,
+        `${pc.dim("$")} ${runCmd} dev`,
+        "",
+        ...(auth
+          ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
+          : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
+        examples
+          ? `${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time (a linked sub-run)")}`
+          : `${pc.cyan("→")} build an agentic workflow: ${pc.bold("agents.agent → agents.run")} (see AGENTS.md)`,
+      ].filter((l) => l !== ""),
+  },
+  {
+    id: "agent-chat",
+    label: "Studio + Agentic Chat",
+    hint: "a chat product at /chat — tools, guardrails, HITL — the turn pipeline is an agentic workflow",
+    tagline: "Studio + Agents + mod-chat — the /chat product whose turn pipeline is an agentic workflow",
+    mods: [
+      "@pattern/mod-chat",
+      "@pattern/mod-agents(-openai)",
+      "@pattern/mod-store",
+      "@pattern/mod-vault",
+      "@pattern/mod-admin",
+    ],
+    exampleSummary: "two example chat tools (get_time, get_weather)",
+    serves: () => ["/chat", "/admin"],
+    env: ["OPENAI_API_KEY", "PATTERN_VAULT_KEY"],
+    generates: (ex) =>
+      ex
+        ? ["workflows/tool-time.json", "workflows/tool-weather.json", "src/index.ts", ".env.example"]
+        : ["workflows/ (your tools)", "src/index.ts", ".env.example"],
+    showcase: "workflows/tool-time.json",
+    auth: { default: true },
+    docs: { default: true },
+    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
+      [
+        `${pc.dim("$")} cd ${name}`,
+        installed ? "" : installLine,
+        `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY (or store it on the admin Secrets page)")}`,
+        `${pc.dim("$")} ${runCmd} dev`,
+        "",
+        `${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`,
+        ...(auth
+          ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link`]
+          : [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`]),
+        examples
+          ? `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} ${pc.dim("— the agent calls the get_time tool (a linked sub-run)")}`
+          : `${pc.cyan("→")} add a tool workflow (see AGENTS.md), then ask the agent to call it`,
       ].filter((l) => l !== ""),
   },
 ];
@@ -224,10 +282,12 @@ interface Flags {
   docs?: boolean;
   /** undefined = ask (interactive) / default ON (headless). */
   examples?: boolean;
+  /** Print the manifest for the resolved selection and write nothing. */
+  dryRun: boolean;
 }
 
 function parseFlags(argv: string[]): Flags {
-  const flags: Flags = { install: true, git: true, yes: false, list: false };
+  const flags: Flags = { install: true, git: true, yes: false, list: false, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--modpack" || a === "-m" || a === "--template" || a === "-t") flags.modpack = argv[++i];
@@ -242,6 +302,7 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--no-examples") flags.examples = false;
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
+    else if (a === "--dry-run" || a === "--dry") flags.dryRun = true;
     else if (!a.startsWith("-") && !flags.name) flags.name = a;
   }
   if (flags.modpack && LEGACY_IDS[flags.modpack]) flags.modpack = LEGACY_IDS[flags.modpack];
@@ -264,35 +325,84 @@ function detectPm(): Pm {
   return "npm";
 }
 
+/** Resolve the display-name → npm-name (drops the "(app-local)" annotation). */
+function modPath(display: string): string {
+  return display.replace(/\s*\(app-local\)\s*$/, "");
+}
+
+/**
+ * The manifest card: a computed, accurate preview of exactly what gets wired
+ * and generated — mods + their roles, the file tree, the endpoints served, the
+ * env it needs. Everything here is derived from the actual selections.
+ */
 function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean): string {
-  const exampleMods = examples ? pack.mods : pack.mods.filter((m) => !m.includes("(app-local)"));
-  const modList = [...(auth ? AUTH_MODS : []), ...exampleMods, ...(docs ? [DOCS_MOD] : [])];
-  const mods = modList.length ? modList.map((m) => pc.magenta(m)).join(pc.dim(" + ")) : pc.dim("none — just the engine");
-  const contents = examples ? pack.contents : (pack.bareContents ?? ["the scaffold to add your own — see AGENTS.md"]);
-  const authLines = auth
-    ? [
-        `${pc.cyan("◆")} authentication: magic-link login, users & sessions${pack.id === "studio" ? ", the admin locked behind it" : ""}`,
-        `${pc.cyan("◆")} first boot prints a one-time link — the first account becomes admin`,
-      ]
-    : [];
-  const docsLines = docs
-    ? [`${pc.cyan("◆")} docs at /docs: the Pattern handbook + a live op reference — every mod documents itself`]
-    : [];
-  return [
-    `${pc.dim("mods:")} ${mods}`,
-    ...contents.map((line) => `${pc.cyan("◆")} ${line}`),
-    ...authLines,
-    ...docsLines,
-    examples ? "" : `${pc.dim("◆")} ${pc.dim("examples off — clean scaffold; notes on how to add things stay")}`,
-    `${pc.green("✦")} AGENTS.md + CLAUDE.md included — your coding agent knows this project`,
-  ]
-    .filter((l) => l !== "")
-    .join("\n");
+  // Mods, in install order: identity first (infra), pack mods, docs last.
+  const packMods = examples ? pack.mods : pack.mods.filter((m) => !m.includes("(app-local)"));
+  const modList = [...(auth ? AUTH_MODS : []), ...packMods, ...(docs ? [DOCS_MOD] : [])];
+  const roleOf = (m: string) => MOD_ROLES[m] ?? "";
+  const width = Math.max(0, ...modList.map((m) => modPath(m).length));
+  const modLines = modList.length
+    ? modList.map((m) => `  ${pc.magenta(modPath(m).padEnd(width))}  ${pc.dim(roleOf(m))}`)
+    : [`  ${pc.dim("none — just the engine, in-process")}`];
+
+  const files = pack.generates(examples);
+  const fileLines = files.map((f) => `  ${pc.cyan("›")} ${f}`);
+
+  const serves = [...pack.serves(examples), ...(docs ? ["/docs"] : []), ...(auth && pack.id === "headless" && examples ? ["/whoami"] : [])];
+  const env = pack.env;
+
+  const blocks: string[] = [`${pc.dim(pack.tagline)}`, "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
+  if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
+  if (env.length) {
+    const hint = env.includes("PATTERN_VAULT_KEY") ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
+    blocks.push(`${pc.bold("needs")}    ${env.map((e) => pc.magenta(e)).join(pc.dim(" · "))}${hint}`);
+  }
+  blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — the recipes your coding agent reads`);
+  return blocks.join("\n");
+}
+
+/** Resolve the orthogonal dimensions from flags + pack defaults (no prompts). */
+function resolveDims(pack: Modpack, flags: Flags): { auth: boolean; docs: boolean; examples: boolean } {
+  return {
+    auth: pack.auth ? (flags.auth ?? pack.auth.default) : false,
+    docs: pack.docs ? (flags.docs ?? pack.docs.default) : false,
+    examples: flags.examples ?? true,
+  };
+}
+
+/** --dry-run: print exactly what WOULD be wired & generated, write nothing. */
+function previewManifest(flags: Flags): void {
+  banner();
+  const pack = packOrThrow(flags.modpack ?? "studio");
+  const { auth, docs, examples } = resolveDims(pack, flags);
+  console.log(
+    `  ${pc.bold(pack.label)} ${pc.dim(`(${pack.id}${examples ? "" : ", no examples"}${auth ? ", auth" : ""}${docs ? ", docs" : ""})`)}\n`,
+  );
+  console.log(
+    packCard(pack, auth, docs, examples)
+      .split("\n")
+      .map((l) => "  " + l)
+      .join("\n"),
+  );
+  console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
+}
+
+/** Render the seeded showcase workflow as a terminal graph (examples + installed). */
+function showcaseGraph(name: string, pack: Modpack, examples: boolean, installed: boolean): string | null {
+  if (!examples || !pack.showcase || !installed) return null;
+  const dir = resolve(process.cwd(), name);
+  try {
+    const res = spawnSync("npx", ["pattern", "graph", pack.showcase], { cwd: dir, encoding: "utf8" });
+    if (res.status === 0 && res.stdout?.trim()) return res.stdout.replace(/\s+$/, "");
+  } catch {
+    /* the inline graph is a nicety — never block scaffolding on it */
+  }
+  return null;
 }
 
 function listPacks(): void {
-  console.log(`\n${pc.bold("Modpacks")} — curated mod sets per use case:\n`);
-  for (const pack of MODPACKS) {
+  console.log(`\n${pc.bold("Modpacks")} — a ladder; each rung adds one capability:\n`);
+  for (const pack of LADDER.map((id) => packOrThrow(id))) {
     const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"}, docs: ${pack.docs?.default ? "on" : "off"} by default)`) : "";
     console.log(`  ${pc.cyan(pack.id.padEnd(12))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
@@ -420,6 +530,14 @@ Tool workflows live here — a workflow with a \`boundary.tool\` trigger and a
 (via \`agents.tools.workflows\`). See AGENTS.md for the recipe.
 `;
 
+const NOTE_AGENTIC = `# workflows/
+
+Agentic workflows live here — a graph that wires an agent (\`agents.agent\`)
+into a runner (\`agents.run\`), plus tools (each a workflow with a
+\`boundary.tool\` trigger). Build them in the editor at /admin or drop JSON
+here. See AGENTS.md for the shape.
+`;
+
 const NOTE_MODS = `# mods/
 
 App-local mods live here — a single \`.mjs\` (or \`.ts\`) file contributing ops
@@ -514,6 +632,10 @@ const EXAMPLES: Record<string, ExampleSpec> = {
     // workflows/README.md already ships in the studio template — keep it.
     notes: { "mods/README.md": NOTE_MODS },
   },
+  agentic: {
+    workflows: ["agent-answer.json", "tool-time.json"],
+    notes: { "workflows/README.md": NOTE_AGENTIC },
+  },
   "agent-chat": {
     workflows: ["tool-time.json", "tool-weather.json"],
     notes: { "workflows/README.md": NOTE_TOOLS },
@@ -569,9 +691,12 @@ async function runInteractive(flags: Flags): Promise<void> {
   if (!flags.modpack) {
     p.note(
       [
-        `${pc.dim("Pick by how much you want running:")}`,
-        `${pc.cyan("Engine only")}  → a program, no server     ${pc.dim("·")}  ${pc.cyan("Headless server")} → a web/WS/CLI server, no UI`,
-        `${pc.cyan("Studio")}       → a visual workspace /admin ${pc.dim("·")}  ${pc.cyan("Studio + Agentic Chat")} → a chat product /chat`,
+        `${pc.dim("Each rung adds one capability over the one before:")}`,
+        `${pc.cyan("Engine only")}            the engine, in-process — no server`,
+        `${pc.cyan("Headless server")}        + the HTTP/WS/CLI host — serve workflows, no UI`,
+        `${pc.cyan("Studio")}                 + mod-admin — a visual editor & run traces at /admin`,
+        `${pc.cyan("Studio + Agents")}        + the agent stack — build agentic workflows`,
+        `${pc.cyan("Studio + Agentic Chat")}  + mod-chat — the /chat product`,
       ].join("\n"),
       "The ladder",
     );
@@ -579,8 +704,9 @@ async function runInteractive(flags: Flags): Promise<void> {
   const packId =
     flags.modpack ??
     (await p.select({
-      message: "Pick a modpack — a curated set of mods for your use case",
-      options: MODPACKS.map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
+      message: "Pick a modpack",
+      initialValue: "studio",
+      options: LADDER.map((id) => packOrThrow(id)).map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
     }))!;
   if (p.isCancel(packId)) return cancel();
   const pack = packOrThrow(String(packId));
@@ -622,7 +748,7 @@ async function runInteractive(flags: Flags): Promise<void> {
     examples = flags.examples;
   } else {
     const answer = await p.confirm({
-      message: `Include examples? ${pc.dim("sample workflows/tools to learn from — off = a clean scaffold + notes")}`,
+      message: `Include examples? ${pc.dim(pack.exampleSummary + " — off = a clean scaffold + notes")}`,
       initialValue: true,
     });
     if (p.isCancel(answer)) return cancel();
@@ -653,6 +779,9 @@ async function runInteractive(flags: Flags): Promise<void> {
     ].join("\n"),
     "Next steps",
   );
+  // The example you'll touch first, as a graph — workflows are data, so show it.
+  const graph = showcaseGraph(String(name), pack, examples, install);
+  if (graph) p.note(graph, `${pack.showcase} ${pc.dim("· open this first")}`);
   p.note(
     [
       `${pc.dim("Workflows are JSON graphs of typed ops; ops carry the code; mods bundle both.")}`,
@@ -680,8 +809,12 @@ async function runHeadless(flags: Flags): Promise<void> {
   await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
-  if (pack.id === "studio") console.log(`Admin: http://localhost:3000/admin`);
-  if (docs) console.log(`Docs: http://localhost:3000/docs`);
+  for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
+  const graph = showcaseGraph(name, pack, examples, flags.install);
+  if (graph) {
+    console.log(`\n${pack.showcase} (open this first):\n`);
+    console.log(graph);
+  }
 }
 
 async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boolean; git: boolean; auth: boolean; docs: boolean; examples: boolean }): Promise<void> {
@@ -718,6 +851,7 @@ function cancel(): void {
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2));
   if (flags.list) return listPacks();
+  if (flags.dryRun) return previewManifest(flags);
   const interactive = process.stdout.isTTY && !flags.yes;
   try {
     if (interactive) await runInteractive(flags);

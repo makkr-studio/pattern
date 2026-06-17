@@ -1,0 +1,30 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "tool-time",
+  "name": "Tool · get_time",
+  "description": "The smallest possible agent tool: a workflow starting with boundary.tool. The agent discovers it by name and calls it when relevant.",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.tool",
+      "config": {
+        "name": "get_time",
+        "description": "The current date and time (ISO 8601, UTC)."
+      },
+      "ui": { "x": 60, "y": 80, "pair": "out" }
+    },
+    { "id": "now", "op": "core.time.now", "ui": { "x": 320, "y": 80 } },
+    {
+      "id": "fmt",
+      "op": "core.time.format",
+      "config": { "format": "iso" },
+      "ui": { "x": 560, "y": 80 }
+    },
+    { "id": "out", "op": "boundary.tool.return", "ui": { "x": 820, "y": 80, "pair": "in" } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "out" }, "to": { "node": "now", "port": "in" } },
+    { "from": { "node": "now", "port": "out" }, "to": { "node": "fmt", "port": "timestamp" } },
+    { "from": { "node": "fmt", "port": "out" }, "to": { "node": "out", "port": "result" } }
+  ]
+}

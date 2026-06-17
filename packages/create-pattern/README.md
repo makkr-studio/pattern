@@ -18,12 +18,17 @@ no animation.
 
 Pick by **how much you want running** — the four sit on one ladder:
 
-| Modpack | id | Mods | It's really… |
-|---------|----|------|--------------|
-| **Engine only** | `blank` | none | a program, no server — run a workflow in code and watch it print |
-| **Headless server** | `headless` | an app-local mod | a running server, no UI — serve HTTP, WebSocket, scheduled or CLI workflows |
-| **Studio** | `studio` | `@pattern/mod-admin` + an app-local mod | a visual workspace at `/admin` — build, version, run & trace workflows |
-| **Studio + Agentic Chat** | `agent-chat` | the agent + chat stack + admin | a chat product at `/chat` — tools, guardrails, HITL; every turn is a workflow |
+| Modpack | id | Adds over the previous rung | It's really… |
+|---------|----|-----------------------------|--------------|
+| **Engine only** | `blank` | — | a program, no server — run a workflow from code and watch it print |
+| **Headless server** | `headless` | the HTTP/WS/CLI host | a running server, no UI — serve workflows as endpoints |
+| **Studio** | `studio` | `@pattern/mod-admin` | a visual workspace at `/admin` — build, version, run & trace workflows |
+| **Studio + Agents** | `agentic` | the agent stack (agents + store + vault) | build **agentic workflows** (`agents.agent` → `agents.run`, tools as workflows) in the editor — no chat UI |
+| **Studio + Agentic Chat** | `agent-chat` | `@pattern/mod-chat` | a chat product at `/chat` — tools, guardrails, HITL; its turn pipeline is an agentic workflow |
+
+Run `create-pattern --list` for the ladder, or `--dry-run` to print the exact
+manifest (mods + roles, generated files, endpoints, env) for any selection
+without writing anything.
 
 **Auth & docs are dimensions, not packs**: where the pack serves HTTP, prompts
 offer the identity brick (`@pattern/mod-identity` +
@@ -46,7 +51,7 @@ agent needs to add ops, routes, workflows, and admin pages without guessing
 ## Flags (headless)
 
 ```
-create-pattern <name> [--modpack <id>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list]
+create-pattern <name> [--modpack <id>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
 ```
 
 `--template`/`-t` remains as an alias (legacy ids `hello-workflow`/`http-api`
