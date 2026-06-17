@@ -17,6 +17,7 @@ import {
   z,
   type OpContext,
   type OpDefinition,
+  type Ports,
   type Workflow,
 } from "@pattern/core";
 import { adminServices, ASSETS_FS } from "../services.js";
@@ -26,42 +27,68 @@ import { diffWorkflows } from "../control-plane/versioning.js";
 import { safeSegment } from "../control-plane/store.js";
 import { builtinTemplates } from "../templates.js";
 
-const recordSchema = z.record(z.string(), z.unknown());
+// ── Route I/O: how each op's discrete ports map to an HTTP request ──
+// The op is a PURE domain function (named inputs in, named outputs out) — it
+// never sees HTTP. This table lets the endpoint workflow (§11) decompose the
+// request into the op's input ports and recompose its output into the response.
 
-/** Merge an HTTP request's query/params/body into one args object. */
-function mergeArgs(query: unknown, params: unknown, body: unknown): Record<string, unknown> {
-  const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
-  const bodyObj = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : body === undefined ? {} : { body };
-  return { ...obj(query), ...obj(params), ...bodyObj };
+type Src = "params" | "query" | "body";
+export interface InSpec {
+  src: Src;
+  schema: z.ZodType;
 }
+export interface RouteIO {
+  in: Record<string, InSpec>;
+  out: string | string[];
+  stream?: boolean;
+}
+export const adminOpRoutes: Record<string, RouteIO> = {};
+
+/** Source helpers + common field schemas (kept permissive — admin's own SPA is the only client). */
+const S = z.string();
+const objSchema = z.record(z.string(), z.unknown());
+const P = (schema: z.ZodType = S): InSpec => ({ src: "params", schema });
+const Q = (schema: z.ZodType): InSpec => ({ src: "query", schema });
+const Bd = (schema: z.ZodType): InSpec => ({ src: "body", schema });
 
 type Handler = (args: Record<string, unknown>, backend: ReturnType<typeof adminServices>, ctx: OpContext) => unknown | Promise<unknown>;
 
 /**
- * Build an admin op: optional `params`/`query`/`body` value inputs (wired from an
- * HTTP trigger), a single `out` value output, and a handler over the merged args.
+ * Build an admin op as a PURE domain function: discrete, named input ports
+ * (`io.in`) and a named output port (`io.out`, or several for genuinely distinct
+ * concerns like `version` + `issues`). The op never sees HTTP — the endpoint
+ * workflow decomposes the request into these ports and names the response. The
+ * handler still receives a plain args object (the resolved named inputs), so
+ * the domain logic is unchanged.
  */
-function adminOp(type: string, description: string, handler: Handler): OpDefinition {
+function adminOp(
+  type: string,
+  description: string,
+  io: { in?: Record<string, InSpec>; out: string | string[]; stream?: boolean },
+  handler: Handler,
+): OpDefinition {
+  const inSpec = io.in ?? {};
+  adminOpRoutes[type] = { in: inSpec, out: io.out, stream: io.stream };
+  const inputs: Ports = Object.fromEntries(Object.entries(inSpec).map(([k, v]) => [k, value(v.schema)]));
+  const outputs: Ports = io.stream
+    ? { [io.out as string]: stream() }
+    : typeof io.out === "string"
+      ? { [io.out]: value() }
+      : Object.fromEntries(io.out.map((k) => [k, value()]));
   return {
     type,
     title: type,
     description,
     // Control-plane internals — usable, but de-emphasized in the authoring palette.
     reusable: false,
-    inputs: {
-      params: value(recordSchema),
-      query: value(recordSchema),
-      body: value(z.unknown()),
-    },
-    outputs: { out: value() },
+    inputs,
+    outputs,
     execute: async (ctx) => {
-      const [params, query, body] = await Promise.all([
-        ctx.input.value("params"),
-        ctx.input.value("query"),
-        ctx.input.value("body"),
-      ]);
-      const args = mergeArgs(query, params, body);
-      return { out: await handler(args, adminServices(ctx), ctx) };
+      const keys = Object.keys(inSpec);
+      const args: Record<string, unknown> = {};
+      await Promise.all(keys.map(async (k) => void (args[k] = await ctx.input.value(k))));
+      const result = await handler(args, adminServices(ctx), ctx);
+      return typeof io.out === "string" ? { [io.out]: result } : (result as Record<string, unknown>);
     },
   };
 }
@@ -81,11 +108,11 @@ const str = (v: unknown, name: string): string => {
 
 // ── Workflows ──
 
-const workflowList = adminOp("admin.workflow.list", "List all workflows (code + stored), with provenance + versions.", (_args, { engine, controlPlane }) =>
+const workflowList = adminOp("admin.workflow.list", "List all workflows (code + stored), with provenance + versions.", { out: "workflows" }, (_args, { engine, controlPlane }) =>
   catalog(engine, controlPlane.store, parkedCode),
 );
 
-const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live doc (+ latest saved version).", async (args, { engine, controlPlane }) => {
+const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live doc (+ latest saved version).", { in: { slug: P() }, out: "workflow" }, async (args, { engine, controlPlane }) => {
   const slug = str(args.slug, "slug");
   const metas = await catalog(engine, controlPlane.store, parkedCode);
   const meta = metas.find((m) => m.slug === slug) ?? null;
@@ -111,7 +138,7 @@ const workflowGet = adminOp("admin.workflow.get", "Get a workflow's meta + live 
   return { meta, liveDoc, latestDoc, safeConfigs };
 });
 
-const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an immutable version snapshot.", async (args, { controlPlane, engine }, ctx) => {
+const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an immutable version snapshot.", { in: { slug: P(), doc: Bd(objSchema), note: Bd(z.string().optional()) }, out: ["version", "issues"] }, async (args, { controlPlane, engine }, ctx) => {
   const slug = str(args.slug, "slug");
   const doc = args.doc as Workflow;
   if (!doc || typeof doc !== "object") throw new Error('missing "doc"');
@@ -126,7 +153,7 @@ const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an im
   return { version, issues: [] };
 });
 
-const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON → validate → new file workflow.", async (args, { controlPlane, engine }, ctx) => {
+const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON → validate → new file workflow.", { in: { json: Bd(z.unknown()) }, out: ["slug", "issues"] }, async (args, { controlPlane, engine }, ctx) => {
   const raw = typeof args.json === "string" ? (JSON.parse(args.json) as Workflow) : (args.json as Workflow);
   if (!raw || typeof raw !== "object" || !raw.id) throw new Error("invalid workflow JSON (needs an id)");
   // The imported id becomes a storage path segment — reject path-like ids here
@@ -147,7 +174,7 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
  */
 const parkedCode = new Map<string, Workflow>();
 
-const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow — code ones park until restart.", async (args, { controlPlane, engine }) => {
+const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow — code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
   const slug = str(args.slug, "slug");
   const enabled = Boolean(args.enabled);
   if (enabled) {
@@ -176,18 +203,18 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
   return { ok: true };
 });
 
-const workflowDeploy = adminOp("admin.workflow.deploy", "Activate a version (route-conflict checked).", (args, { controlPlane }, ctx) =>
+const workflowDeploy = adminOp("admin.workflow.deploy", "Activate a version (route-conflict checked).", { in: { slug: P(), version: Bd(S), swap: Bd(z.boolean().optional()) }, out: "result" }, (args, { controlPlane }, ctx) =>
   controlPlane.deploy(str(args.slug, "slug"), str(args.version, "version"), { swap: Boolean(args.swap), principal: ctx.principal }),
 );
 
-const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", async (args, { controlPlane }) => {
+const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", { in: { slug: P() }, out: "result" }, async (args, { controlPlane }) => {
   const slug = str(args.slug, "slug");
   await controlPlane.disable(slug).catch(() => {});
   await controlPlane.store.delete(slug);
   return { ok: true };
 });
 
-const workflowExplain = adminOp("admin.workflow.explain", "Deterministic structural summary of a workflow.", async (args, { engine, controlPlane }) => {
+const workflowExplain = adminOp("admin.workflow.explain", "Deterministic structural summary of a workflow.", { in: { slug: P() }, out: "explanation" }, async (args, { engine, controlPlane }) => {
   const slug = str(args.slug, "slug");
   const doc = engine.workflows.get(slug) ?? (await loadLive(controlPlane, slug));
   if (!doc) throw new Error(`workflow "${slug}" not found`);
@@ -196,16 +223,16 @@ const workflowExplain = adminOp("admin.workflow.explain", "Deterministic structu
 
 // ── Versions ──
 
-const versionList = adminOp("admin.version.list", "List a workflow's version history.", async (args, { controlPlane }) => {
+const versionList = adminOp("admin.version.list", "List a workflow's version history.", { in: { slug: P() }, out: "versions" }, async (args, { controlPlane }) => {
   const meta = await controlPlane.store.getMeta(str(args.slug, "slug"));
   return meta?.versions ?? [];
 });
 
-const versionGet = adminOp("admin.version.get", "Get a specific version snapshot.", (args, { controlPlane }) =>
+const versionGet = adminOp("admin.version.get", "Get a specific version snapshot.", { in: { slug: P(), v: P() }, out: "version" }, (args, { controlPlane }) =>
   controlPlane.store.getVersion(str(args.slug, "slug"), str(args.v, "v")),
 );
 
-const versionDiff = adminOp("admin.version.diff", "Structural JSON diff between two versions.", async (args, { controlPlane }) => {
+const versionDiff = adminOp("admin.version.diff", "Structural JSON diff between two versions.", { in: { slug: P(), a: Q(S), b: Q(S), ignoreUi: Q(z.boolean().optional()) }, out: "diff" }, async (args, { controlPlane }) => {
   const slug = str(args.slug, "slug");
   const [a, b] = [await controlPlane.store.getVersion(slug, str(args.a, "a")), await controlPlane.store.getVersion(slug, str(args.b, "b"))];
   if (!a || !b) throw new Error("one or both versions not found");
@@ -214,18 +241,18 @@ const versionDiff = adminOp("admin.version.diff", "Structural JSON diff between 
 
 // ── Ops / ports ──
 
-const opListOp = adminOp("admin.op.list", "List all ops (base + mod) with ports + config schema.", (_args, { engine }) => opList(engine));
-const opGetOp = adminOp("admin.op.get", "Get one op's definition (config → JSON Schema).", (args, { engine }) => opGet(engine, str(args.type, "type")));
-const portsCompatibleOp = adminOp("admin.ports.compatible", "Check whether two ports can connect (T2).", (args, { engine }) =>
+const opListOp = adminOp("admin.op.list", "List all ops (base + mod) with ports + config schema.", { out: "ops" }, (_args, { engine }) => opList(engine));
+const opGetOp = adminOp("admin.op.get", "Get one op's definition (config → JSON Schema).", { in: { type: P() }, out: "op" }, (args, { engine }) => opGet(engine, str(args.type, "type")));
+const portsCompatibleOp = adminOp("admin.ports.compatible", "Check whether two ports can connect (T2).", { in: { from: Bd(z.unknown()), to: Bd(z.unknown()) }, out: "result" }, (args, { engine }) =>
   portsCompatible(engine, args.from as never, args.to as never),
 );
 
 // ── Runs / metrics ──
 
-const runList = adminOp("admin.run.list", "Recent runs from the in-memory sink.", (args, { sink }) =>
+const runList = adminOp("admin.run.list", "Recent runs from the in-memory sink.", { in: { workflow: Q(z.string().optional()), status: Q(z.string().optional()), limit: Q(z.number().optional()) }, out: "runs" }, (args, { sink }) =>
   sink.list({ workflow: args.workflow as string | undefined, status: args.status as string | undefined, limit: args.limit ? Number(args.limit) : undefined }),
 );
-const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captured).", (args, { sink, engine }) => {
+const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captured).", { in: { runId: P() }, out: "run" }, (args, { sink, engine }) => {
   const detail = sink.get(str(args.runId, "runId"));
   if (!detail) return detail;
   // Live control state: is the run still in flight, and is it paused?
@@ -237,42 +264,35 @@ const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captu
 
 // ── In-flight run control (cancel works on any entry path; pause needs the
 // in-process transport — a worker pool has no pause channel yet) ──
-const runCancel = adminOp("admin.run.cancel", "Abort an in-flight run.", (args, { engine }) => ({
+const runCancel = adminOp("admin.run.cancel", "Abort an in-flight run.", { in: { runId: P() }, out: "result" }, (args, { engine }) => ({
   ok: engine.cancelRun(str(args.runId, "runId")),
 }));
-const runPause = adminOp("admin.run.pause", "Pause an in-flight run: no new node starts; running ops finish.", (args, { engine }) => ({
+const runPause = adminOp("admin.run.pause", "Pause an in-flight run: no new node starts; running ops finish.", { in: { runId: P() }, out: "result" }, (args, { engine }) => ({
   ok: engine.pauseRun(str(args.runId, "runId")),
 }));
-const runResume = adminOp("admin.run.resume", "Resume a paused run.", (args, { engine }) => ({
+const runResume = adminOp("admin.run.resume", "Resume a paused run.", { in: { runId: P() }, out: "result" }, (args, { engine }) => ({
   ok: engine.resumeRun(str(args.runId, "runId")),
 }));
-const metricsSummary = adminOp("admin.metrics.summary", "Windowed run/error counters + per-workflow latency.", (args, { sink }) =>
+const metricsSummary = adminOp("admin.metrics.summary", "Windowed run/error counters + per-workflow latency.", { in: { window: Q(z.unknown().optional()) }, out: "metrics" }, (args, { sink }) =>
   sink.metrics(args.window ? { minutes: Number((args.window as { minutes?: number }).minutes ?? args.window) } : undefined),
 );
 
 /** Live span tail as a stream (wired to an SSE response out-gate). */
-const runTail: OpDefinition = {
-  type: "admin.run.tail",
-  title: "admin.run.tail",
-  description: "Stream live node spans, optionally filtered to a workflow (SSE).",
-  reusable: false,
-  inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
-  outputs: { out: stream() },
-  execute: async (ctx) => {
-    const [params, query] = await Promise.all([ctx.input.value("params"), ctx.input.value("query")]);
-    const args = mergeArgs(query, params, undefined);
-    return { out: adminServices(ctx).sink.tail(args.workflow as string | undefined) };
-  },
-};
+const runTail = adminOp(
+  "admin.run.tail",
+  "Stream live node spans, optionally filtered to a workflow (SSE).",
+  { in: { workflow: Q(z.string().optional()) }, out: "events", stream: true },
+  (args, { sink }) => sink.tail(args.workflow as string | undefined),
+);
 
 // ── Mods / templates ──
 
-const modListOp = adminOp("admin.mod.list", "List installed mods + their contributions.", (_args, { engine }) => modList(engine));
-const systemMapOp = adminOp("admin.system.map", "Routes, schedules, hooks, events, WS across registered workflows.", (_args, { engine }) => systemMap(engine));
-const systemStatsOp = adminOp("admin.system.stats", "Host/process/event-loop/transport snapshot (the Process page; deltas since last poll).", (_args, { engine }) =>
+const modListOp = adminOp("admin.mod.list", "List installed mods + their contributions.", { out: "mods" }, (_args, { engine }) => modList(engine));
+const systemMapOp = adminOp("admin.system.map", "Routes, schedules, hooks, events, WS across registered workflows.", { out: "system" }, (_args, { engine }) => systemMap(engine));
+const systemStatsOp = adminOp("admin.system.stats", "Host/process/event-loop/transport snapshot (the Process page; deltas since last poll).", { out: "stats" }, (_args, { engine }) =>
   processStats(engine),
 );
-const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark: the same CPU-bound workload inline vs on a worker pool.", (args) =>
+const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark: the same CPU-bound workload inline vs on a worker pool.", { in: { n: Bd(z.number().optional()), runs: Bd(z.number().optional()), workers: Bd(z.number().optional()) }, out: "benchmark" }, (args) =>
   workerBench({
     n: args.n != null ? Number(args.n) : undefined,
     runs: args.runs != null ? Number(args.runs) : undefined,
@@ -282,13 +302,14 @@ const systemBenchOp = adminOp("admin.system.bench", "Worker-efficiency benchmark
 
 // ── Server-side admin settings (observability) ──
 
-const settingsGet = adminOp("admin.settings.get", "Server-side admin settings (run retention, exclusion, I/O sampling).", (_args, { sink, engine }) => ({
+const settingsGet = adminOp("admin.settings.get", "Server-side admin settings (run retention, exclusion, I/O sampling).", { out: "settings" }, (_args, { sink, engine }) => ({
   observability: { ...sink.config(), sampleIo: engine.ioSampling() },
 }));
 
 const settingsSet = adminOp(
   "admin.settings.set",
   "Update server-side admin settings: { capacity?, exclude?, sampleIo? }. Applies live; persisted with the workflow store.",
+  { in: { observability: Bd(z.unknown().optional()), capacity: Bd(z.unknown().optional()), exclude: Bd(z.unknown().optional()), sampleIo: Bd(z.unknown().optional()) }, out: "result" },
   async (args, { sink, controlPlane, engine }) => {
     const obs = (args.observability ?? args) as { capacity?: unknown; exclude?: unknown; sampleIo?: unknown };
     if (obs.capacity != null) {
@@ -314,7 +335,7 @@ const settingsSet = adminOp(
 );
 
 /** The aggregated frontend manifest (serializable) the shell builds its nav from. */
-const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", (_args, { engine }) => {
+const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", { out: "manifest" }, (_args, { engine }) => {
   const fe = engine.frontend();
   const pages = (fe.pages ?? []).map((p) => {
     if ("view" in p) return { path: p.path, view: p.view };
@@ -329,7 +350,7 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
  * declarative pages (§6). Wraps the op in a synthetic manual→op→return workflow
  * so any catalog op can feed a table/chart/json view.
  */
-const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", async (args, { engine }, ctx) => {
+const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", { in: { source: Bd(S), input: Bd(z.unknown().optional()) }, out: "result" }, async (args, { engine }, ctx) => {
   const source = str(args.source, "source");
   const op = engine.ops.get(source);
   if (!op) throw new Error(`unknown op "${source}"`);
@@ -340,18 +361,33 @@ const invokeOp = adminOp("admin.invoke", "Run a source op once and return its ou
   if (source.startsWith("admin.") || source.startsWith("boundary.") || op.reusable === false) {
     throw new Error(`op "${source}" cannot be invoked as a page data source`);
   }
+  // Decompose the page's `input` object onto the source op's ports. Pure
+  // domain-port ops get one key per port via core.object.extract (the same
+  // primitive a hand-authored route uses). Legacy HTTP-shaped ports
+  // (params/query/body — ops not yet refactored) receive the whole object, as
+  // before, so the transition stays seamless.
+  const HTTP_PORTS = new Set(["params", "query", "body", "headers"]);
   const valueInputs = Object.entries(resolvePorts(op.inputs, {})).filter(([, s]) => s.kind === "value").map(([n]) => n);
+  const httpPorts = valueInputs.filter((p) => HTTP_PORTS.has(p));
+  const domainPorts = valueInputs.filter((p) => !HTTP_PORTS.has(p));
   const firstOut = Object.keys(resolvePorts(op.outputs, {}))[0] ?? "out";
   const wf: Workflow = {
     id: `__invoke_${source}`,
     nodes: [
       { id: "t", op: "boundary.manual", config: { outputs: ["input"] } },
+      ...(domainPorts.length ? [{ id: "x", op: "core.object.extract", config: { keys: domainPorts } }] : []),
       { id: "s", op: source },
       { id: "r", op: "boundary.return" },
     ],
     edges: [
       { from: { node: "t", port: "out" }, to: { node: "s", port: "in" } },
-      ...valueInputs.map((p) => ({ from: { node: "t", port: "input" }, to: { node: "s", port: p } })),
+      ...httpPorts.map((p) => ({ from: { node: "t", port: "input" }, to: { node: "s", port: p } })),
+      ...(domainPorts.length
+        ? [
+            { from: { node: "t", port: "input" }, to: { node: "x", port: "object" } },
+            ...domainPorts.map((p) => ({ from: { node: "x", port: p }, to: { node: "s", port: p } })),
+          ]
+        : []),
       { from: { node: "s", port: firstOut }, to: { node: "r", port: "value" } },
     ],
   };
@@ -378,7 +414,7 @@ function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Reco
  * the run (§13). Powers "test from the editor". Validates first; runs in-process
  * with I/O sampling so the run replays in the Runs view.
  */
-const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigger; records the run.", async (args, { engine }, ctx) => {
+const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigger; records the run.", { in: { doc: Bd(objSchema.optional()), slug: Bd(z.string().optional()), trigger: Bd(z.string().optional()), input: Bd(z.unknown().optional()), params: Bd(objSchema.optional()), runId: Bd(z.string().optional()) }, out: "result" }, async (args, { engine }, ctx) => {
   const doc = args.doc as Workflow | undefined;
   const slug = args.slug as string | undefined;
   const raw = doc ?? (slug ? engine.workflows.get(slug) : undefined);
@@ -412,25 +448,25 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
 });
 
 /** Per-node ports for a doc, config-resolved — the editor's dynamic-port source. */
-const docPortsOp = adminOp("admin.doc.ports", "Resolve every node's ports against its config (dynamic-port ops).", (args, { engine }) => {
+const docPortsOp = adminOp("admin.doc.ports", "Resolve every node's ports against its config (dynamic-port ops).", { in: { doc: Bd(objSchema) }, out: "ports" }, (args, { engine }) => {
   const doc = args.doc as { nodes: Array<{ id: string; op: string; config?: unknown }> } | undefined;
   if (!doc || !Array.isArray(doc.nodes)) throw new Error('missing "doc"');
   return docPorts(engine, doc);
 });
 
-const templateList = adminOp("admin.template.list", "List built-in workflow templates.", () =>
+const templateList = adminOp("admin.template.list", "List built-in workflow templates.", { out: "templates" }, () =>
   builtinTemplates.map((t) => ({ id: t.id, name: t.name, description: t.description, doc: t.doc })),
 );
 
 // ── Fixtures ──
 
-const fixtureList = adminOp("admin.fixture.list", "List a workflow's saved test fixtures.", (args, { controlPlane }) => controlPlane.store.listFixtures(str(args.slug, "slug")));
-const fixtureGet = adminOp("admin.fixture.get", "Get a saved fixture.", (args, { controlPlane }) => controlPlane.store.getFixture(str(args.slug, "slug"), str(args.name, "name")));
-const fixtureSave = adminOp("admin.fixture.save", "Save a test fixture.", async (args, { controlPlane }) => {
+const fixtureList = adminOp("admin.fixture.list", "List a workflow's saved test fixtures.", { in: { slug: P() }, out: "fixtures" }, (args, { controlPlane }) => controlPlane.store.listFixtures(str(args.slug, "slug")));
+const fixtureGet = adminOp("admin.fixture.get", "Get a saved fixture.", { in: { slug: P(), name: P() }, out: "fixture" }, (args, { controlPlane }) => controlPlane.store.getFixture(str(args.slug, "slug"), str(args.name, "name")));
+const fixtureSave = adminOp("admin.fixture.save", "Save a test fixture.", { in: { slug: P(), name: P(), fixture: Bd(z.unknown().optional()) }, out: "result" }, async (args, { controlPlane }) => {
   await controlPlane.store.saveFixture(str(args.slug, "slug"), str(args.name, "name"), (args.fixture ?? {}) as never);
   return { ok: true };
 });
-const fixtureDelete = adminOp("admin.fixture.delete", "Delete a test fixture.", async (args, { controlPlane }) => {
+const fixtureDelete = adminOp("admin.fixture.delete", "Delete a test fixture.", { in: { slug: P(), name: P() }, out: "result" }, async (args, { controlPlane }) => {
   await controlPlane.store.deleteFixture(str(args.slug, "slug"), str(args.name, "name"));
   return { ok: true };
 });
