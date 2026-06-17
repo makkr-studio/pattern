@@ -36,8 +36,9 @@ them together. The app trio (`boundary.http.app` → `core.app.static` →
 | `boundary.hook.return` | ◆payload ◆stop | — | — |
 | `boundary.http.app` | — | ◆mount | — |
 | `boundary.http.app.serve` | ◆app | — | — |
-| `boundary.http.request` | — | ◆method ◆url ◆path ◆headers ◆query ◆params ◆body | — |
-| `boundary.http.response` | ◆status ◆headers ◆body ≋stream | — | — |
+| `boundary.http.request` | — | ◆method ◆url ◆path ◆headers ◆cookies ◆query ◆params ◆body ◆user | — |
+| `boundary.http.response` | ◆status ◆headers ◆body ≋stream ◆cookies ◆redirect | — | — |
+| `boundary.http.status` | ◆result | ◆status ◆body | — |
 | `boundary.manual` | — | ◆value | — |
 | `boundary.return` | ◆value | — | — |
 | `boundary.return.named` | ◆value | — | — |

@@ -457,6 +457,7 @@ export class HttpHost {
       url: url.toString(),
       path: url.pathname,
       headers: headersObj,
+      cookies: parseCookies(headersObj.cookie),
       query,
       params: routeParams,
       body,
@@ -649,12 +650,54 @@ interface ResponsePayload {
   headers?: Record<string, string>;
   body?: unknown;
   stream?: ReadableStream<unknown>;
+  cookies?: Record<string, unknown>;
+  redirect?: string;
+}
+
+/** Parse a request `Cookie` header into a name→value record (network-IN). */
+function parseCookies(header: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const name = part.slice(0, eq).trim();
+    if (!name) continue;
+    try {
+      out[name] = decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      out[name] = part.slice(eq + 1).trim();
+    }
+  }
+  return out;
+}
+
+/** Serialize one Set-Cookie value from `{ name: value | { value, … } }` (network-OUT). */
+function serializeCookie(name: string, spec: unknown): string {
+  if (spec === null || spec === undefined) return `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+  if (typeof spec !== "object") return `${name}=${encodeURIComponent(String(spec))}; Path=/; SameSite=Lax; HttpOnly`;
+  const o = spec as { value?: unknown; maxAge?: number; path?: string; domain?: string; expires?: string; sameSite?: string; httpOnly?: boolean; secure?: boolean };
+  const parts = [`${name}=${encodeURIComponent(String(o.value ?? ""))}`, `Path=${o.path ?? "/"}`];
+  if (o.maxAge != null) parts.push(`Max-Age=${o.maxAge}`);
+  if (o.expires) parts.push(`Expires=${o.expires}`);
+  if (o.domain) parts.push(`Domain=${o.domain}`);
+  parts.push(`SameSite=${o.sameSite ?? "Lax"}`);
+  if (o.httpOnly !== false) parts.push("HttpOnly");
+  if (o.secure) parts.push("Secure");
+  return parts.join("; ");
 }
 
 async function writeResponse(res: ServerResponse, payload: ResponsePayload): Promise<void> {
   const mode = payload.mode ?? "buffered";
-  const status = payload.status ?? 200;
-  const headers = { ...(payload.headers ?? {}) };
+  // A redirect is just 302 + Location (status overridable for 301/307/308).
+  const redirecting = typeof payload.redirect === "string" && payload.redirect.length > 0;
+  const status = payload.status ?? (redirecting ? 302 : 200);
+  const headers: Record<string, string | string[]> = { ...(payload.headers ?? {}) };
+  if (redirecting) headers.location = payload.redirect as string;
+  if (payload.cookies && typeof payload.cookies === "object") {
+    const set = Object.entries(payload.cookies).map(([n, s]) => serializeCookie(n, s));
+    if (set.length) headers["set-cookie"] = set;
+  }
 
   if (mode === "sse" || mode === "chunked") {
     const sse = mode === "sse";
