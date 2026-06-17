@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, resolvePorts, type Workflow } from "@pattern/core";
 import { createHttpHost } from "@pattern/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
 import { agentsMod, AGENTS_SERVICE, type AgentsService, type TurnEvent } from "@pattern/mod-agents";
@@ -330,18 +330,31 @@ describe("admin Chats surface", () => {
       })
     ).text();
 
+    // The admin data ops are pure now (discrete input ports + a named output),
+    // so decompose the args object onto their ports — exactly as admin.invoke does.
     const callAdmin = async (op: string, params?: Record<string, unknown>, principal?: unknown) => {
+      const def = engine.ops.get(op)!;
+      const inPorts = Object.entries(resolvePorts(def.inputs, {}))
+        .filter(([, s]) => s.kind === "value")
+        .map(([n]) => n);
+      const outPort = Object.keys(resolvePorts(def.outputs, {}))[0]!;
       const wfId = `probe-${op}-${params ? "p" : "n"}`;
       engine.registerWorkflow({
         id: wfId,
         nodes: [
           { id: "in", op: "boundary.manual", config: { outputs: ["params"] } },
+          ...(inPorts.length ? [{ id: "x", op: "core.object.extract", config: { keys: inPorts } }] : []),
           { id: "call", op },
           { id: "out", op: "boundary.return" },
         ],
         edges: [
-          { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
-          { from: { node: "call", port: "out" }, to: { node: "out", port: "value" } },
+          ...(inPorts.length
+            ? [
+                { from: { node: "in", port: "params" }, to: { node: "x", port: "object" } },
+                ...inPorts.map((p) => ({ from: { node: "x", port: p }, to: { node: "call", port: p } })),
+              ]
+            : [{ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } }]),
+          { from: { node: "call", port: outPort }, to: { node: "out", port: "value" } },
         ],
       });
       return engine.run(wfId, {

@@ -17,6 +17,8 @@
  */
 
 import type { Workflow } from "@pattern/core";
+import { chatOpRoutes, type ChatInSpec } from "./ops.js";
+import { DEVICE_COOKIE } from "./data.js";
 import type { ResolvedChatOptions } from "./options.js";
 
 interface RouteSpec {
@@ -26,31 +28,60 @@ interface RouteSpec {
   op: string;
 }
 
+/**
+ * A CRUD route: decompose the request (params/body → discrete op ports, `user`
+ * straight through, the device id read from the `cookies` port), run the pure
+ * op, map its outcome via boundary.http.status, and set the device-session
+ * cookie when the op mints one. The op never touches HTTP.
+ */
 function route(spec: RouteSpec, requireAuth?: unknown): Workflow {
-  return {
-    id: spec.id,
-    name: `Chat · ${spec.method} ${spec.path}`,
-    source: "code",
-    nodes: [
-      {
-        id: "in",
-        op: "boundary.http.request",
-        config: { method: spec.method, path: spec.path, ...(requireAuth !== undefined ? { requireAuth } : {}) },
-      },
-      { id: "call", op: spec.op },
-      { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
-    ],
-    edges: [
-      { from: { node: "in", port: "params" }, to: { node: "call", port: "params" } },
-      { from: { node: "in", port: "query" }, to: { node: "call", port: "query" } },
-      { from: { node: "in", port: "body" }, to: { node: "call", port: "body" } },
-      { from: { node: "in", port: "headers" }, to: { node: "call", port: "headers" } },
-      { from: { node: "in", port: "user" }, to: { node: "call", port: "user" } },
-      { from: { node: "call", port: "status" }, to: { node: "out", port: "status" } },
-      { from: { node: "call", port: "headers" }, to: { node: "out", port: "headers" } },
-      { from: { node: "call", port: "body" }, to: { node: "out", port: "body" } },
-    ],
-  };
+  const io = chatOpRoutes[spec.op];
+  if (!io) throw new Error(`chat route "${spec.id}": no I/O for op "${spec.op}"`);
+  const groups: Record<"params" | "body", Array<[string, ChatInSpec]>> = { params: [], body: [] };
+  const userPorts: string[] = [];
+  const devicePorts: string[] = [];
+  for (const [name, s] of Object.entries(io.in)) {
+    if (s.src === "user") userPorts.push(name);
+    else if (s.src === "device") devicePorts.push(name);
+    else groups[s.src].push([name, s]);
+  }
+
+  const nodes: Workflow["nodes"] = [
+    { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path, ...(requireAuth !== undefined ? { requireAuth } : {}) } },
+    { id: "call", op: spec.op },
+    { id: "status", op: "boundary.http.status", config: io.ok && io.ok !== 200 ? { ok: io.ok } : {} },
+    { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
+  ];
+  const edges: Workflow["edges"] = [];
+
+  let wired = false;
+  for (const src of ["params", "body"] as const) {
+    const ports = groups[src];
+    if (!ports.length) continue;
+    wired = true;
+    const ex = `ex_${src}`;
+    nodes.push({ id: ex, op: "core.object.extract", config: { keys: ports.map(([n]) => n) } });
+    edges.push({ from: { node: "in", port: src }, to: { node: ex, port: "object" } });
+    for (const [name] of ports) edges.push({ from: { node: ex, port: name }, to: { node: "call", port: name } });
+  }
+  for (const p of userPorts) {
+    wired = true;
+    edges.push({ from: { node: "in", port: "user" }, to: { node: "call", port: p } });
+  }
+  if (devicePorts.length) {
+    wired = true;
+    nodes.push({ id: "ex_cookie", op: "core.object.get", config: { path: DEVICE_COOKIE } });
+    edges.push({ from: { node: "in", port: "cookies" }, to: { node: "ex_cookie", port: "object" } });
+    for (const p of devicePorts) edges.push({ from: { node: "ex_cookie", port: "out" }, to: { node: "call", port: p } });
+  }
+  if (!wired) edges.push({ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } });
+
+  edges.push({ from: { node: "call", port: io.out }, to: { node: "status", port: "result" } });
+  edges.push({ from: { node: "status", port: "status" }, to: { node: "out", port: "status" } });
+  edges.push({ from: { node: "status", port: "body" }, to: { node: "out", port: "body" } });
+  if (io.cookiesPort) edges.push({ from: { node: "call", port: io.cookiesPort }, to: { node: "out", port: "cookies" } });
+
+  return { id: spec.id, name: `Chat · ${spec.method} ${spec.path}`, source: "code", nodes, edges };
 }
 
 export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
@@ -266,12 +297,24 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       },
       { id: "ok", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 1620, y: 320, pair: "in" } },
       { id: "err", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 600, y: 420 } },
+      // Decompose the request into chat.turn.begin's pure ports (the op never
+      // sees HTTP): id from params, content + turnId from the body, the device
+      // id from the cookies port. The conflict/not-found path maps begin's
+      // httpOutcome to a status.
+      { id: "ex_params", op: "core.object.extract", config: { keys: ["id"] }, ui: { x: 180, y: 120 } },
+      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId"] }, ui: { x: 180, y: 280 } },
+      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 180, y: 360 } },
+      { id: "errStatus", op: "boundary.http.status", ui: { x: 600, y: 320 } },
     ],
     edges: [
-      { from: { node: "in", port: "params" }, to: { node: "begin", port: "params" } },
-      { from: { node: "in", port: "body" }, to: { node: "begin", port: "body" } },
-      { from: { node: "in", port: "headers" }, to: { node: "begin", port: "headers" } },
+      { from: { node: "in", port: "params" }, to: { node: "ex_params", port: "object" } },
+      { from: { node: "ex_params", port: "id" }, to: { node: "begin", port: "conversationId" } },
+      { from: { node: "in", port: "body" }, to: { node: "ex_body", port: "object" } },
+      { from: { node: "ex_body", port: "content" }, to: { node: "begin", port: "content" } },
+      { from: { node: "ex_body", port: "turnId" }, to: { node: "begin", port: "turnId" } },
       { from: { node: "in", port: "user" }, to: { node: "begin", port: "user" } },
+      { from: { node: "in", port: "cookies" }, to: { node: "ex_cookie", port: "object" } },
+      { from: { node: "ex_cookie", port: "out" }, to: { node: "begin", port: "device" } },
       { from: { node: "begin", port: "ok" }, to: { node: "gate", port: "condition" } },
       // ok path
       { from: { node: "gate", port: "then" }, to: { node: "tools", port: "in" } },
@@ -297,10 +340,11 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       { from: { node: "run", port: "events" }, to: { node: "sink", port: "events" } },
       { from: { node: "begin", port: "turn" }, to: { node: "sink", port: "turn" } },
       { from: { node: "run", port: "history" }, to: { node: "sink", port: "history" } },
-      // conflict / not-found path
+      // conflict / not-found path: begin's httpOutcome → status → response.
       { from: { node: "gate", port: "else" }, to: { node: "err", port: "in" } },
-      { from: { node: "begin", port: "status" }, to: { node: "err", port: "status" } },
-      { from: { node: "begin", port: "error" }, to: { node: "err", port: "body" } },
+      { from: { node: "begin", port: "outcome" }, to: { node: "errStatus", port: "result" } },
+      { from: { node: "errStatus", port: "status" }, to: { node: "err", port: "status" } },
+      { from: { node: "errStatus", port: "body" }, to: { node: "err", port: "body" } },
     ],
   };
 }
@@ -338,12 +382,20 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       { id: "sink", op: "chat.events.sink" },
       { id: "ok", op: "boundary.http.response", config: { mode: "sse" } },
       { id: "err", op: "boundary.http.response", config: { mode: "buffered" } },
+      // Decompose into chat.approval.begin's pure ports: id + turnId from
+      // params, the decision from the body, the device id from cookies.
+      { id: "ex_params", op: "core.object.extract", config: { keys: ["id", "turnId"] } },
+      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" } },
+      { id: "errStatus", op: "boundary.http.status" },
     ],
     edges: [
-      { from: { node: "in", port: "params" }, to: { node: "begin", port: "params" } },
-      { from: { node: "in", port: "body" }, to: { node: "begin", port: "body" } },
-      { from: { node: "in", port: "headers" }, to: { node: "begin", port: "headers" } },
+      { from: { node: "in", port: "params" }, to: { node: "ex_params", port: "object" } },
+      { from: { node: "ex_params", port: "id" }, to: { node: "begin", port: "conversationId" } },
+      { from: { node: "ex_params", port: "turnId" }, to: { node: "begin", port: "turnId" } },
+      { from: { node: "in", port: "body" }, to: { node: "begin", port: "decision" } },
       { from: { node: "in", port: "user" }, to: { node: "begin", port: "user" } },
+      { from: { node: "in", port: "cookies" }, to: { node: "ex_cookie", port: "object" } },
+      { from: { node: "ex_cookie", port: "out" }, to: { node: "begin", port: "device" } },
       { from: { node: "begin", port: "ok" }, to: { node: "gate", port: "condition" } },
       { from: { node: "gate", port: "then" }, to: { node: "tools", port: "in" } },
       { from: { node: "tools", port: "toolset" }, to: { node: "agent", port: "tools" } },
@@ -358,8 +410,9 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       { from: { node: "begin", port: "turn" }, to: { node: "sink", port: "turn" } },
       { from: { node: "resume", port: "history" }, to: { node: "sink", port: "history" } },
       { from: { node: "gate", port: "else" }, to: { node: "err", port: "in" } },
-      { from: { node: "begin", port: "status" }, to: { node: "err", port: "status" } },
-      { from: { node: "begin", port: "error" }, to: { node: "err", port: "body" } },
+      { from: { node: "begin", port: "outcome" }, to: { node: "errStatus", port: "result" } },
+      { from: { node: "errStatus", port: "status" }, to: { node: "err", port: "status" } },
+      { from: { node: "errStatus", port: "body" }, to: { node: "err", port: "body" } },
     ],
   };
 }

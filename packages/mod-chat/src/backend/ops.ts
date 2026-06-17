@@ -13,6 +13,7 @@
  */
 
 import {
+  httpOutcome,
   required,
   resolveAuthRequirement,
   stream,
@@ -31,7 +32,7 @@ import {
   TURNS,
   conversationView,
   mayAccess,
-  scopeOf,
+  scopeFrom,
   stores,
   turnView,
   type ConversationDoc,
@@ -50,77 +51,68 @@ async function maybe<T>(ctx: OpContext, port: string): Promise<T | undefined> {
   return ctx.input.has(port) ? ((await ctx.input.value(port)) as T) : undefined;
 }
 
-interface HttpArgs {
-  params: Record<string, unknown>;
-  query: Record<string, unknown>;
-  body: unknown;
-  headers: Record<string, string>;
-  user: { id?: string } | null;
-  scope: Scope;
-  ctx: OpContext;
+// ── Route I/O: how each op's discrete ports map to the request (consumed by the
+// route workflows). The op is a PURE domain function — it gets `user` + the
+// device id (read from the request `cookies` port in the workflow), never
+// headers; it returns domain data or an httpOutcome. The workflow decomposes the
+// request, maps outcomes via boundary.http.status, and sets the device cookie. ──
+type Src = "params" | "body" | "user" | "device";
+export interface ChatInSpec {
+  src: Src;
+  schema: z.ZodType;
 }
-
-interface HttpResult {
-  status: number;
-  headers?: Record<string, string>;
-  body?: unknown;
+export interface ChatRouteIO {
+  in: Record<string, ChatInSpec>;
+  out: string;
+  /** Response status for the happy path (default 200). */
+  ok?: number;
+  /** An extra output port whose value → response cookies (the session mint). */
+  cookiesPort?: string;
 }
+export const chatOpRoutes: Record<string, ChatRouteIO> = {};
 
-function httpOp(
+const P = (schema: z.ZodType = z.string()): ChatInSpec => ({ src: "params", schema });
+const B = (schema: z.ZodType): ChatInSpec => ({ src: "body", schema });
+const U = (): ChatInSpec => ({ src: "user", schema: z.unknown() });
+const Dev = (): ChatInSpec => ({ src: "device", schema: z.string().optional() });
+
+function chatOp(
   type: string,
   description: string,
-  handler: (args: HttpArgs) => HttpResult | Promise<HttpResult>,
+  io: { in?: Record<string, ChatInSpec>; out: string; ok?: number; cookiesPort?: string },
+  handler: (inputs: Record<string, unknown>, ctx: OpContext) => unknown | Promise<unknown>,
 ): OpDefinition {
+  const inSpec = io.in ?? {};
+  chatOpRoutes[type] = { in: inSpec, out: io.out, ok: io.ok, cookiesPort: io.cookiesPort };
+  const outputs = io.cookiesPort
+    ? { [io.out]: value(), [io.cookiesPort]: value(z.record(z.string(), z.unknown())) }
+    : { [io.out]: value() };
   return {
     type,
     title: type,
     description,
     reusable: false,
-    inputs: {
-      params: value(recordSchema),
-      query: value(recordSchema),
-      body: value(z.unknown()),
-      headers: value(stringRecord),
-      user: value(),
-    },
-    outputs: { status: value(z.number()), headers: value(stringRecord), body: value() },
+    inputs: Object.fromEntries(Object.entries(inSpec).map(([k, v]) => [k, value(v.schema)])),
+    outputs,
     execute: async (ctx) => {
-      const [params, query, body, headers, user] = await Promise.all([
-        maybe<Record<string, unknown>>(ctx, "params"),
-        maybe<Record<string, unknown>>(ctx, "query"),
-        maybe(ctx, "body"),
-        maybe<Record<string, string>>(ctx, "headers"),
-        maybe<{ id?: string } | null>(ctx, "user"),
-      ]);
-      const scope = scopeOf(user ?? null, headers);
-      const res = await handler({
-        params: obj(params),
-        query: obj(query),
-        body,
-        headers: headers ?? {},
-        user: user ?? null,
-        scope,
-        ctx,
-      });
-      return {
-        status: res.status,
-        headers: { "content-type": "application/json", ...res.headers },
-        body: res.body ?? {},
-      };
+      const inputs: Record<string, unknown> = {};
+      await Promise.all(Object.keys(inSpec).map(async (k) => void (inputs[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
+      const result = await handler(inputs, ctx);
+      return io.cookiesPort ? (result as Record<string, unknown>) : { [io.out]: result };
     },
   };
 }
 
-/** Load + scope-check a conversation. */
+/** Load + scope-check a conversation. Null when missing OR not the caller's. */
 async function loadConversation(
   svc: PatternStores,
   id: string,
   scope: Scope,
-): Promise<{ row: DocumentRow; doc: ConversationDoc } | { error: HttpResult }> {
+): Promise<{ row: DocumentRow; doc: ConversationDoc } | null> {
   const row = await svc.docs.get(CONVERSATIONS, id);
-  if (!row) return { error: { status: 404, body: { error: "conversation not found" } } };
+  if (!row) return null;
   const doc = row.data as unknown as ConversationDoc;
-  if (!mayAccess(doc, scope)) return { error: { status: 404, body: { error: "conversation not found" } } };
+  if (!mayAccess(doc, scope)) return null;
   return { row, doc };
 }
 
@@ -150,35 +142,32 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
   // Always-open: the SPA's first question — "who am I, and is auth required?".
   // The auth policy is resolved HERE (same {env} semantics as the routes) so
   // the app can render the sign-in card instead of bouncing off raw 401s.
-  const me = httpOp("chat.me", "Caller identity + the resolved auth policy for the chat app.", async ({ user, ctx }) => {
-    const u = user as { id?: string; name?: string; email?: string; provider?: string } | null;
+  const me = chatOp("chat.me", "Caller identity + the resolved auth policy for the chat app.", { in: { user: U() }, out: "info" }, (inputs, ctx) => {
+    const u = inputs.user as { id?: string; name?: string; email?: string; provider?: string } | null;
     const requirement = resolveAuthRequirement(opts.requireAuth as AuthRequirement | undefined, ctx.env);
     return {
-      status: 200,
-      body: {
-        user: u?.id ? { id: u.id, name: u.name ?? null, email: u.email ?? null, provider: u.provider ?? null } : null,
-        authRequired: requirement !== undefined && requirement !== false,
-        login: { kind: "magic-link", requestPath: opts.loginRequestPath, logoutPath: opts.logoutPath },
-      },
+      user: u?.id ? { id: u.id, name: u.name ?? null, email: u.email ?? null, provider: u.provider ?? null } : null,
+      authRequired: requirement !== undefined && requirement !== false,
+      login: { kind: "magic-link", requestPath: opts.loginRequestPath, logoutPath: opts.logoutPath },
     };
   });
 
-  const create = httpOp(
+  const create = chatOp(
     "chat.conversations.create",
-    "Create a conversation (mints the anonymous device cookie when no user).",
-    async ({ body, scope, ctx }) => {
+    "Create a conversation (mints the anonymous device session for guests).",
+    { in: { user: U(), device: Dev(), title: B(z.string().optional()) }, out: "conversation", ok: 201, cookiesPort: "cookies" },
+    async (inputs, ctx) => {
       const svc = stores(ctx);
-      let { ownerId, deviceId } = scope;
-      const headers: Record<string, string> = {};
-      if (ownerId == null && deviceId == null) {
-        deviceId = crypto.randomUUID();
-        headers["set-cookie"] =
-          `${DEVICE_COOKIE}=${deviceId}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly`;
-      }
+      const user = inputs.user as { id?: string } | null;
+      const ownerId = user?.id ?? null;
+      const incoming = typeof inputs.device === "string" && inputs.device ? (inputs.device as string) : null;
+      // Guests get a stable device id (minted on first contact); the workflow
+      // sets it as the chat_device cookie. Signed-in users scope by ownerId.
+      const deviceId = ownerId ? null : (incoming ?? crypto.randomUUID());
       const now = Date.now();
       const id = crypto.randomUUID();
       const doc: ConversationDoc = {
-        title: String(obj(body).title ?? "New conversation"),
+        title: String(inputs.title ?? "New conversation"),
         ownerId,
         deviceId,
         history: [],
@@ -186,88 +175,74 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
         updatedAt: now,
       };
       const row = await svc.docs.put(CONVERSATIONS, id, doc as never);
-      return { status: 201, headers, body: conversationView(row!) };
+      const cookies = deviceId ? { [DEVICE_COOKIE]: { value: deviceId, maxAge: 31_536_000 } } : {};
+      return { conversation: conversationView(row!), cookies };
     },
   );
 
-  const list = httpOp("chat.conversations.list", "List the caller's conversations, newest first.", async ({ scope, ctx }) => {
+  const list = chatOp("chat.conversations.list", "List the caller's conversations, newest first.", { in: { user: U(), device: Dev() }, out: "list" }, async (inputs, ctx) => {
     const svc = stores(ctx);
-    const where =
-      scope.ownerId != null
-        ? { ownerId: scope.ownerId }
-        : scope.deviceId != null
-          ? { deviceId: scope.deviceId }
-          : undefined;
-    if (!where) return { status: 200, body: { conversations: [] } };
-    const rows = await svc.docs.query({
-      collection: CONVERSATIONS,
-      where,
-      orderBy: "updatedAt",
-      orderDir: "desc",
-      limit: 200,
-    });
-    return { status: 200, body: { conversations: rows.map(conversationView) } };
+    const scope = scopeFrom(inputs.user as { id?: string } | null, inputs.device as string | undefined);
+    const where = scope.ownerId != null ? { ownerId: scope.ownerId } : scope.deviceId != null ? { deviceId: scope.deviceId } : undefined;
+    if (!where) return { conversations: [] };
+    const rows = await svc.docs.query({ collection: CONVERSATIONS, where, orderBy: "updatedAt", orderDir: "desc", limit: 200 });
+    return { conversations: rows.map(conversationView) };
   });
 
-  const get = httpOp("chat.conversations.get", "One conversation (scope-checked).", async ({ params, scope, ctx }) => {
-    const hit = await loadConversation(stores(ctx), String(params.id ?? ""), scope);
-    if ("error" in hit) return hit.error;
-    return { status: 200, body: conversationView(hit.row) };
+  const get = chatOp("chat.conversations.get", "One conversation (scope-checked).", { in: { user: U(), device: Dev(), id: P() }, out: "conversation" }, async (inputs, ctx) => {
+    const scope = scopeFrom(inputs.user as { id?: string } | null, inputs.device as string | undefined);
+    const hit = await loadConversation(stores(ctx), String(inputs.id ?? ""), scope);
+    return hit ? conversationView(hit.row) : httpOutcome("not_found", { error: "conversation not found" });
   });
 
-  const del = httpOp(
-    "chat.conversations.delete",
-    "Delete a conversation and its turns (scope-checked).",
-    async ({ params, scope, ctx }) => {
-      const svc = stores(ctx);
-      const id = String(params.id ?? "");
-      const hit = await loadConversation(svc, id, scope);
-      if ("error" in hit) return hit.error;
-      const turns = await svc.docs.query({ collection: TURNS, where: { conversationId: id }, limit: 1000 });
-      for (const t of turns) await svc.docs.delete(TURNS, t.id);
-      await svc.docs.delete(CONVERSATIONS, id);
-      return { status: 200, body: { ok: true } };
-    },
-  );
+  const del = chatOp("chat.conversations.delete", "Delete a conversation and its turns (scope-checked).", { in: { user: U(), device: Dev(), id: P() }, out: "result" }, async (inputs, ctx) => {
+    const svc = stores(ctx);
+    const id = String(inputs.id ?? "");
+    const scope = scopeFrom(inputs.user as { id?: string } | null, inputs.device as string | undefined);
+    const hit = await loadConversation(svc, id, scope);
+    if (!hit) return httpOutcome("not_found", { error: "conversation not found" });
+    const turns = await svc.docs.query({ collection: TURNS, where: { conversationId: id }, limit: 1000 });
+    for (const t of turns) await svc.docs.delete(TURNS, t.id);
+    await svc.docs.delete(CONVERSATIONS, id);
+    return { ok: true };
+  });
 
-  const turnsList = httpOp(
+  const turnsList = chatOp(
     "chat.turns.list",
     "The conversation's turns with their persisted event logs (replay source).",
-    async ({ params, scope, ctx }) => {
+    { in: { user: U(), device: Dev(), id: P() }, out: "turns" },
+    async (inputs, ctx) => {
       const svc = stores(ctx);
-      const id = String(params.id ?? "");
+      const id = String(inputs.id ?? "");
+      const scope = scopeFrom(inputs.user as { id?: string } | null, inputs.device as string | undefined);
       const hit = await loadConversation(svc, id, scope);
-      if ("error" in hit) return hit.error;
-      const rows = await svc.docs.query({
-        collection: TURNS,
-        where: { conversationId: id },
-        orderBy: "createdAt",
-        orderDir: "asc",
-        limit: 500,
-      });
-      return { status: 200, body: { turns: rows.map(turnView) } };
+      if (!hit) return httpOutcome("not_found", { error: "conversation not found" });
+      const rows = await svc.docs.query({ collection: TURNS, where: { conversationId: id }, orderBy: "createdAt", orderDir: "asc", limit: 500 });
+      return { turns: rows.map(turnView) };
     },
   );
 
-  const stop = httpOp(
+  const stop = chatOp(
     "chat.turn.stop",
     "Cancel a running turn (the run aborts; the sink writes the terminal state).",
-    async ({ params, scope, ctx }) => {
+    { in: { user: U(), device: Dev(), id: P(), turnId: P() }, out: "result" },
+    async (inputs, ctx) => {
       const svc = stores(ctx);
-      const hit = await loadConversation(svc, String(params.id ?? ""), scope);
-      if ("error" in hit) return hit.error;
-      const turnRow = await svc.docs.get(TURNS, String(params.turnId ?? ""));
+      const id = String(inputs.id ?? "");
+      const scope = scopeFrom(inputs.user as { id?: string } | null, inputs.device as string | undefined);
+      const hit = await loadConversation(svc, id, scope);
+      if (!hit) return httpOutcome("not_found", { error: "conversation not found" });
+      const turnId = String(inputs.turnId ?? "");
+      const turnRow = await svc.docs.get(TURNS, turnId);
       const turn = turnRow?.data as unknown as TurnDoc | undefined;
-      if (!turnRow || !turn || turn.conversationId !== String(params.id)) {
-        return { status: 404, body: { error: "turn not found" } };
-      }
+      if (!turnRow || !turn || turn.conversationId !== id) return httpOutcome("not_found", { error: "turn not found" });
       // Streaming runs settle for the engine before the turn finishes — the
       // provider's turn-abort registry is the live handle; cancelRun covers
       // any non-streaming remainder.
       const agents = ctx.services[AGENTS_SERVICE] as AgentsService | undefined;
-      const viaTurn = agents?.abortTurn(String(params.turnId), new Error("stopped from chat")) ?? false;
+      const viaTurn = agents?.abortTurn(turnId, new Error("stopped from chat")) ?? false;
       const viaRun = getEngine()?.cancelRun(turn.runId, new Error("stopped from chat")) ?? false;
-      return { status: 200, body: { ok: true, cancelled: viaTurn || viaRun } };
+      return { ok: true, cancelled: viaTurn || viaRun };
     },
   );
 
@@ -278,22 +253,26 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     title: "chat.turn.begin",
     description:
       "Turn pipeline entry: scope-check, claim the conversation lease (owner = this run — auto-released on settle), " +
-      "persist the user message, hand history + input to the agent. Conflict → ok:false + 409 payload.",
+      "persist the user message, hand history + input to the agent. Conflict → ok:false + an httpOutcome the workflow maps.",
     reusable: false,
     config: z.object({
       /** Lease TTL (crash backstop) in ms. */
       ttlMs: z.number().int().positive().default(5 * 60 * 1000),
     }),
+    // Pure inputs: the workflow extracts conversationId/content/turnId from the
+    // request and reads the device id from the cookies port — the op never sees
+    // headers/HTTP. `outcome` carries an httpOutcome on the conflict/not-found
+    // path, which the pipeline maps to a status via boundary.http.status.
     inputs: {
-      params: value(recordSchema),
-      body: value(z.unknown()),
-      headers: value(stringRecord),
       user: value(),
+      device: value(z.string()),
+      conversationId: value(z.string()),
+      content: value(),
+      turnId: value(z.string()),
     },
     outputs: {
       ok: value(z.boolean()),
-      status: value(z.number()),
-      error: value(),
+      outcome: value(),
       input: value(z.array(messagePartSchema)),
       history: value(z.array(z.unknown())),
       turnId: value(z.string()),
@@ -301,18 +280,18 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     },
     execute: async (ctx) => {
       const svc = stores(ctx);
-      const [params, body, headers, user] = await Promise.all([
-        maybe<Record<string, unknown>>(ctx, "params"),
-        maybe(ctx, "body"),
-        maybe<Record<string, string>>(ctx, "headers"),
+      const [user, device, conversationIdIn, content, turnIdIn] = await Promise.all([
         maybe<{ id?: string } | null>(ctx, "user"),
+        maybe<string>(ctx, "device"),
+        maybe<string>(ctx, "conversationId"),
+        maybe(ctx, "content"),
+        maybe<string>(ctx, "turnId"),
       ]);
-      const scope = scopeOf(user ?? null, headers);
-      const conversationId = String(obj(params).id ?? "");
-      const fail = (status: number, error: Record<string, unknown>) => ({
+      const scope = scopeFrom(user ?? null, device);
+      const conversationId = String(conversationIdIn ?? "");
+      const fail = (code: string, error: Record<string, unknown>) => ({
         ok: false,
-        status,
-        error,
+        outcome: httpOutcome(code, error),
         input: [],
         history: [],
         turnId: "",
@@ -320,14 +299,13 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
       });
 
       const hit = await loadConversation(svc, conversationId, scope);
-      if ("error" in hit) return fail(hit.error.status, obj(hit.error.body));
+      if (!hit) return fail("not_found", { error: "conversation not found" });
 
       // Content: parts array (or a bare string for curl-friendliness).
-      const raw = obj(body).content;
-      const parts = typeof raw === "string" ? [{ type: "text", text: raw }] : raw;
+      const parts = typeof content === "string" ? [{ type: "text", text: content }] : content;
       const parsed = z.array(messagePartSchema).min(1).safeParse(parts);
       if (!parsed.success) {
-        return fail(400, { error: "content must be a non-empty array of {text | image_ref} parts" });
+        return fail("invalid", { error: "content must be a non-empty array of {text | image_ref} parts" });
       }
 
       // One turn at a time. Owner is the TURN (not the runId): a streaming
@@ -335,7 +313,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
       // store's run-settle auto-release would drop the lock mid-turn — the
       // sink releases it at the terminal event instead; TTL is the backstop.
       const { ttlMs } = ctx.config as { ttlMs: number };
-      const requestedId = String(obj(body).turnId ?? "");
+      const requestedId = String(turnIdIn ?? "");
       const turnId = SAFE_ID.test(requestedId) ? requestedId : crypto.randomUUID();
       const lease = await svc.leases.acquire(`chat:conversation:${conversationId}`, `turn:${turnId}`, ttlMs);
       if (!lease.ok) {
@@ -344,7 +322,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
           where: { conversationId, status: "running" },
           limit: 1,
         });
-        return fail(409, {
+        return fail("conflict", {
           error: "a turn is already running on this conversation",
           code: "turn_in_progress",
           activeTurnId: running[0]?.id ?? null,
@@ -381,8 +359,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
 
       return {
         ok: true,
-        status: 200,
-        error: null,
+        outcome: null,
         input: parsed.data,
         history: hit.doc.history ?? [],
         turnId,
@@ -532,15 +509,15 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     reusable: false,
     config: z.object({ ttlMs: z.number().int().positive().default(5 * 60 * 1000) }),
     inputs: {
-      params: value(recordSchema),
-      body: value(z.unknown()),
-      headers: value(stringRecord),
       user: value(),
+      device: value(z.string()),
+      conversationId: value(z.string()),
+      turnId: value(z.string()),
+      decision: value(),
     },
     outputs: {
       ok: value(z.boolean()),
-      status: value(z.number()),
-      error: value(),
+      outcome: value(),
       stateToken: value(z.string()),
       decisions: value(),
       turnId: value(z.string()),
@@ -548,19 +525,19 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     },
     execute: async (ctx) => {
       const svc = stores(ctx);
-      const [params, body, headers, user] = await Promise.all([
-        maybe<Record<string, unknown>>(ctx, "params"),
-        maybe(ctx, "body"),
-        maybe<Record<string, string>>(ctx, "headers"),
+      const [user, device, conversationIdIn, turnIdIn, decisionIn] = await Promise.all([
         maybe<{ id?: string } | null>(ctx, "user"),
+        maybe<string>(ctx, "device"),
+        maybe<string>(ctx, "conversationId"),
+        maybe<string>(ctx, "turnId"),
+        maybe(ctx, "decision"),
       ]);
-      const scope = scopeOf(user ?? null, headers);
-      const conversationId = String(obj(params).id ?? "");
-      const turnId = String(obj(params).turnId ?? "");
-      const fail = (status: number, error: Record<string, unknown>) => ({
+      const scope = scopeFrom(user ?? null, device);
+      const conversationId = String(conversationIdIn ?? "");
+      const turnId = String(turnIdIn ?? "");
+      const fail = (code: string, error: Record<string, unknown>) => ({
         ok: false,
-        status,
-        error,
+        outcome: httpOutcome(code, error),
         stateToken: "",
         decisions: [],
         turnId,
@@ -568,15 +545,15 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
       });
 
       const hit = await loadConversation(svc, conversationId, scope);
-      if ("error" in hit) return fail(hit.error.status, obj(hit.error.body));
+      if (!hit) return fail("not_found", { error: "conversation not found" });
       const turnRow = await svc.docs.get(TURNS, turnId);
       const turn = turnRow?.data as unknown as TurnDoc | undefined;
-      if (!turn || turn.conversationId !== conversationId) return fail(404, { error: "turn not found" });
+      if (!turn || turn.conversationId !== conversationId) return fail("not_found", { error: "turn not found" });
       if (turn.status !== "interrupted" || !turn.stateToken) {
-        return fail(409, { error: "turn is not awaiting approval", code: "not_interrupted" });
+        return fail("conflict", { error: "turn is not awaiting approval", code: "not_interrupted" });
       }
 
-      const decision = obj(body);
+      const decision = obj(decisionIn);
       const decisions = Array.isArray(decision.decisions)
         ? decision.decisions
         : [{ id: decision.interruptionId ?? decision.id, approved: Boolean(decision.approved) }];
@@ -584,7 +561,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
       const { ttlMs } = ctx.config as { ttlMs: number };
       const lease = await svc.leases.acquire(`chat:conversation:${conversationId}`, `turn:${turnId}`, ttlMs);
       if (!lease.ok) {
-        return fail(409, { error: "a turn is already running", code: "turn_in_progress", activeRunId: lease.owner });
+        return fail("conflict", { error: "a turn is already running", code: "turn_in_progress", activeRunId: lease.owner });
       }
 
       // The resume continues the SAME turn doc (one event log per turn).
@@ -593,8 +570,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
       if (scope.ownerId) rooms.push(`user:${scope.ownerId}`);
       return {
         ok: true,
-        status: 200,
-        error: null,
+        outcome: null,
         stateToken: turn.stateToken,
         decisions,
         turnId,

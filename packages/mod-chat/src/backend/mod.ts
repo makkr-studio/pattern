@@ -80,6 +80,10 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
   const opts = resolveOptions(options);
   let engineRef: Engine | undefined;
 
+  // Build ops FIRST — they register their route I/O (chatOpRoutes), which the
+  // CRUD route factory then reads to decompose each request.
+  const ops = [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp];
+
   const workflows = [
     spaWorkflow(opts.mount),
     ...crudWorkflows(opts),
@@ -92,7 +96,7 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
   return defineMod({
     name: "@pattern/mod-chat",
     docs: { filesystem: "chat-docs", title: "Chat", order: 52 },
-    ops: [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp],
+    ops,
     workflows,
     frontend: chatFrontend(),
     setup: (engine: Engine) => {
