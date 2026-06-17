@@ -73,13 +73,15 @@ export function parseCookies(header: string | undefined): Record<string, string>
 
 export const DEVICE_COOKIE = "chat_device";
 
-export function scopeOf(
-  user: { id?: string } | null | undefined,
-  headers: Record<string, string> | undefined,
-): Scope {
+/**
+ * The caller's scope from the resolved `user` (identity) and the device id —
+ * the latter read from the request `cookies` port in the workflow, so the op
+ * never touches headers/cookies. Logged-in users scope by `ownerId`; anonymous
+ * visitors by their `chat_device` cookie.
+ */
+export function scopeFrom(user: { id?: string } | null | undefined, deviceId: string | null | undefined): Scope {
   if (user && typeof user.id === "string") return { ownerId: user.id, deviceId: null };
-  const device = parseCookies(headers?.cookie)[DEVICE_COOKIE];
-  return { ownerId: null, deviceId: device ?? null };
+  return { ownerId: null, deviceId: deviceId ?? null };
 }
 
 export function mayAccess(doc: ConversationDoc, scope: Scope): boolean {

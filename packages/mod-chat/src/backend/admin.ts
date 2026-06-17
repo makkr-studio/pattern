@@ -31,21 +31,25 @@ async function maybe<T>(ctx: OpContext, port: string): Promise<T | undefined> {
 
 type JsonHandler = (args: Record<string, unknown>, ctx: OpContext) => unknown | Promise<unknown>;
 
-function adminOp(type: string, description: string, handler: JsonHandler): OpDefinition {
+/**
+ * An admin data op: a PURE domain function (discrete named inputs, a named
+ * output) guarded by the `admin` scope in-op. Invoked by the admin's
+ * declarative Data pages via admin.invoke (which decomposes the page input onto
+ * these ports). NOT reusable:false — invoke must be able to call it.
+ */
+function adminOp(type: string, description: string, io: { in?: Record<string, z.ZodType>; out: string }, handler: JsonHandler): OpDefinition {
+  const inSpec = io.in ?? {};
   return {
     type,
     title: type,
     description,
-    inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
-    outputs: { out: value() },
+    inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
+    outputs: { [io.out]: value() },
     execute: async (ctx) => {
       requireScope(ctx, "admin");
-      const [params, query, body] = await Promise.all([
-        maybe<Record<string, unknown>>(ctx, "params"),
-        maybe<Record<string, unknown>>(ctx, "query"),
-        maybe(ctx, "body"),
-      ]);
-      return { out: await handler({ ...obj(query), ...obj(params), ...obj(body) }, ctx) };
+      const args: Record<string, unknown> = {};
+      await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
+      return { [io.out]: await handler(args, ctx) };
     },
   };
 }
@@ -68,6 +72,7 @@ async function ownerLabel(ctx: OpContext, doc: ConversationDoc): Promise<string>
 const conversationsList = adminOp(
   "chat.admin.conversations",
   "All chat conversations — user-owned and guest — newest first (admin).",
+  { in: { limit: z.number().optional(), offset: z.number().optional() }, out: "conversations" },
   async (args, ctx) => {
     const svc = stores(ctx);
     const rows = await svc.docs.query({
@@ -96,6 +101,7 @@ const conversationsList = adminOp(
 const conversationGet = adminOp(
   "chat.admin.conversation",
   "One conversation's metadata (admin).",
+  { in: { id: z.string() }, out: "conversation" },
   async (args, ctx) => {
     const svc = stores(ctx);
     const row = await svc.docs.get(CONVERSATIONS, String(args.id ?? ""));
@@ -135,7 +141,7 @@ function turnRow(row: DocumentRow): Record<string, unknown> {
   };
 }
 
-const turnsList = adminOp("chat.admin.turns", "A conversation's turns, oldest first (admin).", async (args, ctx) => {
+const turnsList = adminOp("chat.admin.turns", "A conversation's turns, oldest first (admin).", { in: { id: z.string() }, out: "turns" }, async (args, ctx) => {
   const svc = stores(ctx);
   const rows = await svc.docs.query({
     collection: TURNS,
@@ -147,7 +153,7 @@ const turnsList = adminOp("chat.admin.turns", "A conversation's turns, oldest fi
   return rows.map(turnRow);
 });
 
-const turnGet = adminOp("chat.admin.turn", "One turn's full doc — the event log (admin).", async (args, ctx) => {
+const turnGet = adminOp("chat.admin.turn", "One turn's full doc — the event log (admin).", { in: { id: z.string() }, out: "turn" }, async (args, ctx) => {
   const row = await stores(ctx).docs.get(TURNS, String(args.id ?? ""));
   return row ?? { error: "turn not found" };
 });
@@ -155,6 +161,7 @@ const turnGet = adminOp("chat.admin.turn", "One turn's full doc — the event lo
 const conversationDelete = adminOp(
   "chat.admin.conversation.delete",
   "Delete a conversation and its turns (admin).",
+  { in: { id: z.string() }, out: "result" },
   async (args, ctx) => {
     const svc = stores(ctx);
     const id = String(args.id ?? "");
