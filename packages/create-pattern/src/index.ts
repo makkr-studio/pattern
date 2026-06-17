@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 
@@ -32,6 +33,8 @@ interface NextCtx {
   installLine: string;
   auth: boolean;
   examples: boolean;
+  /** A .env with a generated PATTERN_VAULT_KEY was written (skip the cp step). */
+  vaultKey: boolean;
 }
 
 interface Modpack {
@@ -204,11 +207,13 @@ const MODPACKS: Modpack[] = [
     showcase: "workflows/agent-answer.json",
     auth: { default: true },
     docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
+    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY (or store it on the admin Secrets page)")}`,
+        vaultKey
+          ? `${pc.cyan("→")} set ${pc.bold("OPENAI_API_KEY")} in ${pc.bold(".env")} ${pc.dim("(vault key already generated — or use the admin Secrets page)")}`
+          : `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY + a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`,
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         ...(auth
@@ -241,11 +246,13 @@ const MODPACKS: Modpack[] = [
     showcase: "workflows/tool-time.json",
     auth: { default: true },
     docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples }) =>
+    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY (or store it on the admin Secrets page)")}`,
+        vaultKey
+          ? `${pc.cyan("→")} set ${pc.bold("OPENAI_API_KEY")} in ${pc.bold(".env")} ${pc.dim("(vault key already generated — or use the admin Secrets page)")}`
+          : `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY + a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`,
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         `${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`,
@@ -282,6 +289,8 @@ interface Flags {
   docs?: boolean;
   /** undefined = ask (interactive) / default ON (headless). */
   examples?: boolean;
+  /** undefined = ask (vault packs only) / default ON. Generate PATTERN_VAULT_KEY into .env. */
+  vaultKey?: boolean;
   /** Print the manifest for the resolved selection and write nothing. */
   dryRun: boolean;
 }
@@ -300,6 +309,8 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--no-docs") flags.docs = false;
     else if (a === "--examples") flags.examples = true;
     else if (a === "--no-examples") flags.examples = false;
+    else if (a === "--vault-key") flags.vaultKey = true;
+    else if (a === "--no-vault-key") flags.vaultKey = false;
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (a === "--dry-run" || a === "--dry") flags.dryRun = true;
@@ -335,7 +346,7 @@ function modPath(display: string): string {
  * and generated — mods + their roles, the file tree, the endpoints served, the
  * env it needs. Everything here is derived from the actual selections.
  */
-function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean): string {
+function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean, vaultKey = false): string {
   // Mods, in install order: identity first (infra), pack mods, docs last.
   const packMods = examples ? pack.mods : pack.mods.filter((m) => !m.includes("(app-local)"));
   const modList = [...(auth ? AUTH_MODS : []), ...packMods, ...(docs ? [DOCS_MOD] : [])];
@@ -354,19 +365,22 @@ function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean
   const blocks: string[] = [`${pc.dim(pack.tagline)}`, "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
   if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
   if (env.length) {
-    const hint = env.includes("PATTERN_VAULT_KEY") ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
-    blocks.push(`${pc.bold("needs")}    ${env.map((e) => pc.magenta(e)).join(pc.dim(" · "))}${hint}`);
+    const annotate = (e: string) =>
+      e === "PATTERN_VAULT_KEY" && vaultKey ? `${pc.magenta(e)} ${pc.green("(generated → .env)")}` : pc.magenta(e);
+    const hint = env.includes("PATTERN_VAULT_KEY") && !vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
+    blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
   }
   blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — the recipes your coding agent reads`);
   return blocks.join("\n");
 }
 
 /** Resolve the orthogonal dimensions from flags + pack defaults (no prompts). */
-function resolveDims(pack: Modpack, flags: Flags): { auth: boolean; docs: boolean; examples: boolean } {
+function resolveDims(pack: Modpack, flags: Flags): { auth: boolean; docs: boolean; examples: boolean; vaultKey: boolean } {
   return {
     auth: pack.auth ? (flags.auth ?? pack.auth.default) : false,
     docs: pack.docs ? (flags.docs ?? pack.docs.default) : false,
     examples: flags.examples ?? true,
+    vaultKey: packNeedsVault(pack) ? (flags.vaultKey ?? true) : false,
   };
 }
 
@@ -374,12 +388,12 @@ function resolveDims(pack: Modpack, flags: Flags): { auth: boolean; docs: boolea
 function previewManifest(flags: Flags): void {
   banner();
   const pack = packOrThrow(flags.modpack ?? "studio");
-  const { auth, docs, examples } = resolveDims(pack, flags);
+  const { auth, docs, examples, vaultKey } = resolveDims(pack, flags);
   console.log(
     `  ${pc.bold(pack.label)} ${pc.dim(`(${pack.id}${examples ? "" : ", no examples"}${auth ? ", auth" : ""}${docs ? ", docs" : ""})`)}\n`,
   );
   console.log(
-    packCard(pack, auth, docs, examples)
+    packCard(pack, auth, docs, examples, vaultKey)
       .split("\n")
       .map((l) => "  " + l)
       .join("\n"),
@@ -495,6 +509,28 @@ async function applyAuth(targetDir: string, packId: string): Promise<void> {
   if (packId === "headless") {
     await writeFile(join(targetDir, "workflows", "whoami.json"), WHOAMI_WORKFLOW);
   }
+}
+
+/** A pack that wires mod-vault — only these get the vault-key offer. */
+function packNeedsVault(pack: Modpack): boolean {
+  return pack.env.includes("PATTERN_VAULT_KEY");
+}
+
+/**
+ * Write `.env` from `.env.example` with a freshly generated PATTERN_VAULT_KEY —
+ * the vault's master key (random, local, what `openssl rand -base64 32` gives).
+ * Leaves OPENAI_API_KEY blank: that's the user's real secret to fill in. `.env`
+ * is gitignored. No-op if the template has no `.env.example`.
+ */
+async function applyVaultKey(targetDir: string): Promise<void> {
+  const examplePath = join(targetDir, ".env.example");
+  if (!existsSync(examplePath)) return;
+  const key = randomBytes(32).toString("base64");
+  const example = await readFile(examplePath, "utf8");
+  const env = /^PATTERN_VAULT_KEY=.*$/m.test(example)
+    ? example.replace(/^PATTERN_VAULT_KEY=.*$/m, `PATTERN_VAULT_KEY=${key}`)
+    : `${example}\nPATTERN_VAULT_KEY=${key}\n`;
+  await writeFile(join(targetDir, ".env"), env);
 }
 
 /** Flip the docs dimension on: /docs joins the manifest + config (last — it documents the rest). */
@@ -755,8 +791,25 @@ async function runInteractive(flags: Flags): Promise<void> {
     examples = answer;
   }
 
+  // Vault packs hold encrypted secrets and need a master key. Offer to generate
+  // it now (random, local) so there's no openssl step before the first boot —
+  // and so the role of the key is clear. (Never the API key: that's yours.)
+  let vaultKey = false;
+  if (packNeedsVault(pack)) {
+    if (flags.vaultKey !== undefined) {
+      vaultKey = flags.vaultKey;
+    } else {
+      const answer = await p.confirm({
+        message: `Generate a vault key? ${pc.dim("mod-vault encrypts secrets at rest (e.g. your API key) and needs a master key — we'll write a fresh one to .env")}`,
+        initialValue: true,
+      });
+      if (p.isCancel(answer)) return cancel();
+      vaultKey = answer;
+    }
+  }
+
   // The pack card: what this modpack actually wires up.
-  p.note(packCard(pack, auth, docs, examples), `${pack.label} modpack`);
+  p.note(packCard(pack, auth, docs, examples, vaultKey), `${pack.label} modpack`);
 
   const pm =
     flags.pm ??
@@ -769,12 +822,12 @@ async function runInteractive(flags: Flags): Promise<void> {
 
   const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
 
-  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, docs, examples });
+  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, docs, examples, vaultKey });
 
   const runCmd = pm === "npm" ? "npm run" : String(pm);
   p.note(
     [
-      ...pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth, examples }),
+      ...pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth, examples, vaultKey }),
       ...(docs ? [`${pc.cyan("→")} docs: ${pc.bold("http://localhost:3000/docs")} ${pc.dim("(public — DOCS_REQUIRE_AUTH gates it)")}`] : []),
     ].join("\n"),
     "Next steps",
@@ -800,14 +853,13 @@ async function runHeadless(flags: Flags): Promise<void> {
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
   // No prompt to ask — flags win, else the pack's default (studio ships locked).
-  const auth = pack.auth ? (flags.auth ?? pack.auth.default) : false;
-  const docs = pack.docs ? (flags.docs ?? pack.docs.default) : false;
-  const examples = flags.examples ?? true;
+  const { auth, docs, examples, vaultKey } = resolveDims(pack, flags);
   console.log(
     `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${examples ? "" : ", no examples"}${auth ? ", auth on" : ""}${docs ? ", docs on" : ""})`,
   );
-  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples });
+  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples, vaultKey });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
+  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (set OPENAI_API_KEY there).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
   for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
   const graph = showcaseGraph(name, pack, examples, flags.install);
@@ -817,7 +869,17 @@ async function runHeadless(flags: Flags): Promise<void> {
   }
 }
 
-async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boolean; git: boolean; auth: boolean; docs: boolean; examples: boolean }): Promise<void> {
+async function scaffold(opts: {
+  name: string;
+  pack: string;
+  pm: Pm;
+  install: boolean;
+  git: boolean;
+  auth: boolean;
+  docs: boolean;
+  examples: boolean;
+  vaultKey: boolean;
+}): Promise<void> {
   const targetDir = resolve(process.cwd(), opts.name);
   if (existsSync(targetDir) && (await readdir(targetDir)).length > 0) {
     throw new Error(`directory "${opts.name}" already exists and is not empty`);
@@ -830,7 +892,8 @@ async function scaffold(opts: { name: string; pack: string; pm: Pm; install: boo
   if (!opts.examples) await applyNoExamples(targetDir, opts.pack, opts.name);
   if (opts.auth) await applyAuth(targetDir, opts.pack);
   if (opts.docs) await applyDocs(targetDir);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.docs ? " + docs" : ""})`);
+  if (opts.vaultKey) await applyVaultKey(targetDir);
+  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""})`);
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });
