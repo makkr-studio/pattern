@@ -154,3 +154,5 @@ export {
 
 // Boundary op contracts (also available via the "@pattern/core/boundaries" subpath)
 export * as boundaries from "./boundaries/index.js";
+// The domain-outcome helper for boundary.http.status (collision-proof 4xx).
+export { httpOutcome } from "./boundaries/index.js";

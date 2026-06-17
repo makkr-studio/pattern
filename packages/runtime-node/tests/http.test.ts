@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, defineOp, stream, value, z, iterableToStream, type Workflow } from "@pattern/core";
+import { Engine, defineOp, httpOutcome, stream, value, z, iterableToStream, type Workflow } from "@pattern/core";
 import { createHttpHost } from "@pattern/runtime-node";
 
 /** An op that emits a fixed token stream — stands in for an agent. */
@@ -369,12 +369,14 @@ describe("HTTP host — network surface lives only on the boundaries (Pass A)", 
         { from: { node: "s", port: "body" }, to: { node: "out", port: "body" } },
       ],
     });
-    engine.registerWorkflow(route("ok", "/ok", { id: 1 }));
-    engine.registerWorkflow(route("missing", "/missing", { error: "not_found" }));
+    // A plain payload that HAS an `error` field is a 200 (collision-proof) …
+    engine.registerWorkflow(route("ok", "/ok", { id: 1, error: "this is just data" }));
+    // … only an httpOutcome marker becomes a 4xx.
+    engine.registerWorkflow(route("missing", "/missing", httpOutcome("not_found")));
     await startOn(engine, 4812);
     const ok = await fetch("http://localhost:4812/ok");
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ id: 1 });
+    expect(await ok.json()).toEqual({ id: 1, error: "this is just data" });
     const missing = await fetch("http://localhost:4812/missing");
     expect(missing.status).toBe(404);
     expect(await missing.json()).toEqual({ error: "not_found" });

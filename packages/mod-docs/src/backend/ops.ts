@@ -2,7 +2,7 @@
  * @pattern/mod-docs — the `docs.*` op catalog.
  *
  * Pure domain ops: discrete inputs (the query fields they read, the reader's
- * `user`), a single named output, and a domain outcome (`{ error: "not_found" }`
+ * `user`), a single named output, and a domain outcome (`httpOutcome("not_found")`
  * for misses). They never see HTTP — the route workflow decomposes the request,
  * maps outcomes to status via `boundary.http.status`, and sets the content-type
  * for the markdown routes. `docs.me` is the one always-open route.
@@ -10,6 +10,7 @@
 
 import {
   boundaries,
+  httpOutcome,
   resolveAuthRequirement,
   value,
   z,
@@ -94,7 +95,7 @@ export function makeDocsOps(
     { in: { chapter: Q(), file: Q() }, out: "page" },
     async ({ chapter, file }) => {
       const result = await content.page(String(chapter ?? ""), String(file ?? ""));
-      if (!result) return { error: "not_found" };
+      if (!result) return httpOutcome("not_found");
       return { chapter: String(chapter ?? ""), file: String(file ?? ""), ...result };
     },
   );
@@ -105,7 +106,7 @@ export function makeDocsOps(
     { in: { chapter: Q(), file: Q() }, out: "markdown", contentType: "text/markdown; charset=utf-8" },
     async ({ chapter, file }) => {
       const markdown = await content.raw(String(chapter ?? ""), String(file ?? ""));
-      return markdown == null ? { error: "not_found" } : markdown;
+      return markdown == null ? httpOutcome("not_found") : markdown;
     },
   );
 
@@ -147,7 +148,7 @@ export function makeDocsOps(
     async ({ type }) => {
       const t = String(type ?? "");
       const info = opGet(engine(), t);
-      if (!info) return { error: "not_found" };
+      if (!info) return httpOutcome("not_found");
       return { info, prose: await content.opProse(t, info.mod) };
     },
   );
