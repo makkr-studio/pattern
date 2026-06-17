@@ -98,6 +98,9 @@ TypeScript mods can use typed helpers from `@pattern/core` (`pureOp`,
 - **HTTP routes**: add a workflow with a `boundary.http.request` trigger (the
   route — method/path/port/validation — lives in its config), call
   `await start()` from `loadProject()`, and the server opens. No route table.
+  Building a REST API or serving a frontend? One workflow per action, keep ops
+  HTTP-free — add `@pattern/mod-docs` for the *Designing your API* and *Create
+  an app* guides at `/docs`.
 - **Visual admin**: add `@pattern/mod-admin` to `pattern.config.json` mods and
   `package.json` — a full control plane (editor, versions, runs, traces)
   appears at `/admin`.

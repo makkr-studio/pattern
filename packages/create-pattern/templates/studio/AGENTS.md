@@ -89,6 +89,25 @@ Objects written to `body` serialize as JSON automatically. See the seeded
 `hello` and `quote` workflows (admin → Workflows) for canonical shapes —
 `src/examples.ts` has their JSON.
 
+**Design discipline** (the shape to aim for): one workflow per action (not a
+fat dispatcher); keep ops HTTP-free — the boundary owns validation (400), auth
+(`requireAuth` → 401/403), and status (200 default); decompose inputs to the
+field with `core.object.get`, but wire the op's single domain output straight to
+the response body (`core.object.build` only for genuine projections). Declare
+each input schema in **one** place. The bundled docs (`@pattern/mod-docs` →
+`/docs` → *Designing your API*) is the full version.
+
+## Recipe: serve your own frontend
+
+Beyond Tier-2 admin pages (below), a standalone user-facing SPA is **just a
+workflow**: register your built assets as a named filesystem in a mod's
+`setup` (`provideFilesystem(engine, "my-app", localFs("./app/dist"))`), then
+declare the app trio `boundary.http.app` → `core.app.static`
+(`filesystem: "my-app"`) → `boundary.http.app.serve`. `filesystem` is the
+registered **name**, not a path; the app resolves once at registration (rebuilt
+SPA → restart; in dev, run Vite and proxy `/api` + `/auth` to the backend).
+The admin SPA you're looking at is exactly this trio.
+
 ## Recipe: add an op
 
 Ops live in **mods**. This project has an app-local mod at `mods/quotes.mjs` —
@@ -170,10 +189,12 @@ Add the identity mods to `pattern.config.json`:
 (`npm i @pattern/mod-identity @pattern/mod-auth-magic-link` first.) What you get:
 
 - **First boot** prints a one-time `/auth/bootstrap?t=…` link → first user
-  becomes admin. Magic-link sign-in links print to the **server console**
-  until you subscribe a workflow to the `identity.deliverToken` hook
-  (`payload: { email, url, purpose, delivered }` — send it, set
-  `delivered: true`).
+  becomes admin. Bootstrap is a **two-step** flow (the GET renders a form, the
+  POST creates the admin — not a one-click GET). Magic-link / invite links are
+  path-only on the **server console**; `identity.users.invite` also returns the
+  link as `copy` in its result. Sign-in links print there until you subscribe a
+  workflow to the `identity.deliverToken` hook (`payload: { email, url, purpose,
+  delivered }` — send it, set `delivered: true`).
 - **The admin flips to secure-by-default** (`admin` scope required; a
   logged-out browser is redirected to `/auth/login`). Users / Invite /
   Sessions screens appear under "Access".

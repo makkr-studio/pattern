@@ -27,10 +27,14 @@ First boot prints a **one-time bootstrap link**:
 [pattern]   http://localhost:3000/auth/bootstrap?t=…
 ```
 
-Open it, enter your email — you're the first admin, signed in. From then on:
+Open it, enter your email — you're the first admin, signed in. Bootstrap is a
+**two-step** flow, not a one-click GET: the `GET /auth/bootstrap?t=…` renders a
+form and the `POST` creates the admin. From then on:
 `/auth/login` → email → a magic link arrives **in the server console** (until
 you wire real delivery, below). That console fallback *is* the dev login:
-zero config, same code path as production.
+zero config, same code path as production. The links there are **path-only**
+(`/auth/token?t=…`) — handy for scripted/seed flows; `identity.users.invite`
+also returns the link in its result as `copy`.
 
 ## The two meanings of "auth provider"
 
@@ -63,7 +67,9 @@ GETs always pass — the magic-link callback is a cross-site top-level GET.
 Users carry roles; the mod's `roles` map compiles them to scopes on the
 principal at **resolve time** (map edits apply on the next request). Default
 `{ admin: ["admin"] }`. Trigger `requireAuth: { scopes: [...] }` stays the
-enforcement primitive — core is untouched.
+enforcement primitive — core is untouched. **Adding app scopes is just this
+map**: `identityMod({ roles: { editor: ["edit","read"] } })` (the wrapper mod
+shown under Options below) is the standard way to give your app its own roles.
 
 ## Secure-by-default admin
 

@@ -160,8 +160,10 @@ export const httpRequest: OpDefinition = {
   title: "boundary.http.request",
   description:
     "Inbound HTTP request trigger. The route is declared here: method, path, port, " +
-    "cors, and JSON-Schema validation of body/query/params. Outputs { method, url, " +
-    "path, headers, query, params, body, user }.",
+    "cors, requireAuth, and JSON-Schema validation of body/query/params (400 on mismatch). " +
+    "Outputs { method, url, path, headers, query, params, body, user }. Keep ops HTTP-free: " +
+    "extract each field with core.object.get and declare its input schema in ONE place (here, " +
+    "not also on the op's port) or the edge fails the schema check.",
   boundary: "trigger",
   pair: "boundary.http.response",
   inputs: {},
@@ -220,7 +222,9 @@ export const httpRequest: OpDefinition = {
 
 export const httpResponse = outgate({
   type: "boundary.http.response",
-  description: "HTTP response out-gate. mode: buffered | sse | chunked. Inputs { status?, headers?, body }.",
+  description:
+    "HTTP response out-gate. mode: buffered | sse | chunked. Inputs { status?, headers?, body }. " +
+    "status defaults to 200; wire a domain output port straight to body (core.object.build only for deliberate projections).",
   inputs: { status: value(z.number()), headers: value(stringRecord), body: value(), stream: stream() },
   config: z.object({ mode: z.enum(["buffered", "sse", "chunked"]).default("buffered") }),
   pair: "boundary.http.request",
