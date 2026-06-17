@@ -58,21 +58,25 @@ type JsonHandler = (
  * may wire them (an automation listing users, say). The `scope` guard is the
  * protection: the RUN's principal must carry it, whatever the entry path.
  */
-function jsonOp(type: string, description: string, handler: JsonHandler, opts: { scope?: string } = {}): OpDefinition {
+function jsonOp(
+  type: string,
+  description: string,
+  io: { in?: Record<string, z.ZodType>; out: string },
+  handler: JsonHandler,
+  opts: { scope?: string } = {},
+): OpDefinition {
+  const inSpec = io.in ?? {};
   return {
     type,
     title: type,
+    inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
+    outputs: { [io.out]: value() },
     description,
-    inputs: { params: value(recordSchema), query: value(recordSchema), body: value(z.unknown()) },
-    outputs: { out: value() },
     execute: async (ctx) => {
       if (opts.scope) requireScope(ctx, opts.scope);
-      const [params, query, body] = await Promise.all([
-        ctx.input.value("params"),
-        ctx.input.value("query"),
-        ctx.input.value("body"),
-      ]);
-      return { out: await handler(mergeArgs(query, params, body), identityService(ctx), ctx) };
+      const args: Record<string, unknown> = {};
+      await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
+      return { [io.out]: await handler(args, identityService(ctx), ctx) };
     },
   };
 }
@@ -168,7 +172,7 @@ const publicUser = (u: { id: string; email: string; name: string | null; roles: 
 
 /* ── whoami ────────────────────────────────────────────────────────────── */
 
-const whoami = jsonOp("identity.whoami", "The current principal: kind, id, email, roles, scopes.", (_args, _svc, ctx) => {
+const whoami = jsonOp("identity.whoami", "The current principal: kind, id, email, roles, scopes.", { out: "whoami" }, (_args, _svc, ctx) => {
   const p = ctx.principal;
   if (p.kind !== "user") return { kind: "anonymous" };
   return {
@@ -187,6 +191,7 @@ const whoami = jsonOp("identity.whoami", "The current principal: kind, id, email
 const usersList = jsonOp(
   "identity.users.list",
   "List users (admin). Roles flattened for table rendering.",
+  { out: "users" },
   async (_args, svc) => (await svc.listUsers()).map(publicUser),
   { scope: "admin" },
 );
@@ -194,6 +199,7 @@ const usersList = jsonOp(
 const usersInvite = jsonOp(
   "identity.users.invite",
   'Invite a user by email (admin): mints an invite token and delivers it via the "identity.deliverToken" hook (console fallback). Args { email, roles? (array or comma string) }.',
+  { in: { email: z.string(), roles: z.unknown().optional() }, out: "result" },
   async (args, svc, ctx) => {
     const email = String(args.email ?? "").trim();
     if (!looksLikeEmail(email)) throw new Error("invalid email");
@@ -221,6 +227,7 @@ const usersInvite = jsonOp(
 const usersSetRoles = jsonOp(
   "identity.users.setRoles",
   "Set a user's roles (admin). Ends the user's sessions — privilege changes re-login. Args { userId, roles }.",
+  { in: { userId: z.string(), roles: z.unknown().optional() }, out: "user" },
   async (args, svc) => {
     const roles = Array.isArray(args.roles)
       ? (args.roles as string[])
@@ -236,6 +243,7 @@ const usersSetRoles = jsonOp(
 const usersToggleDisabled = jsonOp(
   "identity.users.toggleDisabled",
   "Disable / re-enable a user (admin). Disabling revokes all sessions. Args { userId }.",
+  { in: { userId: z.string() }, out: "user" },
   async (args, svc) => {
     const user = await svc.getUser(String(args.userId));
     if (!user) throw new Error("user not found");
@@ -247,6 +255,7 @@ const usersToggleDisabled = jsonOp(
 const usersRevokeSessions = jsonOp(
   "identity.users.revokeSessions",
   "Revoke every session of a user (admin) — logs them out everywhere, closes their sockets. Args { userId }.",
+  { in: { userId: z.string() }, out: "result" },
   async (args, svc) => {
     await svc.revokeAllForUser(String(args.userId));
     return { ok: true };
@@ -269,6 +278,7 @@ const canReadRuns = (s: unknown): s is RunsReadable => typeof (s as RunsReadable
 const usersGet = jsonOp(
   "identity.users.get",
   "One user's profile for the details page (admin). Args { userId }.",
+  { in: { userId: z.string() }, out: "user" },
   async (args, svc) => {
     const user = await svc.getUser(String(args.userId));
     if (!user) throw new Error("user not found");
@@ -291,6 +301,7 @@ const usersGet = jsonOp(
 const usersRunStats = jsonOp(
   "identity.users.runStats",
   "Per-workflow run counts for a user, from the admin's retained run window (admin). Args { userId }.",
+  { in: { userId: z.string() }, out: "stats" },
   async (args, svc, ctx) => {
     const user = await svc.getUser(String(args.userId));
     if (!user) throw new Error("user not found");
@@ -332,6 +343,7 @@ const usersRunStats = jsonOp(
 const usersLoginLink = jsonOp(
   "identity.users.loginLink",
   "Mint a single-use sign-in link for a user (admin) — for handing over manually when no email/SMS delivery is wired. Args { userId }.",
+  { in: { userId: z.string() }, out: "result" },
   async (args, svc) => {
     const user = await svc.getUser(String(args.userId));
     if (!user) throw new Error("user not found");
@@ -352,6 +364,7 @@ const usersLoginLink = jsonOp(
 const settingsGet = jsonOp(
   "identity.settings.get",
   "Current identity settings (admin): the effective signup policy.",
+  { out: "settings" },
   async (_args, svc) => ({ signup: await svc.getSignup() }),
   { scope: "admin" },
 );
@@ -359,6 +372,7 @@ const settingsGet = jsonOp(
 const settingsSet = jsonOp(
   "identity.settings.set",
   'Update identity settings (admin). Args { signup: "open" | "invite" }. Persisted — survives restarts.',
+  { in: { signup: z.string().optional() }, out: "result" },
   async (args, svc) => {
     if (args.signup !== undefined) await svc.setSignup(args.signup as "open" | "invite");
     return { signup: await svc.getSignup() };
@@ -369,6 +383,7 @@ const settingsSet = jsonOp(
 const sessionsList = jsonOp(
   "identity.sessions.list",
   "List sessions, newest first (admin). Args { userId? }.",
+  { in: { userId: z.string().optional() }, out: "sessions" },
   async (args, svc) => {
     const sessions = await svc.listSessions(args.userId ? String(args.userId) : undefined);
     const emails = new Map<string, string>();
@@ -390,6 +405,7 @@ const sessionsList = jsonOp(
 const sessionsRevoke = jsonOp(
   "identity.sessions.revoke",
   "Revoke one session (admin): it stops resolving and its WS sockets close. Args { sessionId }.",
+  { in: { sessionId: z.string() }, out: "result" },
   async (args, svc) => {
     await svc.revokeSession(String(args.sessionId));
     return { ok: true };
