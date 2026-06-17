@@ -43,6 +43,12 @@ describe("op catalog (§12)", () => {
     expect((await callOp("core.object.set", { path: "a.b" }, { object: {}, value: 9 })).out).toEqual({ a: { b: 9 } });
     expect((await callOp("core.object.merge", {}, { a: { x: 1 }, b: { y: 2 } })).out).toEqual({ x: 1, y: 2 });
     expect((await callOp("core.object.keys", {}, { object: { a: 1, b: 2 } })).out).toEqual(["a", "b"]);
+    // extract: dynamic output port per key (inverse of build); missing → undefined
+    expect(await callOp("core.object.extract", { keys: ["a", "b"] }, { object: { a: 1, b: 2, c: 3 } })).toEqual({ a: 1, b: 2 });
+    expect(await callOp("core.object.extract", { keys: ["x", "missing"] }, { object: { x: 9 } })).toEqual({ x: 9, missing: undefined });
+    // build ∘ extract round-trips through a record
+    const built = (await callOp("core.object.build", { keys: ["id", "note"] }, { id: "k1", note: "hi" })).out;
+    expect(await callOp("core.object.extract", { keys: ["id", "note"] }, { object: built })).toEqual({ id: "k1", note: "hi" });
   });
 
   it("arrays + higher-order", async () => {
