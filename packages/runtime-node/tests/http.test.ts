@@ -327,3 +327,77 @@ describe("HTTP host — runtime workflow changes", () => {
     expect(await (await fetch("http://localhost:4807/static")).text()).toBe("always");
   });
 });
+
+describe("HTTP host — network surface lives only on the boundaries (Pass A)", () => {
+  it("reads request cookies on the trigger and sets cookies on the out-gate", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "session",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/session" } },
+        { id: "ex", op: "core.object.extract", config: { keys: ["sid"] } },
+        { id: "set", op: "core.const.object", config: { value: { sid: { value: "new-123", maxAge: 60 } } } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "in", port: "cookies" }, to: { node: "ex", port: "object" } },
+        { from: { node: "ex", port: "sid" }, to: { node: "out", port: "body" } },
+        { from: { node: "set", port: "out" }, to: { node: "out", port: "cookies" } },
+      ],
+    };
+    engine.registerWorkflow(wf);
+    await startOn(engine, 4811);
+    const res = await fetch("http://localhost:4811/session", { headers: { cookie: "sid=abc; other=x" } });
+    expect(await res.text()).toBe("abc"); // the workflow saw the incoming cookie value — via a port, not headers
+    expect(res.headers.get("set-cookie")).toMatch(/^sid=new-123; Path=\/; Max-Age=60; SameSite=Lax; HttpOnly$/);
+  });
+
+  it("boundary.http.status maps a domain outcome to an HTTP status (op stays network-unaware)", async () => {
+    const engine = new Engine();
+    const route = (id: string, path: string, value: unknown): Workflow => ({
+      id,
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "GET", path } },
+        { id: "c", op: "core.const.json", config: { value } },
+        { id: "s", op: "boundary.http.status" },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "in", port: "out" }, to: { node: "c", port: "in" } },
+        { from: { node: "c", port: "out" }, to: { node: "s", port: "result" } },
+        { from: { node: "s", port: "status" }, to: { node: "out", port: "status" } },
+        { from: { node: "s", port: "body" }, to: { node: "out", port: "body" } },
+      ],
+    });
+    engine.registerWorkflow(route("ok", "/ok", { id: 1 }));
+    engine.registerWorkflow(route("missing", "/missing", { error: "not_found" }));
+    await startOn(engine, 4812);
+    const ok = await fetch("http://localhost:4812/ok");
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ id: 1 });
+    const missing = await fetch("http://localhost:4812/missing");
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: "not_found" });
+  });
+
+  it("redirect on the out-gate sends 302 + Location", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "go",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/go" } },
+        { id: "to", op: "core.const.json", config: { value: "/target" } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "in", port: "out" }, to: { node: "to", port: "in" } },
+        { from: { node: "to", port: "out" }, to: { node: "out", port: "redirect" } },
+      ],
+    };
+    engine.registerWorkflow(wf);
+    await startOn(engine, 4813);
+    const res = await fetch("http://localhost:4813/go", { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/target");
+  });
+});

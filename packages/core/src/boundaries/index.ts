@@ -188,6 +188,10 @@ export const httpRequest: OpDefinition = {
     url: value(z.string()),
     path: value(z.string()),
     headers: value(stringRecord),
+    // Parsed request cookies (network-IN). Read these in the workflow — the op
+    // stays cookie-unaware; session identity travels on `user`, this is the
+    // lower-level escape hatch for non-session cookies.
+    cookies: value(stringRecord),
     user: userPort(),
     query: config.query ? value(jsonSchemaToZod(config.query as any, { coerce: true }), { validate: true }) : value(stringRecord),
     params: config.params ? value(jsonSchemaToZod(config.params as any, { coerce: true }), { validate: true }) : value(stringRecord),
@@ -223,12 +227,54 @@ export const httpRequest: OpDefinition = {
 export const httpResponse = outgate({
   type: "boundary.http.response",
   description:
-    "HTTP response out-gate. mode: buffered | sse | chunked. Inputs { status?, headers?, body }. " +
-    "status defaults to 200; wire a domain output port straight to body (core.object.build only for deliberate projections).",
-  inputs: { status: value(z.number()), headers: value(stringRecord), body: value(), stream: stream() },
+    "HTTP response out-gate (network-OUT). mode: buffered | sse | chunked. Inputs { status?, headers?, body?, " +
+    "cookies?, redirect? }. status defaults to 200; wire a domain output port straight to body. `cookies` " +
+    "({ name: value | { value, maxAge, path, httpOnly, sameSite, secure, domain } }, value null clears) become " +
+    "Set-Cookie; `redirect` (a URL) sends 302 + Location. So an op never names a cookie/status/redirect — the " +
+    "workflow does, here.",
+  inputs: {
+    status: value(z.number()),
+    headers: value(stringRecord),
+    body: value(),
+    stream: stream(),
+    cookies: value(z.record(z.string(), z.unknown())),
+    redirect: value(z.string()),
+  },
   config: z.object({ mode: z.enum(["buffered", "sse", "chunked"]).default("buffered") }),
   pair: "boundary.http.request",
 });
+
+/**
+ * Map a domain outcome → { status, body } for boundary.http.response — so a
+ * domain op stays network-unaware (it returns "not_found", never "404"). A
+ * result shaped `{ error: <code> }` takes its status from config.map (defaults:
+ * not_found→404, forbidden→403, unauthorized→401, conflict→409, invalid→400);
+ * anything else is `config.ok` (default 200). One node per route — not a branch.
+ */
+export const httpStatus: OpDefinition = {
+  type: "boundary.http.status",
+  title: "boundary.http.status",
+  description:
+    "Map a conventioned domain outcome to { status, body } for boundary.http.response. `{ error: <code> }` → a " +
+    "status from config.map (defaults: not_found→404, forbidden→403, unauthorized→401, conflict→409, invalid→400); " +
+    "otherwise config.ok (default 200). Keeps domain ops network-unaware: they return outcomes, this maps to HTTP.",
+  inputs: { result: value() },
+  outputs: { status: value(z.number()), body: value() },
+  config: z.object({
+    ok: z.number().int().positive().default(200),
+    map: z.record(z.string(), z.number()).default({}),
+  }),
+  execute: async (ctx) => {
+    const result = await ctx.input.value("result");
+    const { ok, map } = ctx.config as { ok: number; map: Record<string, number> };
+    const defaults: Record<string, number> = { not_found: 404, forbidden: 403, unauthorized: 401, conflict: 409, invalid: 400 };
+    const code =
+      result && typeof result === "object" && typeof (result as { error?: unknown }).error === "string"
+        ? (result as { error: string }).error
+        : null;
+    return code ? { status: map[code] ?? defaults[code] ?? 400, body: result } : { status: ok, body: result };
+  },
+};
 
 /**
  * What an app workflow's out-gate delivers to the host: a serveable app — the
@@ -440,6 +486,7 @@ export const boundaryOps: OpDefinition[] = [
   returnGateConfigurable,
   httpRequest,
   httpResponse,
+  httpStatus,
   httpApp,
   httpAppServe,
   wsMessage,
