@@ -39,10 +39,12 @@ appears in its catalog — and is editable inside itself.
 The trace separates a run's **result-ready** moment (its outputs are available — the
 `RunResult` resolves and the HTTP response starts) from its **true end** (all
 streams drained). That's why a chat turn that streams for seconds no longer reads
-as a few milliseconds, and why closing the browser mid-stream cancels the run
-(the producer stops instead of streaming to a dead socket). Offloaded
-(`offload`) runs execute on a worker but their full trace is forwarded back, so
-they appear here exactly like inline ones.
+as a few milliseconds. A run is **independent of the client connection**: if the
+browser drops mid-stream the turn keeps running and persisting, and replays on
+reconnect — set `cancelOnDisconnect` on the request trigger to instead stop a
+pure passthrough stream when its client leaves. Offloaded (`offload`) runs
+execute on a worker but their full trace is forwarded back, so they appear here
+exactly like inline ones.
 
 ## Mods extend the admin
 
