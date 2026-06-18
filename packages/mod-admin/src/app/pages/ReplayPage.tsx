@@ -51,7 +51,40 @@ export function ReplayPage() {
   const t1 = useMemo(() => (nodeSpans.length ? Math.max(...nodeSpans.map((s) => s.endTime)) : 0), [nodeSpans]);
   const total = Math.max(0, t1 - t0);
 
+  // Per-chunk stream events (when I/O sampling was on) — each a token transiting
+  // a stream edge, with a real offset. Powers token-by-token scrubbing + peeks.
+  const chunks = useMemo(() => {
+    const out: Array<{ node: string; port: string; seq: number; preview: unknown; truncated?: boolean; at: number }> = [];
+    for (const s of nodeSpans) {
+      const node = nodeIdOf(s)!;
+      for (const e of s.events ?? []) {
+        if (e.name !== "stream.chunk") continue;
+        const a = e.attributes ?? {};
+        out.push({
+          node,
+          port: String(a.port ?? ""),
+          seq: Number(a.seq ?? 0),
+          preview: a.preview,
+          truncated: Boolean(a.truncated),
+          at: Math.max(0, e.time - t0),
+        });
+      }
+    }
+    return out.sort((a, b) => a.at - b.at);
+  }, [nodeSpans, t0]);
+
   const [t, setT] = useState(0); // offset from t0, ms
+
+  // The chunk that has most recently transited at the scrubber position.
+  const currentChunk = useMemo(() => {
+    let hit: (typeof chunks)[number] | null = null;
+    for (const c of chunks) {
+      if (c.at <= t) hit = c;
+      else break;
+    }
+    return hit;
+  }, [chunks, t]);
+
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const raf = useRef<number>(0);
@@ -88,13 +121,15 @@ export function ReplayPage() {
       raw.add(Math.max(0, effectiveStart(s) - t0));
       raw.add(Math.max(0, s.endTime - t0));
     }
+    // Each sampled chunk is its own step, so you can scrub token-by-token.
+    for (const c of chunks) raw.add(c.at);
     const sorted = [...raw].sort((a, b) => a - b);
     const clustered: number[] = [];
     for (const m of sorted) {
       if (clustered.length === 0 || m - clustered[clustered.length - 1]! > 2) clustered.push(m);
     }
     return clustered;
-  }, [nodeSpans, t0, total]);
+  }, [nodeSpans, t0, total, chunks]);
   // Land just PAST the mark (+1ms) so the state flip is visible; stepping pauses.
   const stepBack = () => {
     setPlaying(false);
@@ -201,6 +236,29 @@ export function ReplayPage() {
           </ReactFlow>
         </ReactFlowProvider>
       </GlassPanel>
+
+      {/* Live data peek — the token transiting at the scrubber, when I/O sampling
+          was on. Turns replay from node-by-node into token-by-token. */}
+      {chunks.length > 0 && (
+        <GlassPanel className="mt-3 flex items-center gap-3 px-4 py-2 text-xs">
+          <span className="text-muted shrink-0 font-semibold uppercase tracking-wider">stream</span>
+          {currentChunk ? (
+            <>
+              <span className="font-mono text-[var(--color-port-stream)]" title="producing node · port">
+                {currentChunk.node}.{currentChunk.port}
+              </span>
+              <span className="text-muted shrink-0">#{currentChunk.seq}</span>
+              <span className="min-w-0 flex-1 truncate font-mono" title={String(currentChunk.preview ?? "")}>
+                {typeof currentChunk.preview === "string" ? currentChunk.preview : JSON.stringify(currentChunk.preview)}
+              </span>
+              {currentChunk.truncated && <span className="text-muted shrink-0 text-[10px]">(capped)</span>}
+            </>
+          ) : (
+            <span className="text-muted">scrub forward to watch {chunks.length} chunk{chunks.length > 1 ? "s" : ""} transit…</span>
+          )}
+          <span className="text-muted ml-auto shrink-0 tabular-nums">{chunks.filter((c) => c.at <= t).length}/{chunks.length}</span>
+        </GlassPanel>
+      )}
 
       {/* Transport bar */}
       <GlassPanel className="mt-3 flex items-center gap-3 px-4 py-3">
