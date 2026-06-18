@@ -77,6 +77,8 @@ interface CompiledRoute {
   querySchema?: z.ZodType;
   paramsSchema?: z.ZodType;
   requireAuth?: unknown;
+  /** Cancel the run when the client disconnects (opt-in; default keeps running). */
+  cancelOnDisconnect?: boolean;
 }
 
 /** A static app mount derived from a `boundary.http.app` node (admin-spec P1). */
@@ -273,6 +275,7 @@ export class HttpHost {
           querySchema: cfg.query ? jsonSchemaToZod(cfg.query as any, { coerce: true }) : undefined,
           paramsSchema: cfg.params ? jsonSchemaToZod(cfg.params as any, { coerce: true }) : undefined,
           requireAuth: cfg.requireAuth,
+          cancelOnDisconnect: Boolean(cfg.cancelOnDisconnect),
         });
       }
     }
@@ -491,18 +494,22 @@ export class HttpHost {
       user: principalToUser(principal),
     };
 
-    // Cancel the run if the client goes away — before result-ready (a slow
-    // handler) OR mid-stream (an SSE tail). Abort propagates to the run's stream
-    // producers, so they stop writing to a dead socket and the trace true-end
-    // fires promptly instead of waiting for the producer to finish on its own.
+    // The run is independent of the connection by default — a chat turn or a
+    // long task keeps running (and persisting) if the client drops, and replays
+    // on reconnect. Only when the route opts in (`cancelOnDisconnect`) do we
+    // cancel on a client disconnect — for a pure passthrough stream with nothing
+    // worth finishing. Then: abort propagates to the run's producers so they stop
+    // writing to a dead socket and the trace true-end fires promptly.
     // We can't gate on `res.writableFinished`: a mid-stream disconnect makes the
     // write fail, `writeResponse` ends the response, and only THEN does `close`
     // fire (finished already true). So we track our own "delivered in full" flag.
     const ac = new AbortController();
     let delivered = false;
-    res.on("close", () => {
-      if (!delivered) ac.abort(new Error("client disconnected"));
-    });
+    if (route.cancelOnDisconnect) {
+      res.on("close", () => {
+        if (!delivered) ac.abort(new Error("client disconnected"));
+      });
+    }
 
     let result: RunResult;
     try {

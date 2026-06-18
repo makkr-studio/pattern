@@ -59,11 +59,6 @@ export class NodeConnectionRegistry implements ConnectionRegistry {
     const socket = this.sockets.get(idOf(connection));
     if (!socket) return;
     const reader = data.getReader();
-    // If the peer goes away mid-stream, cancel the source so the producer stops
-    // (and the run's stream-drain true-end fires) instead of pushing to a dead
-    // socket until the stream happens to end on its own.
-    const onClose = (): void => void reader.cancel(new Error("socket closed")).catch(() => {});
-    socket.once("close", onClose);
     try {
       for (;;) {
         const { done, value } = await reader.read();
@@ -71,7 +66,6 @@ export class NodeConnectionRegistry implements ConnectionRegistry {
         socket.send(encode(value));
       }
     } finally {
-      socket.off("close", onClose);
       reader.releaseLock();
     }
   }

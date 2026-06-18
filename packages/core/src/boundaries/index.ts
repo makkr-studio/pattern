@@ -228,6 +228,15 @@ export const httpRequest: OpDefinition = {
     /** "buffered" parses the whole body; "stream" hands a byte stream to the graph. */
     bodyMode: z.enum(["buffered", "stream"]).default("buffered"),
     requireAuth,
+    /**
+     * Cancel the run if the client disconnects before the response finishes
+     * (default false — the run is independent of the connection, the
+     * web-conventional behavior). A run with valuable side effects — a chat
+     * turn persisting history, a long task — should keep going and be replayable
+     * on reconnect, so leave this off. Turn it ON for a pure passthrough stream
+     * where there's nothing worth finishing once the client is gone.
+     */
+    cancelOnDisconnect: z.boolean().optional(),
   }),
   execute: TRIGGER_EXECUTE,
 };

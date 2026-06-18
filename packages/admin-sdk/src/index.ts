@@ -30,4 +30,5 @@ export {
   type PageDef,
   type DeclarativeView,
   type CommandDef,
+  type RouteRef,
 } from "./extension.js";
