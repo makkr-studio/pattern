@@ -44,6 +44,7 @@ import {
 import { Badge, GlassPanel, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
 import { FormFromSchema, RawJson, type FieldOverride } from "../components/FormFromSchema";
 import { SchemaBuilder } from "../components/SchemaBuilder";
+import { RequireAuthField } from "../editor/RequireAuthField";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
 import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
@@ -1646,6 +1647,11 @@ function Inspector({
     const props = (op?.configSchema as { properties?: Record<string, unknown> } | undefined)?.properties;
     if (props && "workflow" in props && !o.workflow) {
       o.workflow = ({ value, onChange: set }) => <WorkflowRefField value={value} onChange={set} />;
+    }
+    // Boundary triggers: `requireAuth` gets the auth/scope selector (the union
+    // renders poorly as a plain form field, and auth deserves a real control).
+    if (props && "requireAuth" in props && !o.requireAuth) {
+      o.requireAuth = ({ value, onChange: set }) => <RequireAuthField value={value} onChange={set} />;
     }
     return Object.keys(o).length ? o : undefined;
   }, [node.data.op, op?.configSchema]);
