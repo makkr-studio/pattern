@@ -91,10 +91,14 @@ Objects written to `body` serialize as JSON automatically. See the seeded
 
 **Design discipline** (the shape to aim for): one workflow per action (not a
 fat dispatcher); keep ops HTTP-free — the boundary owns validation (400), auth
-(`requireAuth` → 401/403), and status (200 default); decompose inputs to the
-field with `core.object.get`, but wire the op's single domain output straight to
-the response body (`core.object.build` only for genuine projections). Declare
-each input schema in **one** place. The bundled docs (`@pattern/mod-docs` →
+(`requireAuth` → 401/403; set it with the editor's auth selector or wire it from
+`core.env`), and status (200 default). Never check scopes inside an op — that
+couples it to HTTP and breaks CLI/cron/internal callers; if an op reads sensitive
+data, tag it `sensitivity: "privileged"` and the validator warns when a route
+forgets the gate. Decompose inputs to the field with `core.object.get`, but wire
+the op's single domain output straight to the response body (`core.object.build`
+only for genuine projections). Declare each input schema in **one** place. The
+bundled docs (`@pattern/mod-docs` →
 `/docs` → *Designing your API*) is the full version.
 
 ## Recipe: serve your own frontend
