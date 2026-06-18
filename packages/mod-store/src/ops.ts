@@ -3,8 +3,8 @@
  *
  * Document/blob/lease access as visible canvas nodes. Conflicts are VALUES
  * (`ok:false` + context), never thrown — workflows branch on them. The
- * `store.admin.*` json ops back the admin Data browser and re-check the
- * `admin` scope in-op (defense in depth, identity-style).
+ * `store.admin.*` json ops back the admin Data browser; they're PURE (no in-op
+ * scope check) and `privileged`-tagged — their routes carry the admin gate.
  */
 
 import { value, required, stream, z, type OpContext, type OpDefinition } from "@pattern/core";
@@ -292,13 +292,6 @@ const leaseRelease: OpDefinition = {
 
 /* ── admin surface (Data browser sources) ──────────────────────────────── */
 
-function requireScope(ctx: OpContext, scope: string): void {
-  const p = ctx.principal;
-  if (p.kind !== "user" || !(p.scopes ?? []).includes(scope)) {
-    throw new Error(`store: "${scope}" scope required`);
-  }
-}
-
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
@@ -306,10 +299,11 @@ type JsonHandler = (args: Record<string, unknown>, ctx: OpContext) => unknown | 
 
 /**
  * An admin data op: a PURE domain function (discrete named inputs, a named
- * output) guarded by the `admin` scope in-op (deliberate defense-in-depth — an
- * open admin can't leak it). Each is fronted by its own dedicated route (see
- * `./admin-routes.ts`) that decomposes the request onto these ports; the op
- * never sees HTTP.
+ * output). It never checks scopes in-op — authorization is the trigger's job
+ * (the Data-browser routes stamp `requireAuth: { scopes: ["admin"] }`). The
+ * `sensitivity: "privileged"` tag lets the validator warn if a route exposes one
+ * of these without a gate. Each is fronted by its own dedicated route (see
+ * `./admin-routes.ts`) that decomposes the request onto these ports.
  */
 function adminOp(type: string, description: string, io: { in?: Record<string, z.ZodType>; out: string }, handler: JsonHandler): OpDefinition {
   const inSpec = io.in ?? {};
@@ -317,10 +311,10 @@ function adminOp(type: string, description: string, io: { in?: Record<string, z.
     type,
     title: type,
     description,
+    sensitivity: "privileged",
     inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
     outputs: { [io.out]: value() },
     execute: async (ctx) => {
-      requireScope(ctx, "admin");
       const args: Record<string, unknown> = {};
       await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
       return { [io.out]: await handler(args, ctx) };

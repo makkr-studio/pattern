@@ -161,8 +161,9 @@ describe("admin secure-by-default (§9)", () => {
     expect(rows[0]).toHaveProperty("workflow");
     expect(rows[0]).toHaveProperty("runs");
 
-    // …and the same route WITHOUT the admin scope is refused at the boundary
-    // (the route is admin-stamped; the in-op guard is the backstop below it).
+    // …and the same route WITHOUT the admin scope is refused at the boundary.
+    // Authorization lives ONLY on the trigger now (the ops are pure); the stamp
+    // is the single enforcement point.
     const anon = await fetch(`${base}/admin/api/identity/users`);
     expect(anon.status).toBe(401); // stamped route refuses before the op even runs
   });
@@ -176,7 +177,7 @@ describe("admin secure-by-default (§9)", () => {
 
     // The admin is open (auth:false), but identity stamps its OWN screens' routes
     // with the admin scope — privileged identity data never leaks through an open
-    // admin. (The ops also re-check the scope in-op, defense in depth.)
+    // admin. The gate lives on the trigger; the ops are pure.
     const res = await fetch("http://localhost:4892/admin/api/identity/users");
     expect(res.status).toBe(401);
   });

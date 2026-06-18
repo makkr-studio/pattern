@@ -116,7 +116,7 @@ describe("vault service + ops", () => {
     expect(String(res.error)).toContain("Secrets page");
   });
 
-  it("admin ops enforce the admin scope and never leak values", async () => {
+  it("admin ops are pure (gated by their route, not in-op) and never leak values", async () => {
     const { engine, svc } = await bootEngine(TEST_KEY);
     await svc.write("HIDDEN", "value-never-shown");
     engine.registerWorkflow({
@@ -131,15 +131,10 @@ describe("vault service + ops", () => {
         { from: { node: "list", port: "secrets" }, to: { node: "out", port: "value" } },
       ],
     });
-    // Anonymous principal → scope check trips.
-    const denied = await engine.run("list-secrets", { input: { go: true } });
-    expect(denied.status).toBe("error");
-    expect(String(denied.error)).toContain("admin");
-
-    const ok = await engine.run("list-secrets", {
-      input: { go: true },
-      principal: { kind: "user", id: "u1", scopes: ["admin"], claims: {} },
-    });
+    // The op is PURE now — no in-op scope check (the gate lives on its route).
+    // It runs whatever the principal (here anonymous), and still never returns
+    // secret material — only names + dates.
+    const ok = await engine.run("list-secrets", { input: { go: true } });
     expect(ok.status).toBe("ok");
     const merged = Object.assign({}, ...Object.values(ok.outputs));
     expect(JSON.stringify(merged.value)).toContain("HIDDEN");
