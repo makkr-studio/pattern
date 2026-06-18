@@ -20,6 +20,7 @@ import { loadMods } from "./mods.js";
 import { HttpHost } from "./http.js";
 import { WsHost } from "./ws.js";
 import { NodeConnectionRegistry } from "./ws-registry.js";
+import { WorkerPoolTransport } from "./worker-pool.js";
 
 export interface PatternConfig {
   /** Mod specifiers: npm packages and/or app-local paths ("./mods/foo.ts"). */
@@ -28,6 +29,18 @@ export interface PatternConfig {
   workflows?: string;
   /** HTTP host defaults. */
   http?: { port?: number; host?: string };
+  /**
+   * Off-loop execution for workflows flagged `offload`. A worker-thread pool
+   * runs those runs so their CPU-heavy compute can't stall the host event loop;
+   * everything else stays inline. `number` = pool size; the object form also
+   * picks which mods each worker loads (default: this project's `mods`). Omit
+   * to keep everything inline — an `offload` flag then degrades to a no-op.
+   *
+   * Exclude heavy / host-only mods from the worker set via the `{ mods }` form
+   * — e.g. drop `@pattern/mod-admin` so the admin's control-plane setup doesn't
+   * run in every worker (workers execute domain ops, not the admin).
+   */
+  workers?: number | { size?: number; mods?: string[] };
   /**
    * WebSocket upgrades on the HTTP servers. Default true: `boundary.ws.*`
    * trigger workflows bind declaratively (live, like HTTP routes) and
@@ -121,10 +134,21 @@ export async function loadProject(
   // interpolation all see it, whatever entry point launched us.
   loadDotEnv(baseDir);
 
+  // Off-loop pool for `offload`-flagged workflows (opt-in via `workers`). Built
+  // here so it can be handed to the engine as `offloadTransport`; when the
+  // caller brought their own engine, they own its transports (so we skip it).
+  let offloadPool: WorkerPoolTransport | undefined;
+  if (!opts.engine && config.workers !== undefined) {
+    const w = typeof config.workers === "number" ? { size: config.workers } : config.workers;
+    offloadPool = new WorkerPoolTransport({ size: w.size, mods: w.mods ?? config.mods });
+  }
+
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
   // The node connection registry up-front means `core.ws.*` ops (notify,
   // broadcast…) reach the same sockets the WS host accepts.
-  const engine = opts.engine ?? new Engine({ env: process.env, connections: new NodeConnectionRegistry() });
+  const engine =
+    opts.engine ??
+    new Engine({ env: process.env, connections: new NodeConnectionRegistry(), offloadTransport: offloadPool });
 
   if (config.mods?.length) {
     await loadMods(engine, config.mods, { baseDir });
@@ -153,5 +177,16 @@ export async function loadProject(
     });
   }
 
-  return { engine, http, ws, config, start: () => http.start() };
+  return {
+    engine,
+    http,
+    ws,
+    config,
+    start: async () => {
+      const { ports, close } = await http.start();
+      // The returned close tears down the worker pool too (idempotent with
+      // engine.close(), which also owns it). No pool → a no-op.
+      return { ports, close: async () => void (await close(), await offloadPool?.close()) };
+    },
+  };
 }
