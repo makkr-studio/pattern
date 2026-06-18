@@ -18,12 +18,18 @@ export interface RunSummary {
   workflowId: string;
   trigger: string;
   principal: Principal;
-  status: "ok" | "error" | "running";
+  status: "ok" | "error" | "running" | "streaming";
   /** epoch ms */
   startTime: number;
   /** epoch ms; undefined while running */
   endTime?: number;
+  /** Total run time, start → true end (all streams drained). */
   durationMs?: number;
+  /** Time to result-ready (out-gates captured). For a streaming run this is ≪
+   *  durationMs — "ready in X · streamed Y"; ≈ durationMs for non-streaming. */
+  readyMs?: number;
+  /** How the run truly ended (drain vs the TTL backstop). */
+  endedBy?: "drain" | "timeout";
   spanCount: number;
   error?: { message: string };
   /** Set when this run was started by another run (`ctx.invoke`). */
@@ -172,14 +178,34 @@ export class MemoryTraceSink implements TraceSink {
     }
   }
 
-  onRunEnd(run: { runId: string; traceId: string; status: "ok" | "error"; error?: unknown }): void {
+  /** Result-ready: the run's outputs are available, but a streaming tail may
+   *  still be flowing. Keep it in-progress (so late producer spans still attach)
+   *  and record how long it took to become ready + that it's now streaming. */
+  onRunReady(run: { runId: string; traceId: string; status: "ok" | "error"; at: number }): void {
+    if (this.excludedTraces.has(run.traceId)) return;
+    const rec = this.inProgress.get(run.traceId);
+    if (!rec) return;
+    rec.summary.readyMs = Math.max(0, run.at - rec.summary.startTime);
+    // Errors are terminal at ready; ok runs may still be draining a stream.
+    if (run.status === "ok") rec.summary.status = "streaming";
+  }
+
+  onRunEnd(run: {
+    runId: string;
+    traceId: string;
+    status: "ok" | "error";
+    error?: unknown;
+    at?: number;
+    endedBy?: "drain" | "timeout";
+  }): void {
     if (this.excludedTraces.delete(run.traceId)) return;
     const rec = this.inProgress.get(run.traceId);
     if (!rec) return;
     this.inProgress.delete(run.traceId);
     rec.summary.status = run.status;
-    rec.summary.endTime = this.now();
+    rec.summary.endTime = run.at ?? this.now();
     rec.summary.durationMs = rec.summary.endTime - rec.summary.startTime;
+    rec.summary.endedBy = run.endedBy;
     if (run.error !== undefined) {
       rec.summary.error = { message: run.error instanceof Error ? run.error.message : String(run.error) };
     }

@@ -5,7 +5,7 @@ import type { RunSummary, SpanData, SpanIoSample } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
 import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
-import { ago, ms, statusColor } from "../lib/format";
+import { ago, ms, runDuration, statusColor } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { Pause, Play, Search } from "../components/icon";
 import { ChevronLeft, ChevronRight, Square } from "lucide-react";
@@ -222,11 +222,11 @@ function RunDetail({ runId }: { runId: string }) {
   return (
     <GlassPanel className="p-5">
       <div className="mb-4 flex items-center gap-3">
-        <Dot color={paused ? "var(--color-neon-amber)" : statusColor(summary.status)} pulse={summary.status === "running" && !paused} />
+        <Dot color={paused ? "var(--color-neon-amber)" : statusColor(summary.status)} pulse={(summary.status === "running" || summary.status === "streaming") && !paused} />
         <span className="font-mono text-sm font-semibold">{summary.workflowId}</span>
-        <Badge hue={summary.status === "error" ? 340 : 150}>{summary.status}</Badge>
+        <Badge hue={summary.status === "error" ? 340 : summary.status === "streaming" ? 280 : 150}>{summary.status}</Badge>
         {paused && <Badge hue={45}>paused</Badge>}
-        <span className="text-muted text-xs">{ms(summary.durationMs)}</span>
+        <span className="text-muted text-xs">{runDuration(summary)}</span>
         <Link
           to={`/runs/${summary.runId}/replay`}
           className="flex items-center gap-1 text-xs text-[var(--color-neon-cyan)] hover:underline"
@@ -290,10 +290,10 @@ function RunDetail({ runId }: { runId: string }) {
                 to={`/runs/${c.runId}`}
                 className="flex items-center gap-3 border-b hairline px-3 py-2 text-xs last:border-0 hover:bg-white/5"
               >
-                <Dot color={statusColor(c.status)} pulse={c.status === "running"} />
+                <Dot color={statusColor(c.status)} pulse={c.status === "running" || c.status === "streaming"} />
                 <span className="font-mono">{c.workflowId}</span>
                 <span className="text-muted">via {c.parent?.nodeId}</span>
-                <span className="text-muted ml-auto">{ms(c.durationMs)}</span>
+                <span className="text-muted ml-auto">{runDuration(c)}</span>
                 <span className="text-muted font-mono">{c.runId.slice(0, 8)}</span>
               </Link>
             ))}
@@ -411,14 +411,14 @@ export function RunsPage() {
                   r.runId === runId ? "bg-white/10" : ""
                 }`}
               >
-                <Dot color={statusColor(r.status)} pulse={r.status === "running"} />
+                <Dot color={statusColor(r.status)} pulse={r.status === "running" || r.status === "streaming"} />
                 {r.parent && (
                   <span className="text-muted -ml-1 shrink-0" title={`sub-run — invoked by ${r.parent.workflowId}`}>
                     ↳
                   </span>
                 )}
                 <span className="font-mono text-sm">{r.workflowId}</span>
-                <span className="text-muted ml-auto text-xs">{ms(r.durationMs)}</span>
+                <span className="text-muted ml-auto text-xs">{runDuration(r)}</span>
                 <span className="text-muted w-16 text-right text-xs">{ago(r.startTime)}</span>
               </button>
             ))}

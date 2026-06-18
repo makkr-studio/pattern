@@ -40,6 +40,9 @@ export class MultiTraceSink implements TraceSink {
   onSpanEnd(span: SpanData): void {
     for (const s of this.sinks) s.onSpanEnd?.(span);
   }
+  onRunReady(run: Parameters<NonNullable<TraceSink["onRunReady"]>>[0]): void {
+    for (const s of this.sinks) s.onRunReady?.(run);
+  }
   onRunEnd(run: Parameters<NonNullable<TraceSink["onRunEnd"]>>[0]): void {
     for (const s of this.sinks) s.onRunEnd?.(run);
   }
