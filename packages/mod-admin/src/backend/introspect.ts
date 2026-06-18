@@ -54,6 +54,8 @@ export interface OpInfo {
   usedByWorkflows: string[];
   /** Meant for general authoring/reuse (default true; false = de-emphasized). */
   reusable: boolean;
+  /** Does meaningful synchronous compute — the editor nudges toward Offload. */
+  cpuHeavy?: boolean;
 }
 
 export interface ModInfo {
@@ -120,6 +122,7 @@ export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
     usedBy: usedByWorkflows(engine, op.type).length,
     usedByWorkflows: usedByWorkflows(engine, op.type),
     reusable: op.reusable !== false,
+    ...(op.cpuHeavy ? { cpuHeavy: true } : {}),
   };
 }
 

@@ -147,4 +147,15 @@ describe("versioning helpers", () => {
     expect(d.equal).toBe(false);
     expect(d.nodes.changed.some((c) => c.id === "body")).toBe(true);
   });
+
+  it("diffWorkflows tracks the offload flag as metadata (hash stays structural)", () => {
+    const a = httpWorkflow("h", "/h");
+    const b: Workflow = { ...a, offload: true };
+    // Offload is metadata: it doesn't change the structural content hash…
+    expect(contentHash(a)).toBe(contentHash(b));
+    // …but the diff surfaces it so a version bump records the change.
+    const d = diffWorkflows(a, b);
+    expect(d.equal).toBe(false);
+    expect(d.meta.some((m) => m.field === "offload" && m.after === true)).toBe(true);
+  });
 });

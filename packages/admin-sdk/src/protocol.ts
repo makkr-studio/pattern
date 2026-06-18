@@ -98,6 +98,8 @@ export interface WorkflowDoc {
   description?: string;
   tags?: string[];
   source?: Source;
+  /** Run this workflow off the host event loop on the worker pool (opt-in). */
+  offload?: boolean;
   nodes: Array<{ id: string; op: string; title?: string; comment?: string; config?: unknown; ui?: { x: number; y: number; [k: string]: unknown } }>;
   edges: Array<{ from: { node: string; port: string }; to: { node: string; port: string }; ui?: { portal?: string; [k: string]: unknown } }>;
   /** Visual annotation boxes (data-only; engine-ignored, hash-ignored). */
@@ -141,6 +143,8 @@ export interface OpInfo {
   /** Ids of the workflows using this op (clickable in the catalog). */
   usedByWorkflows?: string[];
   reusable: boolean;
+  /** Does meaningful synchronous compute — the editor nudges toward Offload. */
+  cpuHeavy?: boolean;
 }
 
 export interface ModInfo {

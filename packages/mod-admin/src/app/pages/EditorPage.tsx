@@ -48,7 +48,7 @@ import { RequireAuthField } from "../editor/RequireAuthField";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
 import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
-import { Braces, Lock } from "lucide-react";
+import { Braces, Lock, Settings, Cpu } from "lucide-react";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -224,6 +224,9 @@ function EditorInner() {
   const [newSlug, setNewSlug] = useState("");
   const [runOpen, setRunOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Workflow-level Offload flag (mirrors baseDoc.current.offload for the UI). */
+  const [offload, setOffload] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
   const [forkSlug, setForkSlug] = useState("");
   /** Inspector stretched over the whole editor (focus mode for big configs). */
@@ -231,6 +234,12 @@ function EditorInner() {
   /** An explicit doc (template / "edit vN") over a dirty draft asks first. */
   const [pendingDraft, setPendingDraft] = useState<EditorDraft | null>(null);
   const [initTick, setInitTick] = useState(0);
+
+  /** Canvas nodes whose op is `cpuHeavy` — the Offload nudge counts these. */
+  const cpuHeavyCount = useMemo(
+    () => nodes.filter((n) => n.type !== FRAME_TYPE && opMap.get(n.data.op)?.cpuHeavy).length,
+    [nodes, opMap],
+  );
 
   // ── Tabs: every workflow you open stays open (per-tab drafts). ──
   const tabKey = slug ?? NEW_KEY;
@@ -360,6 +369,7 @@ function EditorInner() {
   const mountDoc = useCallback(
     (doc: WorkflowDoc, opts: { saved: WorkflowDoc | null }) => {
       baseDoc.current = doc;
+      setOffload(doc.offload === true);
       history.current = { past: [], future: [] };
       const flow = buildFlow(doc, opMap);
       setNodes(flow.nodes);
@@ -473,7 +483,9 @@ function EditorInner() {
       setDirtyMap((m) => (m[tabKey]?.dirty === dirty && m[tabKey]?.newSlug === (newSlug || undefined) ? m : { ...m, [tabKey]: { dirty, newSlug: newSlug || undefined } }));
     }, 400);
     return () => clearTimeout(t);
-  }, [nodes, edges, newSlug, slug, tabKey]);
+    // `offload` is metadata on baseDoc (a ref), so list it explicitly to recompute
+    // dirty when the Workflow-settings toggle flips it.
+  }, [nodes, edges, newSlug, slug, tabKey, offload]);
 
   // ── Dynamic ports (§12): some ops derive ports from node config
   // (core.object.build keys, boundary.manual outputs, flow.sequence count…).
@@ -1230,6 +1242,21 @@ function EditorInner() {
           >
             <Braces size={14} />
           </NeonButton>
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Workflow settings"
+            title={`Workflow settings${offload ? " — Offload on" : cpuHeavyCount > 0 ? " — Offload recommended" : ""}`}
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings size={14} />
+            {(offload || cpuHeavyCount > 0) && (
+              <span
+                aria-hidden
+                className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${offload ? "bg-[var(--color-neon-cyan)]" : "bg-[var(--color-neon-amber)]"}`}
+              />
+            )}
+          </NeonButton>
           <input
             ref={importInput}
             type="file"
@@ -1481,6 +1508,60 @@ function EditorInner() {
           </div>
         </Modal>
       )}
+
+      {/* Workflow settings — execution-model knobs that aren't per-node. */}
+      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Workflow settings">
+        <div className="space-y-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={offload}
+              className="mt-0.5 accent-[var(--color-neon-cyan)]"
+              onChange={(e) => {
+                const next = e.target.checked;
+                // baseDoc is the source of truth for currentDoc()/toDoc; mirror it
+                // into state for the toggle + dirty recompute. `undefined` when off
+                // so an off workflow serializes identically to one never flagged.
+                baseDoc.current = { ...baseDoc.current, offload: next ? true : undefined };
+                setOffload(next);
+              }}
+            />
+            <span>
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Cpu size={13} /> Offload to the worker pool
+              </span>
+              <span className="text-muted mt-0.5 block text-xs leading-relaxed">
+                Run this whole workflow off the host event loop, on the worker pool, so its
+                compute can&rsquo;t stall the loop (and the admin). Default is inline — only flag
+                CPU-heavy workflows. Needs a pool configured (<span className="font-mono">workers</span> in
+                <span className="font-mono"> pattern.config.json</span>); with none it runs inline. Offloaded
+                runs use the worker&rsquo;s own services, can&rsquo;t reach live WebSocket sockets, and aren&rsquo;t
+                pausable from the editor.
+              </span>
+            </span>
+          </label>
+
+          <div
+            className={`rounded-lg border px-2.5 py-1.5 text-[11px] leading-relaxed ${
+              cpuHeavyCount > 0 && !offload
+                ? "border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 text-[var(--color-neon-amber)]"
+                : "glass text-muted"
+            }`}
+          >
+            {cpuHeavyCount > 0
+              ? offload
+                ? `${cpuHeavyCount} cpu-heavy node${cpuHeavyCount > 1 ? "s" : ""} on the canvas — they run on the pool.`
+                : `⚠ ${cpuHeavyCount} cpu-heavy node${cpuHeavyCount > 1 ? "s" : ""} on the canvas — Offload recommended.`
+              : "No cpu-heavy nodes on the canvas. Leave Offload off unless this workflow does heavy compute."}
+          </div>
+
+          <div className="flex justify-end">
+            <NeonButton variant="ghost" onClick={() => setSettingsOpen(false)}>
+              Done
+            </NeonButton>
+          </div>
+        </div>
+      </Modal>
 
       {/* Fork dialog */}
       <Modal open={forkOpen} onClose={() => setForkOpen(false)} title="Fork workflow">
