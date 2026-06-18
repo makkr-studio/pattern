@@ -18,7 +18,6 @@
 import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern/core";
 import { identityService } from "./service-key.js";
 import type { IdentityService } from "./service.js";
-import { clearSessionCookie, serializeSessionCookie } from "./cookies.js";
 import { deliverToken } from "./deliver.js";
 import { looksLikeEmail } from "./tokens.js";
 import { renderLoginPage, renderSentPage } from "./pages/login.js";
@@ -26,25 +25,7 @@ import { renderBootstrapPage } from "./pages/bootstrap.js";
 import { renderWelcomePage } from "./pages/welcome.js";
 import { safeNextPath } from "./pages/html.js";
 
-const recordSchema = z.record(z.string(), z.unknown());
-const stringRecord = z.record(z.string(), z.string());
-
 /* ── helpers ───────────────────────────────────────────────────────────── */
-
-const obj = (v: unknown): Record<string, unknown> =>
-  v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-
-/** Merge query/params/body (objects or urlencoded form strings) into args. */
-function mergeArgs(query: unknown, params: unknown, body: unknown): Record<string, unknown> {
-  let bodyObj: Record<string, unknown>;
-  if (typeof body === "string") {
-    // Browser form posts arrive urlencoded; the host hands us the raw string.
-    bodyObj = Object.fromEntries(new URLSearchParams(body).entries());
-  } else {
-    bodyObj = obj(body);
-  }
-  return { ...obj(query), ...obj(params), ...bodyObj };
-}
 
 type JsonHandler = (
   args: Record<string, unknown>,
@@ -81,65 +62,85 @@ function jsonOp(
   };
 }
 
-interface HttpResult {
-  status: number;
-  headers?: Record<string, string>;
-  body?: unknown;
+/** An auth-page/redirect op's result — the workflow renders it on the out-gate. */
+interface AuthResponse {
+  body?: string;
+  redirect?: string;
+  cookies?: Record<string, unknown>;
+  status?: number;
 }
 
-interface HttpRequestCtx {
-  /** Request headers (lower-cased keys), wired from the trigger. */
-  headers: Record<string, string>;
+interface AuthCtx {
   principal: OpContext["principal"];
   /**
    * Where a login lands without an explicit `next`: the app's advertised
-   * AUTH_HOME_URL (the admin registers its mount), else the welcome page —
-   * never a bare "/" that may not exist.
+   * AUTH_HOME_URL (the admin registers its mount), else the welcome page.
    */
   home: string;
-  op: OpContext;
+  ctx: OpContext;
 }
 
-type HttpHandler = (
-  args: Record<string, unknown>,
-  svc: IdentityService,
-  req: HttpRequestCtx,
-) => HttpResult | Promise<HttpResult>;
+type AuthHandler = (args: Record<string, unknown>, svc: IdentityService, req: AuthCtx) => AuthResponse | Promise<AuthResponse>;
 
-/** An HTTP op: also receives request headers; emits status/headers/body ports. */
-function httpOp(type: string, description: string, handler: HttpHandler): OpDefinition {
+/** Per-op route I/O for the auth pages — which request fields each reads. */
+export const authOpRoutes: Record<string, { query: string[]; body: string[]; userAgent: boolean }> = {};
+
+/**
+ * An auth-page / redirect op as a PURE function: discrete inputs (the query/body
+ * fields it reads + the user-agent for session minting — all decomposed by the
+ * workflow), and discrete outputs { body, redirect, cookies, status } the route
+ * wires onto boundary.http.response. The op reads the resolved principal +
+ * advertised home from ctx — never HTTP shape.
+ */
+function authOp(
+  type: string,
+  description: string,
+  io: { query?: string[]; body?: string[]; userAgent?: boolean },
+  handler: AuthHandler,
+): OpDefinition {
+  const query = io.query ?? [];
+  const body = io.body ?? [];
+  authOpRoutes[type] = { query, body, userAgent: Boolean(io.userAgent) };
+  const inputs: Record<string, ReturnType<typeof value>> = {};
+  for (const k of [...query, ...body]) inputs[k] = value(z.string().optional());
+  if (io.userAgent) inputs.userAgent = value(z.string().optional());
   return {
     type,
     title: type,
     description,
     reusable: false,
-    inputs: {
-      params: value(recordSchema),
-      query: value(recordSchema),
-      body: value(z.unknown()),
-      headers: value(stringRecord),
+    inputs,
+    outputs: {
+      body: value(),
+      redirect: value(z.string()),
+      cookies: value(z.record(z.string(), z.unknown())),
+      status: value(z.number()),
     },
-    outputs: { status: value(z.number()), headers: value(stringRecord), body: value() },
     execute: async (ctx) => {
-      const [params, query, body, headers] = await Promise.all([
-        ctx.input.value("params"),
-        ctx.input.value("query"),
-        ctx.input.value("body"),
-        ctx.input.value("headers"),
-      ]);
+      const args: Record<string, unknown> = {};
+      for (const k of [...query, ...body, ...(io.userAgent ? ["userAgent"] : [])]) {
+        args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined;
+      }
       const svc = identityService(ctx);
       const advertisedHome = ctx.services[AUTH_HOME_URL];
-      const req: HttpRequestCtx = {
-        headers: (headers ?? {}) as Record<string, string>,
+      const req: AuthCtx = {
         principal: ctx.principal,
         home: typeof advertisedHome === "string" ? advertisedHome : `${svc.options.mount}/welcome`,
-        op: ctx,
+        ctx,
       };
-      const result = await handler(mergeArgs(query, params, body), svc, req);
-      return { status: result.status, headers: result.headers ?? {}, body: result.body ?? null };
+      const r = await handler(args, svc, req);
+      return { body: r.body ?? null, redirect: r.redirect ?? null, cookies: r.cookies ?? null, status: r.status ?? null };
     },
   };
 }
+
+/** The session cookie as a structured value the out-gate serializes (HttpOnly + SameSite=Lax by default). */
+const sessionCookie = (svc: IdentityService, token: string): Record<string, unknown> => ({
+  [svc.options.cookieName]: { value: token, maxAge: Math.floor(svc.options.sessionTtlMs / 1000), secure: svc.options.cookieSecure },
+});
+const clearCookie = (svc: IdentityService): Record<string, unknown> => ({
+  [svc.options.cookieName]: { value: "", maxAge: 0, secure: svc.options.cookieSecure },
+});
 
 /** Defense in depth: privileged ops re-check the run principal's scopes. */
 function requireScope(ctx: OpContext, scope: string): void {
@@ -149,17 +150,9 @@ function requireScope(ctx: OpContext, scope: string): void {
   }
 }
 
-const html = (status: number, body: string, extra: Record<string, string> = {}): HttpResult => ({
-  status,
-  headers: { "content-type": "text/html; charset=utf-8", ...extra },
-  body,
-});
-
-const redirect = (location: string, extra: Record<string, string> = {}): HttpResult => ({
-  status: 302,
-  headers: { location, ...extra },
-  body: null,
-});
+const page = (body: string, status?: number): AuthResponse => (status !== undefined ? { body, status } : { body });
+const redirectTo = (location: string, cookies?: Record<string, unknown>): AuthResponse =>
+  cookies ? { redirect: location, cookies } : { redirect: location };
 
 const publicUser = (u: { id: string; email: string; name: string | null; roles: string[]; disabled: boolean; createdAt: number }) => ({
   id: u.id,
@@ -415,13 +408,13 @@ const sessionsRevoke = jsonOp(
 
 /* ── auth pages & flows ────────────────────────────────────────────────── */
 
-const loginPage = httpOp(
+const loginPage = authOp(
   "identity.login.page",
   "Render the login page from the registered login methods. Query { next?, error?, sent? }.",
+  { query: ["next", "error", "sent"] },
   (args, svc) => {
-    if (args.sent) return html(200, renderSentPage(String(args.sent)));
-    return html(
-      200,
+    if (args.sent) return page(renderSentPage(String(args.sent)));
+    return page(
       renderLoginPage({
         methods: svc.loginMethods(),
         next: args.next,
@@ -431,18 +424,19 @@ const loginPage = httpOp(
   },
 );
 
-const tokenCallback = httpOp(
+const tokenCallback = authOp(
   "identity.token.callback",
   "The login/invite callback: consumes a single-use token, finds-or-creates the user per the signup policy, mints a session and redirects with the cookie set.",
+  { query: ["t", "next"], userAgent: true },
   async (args, svc, req) => {
     const loginUrl = `${svc.options.mount}/login`;
     const raw = String(args.t ?? "");
-    if (!raw) return redirect(`${loginUrl}?error=invalid-token`);
+    if (!raw) return redirectTo(`${loginUrl}?error=invalid-token`);
 
     const token = await svc.consumeToken(raw);
     if (!token || token.purpose === "bootstrap" || !token.emailNorm) {
       // Bootstrap tokens have their own flow; never silently upgrade them here.
-      return redirect(`${loginUrl}?error=invalid-token`);
+      return redirectTo(`${loginUrl}?error=invalid-token`);
     }
 
     const data = token.data ?? {};
@@ -455,40 +449,34 @@ const tokenCallback = httpOp(
       allowCreate: invite || (await svc.getSignup()) === "open",
       roles: invite && Array.isArray(data.roles) ? (data.roles as string[]) : undefined,
     });
-    if (!user) return redirect(`${loginUrl}?error=signup-closed`);
-    if (user.disabled) return redirect(`${loginUrl}?error=account-disabled`);
+    if (!user) return redirectTo(`${loginUrl}?error=signup-closed`);
+    if (user.disabled) return redirectTo(`${loginUrl}?error=account-disabled`);
 
-    const minted = await svc.mintSession(user.id, { userAgent: req.headers["user-agent"] ?? null });
+    const minted = await svc.mintSession(user.id, { userAgent: (args.userAgent as string) ?? null });
     const next = safeNextPath(args.next ?? data.next ?? req.home);
-    return redirect(next, {
-      "set-cookie": serializeSessionCookie(svc.options.cookieName, minted.token, {
-        secure: svc.options.cookieSecure,
-        maxAgeSeconds: svc.options.sessionTtlMs / 1000,
-      }),
-    });
+    return redirectTo(next, sessionCookie(svc, minted.token));
   },
 );
 
-const logout = httpOp(
+const logout = authOp(
   "identity.logout",
   "Revoke the current session and clear the cookie. POST (same-origin; the CSRF guard makes forged logouts inert).",
+  {},
   async (_args, svc, req) => {
     const sessionId = req.principal.kind === "user" ? req.principal.claims?.sessionId : undefined;
     if (typeof sessionId === "string") await svc.revokeSession(sessionId);
-    return redirect(`${svc.options.mount}/login`, {
-      "set-cookie": clearSessionCookie(svc.options.cookieName, { secure: svc.options.cookieSecure }),
-    });
+    return redirectTo(`${svc.options.mount}/login`, clearCookie(svc));
   },
 );
 
-const welcomePage = httpOp(
+const welcomePage = authOp(
   "identity.welcome.page",
   "Post-login landing of last resort (no AUTH_HOME_URL advertised): who you are + sign-out.",
+  {},
   (_args, svc, req) => {
-    if (req.principal.kind !== "user") return redirect(`${svc.options.mount}/login`);
+    if (req.principal.kind !== "user") return redirectTo(`${svc.options.mount}/login`);
     const claims = req.principal.claims ?? {};
-    return html(
-      200,
+    return page(
       renderWelcomePage({
         email: typeof claims.email === "string" ? claims.email : req.principal.id,
         name: typeof claims.name === "string" ? claims.name : null,
@@ -498,27 +486,29 @@ const welcomePage = httpOp(
   },
 );
 
-const bootstrapPage = httpOp(
+const bootstrapPage = authOp(
   "identity.bootstrap.page",
   "The first-admin setup form, reached via the one-time URL printed on first boot. Query { t }.",
+  { query: ["t"] },
   (args, svc) => {
     const t = String(args.t ?? "");
-    if (!t) return redirect(`${svc.options.mount}/login?error=invalid-token`);
-    return html(200, renderBootstrapPage({ token: t, mount: svc.options.mount }));
+    if (!t) return redirectTo(`${svc.options.mount}/login?error=invalid-token`);
+    return page(renderBootstrapPage({ token: t, mount: svc.options.mount }));
   },
 );
 
-const bootstrapSubmit = httpOp(
+const bootstrapSubmit = authOp(
   "identity.bootstrap.submit",
   "Consume the bootstrap token, create the first user (bootstrap roles) and sign them in.",
+  { body: ["t", "email", "name"], userAgent: true },
   async (args, svc, req) => {
     const t = String(args.t ?? "");
     const email = String(args.email ?? "").trim();
     if (!looksLikeEmail(email)) {
-      return html(400, renderBootstrapPage({ token: t, mount: svc.options.mount, error: "invalid-email" }));
+      return page(renderBootstrapPage({ token: t, mount: svc.options.mount, error: "invalid-email" }), 400);
     }
     const token = await svc.consumeToken(t, "bootstrap");
-    if (!token) return redirect(`${svc.options.mount}/login?error=invalid-token`);
+    if (!token) return redirectTo(`${svc.options.mount}/login?error=invalid-token`);
 
     const roles = Array.isArray(token.data?.roles) ? (token.data.roles as string[]) : ["admin"];
     const user = await svc.findOrCreateByIdentity({
@@ -529,15 +519,10 @@ const bootstrapSubmit = httpOp(
       allowCreate: true,
       roles,
     });
-    if (!user) return redirect(`${svc.options.mount}/login?error=invalid-token`);
+    if (!user) return redirectTo(`${svc.options.mount}/login?error=invalid-token`);
 
-    const minted = await svc.mintSession(user.id, { userAgent: req.headers["user-agent"] ?? null });
-    return redirect(safeNextPath(token.data?.next ?? req.home), {
-      "set-cookie": serializeSessionCookie(svc.options.cookieName, minted.token, {
-        secure: svc.options.cookieSecure,
-        maxAgeSeconds: svc.options.sessionTtlMs / 1000,
-      }),
-    });
+    const minted = await svc.mintSession(user.id, { userAgent: (args.userAgent as string) ?? null });
+    return redirectTo(safeNextPath(token.data?.next ?? req.home), sessionCookie(svc, minted.token));
   },
 );
 

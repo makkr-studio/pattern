@@ -18,8 +18,8 @@ export interface DeliverInput {
   /** Path-only callback URL from `issueToken` (e.g. "/auth/token?t=…"). */
   path: string;
   purpose: string;
-  /** Request headers, when available — used to build an absolute URL. */
-  headers?: Record<string, string> | null;
+  /** The request origin (e.g. "http://localhost:3000"), when available — makes the link absolute. */
+  origin?: string | null;
 }
 
 export interface DeliverResult {
@@ -27,16 +27,13 @@ export interface DeliverResult {
   url: string;
 }
 
-/** Best-effort absolute URL from the request that triggered the issuance. */
-export function absoluteUrl(path: string, headers?: Record<string, string> | null): string {
-  const host = headers?.["host"];
-  if (!host) return path;
-  const proto = headers?.["x-forwarded-proto"] ?? "http";
-  return `${proto}://${host}${path}`;
+/** Best-effort absolute URL — `origin` (from the trigger's `url`) + the callback path. */
+export function absoluteUrl(path: string, origin?: string | null): string {
+  return origin ? `${origin.replace(/\/$/, "")}${path}` : path;
 }
 
 export async function deliverToken(ctx: OpContext, input: DeliverInput): Promise<DeliverResult> {
-  const url = absoluteUrl(input.path, input.headers);
+  const url = absoluteUrl(input.path, input.origin);
   const payload = { email: input.email, url, purpose: input.purpose, delivered: false };
   let result: unknown;
   try {
