@@ -84,6 +84,7 @@ describe("SPA auth stamping (P6)", () => {
 
     const open = adminMod({ storage: memoryFs(), auth: false }).workflows?.find((w) => w.id === "admin.spa");
     const openApp = open!.nodes.find((n) => n.op === "boundary.http.app");
-    expect((openApp?.config as { requireAuth?: unknown })?.requireAuth).toBeUndefined();
+    // auth:false declares an explicit `false` (acknowledged-public), not undefined.
+    expect((openApp?.config as { requireAuth?: unknown })?.requireAuth).toBe(false);
   });
 });

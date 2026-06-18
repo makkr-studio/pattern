@@ -81,6 +81,11 @@ function adminOp(
     description,
     // Control-plane internals — usable, but de-emphasized in the authoring palette.
     reusable: false,
+    // The whole control plane is sensitive (read or mutate workflows, runs,
+    // settings). Flag it so the validator warns if any admin.* op is wired
+    // behind a trigger with no requireAuth — e.g. admin.workflow.delete on a
+    // public route.
+    sensitivity: "privileged",
     inputs,
     outputs,
     execute: async (ctx) => {

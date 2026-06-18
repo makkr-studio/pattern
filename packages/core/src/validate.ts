@@ -280,17 +280,17 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
     }
   }
 
-  // (6) Advisory (warning, never blocking): a network trigger with no
-  // `requireAuth` that can reach a `privileged` op. Authorization is the
-  // trigger's job (who's asking) — the ops are pure — so a forgotten gate would
-  // expose sensitive data unauthenticated. Skip when auth is set OR wired into
-  // the `requireAuth` config port (then it's a deliberate, resolved decision).
+  // (6) Advisory (warning, never blocking): a network trigger whose `requireAuth`
+  // is *unspecified* (undefined) that can reach a `privileged` op. Authorization
+  // is the trigger's job (who's asking) — the ops are pure — so a forgotten gate
+  // would expose sensitive data unauthenticated. ANY explicit decision silences
+  // it: a requirement (true / { scopes } / { env }), an explicit `false`
+  // (acknowledged-public), or a value wired into the `requireAuth` config port.
   for (const t of triggers) {
     if (!t.op.startsWith("boundary.http.")) continue;
     const auth = (t.config as { requireAuth?: unknown } | undefined)?.requireAuth;
-    const authSet = auth === true || (auth != null && typeof auth === "object");
     const authWired = workflow.edges.some((e) => e.to.node === t.id && e.to.port === "requireAuth");
-    if (authSet || authWired) continue;
+    if (auth !== undefined || authWired) continue;
     const reach = reachableFrom(workflow, t.id);
     const hit = workflow.nodes.find((n) => reach.nodes.has(n.id) && ops.get(n.op)?.sensitivity === "privileged");
     if (hit) {
