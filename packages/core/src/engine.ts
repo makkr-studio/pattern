@@ -120,6 +120,8 @@ export interface EngineOptions {
   offloadTransport?: RunTransport;
   /** Register the base op catalog (§12). Default true. */
   registerCoreOps?: boolean;
+  /** Backstop (ms) for the streaming trace "true end" — see RunDeps. Default 5 min. */
+  streamDrainTtlMs?: number;
   /**
    * Environment map for resolving `$env` / `${VAR}` references in workflow config
    * at registration time. Defaults to `{}` (object-form refs use their declared
@@ -165,6 +167,8 @@ export class Engine {
   /** Where `offload`-flagged workflows run (a worker pool); undefined = no-op. */
   private readonly offloadTransport?: RunTransport;
   private readonly env: Record<string, string | undefined>;
+  /** Backstop (ms) for the streaming trace true-end; threaded into RunDeps. */
+  private readonly streamDrainTtlMs?: number;
   /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
   private readonly eventUnsubs = new Map<string, Array<() => void>>();
   /** Installed mods, in load order (for frontend aggregation + `admin.mod.list`). */
@@ -193,6 +197,7 @@ export class Engine {
     this.workflows = opts.workflows ?? new InMemoryWorkflowRegistry();
     this.connections = opts.connections ?? new InMemoryConnectionRegistry();
     this.env = opts.env ?? {};
+    this.streamDrainTtlMs = opts.streamDrainTtlMs;
 
     const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal, hookDepth, opts) =>
       this.runFrom(wf, trig, input, principal, undefined, undefined, undefined, hookDepth, opts?.runId, opts?.parent),
@@ -213,6 +218,7 @@ export class Engine {
       services: this.services,
       traceSink: this.traceSink,
       env: this.env,
+      streamDrainTtlMs: this.streamDrainTtlMs,
       resolveWorkflow: (id) => this.workflows.get(id),
       // Mask known secret values out of sampled I/O (reads the live pool, so
       // secrets from workflows registered after construction are covered too).

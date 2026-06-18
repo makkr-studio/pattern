@@ -172,10 +172,15 @@ export interface RunSummary {
   workflowId: string;
   trigger: string;
   principal: unknown;
-  status: "ok" | "error" | "running";
+  status: "ok" | "error" | "running" | "streaming";
   startTime: number;
   endTime?: number;
+  /** Total run time, start → true end (all streams drained). */
   durationMs?: number;
+  /** Time to result-ready (out-gates captured); ≪ durationMs for streaming runs. */
+  readyMs?: number;
+  /** How the run truly ended (drain vs the TTL backstop). */
+  endedBy?: "drain" | "timeout";
   spanCount: number;
   error?: { message: string };
   /** Set when this run was started by another run (`ctx.invoke`). */

@@ -14,6 +14,20 @@ export function ms(n: number | undefined): string {
   return `${(n / 60000).toFixed(1)}m`;
 }
 
+/**
+ * A run's duration label. For a streaming run the trace separates result-ready
+ * (out-gates captured) from true-end (streams drained), so we show both —
+ * "ready 40ms · streamed 3.2s" — instead of one misleading number. A run whose
+ * streaming tail is negligible just reads as its total.
+ */
+export function runDuration(s: { durationMs?: number; readyMs?: number }): string {
+  if (s.durationMs == null) return "—";
+  if (s.readyMs != null && s.durationMs - s.readyMs > 2) {
+    return `ready ${ms(s.readyMs)} · streamed ${ms(s.durationMs - s.readyMs)}`;
+  }
+  return ms(s.durationMs);
+}
+
 /** Relative time from an epoch-ms timestamp. */
 export function ago(epochMs: number): string {
   const s = (Date.now() - epochMs) / 1000;
@@ -77,6 +91,7 @@ const STATUS_COLORS: Record<string, string> = {
   ok: "var(--color-neon-lime)",
   error: "var(--color-neon-pink)",
   running: "var(--color-neon-cyan)",
+  streaming: "var(--color-port-stream)",
   skipped: "var(--color-port-control)",
   unset: "var(--color-port-control)",
 };

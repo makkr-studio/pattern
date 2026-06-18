@@ -491,20 +491,39 @@ export class HttpHost {
       user: principalToUser(principal),
     };
 
+    // Cancel the run if the client goes away — before result-ready (a slow
+    // handler) OR mid-stream (an SSE tail). Abort propagates to the run's stream
+    // producers, so they stop writing to a dead socket and the trace true-end
+    // fires promptly instead of waiting for the producer to finish on its own.
+    // We can't gate on `res.writableFinished`: a mid-stream disconnect makes the
+    // write fail, `writeResponse` ends the response, and only THEN does `close`
+    // fire (finished already true). So we track our own "delivered in full" flag.
+    const ac = new AbortController();
+    let delivered = false;
+    res.on("close", () => {
+      if (!delivered) ac.abort(new Error("client disconnected"));
+    });
+
     let result: RunResult;
     try {
-      result = await this.engine.runFrom(workflow, route.trigger, input, principal);
+      result = await this.engine.runFrom(workflow, route.trigger, input, principal, ac.signal);
     } catch (err) {
+      delivered = true;
       return writeError(res, err);
     }
-    if (result.status === "error") return writeError(res, result.error);
+    if (result.status === "error") {
+      delivered = true;
+      return writeError(res, result.error);
+    }
 
     const payload = firstOutgate(result, workflow, "boundary.http.response");
     if (!payload) {
+      delivered = true;
       res.writeHead(204).end();
       return;
     }
     await writeResponse(res, payload);
+    delivered = true;
   }
 
   /** Serve a static asset (or SPA fallback) for an app mount (admin-spec P1). */

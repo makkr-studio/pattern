@@ -173,11 +173,32 @@ export interface TraceSink {
     parent?: RunParentRef;
   }): void;
   onSpanEnd?(span: SpanData): void;
+  /**
+   * Fired when a run is **result-ready**: its out-gates have captured (so the
+   * `RunResult` resolves now), but a streaming out-gate's payload is a live
+   * stream the host drains afterward. The run is not yet *done* — `onRunEnd`
+   * follows when the streams drain. For a non-streaming run, `onRunReady` and
+   * `onRunEnd` fire back-to-back. Optional/additive; sinks that don't care can
+   * treat `onRunEnd` as the only terminal.
+   */
+  onRunReady?(run: {
+    runId: string;
+    traceId: string;
+    status: "ok" | "error";
+    /** High-res epoch ms when the result was ready. */
+    at: number;
+  }): void;
   onRunEnd?(run: {
     runId: string;
     traceId: string;
     status: "ok" | "error";
     error?: unknown;
+    /** High-res epoch ms of the true end (so a forwarded worker run isn't
+     *  inflated by transit). Falls back to the sink's clock if absent. */
+    at?: number;
+    /** How the run reached its true end: streams drained, or the TTL backstop
+     *  fired (a stream nobody drained). Absent for runs with no streaming tail. */
+    endedBy?: "drain" | "timeout";
   }): void;
 }
 
