@@ -36,6 +36,29 @@ describe("boundary config ports — resolve phase (§7)", () => {
     expect((engine.workflows.get("cfgport")!.nodes.find((n) => n.id === "in")!.config as any).port).toBe(3000);
   });
 
+  it("resolves a WIRED requireAuth into the trigger config (deploy-time scopes)", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "wired-auth",
+      nodes: [
+        { id: "scope", op: "core.const.object", config: { value: { scopes: ["admin"] } } },
+        { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/secure" } },
+        { id: "body", op: "core.const.string", config: { value: "ok" } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "scope", port: "out" }, to: { node: "in", port: "requireAuth" } }, // config port
+        { from: { node: "in", port: "out" }, to: { node: "out", port: "in" } },
+        { from: { node: "body", port: "out" }, to: { node: "out", port: "body" } },
+      ],
+    };
+    await engine.registerWorkflowAsync(wf);
+    const inNode = engine.workflows.get("wired-auth")!.nodes.find((n) => n.id === "in")!;
+    // The requirement is frozen into config at registration (never per-request).
+    expect((inNode.config as any).requireAuth).toEqual({ scopes: ["admin"] });
+    expect(engine.workflows.get("wired-auth")!.edges.some((e) => e.to.node === "in" && e.to.port === "requireAuth")).toBe(false);
+  });
+
   it("composes config from multiple ops (env → template → path)", async () => {
     const engine = new Engine({ env: { TENANT: "acme" } });
     const wf: Workflow = {

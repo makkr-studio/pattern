@@ -21,14 +21,21 @@ import type { OpDefinition, Ports } from "../types.js";
 const recordSchema = z.record(z.string(), z.unknown());
 const stringRecord = z.record(z.string(), z.string());
 const connectionSchema = z.union([z.string(), z.object({ id: z.string() }).loose()]);
-const requireAuth = z
-  .union([
-    z.boolean(),
-    z.object({ scopes: z.array(z.string()) }),
-    // Deferred form: the host resolves the env var per request (engine.authorize).
-    z.object({ env: z.string().min(1) }),
-  ])
-  .optional();
+/** The auth requirement value: a flag, a scope set, or a deferred env lookup. */
+const requireAuthValue = z.union([
+  z.boolean(),
+  z.object({ scopes: z.array(z.string()) }),
+  // Deferred form: the host resolves the env var per request (engine.authorize).
+  z.object({ env: z.string().min(1) }),
+]);
+const requireAuth = requireAuthValue.optional();
+/**
+ * `requireAuth` as a registration-time config port: wire a pure source
+ * (core.const / core.env) into it to source the auth requirement — e.g. a
+ * scope set that differs per environment. Resolved once at registration and
+ * frozen into config (NEVER per-request), so request data can't lower its own bar.
+ */
+const requireAuthPort = (): ReturnType<typeof value> => value(requireAuthValue);
 
 /** A JSON-Schema object carried in op config (compiled to Zod by the host). */
 const jsonSchema = z.record(z.string(), z.unknown());
@@ -177,6 +184,7 @@ export const httpRequest: OpDefinition = {
     body: value(jsonSchema),
     query: value(jsonSchema),
     params: value(jsonSchema),
+    requireAuth: requireAuthPort(),
   },
   // Output port schemas are derived from the declared body/query/params schemas,
   // so the graph is typed end-to-end and downstream value edges are checked.
@@ -336,6 +344,7 @@ export const httpApp: OpDefinition = {
   configInputs: {
     mount: value(z.string()),
     port: value(z.number().int().positive()),
+    requireAuth: requireAuthPort(),
   },
   outputs: { mount: value(z.string()) },
   config: z.object({
@@ -374,7 +383,7 @@ export const wsMessage: OpDefinition = {
   pair: "boundary.ws.send",
   inputs: {},
   // Wire a schema node in to validate inbound messages (resolve phase).
-  configInputs: { message: value(jsonSchema) },
+  configInputs: { message: value(jsonSchema), requireAuth: requireAuthPort() },
   // The message output is typed by the declared schema, like http.request's body.
   // `validate`: the engine enforces it on seeded input for any entry path.
   outputs: (config: { message?: unknown }): Ports => ({
@@ -398,6 +407,7 @@ export const wsOpen: OpDefinition = {
   boundary: "trigger",
   pair: "boundary.ws.send",
   inputs: {},
+  configInputs: { requireAuth: requireAuthPort() },
   outputs: { connection: value(connectionSchema), user: userPort() },
   config: z.object({ requireAuth }),
   execute: TRIGGER_EXECUTE,
@@ -419,6 +429,7 @@ export const wsClose: OpDefinition = {
   },
   // Same auth seam as open/message — a protected socket's close handler should
   // be declarable as protected too.
+  configInputs: { requireAuth: requireAuthPort() },
   config: z.object({ requireAuth }),
   execute: TRIGGER_EXECUTE,
 };
