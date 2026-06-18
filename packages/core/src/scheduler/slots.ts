@@ -64,6 +64,13 @@ export class StreamHub<T = unknown> {
   private settled = false;
   private readonly _done = new Deferred<void>();
 
+  /**
+   * Optional per-chunk observer — set before `connect`. Sees every chunk exactly
+   * once at the pump (used for I/O sampling: bounded `stream.chunk` span events).
+   * Passive: it never affects flow and its throws are swallowed.
+   */
+  onChunk?: (value: T) => void;
+
   /** Resolves when the source is fully drained (or the hub is closed/errored). */
   get done(): Promise<void> {
     return this._done.promise;
@@ -114,6 +121,13 @@ export class StreamHub<T = unknown> {
         if (live.length) await Promise.all(live.map((s) => s.ready()));
         const { done, value } = await reader.read();
         if (done) break;
+        if (this.onChunk) {
+          try {
+            this.onChunk(value);
+          } catch {
+            /* sampling is best-effort — never let it disturb the stream */
+          }
+        }
         for (const s of this.subs) s.push(value);
       }
       for (const s of this.subs) s.close();
