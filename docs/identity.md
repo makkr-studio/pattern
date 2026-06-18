@@ -150,5 +150,8 @@ export default identityMod({
 | `POST /auth/magic-link/request` | (magic-link mod) issue + deliver a login link |
 
 All public by design — the privileged surface is ops (`identity.users.*`,
-`identity.sessions.*`), reached through the admin's stamped invoke path and
-guarded **again** in-op (`admin` scope), so an open admin can't leak them.
+`identity.sessions.*`), reached through their own dedicated admin routes
+(`/admin/api/identity/*`), admin-scope-stamped **on the trigger**. The ops are
+pure (no in-op scope check) and tagged `sensitivity: "privileged"` so the
+validator flags any route that exposes them without a gate — authorization is a
+boundary concern, so the data never leaks even when the admin is configured open.

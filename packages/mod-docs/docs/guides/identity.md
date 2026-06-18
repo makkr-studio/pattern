@@ -162,6 +162,8 @@ export default identityMod({
 
 All public by design — the privileged surface is ops (`identity.users.*`,
 `identity.sessions.*`), reached through their own dedicated admin routes
-(`/admin/api/identity/*`), each admin-scope-stamped at the boundary and guarded
-**again** in-op (`admin` scope) as defense in depth — so the data never leaks,
-even when the admin itself is configured open.
+(`/admin/api/identity/*`), each admin-scope-stamped **on the trigger**. The ops
+are pure (no in-op scope check) and tagged `sensitivity: "privileged"`, so the
+validator flags any route that exposes them without a gate — authorization is a
+boundary concern, enforced once, so the data never leaks even when the admin
+itself is configured open.

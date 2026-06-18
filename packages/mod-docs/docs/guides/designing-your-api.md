@@ -35,7 +35,12 @@ keep the op a pure domain function:
   `query` / `params`. The engine returns **400 with located `issues`** *before*
   your graph runs. Validated values flow out of the trigger's ports.
 - **Auth** — `requireAuth: { scopes: ["edit"] }` on the trigger gives you
-  **401 / 403** at the boundary. No in-op scope checks.
+  **401 / 403** at the boundary (set it with the editor's auth selector, or wire
+  it from a `core.env`/`core.const` source — it resolves once at registration).
+  No in-op scope checks. If an op reads sensitive data, tag it
+  `sensitivity: "privileged"`: the validator then *warns* whenever a network
+  trigger can reach it without `requireAuth` — a forgotten gate is caught while
+  the op stays pure.
 - **Status** — defaults to **200**. Wire a `status` only for the exceptions.
 
 An op that takes `body`/`params` and emits `{ status, body }`, checking scopes

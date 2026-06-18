@@ -59,6 +59,13 @@ export const lines = defineOp({
 });
 ```
 
+Keep ops **auth-free**: never read `ctx.principal` to allow/deny — authorization
+is the trigger's job (`requireAuth` on the boundary), so the op stays callable
+from a CLI, a schedule, or another workflow. If an op reads sensitive data, set
+`sensitivity: "privileged"` on the definition: it's a *signal*, not a check (the
+op still never enforces), and the validator warns if a network trigger can reach
+it without `requireAuth`. See *Designing your API* for the full discipline.
+
 `OpContext` gives you:
 
 | | |
