@@ -1,6 +1,6 @@
 {
   "name": "@pattern/mod-docs",
-  "version": "0.1.58",
+  "version": "0.1.59",
   "description": "Self-reflecting documentation for Pattern apps: a markdown-first docs app at /docs (admin's visual language, reading-first) where every installed mod — first or third party — contributes its own chapter, the op reference is generated from the live registry, workflow code fences render as real graphs, and the whole set is agent-readable at /docs/llms.txt.",
   "type": "module",
   "license": "MIT",
