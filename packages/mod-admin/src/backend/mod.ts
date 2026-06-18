@@ -15,7 +15,7 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AUTH_HOME_URL, defineMod, IDENTITY_SERVICE, type Engine, type PatternMod, type Workflow } from "@pattern/core";
+import { AUTH_HOME_URL, defineMod, type Engine, type PatternMod, type Workflow } from "@pattern/core";
 import {
   localFs,
   memoryFs,
@@ -183,15 +183,29 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     // mod of the batch is installed, so all their ops resolve.
     ready: async (engine) => {
       await controlPlane?.bootstrap();
-      // Secure-by-default (§9): identity installed + no explicit `auth` option
-      // → the whole admin (API + SPA) requires the admin scope. Re-registering
-      // upserts by id, so the host re-derives the routes with requireAuth.
-      // `auth: false` is the explicit opt-out. (IDENTITY_SERVICE is a core
-      // const — no package dependency on mod-identity.)
-      if (options.auth === undefined && engine.service(IDENTITY_SERVICE)) {
-        const requirement = { scopes: ["admin"] };
-        for (const wf of [...endpointWorkflows(requirement), stampRequireAuth(spaWorkflow(mount), requirement)]) {
-          await engine.registerWorkflowAsync(wf);
+      // Secure-by-default (§9). With no explicit `auth` option, the policy keys
+      // on whether auth is *enforceable* — i.e. any auth provider is registered
+      // (identity, or any future auth mod — not a specific service):
+      //  - a provider exists → lock the whole admin (API + SPA) to the admin
+      //    scope. Re-registering upserts by id, so the host re-derives the routes
+      //    with requireAuth.
+      //  - none → the admin CAN'T be secured (stamping would brick it: every
+      //    principal is anonymous with no login). So it serves OPEN, but says so
+      //    loudly on every boot. `auth: false` is the explicit acknowledgment
+      //    that silences this; `auth: true | { scopes }` forces a requirement.
+      if (options.auth === undefined) {
+        if (engine.hasAuthProvider()) {
+          const requirement = { scopes: ["admin"] };
+          for (const wf of [...endpointWorkflows(requirement), stampRequireAuth(spaWorkflow(mount), requirement)]) {
+            await engine.registerWorkflowAsync(wf);
+          }
+        } else {
+          console.warn(
+            `\n[pattern] ⚠ Pattern Admin is serving UNAUTHENTICATED at ${mount} — anyone who can reach this port\n` +
+              `[pattern]   has full control of your workflows, runs, and data. Add an auth provider\n` +
+              `[pattern]   (e.g. @pattern/mod-identity) to secure it, or pass admin's \`auth: false\` to\n` +
+              `[pattern]   acknowledge an intentionally-open local admin and silence this warning.\n`,
+          );
         }
       }
     },
