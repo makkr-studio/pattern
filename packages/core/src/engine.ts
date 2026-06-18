@@ -110,6 +110,14 @@ export interface EngineOptions {
   connections?: ConnectionRegistry;
   /** Override the run transport (e.g. a worker-thread pool from runtime-node). */
   transport?: RunTransport;
+  /**
+   * The transport that runs workflows flagged `offload` (e.g. a worker-thread
+   * pool from runtime-node). Everything else runs on `transport` (inline by
+   * default). When absent, an `offload` flag degrades to a graceful no-op —
+   * the run executes inline. Set per-process by `loadProject` from the
+   * `workers` config; the inline `transport` stays the override seam.
+   */
+  offloadTransport?: RunTransport;
   /** Register the base op catalog (§12). Default true. */
   registerCoreOps?: boolean;
   /**
@@ -154,6 +162,8 @@ export class Engine {
    */
   private readonly services: OpServices;
   private readonly transport: RunTransport;
+  /** Where `offload`-flagged workflows run (a worker pool); undefined = no-op. */
+  private readonly offloadTransport?: RunTransport;
   private readonly env: Record<string, string | undefined>;
   /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
   private readonly eventUnsubs = new Map<string, Array<() => void>>();
@@ -189,6 +199,7 @@ export class Engine {
     );
     this.services = { events: this.events, hooks: hookRunner, connections: this.connections };
     this.transport = opts.transport ?? new InProcessTransport(this.deps());
+    this.offloadTransport = opts.offloadTransport;
 
     if (opts.registerCoreOps !== false) {
       registerCoreOps(this.ops);
@@ -609,7 +620,11 @@ export class Engine {
     runId?: string,
     parent?: RunParentRef,
   ): Promise<RunResult> {
-    const handle = this.transport.dispatch({
+    // Per-run routing at the dispatch seam: an `offload`-flagged workflow goes
+    // to the worker pool when one is configured; everything else stays inline.
+    // No pool → the flag is a graceful no-op (runs inline).
+    const transport = workflow.offload === true && this.offloadTransport ? this.offloadTransport : this.transport;
+    const handle = transport.dispatch({
       workflow,
       triggerNodeId,
       input,
@@ -678,9 +693,12 @@ export class Engine {
     );
   }
 
-  /** What this engine runs workflows ON (observability; see RunTransport.describe). */
+  /** What this engine runs workflows ON (observability; see RunTransport.describe).
+   *  When an offload pool exists, its description rides along under `offload` so
+   *  the Process page can show the hybrid (inline + worker pool). */
   transportInfo(): Record<string, unknown> {
-    return this.transport.describe?.() ?? { kind: "unknown" };
+    const inline = this.transport.describe?.() ?? { kind: "unknown" };
+    return this.offloadTransport ? { ...inline, offload: this.offloadTransport.describe?.() ?? { kind: "unknown" } } : inline;
   }
 
   /** Emit an event onto the bus (fire-and-forget, §8). */
@@ -698,6 +716,7 @@ export class Engine {
     for (const unsubs of this.eventUnsubs.values()) for (const u of unsubs) u();
     this.eventUnsubs.clear();
     await this.transport.close?.();
+    await this.offloadTransport?.close?.();
   }
 }
 

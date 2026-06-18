@@ -393,6 +393,15 @@ export interface OpDefinition {
    * (who's asking) while a forgotten gate still gets caught. Unset = ordinary.
    */
   sensitivity?: "privileged";
+  /**
+   * Declares that this op does meaningful synchronous compute — a *signal*,
+   * never a router (it offloads nothing on its own). The validator nudges when
+   * a `cpuHeavy` op sits in a workflow that runs inline (`offload !== true`),
+   * since synchronous compute on the host event loop can stall every other run
+   * and the admin. The fix is the *workflow's* `offload` flag (run the whole
+   * graph on the worker pool), not a per-op switch. Unset = ordinary/I-O-bound.
+   */
+  cpuHeavy?: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -482,6 +491,18 @@ export const WorkflowSchema = z.object({
    * the authority, this is a convenience for self-contained documents.
    */
   source: WorkflowSourceSchema.optional(),
+  /**
+   * Run this whole workflow off the host event loop, on the worker pool, when
+   * one is configured (`offloadTransport` / `pattern.config.json`'s `workers`).
+   * Author-controlled and opt-in: the default is inline (the loop is already
+   * free during a run's awaits), so only flag the CPU-heavy graphs whose
+   * synchronous compute would otherwise stall the loop. Metadata — toggling it
+   * isn't a behavioral version (the structural hash ignores it), and with no
+   * pool configured it's a graceful no-op (the run stays inline). Offloaded
+   * runs use the worker's own service instances and can't reach host WS
+   * sockets, and aren't pausable from the editor.
+   */
+  offload: z.boolean().optional(),
   nodes: z.array(WorkflowNodeSchema),
   edges: z.array(EdgeSchema),
   /** Visual annotation boxes (T3). Data-only; engine-ignored. */

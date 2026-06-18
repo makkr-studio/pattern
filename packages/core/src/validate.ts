@@ -303,6 +303,41 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
     }
   }
 
+  // (7) Advisory (warning, never blocking): a `cpuHeavy` op in a workflow that
+  // runs inline (`offload !== true`). Synchronous compute on the host event loop
+  // stalls every other run (and the admin) — the fix is the workflow's `offload`
+  // flag (run the whole graph on the worker pool). The op tag only nudges; it
+  // routes nothing on its own.
+  if (workflow.offload !== true) {
+    for (const node of workflow.nodes) {
+      if (ops.get(node.op)?.cpuHeavy === true) {
+        issues.push({
+          nodeId: node.id,
+          message: `node "${node.id}" runs the cpu-heavy op "${node.op}" inline on the host event loop — turn on the workflow's Offload to run it on the worker pool, or it can stall the host loop`,
+          code: "cpuHeavy_inline",
+          severity: "warning",
+        });
+      }
+    }
+  }
+
+  // (8) Advisory (warning, never blocking): an offloaded workflow that uses a
+  // live host socket. Workers build their own engine with no host WS sockets /
+  // connection registry, so a `boundary.ws.*` node can't reach the live socket
+  // from the pool. (Prefix check for v1; a `hostOnly` op tag is the v2 follow-up.)
+  if (workflow.offload === true) {
+    for (const node of workflow.nodes) {
+      if (node.op.startsWith("boundary.ws.")) {
+        issues.push({
+          nodeId: node.id,
+          message: `node "${node.id}" (${node.op}) uses a live host socket, but this workflow is offloaded — workers run on their own engine and can't reach host sockets; keep socket-bound workflows inline`,
+          code: "offload_unsafe_op",
+          severity: "warning",
+        });
+      }
+    }
+  }
+
   // Warnings are advisory: a workflow with only warnings still validates + runs.
   return { ok: !issues.some((i) => i.severity !== "warning"), workflow, issues };
 }
