@@ -35,6 +35,9 @@ export interface UiManifest {
   pages: UiManifestPage[];
   /** Mod-contributed Settings-page sections. */
   settings?: Array<{ mod: string; section: SettingsSection }>;
+  /** Whether any auth provider is registered — i.e. whether a `requireAuth` is
+   *  actually enforced (vs. declared-but-advisory). The editor warns when false. */
+  authProvider?: boolean;
 }
 
 export type Source = "code" | "file" | "db";

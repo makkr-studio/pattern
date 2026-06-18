@@ -34,34 +34,40 @@ describe("admin secure-by-default (§9)", () => {
     expect(requireAuthOf(engine, "identity.route.login")).toBeUndefined();
   });
 
-  it("leaves the admin open without a provider — but loudly — and silently with auth:false", async () => {
-    // No auth provider → can't enforce, so it serves OPEN but warns on boot.
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("DECLARES requireAuth by default (config identical with or without a provider); auth:false opts out", async () => {
+    // Always declared — independent of what else is installed, so the config (and
+    // the editor) is identical, and adding a provider later is a restart, not a
+    // reconfigure.
     const engine = new Engine();
     await install(engine, [adminMod()]);
-    expect(requireAuthOf(engine, "admin.api.workflows.list")).toBeUndefined();
-    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/UNAUTHENTICATED/);
+    expect(requireAuthOf(engine, "admin.api.workflows.list")).toEqual({ scopes: ["admin"] });
+    expect(requireAuthOf(engine, "admin.spa")).toEqual({ scopes: ["admin"] });
 
-    // Explicit auth:false (even with a provider present) → open AND silent.
-    warn.mockClear();
+    // auth:false is the explicit opt-out to a truly public admin.
     vi.spyOn(console, "log").mockImplementation(() => {});
     const engine2 = new Engine();
     await install(engine2, [identityMod({ storage: "memory" }), adminMod({ auth: false })]);
     expect(requireAuthOf(engine2, "admin.api.workflows.list")).toBeUndefined();
-    expect(warn.mock.calls.some((c) => /UNAUTHENTICATED/.test(String(c[0])))).toBe(false);
   });
 
-  it("secures the admin when ANY auth provider is present, not just identity", async () => {
-    // A bare auth-provider mod (no identity service) is enough to make auth
-    // enforceable → the admin locks itself by default.
-    const dummyAuthMod: PatternMod = {
-      name: "dummy-auth",
-      authProviders: [{ name: "dummy", authenticate: async () => null }],
-    };
+  it("the declared requireAuth is advisory-open (warned) with NO provider, enforced with ANY provider", async () => {
+    // No provider: declared but unenforceable → serves open, host warns at boot.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const engine = new Engine();
-    await install(engine, [adminMod(), dummyAuthMod]);
-    expect(requireAuthOf(engine, "admin.api.workflows.list")).toEqual({ scopes: ["admin"] });
-    expect(requireAuthOf(engine, "admin.spa")).toEqual({ scopes: ["admin"] });
+    await install(engine, [adminMod()]);
+    const h1 = await createHttpHost(engine, { defaultPort: 4893 }).start();
+    expect((await fetch("http://localhost:4893/admin/api/workflows")).status).toBe(200); // advisory-open
+    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/no auth provider/i);
+    await h1.close();
+
+    // A bare non-identity provider makes auth enforceable → the SAME declaration is now 401.
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const dummyAuthMod: PatternMod = { name: "dummy-auth", authProviders: [{ name: "dummy", authenticate: async () => null }] };
+    const engine2 = new Engine();
+    await install(engine2, [adminMod(), dummyAuthMod]);
+    const h2 = await createHttpHost(engine2, { defaultPort: 4894 }).start();
+    expect((await fetch("http://localhost:4894/admin/api/workflows")).status).toBe(401); // enforced
+    await h2.close();
   });
 
   it("explicit auth options are respected, not overridden", async () => {

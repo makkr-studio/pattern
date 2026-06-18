@@ -561,7 +561,15 @@ export class Engine {
    * hosts never see the deferred form.
    */
   authorize(principal: Principal, requirement: AuthRequirement | undefined) {
-    return meetsRequirement(principal, resolveAuthRequirement(requirement, this.env));
+    const resolved = resolveAuthRequirement(requirement, this.env);
+    // A requirement is *unenforceable* with no auth provider registered: nobody
+    // can authenticate, so enforcing it would brick the route (401 with no way
+    // in). So a declared requireAuth degrades to **advisory** — the route serves
+    // open and the host warns loudly at boot. Add a provider and the *same*
+    // declaration is enforced, with zero workflow changes. (≥1 provider → normal
+    // 401/403; a present-but-failing provider still denies, fail-secure.)
+    if (resolved && !this.hasAuthProvider()) return { ok: true as const };
+    return meetsRequirement(principal, resolved);
   }
 
   // ── Running ──

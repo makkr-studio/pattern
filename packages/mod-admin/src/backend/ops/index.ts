@@ -370,7 +370,9 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
     if ("remote" in p) return { path: p.path, remote: p.remote };
     return { path: p.path, tier2: true }; // function-loaded; not serializable over HTTP
   });
-  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [] };
+  // `authProvider` lets the editor tell authors that a declared requireAuth
+  // won't actually be enforced until an auth provider (e.g. identity) is added.
+  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [], authProvider: engine.hasAuthProvider() };
 });
 /** Replace non-serializable run outputs (live streams) with a marker. */
 function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {

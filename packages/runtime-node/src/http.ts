@@ -184,10 +184,29 @@ export class HttpHost {
   /** Derive routes from registered workflows, open servers, and watch for changes. */
   async start(): Promise<{ ports: number[]; close: () => Promise<void> }> {
     await this.rebuild();
+    this.warnIfUnenforceableAuth();
     this.unsubscribe = this.engine.onWorkflowsChanged(() => {
       void this.rebuild().catch((err) => console.error("[pattern] http rebuild failed:", err));
     });
     return { ports: [...this.servers.keys()], close: () => this.close() };
+  }
+
+  /**
+   * Loud, honest signal: with NO auth provider installed, any route that
+   * *declares* `requireAuth` can't be enforced (nobody can authenticate) — the
+   * engine serves it open (advisory). Say so plainly at boot so it's never a
+   * silent surprise. Add a provider and the same declarations are enforced.
+   */
+  private warnIfUnenforceableAuth(): void {
+    if (this.engine.hasAuthProvider()) return;
+    const gated = [...this.routes, ...this.apps].filter((r) => r.requireAuth).length;
+    if (!gated) return;
+    console.warn(
+      `\n[pattern] ⚠ ${gated} route(s) declare requireAuth but NO auth provider is installed —\n` +
+        `[pattern]   they are NOT enforced and serve UNAUTHENTICATED (anyone who can reach the\n` +
+        `[pattern]   port has access). Add an auth provider (e.g. @pattern/mod-identity) to enforce\n` +
+        `[pattern]   them. Routes without requireAuth are unaffected.\n`,
+    );
   }
 
   /** Tail of the rebuild queue — see `rebuild()`. */
