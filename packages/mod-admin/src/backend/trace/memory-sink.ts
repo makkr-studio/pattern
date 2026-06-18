@@ -10,7 +10,7 @@
  * Windows are labelled honestly (since-boot / last N minutes).
  */
 
-import type { Principal, RunParentRef, SpanData, TraceSink } from "@pattern/core";
+import { now as hiResNow, type Principal, type RunParentRef, type SpanData, type TraceSink } from "@pattern/core";
 
 export interface RunSummary {
   runId: string;
@@ -70,7 +70,8 @@ const percentile = (sorted: number[], p: number): number => {
 export interface MemoryTraceSinkOptions {
   /** Max finished runs retained in the ring buffer. Default 500. */
   capacity?: number;
-  /** Clock (overridable in tests). Default `Date.now`. */
+  /** Clock (overridable in tests). Default: core's high-res `now()` so run
+   *  summary stamps share the span clock (no sub-ms skew between the two). */
   now?: () => number;
 }
 
@@ -94,7 +95,7 @@ export class MemoryTraceSink implements TraceSink {
 
   constructor(opts: MemoryTraceSinkOptions = {}) {
     this.capacity = opts.capacity ?? 500;
-    this.now = opts.now ?? Date.now;
+    this.now = opts.now ?? hiResNow;
     this.bootTime = this.now();
   }
 
