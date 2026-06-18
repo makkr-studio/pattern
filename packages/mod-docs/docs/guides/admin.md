@@ -39,9 +39,12 @@ appears in its catalog — and is editable inside itself.
 ## Mods extend the admin
 
 A mod can contribute admin pages declaratively — menu entries + table/detail
-views over its own ops (`frontend` contribution), or a full built bundle. The
-Data browser (mod-store), Secrets (mod-vault), and Chat conversations
-(mod-chat) pages all arrive this way. The same idea powers these docs: see
+views, each bound to a **dedicated route** the mod also ships (`frontend`
+contribution). There is no generic "run any op" endpoint: every screen and
+action names its own purposeful route (request → op → response), so what the
+admin exposes is a readable route table, not an ACL over the whole catalog. The
+Data browser (mod-store), Secrets (mod-vault), and Chat conversations (mod-chat)
+pages all arrive this way. The same idea powers these docs: see
 [Extending the docs](extending-the-docs.md).
 
 ## Locking it down

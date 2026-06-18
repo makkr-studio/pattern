@@ -330,8 +330,9 @@ describe("admin Chats surface", () => {
       })
     ).text();
 
-    // The admin data ops are pure now (discrete input ports + a named output),
-    // so decompose the args object onto their ports — exactly as admin.invoke does.
+    // The admin data ops are pure (discrete input ports + a named output), so
+    // this probe decomposes the args object onto their ports — exactly as each
+    // op's dedicated route does in production.
     const callAdmin = async (op: string, params?: Record<string, unknown>, principal?: unknown) => {
       const def = engine.ops.get(op)!;
       const inPorts = Object.entries(resolvePorts(def.inputs, {}))
