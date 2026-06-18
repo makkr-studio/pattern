@@ -159,6 +159,20 @@ export class AdminClient {
   };
   /** Run a source op once and return its output (declarative-page data source). */
   invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
+  /**
+   * Call a dedicated route by `{ method, path }` — how declarative surfaces reach
+   * their data and run their actions now that there is no generic invoke
+   * endpoint. `:tokens` in the path are filled from `args`; leftover args become
+   * the query string (GET/DELETE) or the JSON body (POST/PUT). The path is
+   * relative to the admin API mount (e.g. "/store/collections/:collection/docs").
+   */
+  call = <T = unknown>(method: string, path: string, args?: Record<string, unknown>): Promise<T> => {
+    const { path: filled, rest } = fillPath(path, args ?? {});
+    const m = method.toUpperCase();
+    return m === "GET" || m === "DELETE"
+      ? this.request<T>(m, `${filled}${qs(rest)}`)
+      : this.request<T>(m, filled, rest);
+  };
   /** Run a workflow (draft doc or live slug) from a trigger; records the run. */
   run = (req: RunInput): Promise<RunResult> => this.request("POST", "/run", req);
   /** Per-node ports for a doc, resolved against each node's config (dynamic-port ops). */
@@ -197,6 +211,17 @@ export class AdminClient {
       await reader.cancel().catch(() => {});
     }
   }
+}
+
+/** Fill `:token` segments from `args`, returning the path + the unconsumed args. */
+function fillPath(path: string, args: Record<string, unknown>): { path: string; rest: Record<string, unknown> } {
+  const rest = { ...args };
+  const filled = path.replace(/:([A-Za-z0-9_]+)/g, (_m, key: string) => {
+    const v = rest[key];
+    delete rest[key];
+    return encodeURIComponent(String(v ?? ""));
+  });
+  return { path: filled, rest };
 }
 
 function safeJson(text: string): unknown {

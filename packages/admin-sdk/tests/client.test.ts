@@ -59,6 +59,22 @@ describe("AdminClient against the live backend", () => {
     expect(catalog.some((m) => m.slug === "admin.api.ops.list" && m.source === "code")).toBe(true);
   });
 
+  it("call() reaches a dedicated route, filling :tokens and the query", async () => {
+    const api = await start();
+
+    // No-arg GET: same payload as the typed method.
+    const viaCall = await api.call<Array<{ slug: string }>>("GET", "/workflows");
+    const typed = await api.workflows.list();
+    expect(viaCall.map((w) => w.slug).sort()).toEqual(typed.map((w) => w.slug).sort());
+
+    // :token in the path is filled from args; leftover args become the query.
+    const op = await api.call<{ type: string } | null>("GET", "/ops/:type", { type: "boundary.http.response" });
+    expect(op?.type).toBe("boundary.http.response");
+
+    const runs = await api.call<Array<{ workflowId: string }>>("GET", "/runs", { limit: 1 });
+    expect(Array.isArray(runs)).toBe(true);
+  });
+
   it("save → deploy → run round-trips, and the run shows up", async () => {
     const api = await start();
 

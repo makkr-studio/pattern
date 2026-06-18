@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactFlow, Background, Controls, ReactFlowProvider } from "@xyflow/react";
-import type { DeclarativeView as View } from "@pattern/admin-sdk";
+import type { DeclarativeView as View, RouteRef } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useOps, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap } from "../editor/graph";
@@ -10,15 +10,38 @@ import { OpNode } from "../editor/OpNode";
 import { GlassPanel, JsonView, Modal, NeonButton, Spinner, Table, type Column } from "./ui";
 import { FormFromSchema } from "./FormFromSchema";
 
+/** A declarative data binding: a dedicated `route` (the model) or, transitionally, a `source` op. */
+type DataRef = { route?: RouteRef; source?: string };
+
+/** The react-query key for a binding — a stable prefix the table refresh can invalidate. */
+function dataKey(ref: DataRef, args?: Record<string, unknown>): unknown[] {
+  return ref.route
+    ? ["call", ref.route.method ?? "GET", ref.route.path, args ?? {}]
+    : ["invoke", ref.source, args ?? {}];
+}
+
+/** Fetch a binding: call its dedicated route, or (transitionally) invoke the source op. */
+function fetchData<T = unknown>(ref: DataRef, args?: Record<string, unknown>): Promise<T> {
+  if (ref.route) return api.call<T>(ref.route.method ?? "GET", ref.route.path, args);
+  return api.invoke<T>(ref.source ?? "", args && Object.keys(args).length ? args : undefined);
+}
+
+/** Call an action's dedicated route (default POST), or (transitionally) invoke its op. */
+function runAction(a: { route?: RouteRef; run?: string }, args: Record<string, unknown>): Promise<unknown> {
+  if (a.route) return api.call(a.route.method ?? "POST", a.route.path, args);
+  return api.invoke(a.run ?? "", args);
+}
+
 /**
- * Fetch a declarative view's data source (an op type) via admin.invoke. Route
- * params (a details page's :userId, say) ride along as the op's args.
+ * Fetch a declarative view's data from its dedicated route. Page/route params
+ * (a details page's :userId, say) ride along — filling the route's `:tokens`,
+ * then any remainder as the query.
  */
-function useSource(source: string, args?: Record<string, unknown>) {
+function useData(ref: DataRef, args?: Record<string, unknown>) {
   return useQuery({
-    queryKey: ["invoke", source, args ?? {}],
-    queryFn: () => api.invoke<unknown>(source, args && Object.keys(args).length ? args : undefined),
-    enabled: Boolean(source),
+    queryKey: dataKey(ref, args),
+    queryFn: () => fetchData(ref, args),
+    enabled: Boolean(ref.route || ref.source),
   });
 }
 
@@ -32,23 +55,23 @@ export function DeclarativeView({ view, params = {} }: { view: View; params?: Re
     return <iframe src={view.url} className="glass h-[70vh] w-full rounded-2xl" title="embedded" />;
   }
   if (view.kind === "form") {
-    return <FormView schema={view.schema} submit={view.submit} />;
+    return <FormView schema={view.schema} action={{ route: view.route, run: view.submit }} />;
   }
   if (view.kind === "graph") {
     return <GraphView slug={view.workflow} />;
   }
   if (view.kind === "detail") {
-    return <DetailView source={view.source} args={params as Record<string, unknown>} />;
+    return <DetailView view={view} args={params as Record<string, unknown>} />;
   }
   return <DataView view={view} args={params as Record<string, unknown>} />;
 }
 
 /** `detail` kind: one object as labeled rows (ResultView — copy keys included). */
-function DetailView({ source, args }: { source: string; args: Record<string, unknown> }) {
-  const { data, isLoading, error } = useSource(source, args);
+function DetailView({ view, args }: { view: DataRef; args: Record<string, unknown> }) {
+  const { data, isLoading, error } = useData(view, args);
   if (isLoading) return <Spinner />;
   if (error) {
-    return <GlassPanel className="text-[var(--color-neon-pink)] p-6 text-sm">Failed to load “{source}”.</GlassPanel>;
+    return <GlassPanel className="text-[var(--color-neon-pink)] p-6 text-sm">Failed to load this view.</GlassPanel>;
   }
   return (
     <GlassPanel className="max-w-2xl p-5">
@@ -113,9 +136,9 @@ function CopyField({ value }: { value: string }) {
   );
 }
 
-/** `form` kind: a FormFromSchema over the declared JSON schema; submit invokes
- *  the target op with the values and shows its result. */
-function FormView({ schema, submit }: { schema: unknown; submit: string }) {
+/** `form` kind: a FormFromSchema over the declared JSON schema; submit calls
+ *  the target route with the values and shows its result. */
+function FormView({ schema, action }: { schema: unknown; action: { route?: RouteRef; run?: string } }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [result, setResult] = useState<unknown>();
   const [pending, setPending] = useState(false);
@@ -123,7 +146,7 @@ function FormView({ schema, submit }: { schema: unknown; submit: string }) {
   const onSubmit = async () => {
     setPending(true);
     try {
-      setResult(await api.invoke(submit, values));
+      setResult(await runAction(action, values));
     } catch (err) {
       setResult({ error: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -184,11 +207,10 @@ function GraphView({ slug }: { slug: string }) {
 }
 
 function DataView({ view, args }: { view: Exclude<View, { kind: "iframe" | "form" | "graph" | "detail" }>; args: Record<string, unknown> }) {
-  const source = view.source;
-  const { data, isLoading, error } = useSource(source, args);
+  const { data, isLoading, error } = useData(view, args);
 
   if (isLoading) return <Spinner />;
-  if (error) return <GlassPanel className="text-[var(--color-neon-pink)] p-6 text-sm">Failed to load “{source}”.</GlassPanel>;
+  if (error) return <GlassPanel className="text-[var(--color-neon-pink)] p-6 text-sm">Failed to load this view.</GlassPanel>;
 
   switch (view.kind) {
     case "json":
@@ -231,12 +253,12 @@ const rowArgs = (action: RowAction, row: Record<string, unknown>): Record<string
   Object.fromEntries(Object.entries(action.args ?? {}).map(([argName, rowKey]) => [argName, row[rowKey]]));
 
 /**
- * `table` kind. Row actions invoke their op with args mapped from the row
- * (`args: { userId: "id" }` → `{ userId: row.id }`) and refresh the source —
+ * `table` kind. Row actions call their dedicated route with args mapped from the
+ * row (`args: { userId: "id" }` → `{ userId: row.id }`) and refresh the table —
  * which is how mod screens get mutations without shipping any UI code.
  * `confirm` actions go through the admin's Modal (never window.confirm —
  * native dialogs block automation and skip the design system), and action
- * RESULTS are shown in a Modal too: an op that returns something (a minted
+ * RESULTS are shown in a Modal too: a route that returns something (a minted
  * sign-in link, the new settings value) hands it straight to the operator.
  */
 function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
@@ -247,14 +269,16 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const [result, setResult] = useState<{ title: string; value: unknown } | null>(null);
   const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   const rowActions = view.rowActions ?? [];
+  // The table's data-query key prefix — invalidated to refresh after a mutation.
+  const tableKey = dataKey(view).slice(0, -1);
 
-  const execute = async (label: string, run: string, args: Record<string, unknown>, show: boolean) => {
+  const execute = async (label: string, action: { route?: RouteRef; run?: string }, args: Record<string, unknown>, show: boolean) => {
     setBusy(`${label}:${JSON.stringify(args)}`);
     try {
-      const out = await api.invoke(run, args);
-      await queryClient.invalidateQueries({ queryKey: ["invoke", view.source] });
+      const out = await runAction(action, args);
+      await queryClient.invalidateQueries({ queryKey: tableKey });
       // Silent (default): the refreshed table IS the feedback. "show" is for
-      // ops whose return value belongs in the operator's hands (minted links).
+      // routes whose return value belongs in the operator's hands (minted links).
       if (show && out != null) setResult({ title: label, value: out });
     } catch (err) {
       // Errors always surface.
@@ -290,7 +314,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                     );
                     navigate(filled);
                   } else if (a.confirm) setPending({ action: a, row });
-                  else if (a.run) void execute(a.label, a.run, rowArgs(a, row), a.result === "show");
+                  else if (a.route || a.run) void execute(a.label, a, rowArgs(a, row), a.result === "show");
                 }}
                 className="text-muted rounded-md border border-white/10 px-2 py-0.5 text-xs hover:bg-white/10 hover:text-[var(--fg)] disabled:opacity-40"
               >
@@ -307,7 +331,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
     <div className="space-y-3">
       <Table columns={columns} rows={rows} getKey={(r) => JSON.stringify(r)} />
       {view.actions?.map((a) => (
-        <NeonButton key={a.label} variant="ghost" disabled={busy !== null} onClick={() => void execute(a.label, a.run, {}, a.result === "show")}>
+        <NeonButton key={a.label} variant="ghost" disabled={busy !== null} onClick={() => void execute(a.label, a, {}, a.result === "show")}>
           {a.label}
         </NeonButton>
       ))}
@@ -316,7 +340,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
         {pending && (
           <div className="space-y-4">
             <p className="text-sm">
-              Run <span className="font-mono">{pending.action.run}</span> with:
+              Run <span className="font-mono">{pending.action.route?.path ?? pending.action.run}</span> with:
             </p>
             <JsonView value={rowArgs(pending.action, pending.row)} className="max-h-40" />
             <div className="flex justify-end gap-2">
@@ -329,7 +353,7 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
                 onClick={() => {
                   const { action, row } = pending;
                   setPending(null);
-                  if (action.run) void execute(action.label, action.run, rowArgs(action, row), action.result === "show");
+                  if (action.route || action.run) void execute(action.label, action, rowArgs(action, row), action.result === "show");
                 }}
               >
                 {pending.action.label}

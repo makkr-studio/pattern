@@ -31,6 +31,21 @@ export interface MenuEntry {
   scopes?: string[];
 }
 
+/**
+ * A reference to a dedicated route workflow — the *only* way a declarative
+ * surface reaches data or runs an action. There is no generic "run any op"
+ * endpoint: every exposure is its own purposeful, named route (see
+ * `httpEndpoint` in `@pattern/core`). The `path` is relative to the admin API
+ * (e.g. "/store/collections/:collection/docs"); `:tokens` are filled from the
+ * page's route params or a row's mapped `args`, and any leftover args become the
+ * query string (GET/DELETE) or JSON body (POST/PUT).
+ */
+export interface RouteRef {
+  /** Defaults to "GET" for read sources. */
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  path: string;
+}
+
 /** A column in a declarative table view. */
 export interface DeclarativeColumn {
   key: string;
@@ -39,13 +54,15 @@ export interface DeclarativeColumn {
   format?: string;
 }
 
-/** A table-level action in a declarative table view: a button that runs an op/workflow. */
+/** A table-level action in a declarative table view: a button that calls a route. */
 export interface DeclarativeAction {
   label: string;
-  /** The op type or workflow id to run. */
-  run: string;
+  /** The dedicated route this action calls (usually a POST). */
+  route?: RouteRef;
+  /** @deprecated transitional — the op type the action ran via the generic invoke endpoint. */
+  run?: string;
   icon?: string;
-  /** "silent" (default) refreshes the source; "show" renders the op's result. */
+  /** "silent" (default) refreshes the source; "show" renders the route's result. */
   result?: "silent" | "show";
 }
 
@@ -56,15 +73,17 @@ export interface DeclarativeAction {
  */
 export interface DeclarativeRowAction {
   label: string;
-  /** The op type or workflow id to run. Mutually exclusive with `path`. */
+  /** The dedicated route this action calls. Mutually exclusive with `path`. */
+  route?: RouteRef;
+  /** @deprecated transitional — the op type the action ran via the generic invoke endpoint. */
   run?: string;
   /**
-   * Navigate instead of running: a page path whose `:tokens` are filled from
+   * Navigate instead of calling: a page path whose `:tokens` are filled from
    * the row via `args`, e.g. `path: "/x/identity/users/:userId"` +
    * `args: { userId: "id" }` → `/x/identity/users/<row.id>`.
    */
   path?: string;
-  /** Op-argument name → row key (also fills `path` tokens). */
+  /** Route/path token + arg name → row key (fills `:tokens` in `route.path` or `path`). */
   args?: Record<string, string>;
   icon?: string;
   /** Ask for confirmation before running. */
@@ -90,38 +109,47 @@ export interface SettingsField {
 }
 
 /**
- * A mod-contributed section on the admin's Settings page. `source` is an op
- * returning the current values keyed by field; `submit` is an op receiving
- * `{ [key]: value }` patches. Same self-reflection as declarative pages —
- * settings are wiring over ops, not a bespoke surface.
+ * A mod-contributed section on the admin's Settings page. `route` reads the
+ * current values keyed by field; `submitRoute` receives `{ [key]: value }`
+ * patches. Both are dedicated routes — the section is wiring over purposeful
+ * endpoints, not a generic op invoker.
  */
 export interface SettingsSection {
   id: string;
   title: string;
   description?: string;
-  source: string;
-  submit: string;
+  /** Route returning the current values keyed by field. */
+  route?: RouteRef;
+  /** Route receiving `{ [key]: value }` patches. */
+  submitRoute?: RouteRef;
+  /** @deprecated transitional — the op that returned the values via invoke. */
+  source?: string;
+  /** @deprecated transitional — the op that received patches via invoke. */
+  submit?: string;
   fields: SettingsField[];
 }
 
 /**
- * A declarative page body (Tier 1). All data sources are op types or workflow
- * ids, so a declarative page is *wiring over the self-reflecting API*, never a
- * new bespoke surface.
+ * A declarative page body (Tier 1). A data view names the dedicated `route` it
+ * reads (a form names the `route` it submits to) — so a declarative page is
+ * *wiring over purposeful, named endpoints*, never a generic op invoker and
+ * never a new bespoke surface. (`source`/`submit` are transitional aliases.)
  */
 export type DeclarativeView =
   | {
       kind: "table";
-      source: string;
+      route?: RouteRef;
+      /** @deprecated transitional — read via the generic invoke endpoint. */
+      source?: string;
       columns: DeclarativeColumn[];
       actions?: DeclarativeAction[];
       rowActions?: DeclarativeRowAction[];
     }
-  | { kind: "form"; schema: unknown; submit: string }
-  | { kind: "chart"; source: string; spec: unknown }
-  | { kind: "json" | "markdown"; source: string }
+  | { kind: "form"; schema: unknown; route?: RouteRef; /** @deprecated transitional */ submit?: string }
+  | { kind: "chart"; route?: RouteRef; source?: string; spec: unknown }
+  | { kind: "json" | "markdown"; route?: RouteRef; source?: string }
   /** A single object rendered as labeled rows (a `copy` key gets a Copy button). */
-  | { kind: "detail"; source: string }
+  | { kind: "detail"; route?: RouteRef; source?: string }
   | { kind: "graph"; workflow: string }
   | { kind: "iframe"; url: string };
 
@@ -146,9 +174,11 @@ export type PageDef =
 export interface CommandDef {
   id: string;
   label: string;
-  /** The op type or workflow id to run, or a client-side action key. */
+  /** A dedicated route to call when chosen (the result is shown to the operator). */
+  route?: RouteRef;
+  /** @deprecated transitional — the op run via the generic invoke endpoint, or a client-side action key. */
   run?: string;
-  /** Route to navigate to when chosen (e.g. a contributed page's path). */
+  /** Page path to navigate to when chosen (e.g. a contributed page's path). */
   path?: string;
   icon?: string;
   /** Grouping in the palette. */

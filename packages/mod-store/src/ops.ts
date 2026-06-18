@@ -307,9 +307,9 @@ type JsonHandler = (args: Record<string, unknown>, ctx: OpContext) => unknown | 
 /**
  * An admin data op: a PURE domain function (discrete named inputs, a named
  * output) guarded by the `admin` scope in-op (deliberate defense-in-depth — an
- * open admin can't leak it). Invoked by the admin's declarative Data pages via
- * admin.invoke, which decomposes the page input onto these ports. NOT
- * reusable:false — invoke must be able to call it.
+ * open admin can't leak it). Each is fronted by its own dedicated route (see
+ * `./admin-routes.ts`) that decomposes the request onto these ports; the op
+ * never sees HTTP.
  */
 function adminOp(type: string, description: string, io: { in?: Record<string, z.ZodType>; out: string }, handler: JsonHandler): OpDefinition {
   const inSpec = io.in ?? {};

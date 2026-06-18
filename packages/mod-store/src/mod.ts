@@ -16,6 +16,7 @@ import { resolveOptions, type StoreOptions } from "./options.js";
 import { storeOps } from "./ops.js";
 import { storeFrontend } from "./frontend.js";
 import { blobServeWorkflow } from "./workflows.js";
+import { storeAdminRoutes } from "./admin-routes.js";
 import { memoryPatternStores } from "./store/memory.js";
 import { sqlitePatternStores } from "./store/sqlite.js";
 import { STORE_SERVICE } from "./well-known.js";
@@ -40,7 +41,12 @@ export function storeMod(options: StoreOptions = {}): PatternMod {
     name: "@pattern/mod-store",
     docs: { filesystem: "store-docs", title: "Store", order: 30 },
     ops: storeOps,
-    workflows: opts.blobRoute === false ? [] : [blobServeWorkflow(opts.blobRoute.requireAuth)],
+    workflows: [
+      ...(opts.blobRoute === false ? [] : [blobServeWorkflow(opts.blobRoute.requireAuth)]),
+      // The Data browser's dedicated routes — one purposeful endpoint per screen
+      // and action, replacing the generic invoke path.
+      ...storeAdminRoutes(),
+    ],
     frontend: storeFrontend(),
     setup: async (engine: Engine) => {
       packagedDocs(engine);
