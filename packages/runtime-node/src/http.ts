@@ -375,7 +375,13 @@ export class HttpHost {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse, port: number): Promise<void> {
-    const url = new URL(req.url ?? "/", "http://localhost");
+    // Build the URL from the real Host header (and forwarded proto), so the
+    // trigger's `url` output carries the actual request origin — workflows that
+    // build absolute links (magic-link callbacks) need the right host + port.
+    const fwdProto = req.headers["x-forwarded-proto"];
+    const proto = (Array.isArray(fwdProto) ? fwdProto[0] : fwdProto)?.split(",")[0]?.trim() || "http";
+    const host = req.headers.host || `localhost:${port}`;
+    const url = new URL(req.url ?? "/", `${proto}://${host}`);
     const method = (req.method ?? "GET").toUpperCase();
 
     // CORS preflight: any route on this port + path that declares CORS.
@@ -640,7 +646,12 @@ async function readBody(req: IncomingMessage, contentType: string | null, maxByt
       return buf.toString("utf8");
     }
   }
-  if (ct.startsWith("text/") || ct.includes("urlencoded") || ct === "") return buf.toString("utf8");
+  // Browser form posts → a plain object, so a workflow can decompose the fields
+  // (core.object.extract) just like a JSON body. Ops never parse forms.
+  if (ct.includes("application/x-www-form-urlencoded")) {
+    return Object.fromEntries(new URLSearchParams(buf.toString("utf8")).entries());
+  }
+  if (ct.startsWith("text/") || ct === "") return buf.toString("utf8");
   return new Uint8Array(buf);
 }
 

@@ -31,8 +31,6 @@ import {
   type IdentityService,
 } from "@pattern/mod-identity";
 
-const stringRecord = z.record(z.string(), z.string());
-
 /* ── the op ────────────────────────────────────────────────────────────── */
 
 /**
@@ -52,48 +50,41 @@ const requestOp: OpDefinition = {
     'Issue a single-use login link for an email and deliver it via the "identity.deliverToken" ' +
     "hook (console fallback). Always responds identically — no account enumeration.",
   reusable: false,
+  // Pure: the workflow decomposes the form (the host parses urlencoded → an
+  // object) into these ports + the request url (for the absolute link origin).
   inputs: {
-    query: value(z.record(z.string(), z.unknown())),
-    body: value(z.unknown()),
-    headers: value(stringRecord),
+    email: value(z.string().optional()),
+    next: value(z.string().optional()),
+    url: value(z.string().optional()),
   },
-  outputs: { status: value(z.number()), headers: value(stringRecord), body: value() },
+  outputs: { html: value() },
   execute: async (ctx) => {
-    const [query, body, headers] = await Promise.all([
-      ctx.input.value("query"),
-      ctx.input.value("body"),
-      ctx.input.value("headers"),
+    const [emailIn, nextIn, urlIn] = await Promise.all([
+      ctx.input.has("email") ? ctx.input.value("email") : undefined,
+      ctx.input.has("next") ? ctx.input.value("next") : undefined,
+      ctx.input.has("url") ? ctx.input.value("url") : undefined,
     ]);
-    const args: Record<string, unknown> =
-      typeof body === "string"
-        ? Object.fromEntries(new URLSearchParams(body).entries())
-        : { ...((body as Record<string, unknown>) ?? {}) };
-    const q = (query as Record<string, unknown>) ?? {};
-
     const svc = identityService(ctx);
-    const email = String(args.email ?? "").trim();
-    const next = safeNextPath(args.next ?? q.next);
+    const email = String(emailIn ?? "").trim();
+    const next = safeNextPath(nextIn);
+    let origin: string | undefined;
+    try {
+      if (typeof urlIn === "string" && urlIn) origin = new URL(urlIn).origin;
+    } catch {
+      /* a malformed url just yields a relative link */
+    }
 
     if (looksLikeEmail(email)) {
       const user = await svc.findUserByEmail(email);
       const shouldIssue = user ? !user.disabled : (await svc.getSignup()) === "open";
       if (shouldIssue) {
         const issued = await svc.issueToken({ purpose: "login", email, data: { next } });
-        await deliverToken(ctx, {
-          email,
-          path: issued.path,
-          purpose: "login",
-          headers: (headers ?? null) as Record<string, string> | null,
-        });
+        await deliverToken(ctx, { email, path: issued.path, purpose: "login", origin });
       }
     }
     // Identical response either way — nothing leaks about who exists or
-    // whether anything was sent.
-    return {
-      status: 200,
-      headers: { "content-type": "text/html; charset=utf-8" },
-      body: renderSentPage(looksLikeEmail(email) ? email : "that address"),
-    };
+    // whether anything was sent. The workflow sets the text/html content-type.
+    return { html: renderSentPage(looksLikeEmail(email) ? email : "that address") };
   },
 };
 
@@ -106,16 +97,18 @@ function requestRoute(mount: string): Workflow {
     source: "code",
     nodes: [
       { id: "in", op: "boundary.http.request", config: { method: "POST", path: `${mount}/magic-link/request` } },
+      { id: "form", op: "core.object.extract", config: { keys: ["email", "next"] } },
       { id: "call", op: "auth.magiclink.request" },
+      { id: "ct", op: "core.const.object", config: { value: { "content-type": "text/html; charset=utf-8" } } },
       { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
     ],
     edges: [
-      { from: { node: "in", port: "query" }, to: { node: "call", port: "query" } },
-      { from: { node: "in", port: "body" }, to: { node: "call", port: "body" } },
-      { from: { node: "in", port: "headers" }, to: { node: "call", port: "headers" } },
-      { from: { node: "call", port: "status" }, to: { node: "out", port: "status" } },
-      { from: { node: "call", port: "headers" }, to: { node: "out", port: "headers" } },
-      { from: { node: "call", port: "body" }, to: { node: "out", port: "body" } },
+      { from: { node: "in", port: "body" }, to: { node: "form", port: "object" } },
+      { from: { node: "form", port: "email" }, to: { node: "call", port: "email" } },
+      { from: { node: "form", port: "next" }, to: { node: "call", port: "next" } },
+      { from: { node: "in", port: "url" }, to: { node: "call", port: "url" } },
+      { from: { node: "call", port: "html" }, to: { node: "out", port: "body" } },
+      { from: { node: "ct", port: "out" }, to: { node: "out", port: "headers" } },
     ],
   };
 }
