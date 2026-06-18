@@ -17,6 +17,11 @@ export interface ValidationIssue {
   path?: string;
   /** Stable machine code for programmatic handling. */
   code?: string;
+  /**
+   * "error" (default) blocks registration; "warning" is advisory — surfaced in
+   * the editor and on save, but the workflow still validates and runs.
+   */
+  severity?: "error" | "warning";
 }
 
 /** Thrown by `validateWorkflow` when a workflow document is invalid (§6). */

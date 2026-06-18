@@ -385,6 +385,14 @@ export interface OpDefinition {
    * section) but never block their use.
    */
   reusable?: boolean;
+  /**
+   * Declares that this op reads or writes sensitive data — a *signal*, never an
+   * enforcement (the op stays pure: it never inspects `ctx.principal`). The
+   * validator warns when a network trigger can reach a `privileged` op without
+   * `requireAuth` on the boundary, so authorization stays a trigger concern
+   * (who's asking) while a forgotten gate still gets caught. Unset = ordinary.
+   */
+  sensitivity?: "privileged";
 }
 
 // ────────────────────────────────────────────────────────────────────────────

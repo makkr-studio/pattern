@@ -18,6 +18,7 @@ import {
   type OnBeforeDelete,
 } from "@xyflow/react";
 import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern/admin-sdk";
+import { hasErrors, isWarning, issueSummary } from "../lib/issues";
 import { api } from "../lib/api";
 import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
 import { OpNode } from "../editor/OpNode";
@@ -1028,9 +1029,11 @@ function EditorInner() {
     }
     const res = await save.mutateAsync({ slug: doc.id, doc, note: "edited in admin" });
     setIssues(res.issues);
-    if (!res.issues.length) adoptSaved(doc);
-    setNotice(res.issues.length ? `${res.issues.length} validation issue(s)` : `Saved ${res.version?.id}. Deploy to activate.`);
-    sfx.play(res.issues.length ? "invalid" : "save");
+    // Errors block the save; warnings ride along (the server still versioned it).
+    const blocked = hasErrors(res.issues);
+    if (!blocked) adoptSaved(doc);
+    setNotice(blocked ? `${issueSummary(res.issues)} — fix before saving` : `Saved ${res.version?.id}${res.issues.length ? ` (${issueSummary(res.issues)})` : ""}. Deploy to activate.`);
+    sfx.play(blocked ? "invalid" : "save");
   };
 
   const onDeploy = async () => {
@@ -1040,9 +1043,9 @@ function EditorInner() {
       return;
     }
     const saved = await save.mutateAsync({ slug: doc.id, doc, note: "deploy" });
-    if (saved.issues.length) {
-      setIssues(saved.issues);
-      setNotice(`${saved.issues.length} validation issue(s) — fix before deploying.`);
+    setIssues(saved.issues);
+    if (hasErrors(saved.issues)) {
+      setNotice(`${issueSummary(saved.issues)} — fix before deploying.`);
       sfx.play("invalid");
       return;
     }
@@ -1059,9 +1062,9 @@ function EditorInner() {
     if (!id) return;
     const doc: WorkflowDoc = { ...currentDoc(), id, name: id, source: undefined };
     const res = await save.mutateAsync({ slug: id, doc, note: `forked from ${slug ?? "draft"}` });
-    if (res.issues.length) {
+    if (hasErrors(res.issues)) {
       setIssues(res.issues);
-      setNotice(`${res.issues.length} validation issue(s) — fix before forking.`);
+      setNotice(`${issueSummary(res.issues)} — fix before forking.`);
       sfx.play("invalid");
       return;
     }
@@ -1436,10 +1439,15 @@ function EditorInner() {
             )}
             {issues.length > 0 && (
               <div className="mt-5">
-                <div className="text-[var(--color-neon-pink)] mb-2 text-xs font-semibold uppercase tracking-wider">Problems</div>
+                <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">
+                  {hasErrors(issues) ? "Problems" : "Warnings"}
+                </div>
                 {issues.map((iss, i) => (
                   <div key={i} className="mb-1.5 text-xs">
-                    <span className="font-mono text-[var(--color-neon-amber)]">{iss.nodeId ?? ""}</span> {iss.message}
+                    <span className={`mr-1 ${isWarning(iss) ? "text-[var(--color-neon-amber)]" : "text-[var(--color-neon-pink)]"}`}>
+                      {isWarning(iss) ? "⚠" : "✗"}
+                    </span>
+                    <span className="font-mono text-muted">{iss.nodeId ?? ""}</span> {iss.message}
                   </div>
                 ))}
               </div>

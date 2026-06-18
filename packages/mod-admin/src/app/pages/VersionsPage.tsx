@@ -5,6 +5,7 @@ import { useDeploy, useDiff, useSaveWorkflow, useVersions, useWorkflow } from ".
 import { Badge, GlassPanel, Modal, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { JsonDiff } from "../components/JsonDiff";
 import { ago } from "../lib/format";
+import { hasErrors } from "../lib/issues";
 import { GitFork, Pencil } from "lucide-react";
 import { Rocket } from "../components/icon";
 import { sfx } from "../lib/sfx";
@@ -78,9 +79,9 @@ export function VersionsPage() {
     const doc = await api.versions.get(slug, forkFrom);
     const id = forkSlug.trim();
     const res = await saveWf.mutateAsync({ slug: id, doc: { ...doc, id, name: id, source: undefined }, note: `forked from ${slug} ${forkFrom}` });
-    if (res.issues.length) {
+    if (hasErrors(res.issues)) {
       setForkFrom(null);
-      setNotice({ kind: "error", text: `Fork failed validation: ${res.issues.map((i) => i.message).join("; ")}` });
+      setNotice({ kind: "error", text: `Fork failed validation: ${res.issues.filter((i) => i.severity !== "warning").map((i) => i.message).join("; ")}` });
       sfx.play("invalid");
       return;
     }

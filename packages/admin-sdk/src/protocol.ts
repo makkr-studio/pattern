@@ -107,6 +107,8 @@ export interface ValidationIssue {
   path?: string;
   message: string;
   code: string;
+  /** "error" (default) blocks; "warning" is advisory (surfaced, never blocking). */
+  severity?: "error" | "warning";
 }
 
 export interface PortInfo {
