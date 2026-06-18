@@ -138,17 +138,24 @@ export async function loadProject(
   // here so it can be handed to the engine as `offloadTransport`; when the
   // caller brought their own engine, they own its transports (so we skip it).
   let offloadPool: WorkerPoolTransport | undefined;
-  if (!opts.engine && config.workers !== undefined) {
-    const w = typeof config.workers === "number" ? { size: config.workers } : config.workers;
-    offloadPool = new WorkerPoolTransport({ size: w.size, mods: w.mods ?? config.mods });
-  }
 
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
   // The node connection registry up-front means `core.ws.*` ops (notify,
   // broadcast…) reach the same sockets the WS host accepts.
-  const engine =
-    opts.engine ??
-    new Engine({ env: process.env, connections: new NodeConnectionRegistry(), offloadTransport: offloadPool });
+  const engine = opts.engine ?? new Engine({ env: process.env, connections: new NodeConnectionRegistry() });
+
+  if (!opts.engine && config.workers !== undefined) {
+    const w = typeof config.workers === "number" ? { size: config.workers } : config.workers;
+    // Forward each worker's trace into this engine's sink so offloaded runs land
+    // in the admin's Runs view (and the rest of the trace surfaces) like inline
+    // ones, tagged with which worker ran them.
+    offloadPool = new WorkerPoolTransport({
+      size: w.size,
+      mods: w.mods ?? config.mods,
+      onTrace: (evt) => engine.ingestTrace(evt),
+    });
+    engine.setOffloadTransport(offloadPool);
+  }
 
   if (config.mods?.length) {
     await loadMods(engine, config.mods, { baseDir });

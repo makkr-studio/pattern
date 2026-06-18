@@ -171,6 +171,9 @@ export interface TraceSink {
     principal: Principal;
     /** Present when this run was started by another run (`ctx.invoke`). */
     parent?: RunParentRef;
+    /** Where the run executed, when it wasn't the host loop (e.g. "worker:3").
+     *  Stamped by the worker-pool transport as it forwards the trace. */
+    executor?: string;
   }): void;
   onSpanEnd?(span: SpanData): void;
   /**
@@ -201,6 +204,17 @@ export interface TraceSink {
     endedBy?: "drain" | "timeout";
   }): void;
 }
+
+/**
+ * A serializable trace lifecycle event — the wire form for forwarding trace
+ * across a transport seam (e.g. a worker thread posting its runs back to the
+ * host via `engine.ingestTrace`). Mirrors the `TraceSink` callbacks.
+ */
+export type TraceEvent =
+  | { kind: "runStart"; run: Parameters<NonNullable<TraceSink["onRunStart"]>>[0] }
+  | { kind: "spanEnd"; span: SpanData }
+  | { kind: "runReady"; run: Parameters<NonNullable<TraceSink["onRunReady"]>>[0] }
+  | { kind: "runEnd"; run: Parameters<NonNullable<TraceSink["onRunEnd"]>>[0] };
 
 // ────────────────────────────────────────────────────────────────────────────
 // §8 — Events & Hooks (interfaces; in-process impls live in events/ & hooks/)

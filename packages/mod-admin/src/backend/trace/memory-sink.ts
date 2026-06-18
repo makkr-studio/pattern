@@ -34,6 +34,8 @@ export interface RunSummary {
   error?: { message: string };
   /** Set when this run was started by another run (`ctx.invoke`). */
   parent?: RunParentRef;
+  /** Where the run executed when not the host loop (e.g. "worker:3"). */
+  executor?: string;
 }
 
 export interface RunDetail {
@@ -141,6 +143,7 @@ export class MemoryTraceSink implements TraceSink {
     trigger: string;
     principal: Principal;
     parent?: RunParentRef;
+    executor?: string;
   }): void {
     if (this.exclude?.test(run.workflowId)) {
       this.excludedTraces.add(run.traceId);
@@ -157,6 +160,7 @@ export class MemoryTraceSink implements TraceSink {
         startTime: this.now(),
         spanCount: 0,
         parent: run.parent,
+        executor: run.executor,
       },
       spans: [],
     });

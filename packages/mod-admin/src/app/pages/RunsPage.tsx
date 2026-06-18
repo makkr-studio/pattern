@@ -226,6 +226,7 @@ function RunDetail({ runId }: { runId: string }) {
         <span className="font-mono text-sm font-semibold">{summary.workflowId}</span>
         <Badge hue={summary.status === "error" ? 340 : summary.status === "streaming" ? 280 : 150}>{summary.status}</Badge>
         {paused && <Badge hue={45}>paused</Badge>}
+        {summary.executor && <Badge hue={150} title={`ran on ${summary.executor}`}>{summary.executor}</Badge>}
         <span className="text-muted text-xs">{runDuration(summary)}</span>
         <Link
           to={`/runs/${summary.runId}/replay`}
@@ -418,6 +419,11 @@ export function RunsPage() {
                   </span>
                 )}
                 <span className="font-mono text-sm">{r.workflowId}</span>
+                {r.executor && (
+                  <span className="glass text-muted shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]" title={`ran on ${r.executor}`}>
+                    {r.executor}
+                  </span>
+                )}
                 <span className="text-muted ml-auto text-xs">{runDuration(r)}</span>
                 <span className="text-muted w-16 text-right text-xs">{ago(r.startTime)}</span>
               </button>

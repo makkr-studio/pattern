@@ -21,6 +21,25 @@ const port = parentPort!;
 const engine = new Engine();
 const aborts = new Map<string, AbortController>();
 
+// Forward this worker's trace lifecycle back to the host so offloaded runs show
+// up in the Runs view. The run executes under the HOST's run id (passed into
+// runFrom below), so spans line up with what the pool tracks; the worker's own
+// traceId rides along (unique, no collision). postMessage is structured-clone —
+// SpanData is plain data; guard against an op that stashed a non-cloneable attr.
+function forward(event: unknown): void {
+  try {
+    port.postMessage({ type: "trace", event });
+  } catch {
+    /* a non-serializable span attribute — drop the event rather than crash the run */
+  }
+}
+engine.onTrace({
+  onRunStart: (run) => forward({ kind: "runStart", run }),
+  onSpanEnd: (span) => forward({ kind: "spanEnd", span }),
+  onRunReady: (run) => forward({ kind: "runReady", run }),
+  onRunEnd: (run) => forward({ kind: "runEnd", run: { ...run, error: run.error ? serializeError(run.error) : undefined } }),
+});
+
 /** Mods install before the first run executes (messages queue behind this). */
 const ready: Promise<void> = (async () => {
   const mods = (workerData as { mods?: string[] } | undefined)?.mods ?? [];
@@ -67,7 +86,8 @@ async function handleRun(msg: RunMessage): Promise<void> {
     } catch {
       /* boundary config ports — resolved on the host, run directly here */
     }
-    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, undefined, parent);
+    // Run under the HOST's run id so forwarded spans match the pool's handle.
+    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, id, parent);
   } catch (err) {
     port.postMessage({ type: "result", id, status: "error", outputs: {}, error: serializeError(err) });
     port.postMessage({ type: "done", id });

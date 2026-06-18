@@ -48,6 +48,7 @@ import {
   type RunParentRef,
   type RunResult,
   type RunTransport,
+  type TraceEvent,
   type TraceSink,
   type TriggerInput,
   type Workflow,
@@ -164,8 +165,10 @@ export class Engine {
    */
   private readonly services: OpServices;
   private readonly transport: RunTransport;
-  /** Where `offload`-flagged workflows run (a worker pool); undefined = no-op. */
-  private readonly offloadTransport?: RunTransport;
+  /** Where `offload`-flagged workflows run (a worker pool); undefined = no-op.
+   *  Settable post-construction so a pool that needs an engine ref (e.g. to
+   *  forward traces via `ingestTrace`) can be wired after the engine exists. */
+  private offloadTransport?: RunTransport;
   private readonly env: Record<string, string | undefined>;
   /** Backstop (ms) for the streaming trace true-end; threaded into RunDeps. */
   private readonly streamDrainTtlMs?: number;
@@ -544,9 +547,39 @@ export class Engine {
 
   // ── Observability ──
 
+  /** Set (or replace) the transport that runs `offload`-flagged workflows.
+   *  For pools that must reference this engine (e.g. to forward traces). */
+  setOffloadTransport(transport: RunTransport): void {
+    this.offloadTransport = transport;
+  }
+
   /** Subscribe a trace sink; returns an unsubscribe fn (§10). */
   onTrace(sink: TraceSink): () => void {
     return this.traceSink.add(sink);
+  }
+
+  /**
+   * Feed a trace event from off-host into this engine's sink chain (every
+   * `onTrace` subscriber sees it). A run executed on a worker thread builds its
+   * own engine and sink, so its spans never reach the host — the worker-pool
+   * transport forwards them here, tagged with the executor, so offloaded runs
+   * show up in the Runs view exactly like inline ones.
+   */
+  ingestTrace(evt: TraceEvent): void {
+    switch (evt.kind) {
+      case "runStart":
+        this.traceSink.onRunStart(evt.run);
+        break;
+      case "spanEnd":
+        this.traceSink.onSpanEnd(evt.span);
+        break;
+      case "runReady":
+        this.traceSink.onRunReady(evt.run);
+        break;
+      case "runEnd":
+        this.traceSink.onRunEnd(evt.run);
+        break;
+    }
   }
 
   /** Sample node I/O on every run by default (T1). Explicit `RunOptions.sampleIo` still wins. */
