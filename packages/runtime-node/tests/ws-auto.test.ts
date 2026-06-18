@@ -121,7 +121,10 @@ describe("loadProject WS auto-wiring", () => {
         n.id === "in" ? { ...n, config: { requireAuth: { scopes: ["admin"] } } } : n,
       ),
     };
-    await bootProject([guarded, ping], 4958);
+    const project = await bootProject([guarded, ping], 4958);
+    // requireAuth is only ENFORCED when auth is enforceable — register a provider
+    // so the upgrade is actually gated (without one it degrades to advisory-open).
+    project.engine.registerAuthProvider({ name: "deny", authenticate: async () => null });
 
     const denied = await new Promise<boolean>((resolve) => {
       const ws = new WebSocket("ws://localhost:4958");

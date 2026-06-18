@@ -77,10 +77,13 @@ describe("SPA auth stamping (P6)", () => {
     expect((app?.config as { requireAuth?: unknown })?.requireAuth).toBe(true);
   });
 
-  it("leaves the SPA anonymous by default", () => {
-    const mod = adminMod({ storage: memoryFs() });
-    const spa = mod.workflows?.find((w) => w.id === "admin.spa");
-    const app = spa!.nodes.find((n) => n.op === "boundary.http.app");
-    expect((app?.config as { requireAuth?: unknown })?.requireAuth).toBeUndefined();
+  it("declares admin-scope on the SPA by default; auth:false makes it public", () => {
+    const secured = adminMod({ storage: memoryFs() }).workflows?.find((w) => w.id === "admin.spa");
+    const securedApp = secured!.nodes.find((n) => n.op === "boundary.http.app");
+    expect((securedApp?.config as { requireAuth?: unknown })?.requireAuth).toEqual({ scopes: ["admin"] });
+
+    const open = adminMod({ storage: memoryFs(), auth: false }).workflows?.find((w) => w.id === "admin.spa");
+    const openApp = open!.nodes.find((n) => n.op === "boundary.http.app");
+    expect((openApp?.config as { requireAuth?: unknown })?.requireAuth).toBeUndefined();
   });
 });

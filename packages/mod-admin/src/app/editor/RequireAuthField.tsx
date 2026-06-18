@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useManifest } from "../lib/queries";
 
 /**
  * The editor control for a boundary trigger's `requireAuth` — authorization
@@ -31,6 +32,10 @@ const MODES: Array<{ id: Mode; label: string }> = [
 ];
 
 export function RequireAuthField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const { data: manifest } = useManifest();
+  // A requirement is only enforced once an auth provider exists; until then it's
+  // declared-but-advisory (the route serves open). Warn so it's never a surprise.
+  const unenforced = manifest?.authProvider === false && modeOf(value) !== "public";
   const mode = modeOf(value);
   const scopes = mode === "scopes" ? ((value as { scopes?: string[] }).scopes ?? []) : [];
   const env = mode === "env" ? ((value as { env?: string }).env ?? "") : "";
@@ -112,6 +117,14 @@ export function RequireAuthField({ value, onChange }: { value: unknown; onChange
 
       {mode === "public" && <div className="text-muted text-[10px]">No authentication — anyone can reach this trigger.</div>}
       {mode === "signed-in" && <div className="text-muted text-[10px]">Any authenticated principal (no specific scope).</div>}
+
+      {unenforced && (
+        <div className="rounded-lg border border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--color-neon-amber)]">
+          ⚠ No auth provider installed — this requirement is <b>declared but not enforced</b>. The route
+          serves public until you add a provider (e.g. <span className="font-mono">@pattern/mod-identity</span>);
+          the same declaration then starts enforcing, no edit needed.
+        </div>
+      )}
     </div>
   );
 }

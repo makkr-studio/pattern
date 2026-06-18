@@ -207,11 +207,17 @@ Add the identity mods to `pattern.config.json`:
   link as `copy` in its result. Sign-in links print there until you subscribe a
   workflow to the `identity.deliverToken` hook (`payload: { email, url, purpose,
   delivered }` — send it, set `delivered: true`).
-- **The admin flips to secure-by-default** (`admin` scope required; a
-  logged-out browser is redirected to `/auth/login`). Users / Invite /
-  Sessions screens appear under "Access".
-- **Protect any route** with `requireAuth: true` (or `{ "scopes": ["admin"] }`)
-  in the trigger's config. The trigger's **`user` output port** carries
+- **The admin's `requireAuth` starts being ENFORCED.** It always *declared*
+  `admin` scope (the editor shows it even before you add identity, with a "not
+  enforced — no provider" note); installing a provider just flips it on — a
+  logged-out browser now redirects to `/auth/login`, and you **reconfigure
+  nothing** (the admin's routes are code-derived each boot). Until a provider
+  exists, `requireAuth` routes serve open and the host warns loudly on boot.
+  Users / Invite / Sessions screens appear under "Access".
+- **Protect any route** with `requireAuth` on its trigger (the editor's auth
+  selector, or `{ "scopes": ["admin"] }` in config). Same rule everywhere: a
+  declared requirement is enforced once a provider exists, advisory-open +
+  warned before that. The trigger's **`user` output port** carries
   `{ id, email?, scopes, claims } | null` — wire it to scope data per user
   (e.g. `in.user → yourOp.owner`). In op code, `ctx.principal` has the same.
 - Signup is **invite-only** by default; customize via a wrapper mod

@@ -49,6 +49,20 @@ pages all arrive this way. The same idea powers these docs: see
 
 ## Locking it down
 
-Add `@pattern/mod-identity` + a login method (e.g.
-`@pattern/mod-auth-magic-link`) and the first boot prints a one-time bootstrap
-link that creates the first admin. See [Identity & auth](identity.md).
+The admin **always declares** `requireAuth: { scopes: ["admin"] }` on its API +
+SPA — the requirement is part of what it is, not something that toggles with your
+setup. Whether it's *enforced* depends on an auth provider:
+
+- **No provider** → the requirement can't be enforced (nobody can authenticate),
+  so the admin serves **advisory-open** and the host **warns loudly on every
+  boot**. Good for local work; never silently exposed.
+- **Add `@pattern/mod-identity`** (+ a login method like
+  `@pattern/mod-auth-magic-link`) → the *same* declaration is now enforced, the
+  first boot prints a one-time bootstrap link that creates the first admin, and a
+  logged-out browser is redirected to `/auth/login`. **You reconfigure nothing**
+  — the admin's routes are code-derived each boot; adding the mod and restarting
+  is all it takes.
+
+Pass `auth: false` to `adminMod` for an intentionally-public admin (silences the
+warning); `auth: { scopes: [...] }` to require a different scope. See
+[Identity & auth](identity.md).

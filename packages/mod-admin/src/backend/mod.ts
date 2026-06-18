@@ -133,10 +133,16 @@ function packagedDocs(engine: Engine): void {
 
 export function adminMod(options: AdminModOptions = {}): PatternMod {
   const mount = (options.mount ?? "/admin").replace(/\/$/, "") || "/admin";
-  const auth = options.auth === true ? true : typeof options.auth === "object" ? options.auth : undefined;
+  // Secure-by-default by DECLARATION, not by environment: the admin always
+  // declares `requireAuth: { scopes: ["admin"] }` — the config is identical
+  // whether or not a provider is installed (so the editor always shows it).
+  // Whether it's *enforced* is the engine's call (it degrades to advisory-open,
+  // with a loud host warning, when no provider exists). `auth: false` is the
+  // explicit opt-out to a truly public admin; `auth: true | { scopes }` overrides.
+  const auth = options.auth === false ? undefined : options.auth === undefined ? { scopes: ["admin"] } : options.auth;
 
   // The SPA workflow is auth-stamped like every API route — without this the
-  // admin UI itself would stay publicly reachable when `auth` is configured.
+  // admin UI itself would stay publicly reachable.
   const spa = auth ? stampRequireAuth(spaWorkflow(mount), auth) : spaWorkflow(mount);
 
   // Created in `setup`, bootstrapped in `ready` (after the whole mod batch).
@@ -181,33 +187,12 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     // Bootstrap in `ready`, not `setup`: stored workflows may use ops from mods
     // listed *after* the admin in the project config — `ready` runs once every
     // mod of the batch is installed, so all their ops resolve.
-    ready: async (engine) => {
+    // The admin's auth requirement is declared at construction (above) and never
+    // depends on what else is installed — so adding an identity/auth mod later
+    // means a restart, not reconfiguring a single workflow. Enforcement (or the
+    // advisory-open + loud host warning) is the engine/host's call at run time.
+    ready: async () => {
       await controlPlane?.bootstrap();
-      // Secure-by-default (§9). With no explicit `auth` option, the policy keys
-      // on whether auth is *enforceable* — i.e. any auth provider is registered
-      // (identity, or any future auth mod — not a specific service):
-      //  - a provider exists → lock the whole admin (API + SPA) to the admin
-      //    scope. Re-registering upserts by id, so the host re-derives the routes
-      //    with requireAuth.
-      //  - none → the admin CAN'T be secured (stamping would brick it: every
-      //    principal is anonymous with no login). So it serves OPEN, but says so
-      //    loudly on every boot. `auth: false` is the explicit acknowledgment
-      //    that silences this; `auth: true | { scopes }` forces a requirement.
-      if (options.auth === undefined) {
-        if (engine.hasAuthProvider()) {
-          const requirement = { scopes: ["admin"] };
-          for (const wf of [...endpointWorkflows(requirement), stampRequireAuth(spaWorkflow(mount), requirement)]) {
-            await engine.registerWorkflowAsync(wf);
-          }
-        } else {
-          console.warn(
-            `\n[pattern] ⚠ Pattern Admin is serving UNAUTHENTICATED at ${mount} — anyone who can reach this port\n` +
-              `[pattern]   has full control of your workflows, runs, and data. Add an auth provider\n` +
-              `[pattern]   (e.g. @pattern/mod-identity) to secure it, or pass admin's \`auth: false\` to\n` +
-              `[pattern]   acknowledge an intentionally-open local admin and silence this warning.\n`,
-          );
-        }
-      }
     },
   });
 }
