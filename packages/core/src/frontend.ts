@@ -58,11 +58,9 @@ export interface DeclarativeColumn {
 export interface DeclarativeAction {
   label: string;
   /** The dedicated route this action calls (usually a POST). */
-  route?: RouteRef;
-  /** @deprecated transitional — the op type the action ran via the generic invoke endpoint. */
-  run?: string;
+  route: RouteRef;
   icon?: string;
-  /** "silent" (default) refreshes the source; "show" renders the route's result. */
+  /** "silent" (default) refreshes the table; "show" renders the route's result. */
   result?: "silent" | "show";
 }
 
@@ -75,8 +73,6 @@ export interface DeclarativeRowAction {
   label: string;
   /** The dedicated route this action calls. Mutually exclusive with `path`. */
   route?: RouteRef;
-  /** @deprecated transitional — the op type the action ran via the generic invoke endpoint. */
-  run?: string;
   /**
    * Navigate instead of calling: a page path whose `:tokens` are filled from
    * the row via `args`, e.g. `path: "/x/identity/users/:userId"` +
@@ -119,13 +115,9 @@ export interface SettingsSection {
   title: string;
   description?: string;
   /** Route returning the current values keyed by field. */
-  route?: RouteRef;
+  route: RouteRef;
   /** Route receiving `{ [key]: value }` patches. */
-  submitRoute?: RouteRef;
-  /** @deprecated transitional — the op that returned the values via invoke. */
-  source?: string;
-  /** @deprecated transitional — the op that received patches via invoke. */
-  submit?: string;
+  submitRoute: RouteRef;
   fields: SettingsField[];
 }
 
@@ -133,23 +125,21 @@ export interface SettingsSection {
  * A declarative page body (Tier 1). A data view names the dedicated `route` it
  * reads (a form names the `route` it submits to) — so a declarative page is
  * *wiring over purposeful, named endpoints*, never a generic op invoker and
- * never a new bespoke surface. (`source`/`submit` are transitional aliases.)
+ * never a new bespoke surface.
  */
 export type DeclarativeView =
   | {
       kind: "table";
-      route?: RouteRef;
-      /** @deprecated transitional — read via the generic invoke endpoint. */
-      source?: string;
+      route: RouteRef;
       columns: DeclarativeColumn[];
       actions?: DeclarativeAction[];
       rowActions?: DeclarativeRowAction[];
     }
-  | { kind: "form"; schema: unknown; route?: RouteRef; /** @deprecated transitional */ submit?: string }
-  | { kind: "chart"; route?: RouteRef; source?: string; spec: unknown }
-  | { kind: "json" | "markdown"; route?: RouteRef; source?: string }
+  | { kind: "form"; schema: unknown; route: RouteRef }
+  | { kind: "chart"; route: RouteRef; spec: unknown }
+  | { kind: "json" | "markdown"; route: RouteRef }
   /** A single object rendered as labeled rows (a `copy` key gets a Copy button). */
-  | { kind: "detail"; route?: RouteRef; source?: string }
+  | { kind: "detail"; route: RouteRef }
   | { kind: "graph"; workflow: string }
   | { kind: "iframe"; url: string };
 
@@ -176,8 +166,6 @@ export interface CommandDef {
   label: string;
   /** A dedicated route to call when chosen (the result is shown to the operator). */
   route?: RouteRef;
-  /** @deprecated transitional — the op run via the generic invoke endpoint, or a client-side action key. */
-  run?: string;
   /** Page path to navigate to when chosen (e.g. a contributed page's path). */
   path?: string;
   icon?: string;

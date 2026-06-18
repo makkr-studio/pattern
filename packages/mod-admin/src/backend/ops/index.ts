@@ -12,7 +12,6 @@ import {
   boundaries,
   collectIssues,
   httpOutcome,
-  resolvePorts,
   stream,
   value,
   z,
@@ -371,59 +370,6 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
   });
   return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [] };
 });
-/**
- * Run a "source" op one-shot and return its output — the data backend for
- * declarative pages (§6). Wraps the op in a synthetic manual→op→return workflow
- * so any catalog op can feed a table/chart/json view.
- */
-const invokeOp = adminOp("admin.invoke", "Run a source op once and return its output (backs declarative pages).", { in: { source: Bd(S), input: Bd(z.unknown().optional()) }, out: "result" }, async (args, { engine }, ctx) => {
-  const source = str(args.source, "source");
-  const op = engine.ops.get(source);
-  if (!op) throw new DomainError("not_found", `unknown op "${source}"`);
-  // ACL: this endpoint backs declarative-page *data sources*. Refuse control-plane
-  // internals (every `admin.*` op mutates or reads privileged state — the purpose-
-  // built routes own those), boundaries (meaningless to invoke), and any op an
-  // author marked `reusable: false` (declared "not meant to be wired arbitrarily").
-  if (source.startsWith("admin.") || source.startsWith("boundary.") || op.reusable === false) {
-    throw new DomainError("forbidden", `op "${source}" cannot be invoked as a page data source`);
-  }
-  // Decompose the page's `input` object onto the source op's ports. Pure
-  // domain-port ops get one key per port via core.object.extract (the same
-  // primitive a hand-authored route uses). Legacy HTTP-shaped ports
-  // (params/query/body — ops not yet refactored) receive the whole object, as
-  // before, so the transition stays seamless.
-  const HTTP_PORTS = new Set(["params", "query", "body", "headers"]);
-  const valueInputs = Object.entries(resolvePorts(op.inputs, {})).filter(([, s]) => s.kind === "value").map(([n]) => n);
-  const httpPorts = valueInputs.filter((p) => HTTP_PORTS.has(p));
-  const domainPorts = valueInputs.filter((p) => !HTTP_PORTS.has(p));
-  const firstOut = Object.keys(resolvePorts(op.outputs, {}))[0] ?? "out";
-  const wf: Workflow = {
-    id: `__invoke_${source}`,
-    nodes: [
-      { id: "t", op: "boundary.manual", config: { outputs: ["input"] } },
-      ...(domainPorts.length ? [{ id: "x", op: "core.object.extract", config: { keys: domainPorts } }] : []),
-      { id: "s", op: source },
-      { id: "r", op: "boundary.return" },
-    ],
-    edges: [
-      { from: { node: "t", port: "out" }, to: { node: "s", port: "in" } },
-      ...httpPorts.map((p) => ({ from: { node: "t", port: "input" }, to: { node: "s", port: p } })),
-      ...(domainPorts.length
-        ? [
-            { from: { node: "t", port: "input" }, to: { node: "x", port: "object" } },
-            ...domainPorts.map((p) => ({ from: { node: "x", port: p }, to: { node: "s", port: p } })),
-          ]
-        : []),
-      { from: { node: "s", port: firstOut }, to: { node: "r", port: "value" } },
-    ],
-  };
-  // Run as the CALLER's principal: ops guarding scopes in-op (e.g. identity.*)
-  // see who's really asking, not an anonymous synthetic run.
-  const res = await engine.run(wf, { trigger: "t", input: { input: args.input }, principal: ctx.principal });
-  if (res.status === "error") throw res.error;
-  return (Object.values(res.outputs)[0] as { value?: unknown } | undefined)?.value ?? null;
-});
-
 /** Replace non-serializable run outputs (live streams) with a marker. */
 function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {};
@@ -565,7 +511,6 @@ export const adminOps: OpDefinition[] = [
   settingsGet,
   settingsSet,
   uiManifest,
-  invokeOp,
   runOp,
   docPortsOp,
   templateList,

@@ -157,8 +157,6 @@ export class AdminClient {
     get: <T = Record<string, unknown>>(): Promise<T> => this.request("GET", "/settings"),
     set: <T = Record<string, unknown>>(patch: Record<string, unknown>): Promise<T> => this.request("POST", "/settings", patch),
   };
-  /** Run a source op once and return its output (declarative-page data source). */
-  invoke = <T = unknown>(source: string, input?: unknown): Promise<T> => this.request("POST", "/invoke", { source, input });
   /**
    * Call a dedicated route by `{ method, path }` — how declarative surfaces reach
    * their data and run their actions now that there is no generic invoke

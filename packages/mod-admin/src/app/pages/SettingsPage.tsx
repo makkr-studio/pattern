@@ -39,22 +39,17 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  */
 function ModSettingsSection({ mod, section, flash }: { mod: string; section: ModSection; flash: (t: string) => void }) {
   const qc = useQueryClient();
-  // Prefer the dedicated route; fall back to the transitional source op.
-  const readKey = section.route ? ["call", section.route.method ?? "GET", section.route.path] : ["invoke", section.source];
+  const readKey = ["call", section.route.method ?? "GET", section.route.path];
   const { data, error } = useQuery({
     queryKey: readKey,
-    queryFn: () =>
-      section.route
-        ? api.call<Record<string, unknown>>(section.route.method ?? "GET", section.route.path)
-        : api.invoke<Record<string, unknown>>(section.source ?? ""),
+    queryFn: () => api.call<Record<string, unknown>>(section.route.method ?? "GET", section.route.path),
   });
   const [saving, setSaving] = useState(false);
 
   const save = async (key: string, value: unknown) => {
     setSaving(true);
     try {
-      if (section.submitRoute) await api.call(section.submitRoute.method ?? "POST", section.submitRoute.path, { [key]: value });
-      else await api.invoke(section.submit ?? "", { [key]: value });
+      await api.call(section.submitRoute.method ?? "POST", section.submitRoute.path, { [key]: value });
       await qc.invalidateQueries({ queryKey: readKey });
       flash(`${section.title}: ${key} saved.`);
     } catch (err) {

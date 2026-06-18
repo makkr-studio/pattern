@@ -144,7 +144,6 @@ export const endpointSpecs: EndpointSpec[] = [
   { id: "admin.api.settings.get", method: "GET", path: `${API}/settings`, op: "admin.settings.get" },
   { id: "admin.api.settings.set", method: "POST", path: `${API}/settings`, op: "admin.settings.set" },
   { id: "admin.api.ui.manifest", method: "GET", path: `${API}/ui/manifest`, op: "admin.ui.manifest" },
-  { id: "admin.api.invoke", method: "POST", path: `${API}/invoke`, op: "admin.invoke" },
   { id: "admin.api.run", method: "POST", path: `${API}/run`, op: "admin.run" },
   { id: "admin.api.doc.ports", method: "POST", path: `${API}/doc/ports`, op: "admin.doc.ports" },
   { id: "admin.api.templates", method: "GET", path: `${API}/templates`, op: "admin.template.list" },
