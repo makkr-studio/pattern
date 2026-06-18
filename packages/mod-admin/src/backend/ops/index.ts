@@ -161,15 +161,17 @@ const workflowSave = adminOp("admin.workflow.save", "Validate a doc + mint an im
   const slug = str(args.slug, "slug");
   const doc = args.doc as Workflow;
   if (!doc || typeof doc !== "object") throw new Error('missing "doc"');
-  const issues = collectIssues(doc, engine.ops).issues;
-  if (issues.length) return { issues };
+  // Block on errors only; warnings (e.g. a privileged op behind no auth) ride
+  // along to the editor but don't stop the save.
+  const { ok, issues } = collectIssues(doc, engine.ops);
+  if (!ok) return { issues };
   // Versions are attributed: who saved this is part of the snapshot's story.
   const version = await controlPlane.store.saveVersion(
     slug,
     { ...doc, source: "file" },
     { note: args.note as string | undefined, author: authorOf(ctx.principal), principal: ctx.principal },
   );
-  return { version, issues: [] };
+  return { version, issues };
 });
 
 const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON → validate → new file workflow.", { in: { json: Bd(z.unknown()) }, out: ["slug", "issues"] }, async (args, { controlPlane, engine }, ctx) => {
@@ -178,8 +180,8 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
   // The imported id becomes a storage path segment — reject path-like ids here
   // with a friendly message (the store re-checks as a backstop).
   const slug = safeSegment(raw.id, "workflow id");
-  const issues = collectIssues(raw, engine.ops).issues;
-  if (!issues.length) {
+  const { ok, issues } = collectIssues(raw, engine.ops);
+  if (ok) {
     await controlPlane.store.saveVersion(slug, { ...raw, source: "file" }, { note: "imported", author: authorOf(ctx.principal), principal: ctx.principal });
   }
   return { slug, issues };
@@ -391,8 +393,8 @@ const runOp = adminOp("admin.run", "Run a workflow (draft or live) from a trigge
   const slug = args.slug as string | undefined;
   const raw = doc ?? (slug ? engine.workflows.get(slug) : undefined);
   if (!raw) throw new DomainError("invalid", "provide a `doc` or a known `slug`");
-  const issues = collectIssues(raw, engine.ops).issues;
-  if (issues.length) return { ok: false, issues };
+  const { ok, issues } = collectIssues(raw, engine.ops);
+  if (!ok) return { ok: false, issues };
   // A draft doc never went through registration — run the resolve phase here so
   // boundary config ports (e.g. a schema wired into http.request's `body`) are
   // frozen in and the run behaves exactly like its deployed self would.

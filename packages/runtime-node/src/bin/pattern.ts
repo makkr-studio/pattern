@@ -127,15 +127,20 @@ async function cmdValidate(file: string | undefined): Promise<void> {
   const doc = loadWorkflow(file);
   const engine = await projectEngine();
   const { ok, issues } = collectIssues(doc, engine.ops);
+  const warnings = issues.filter((i) => i.severity === "warning");
+  const errors = issues.filter((i) => i.severity !== "warning");
+  const line = (i: (typeof issues)[number], mark: string) => {
+    const loc = [i.nodeId && `node "${i.nodeId}"`, i.port && `port "${i.port}"`].filter(Boolean).join(", ");
+    console.log(`  ${mark} ${i.message}${loc ? pc.dim(` (${loc})`) : ""}`);
+  };
   if (ok) {
-    console.log(pc.green("✓ workflow is valid"));
+    console.log(warnings.length ? pc.green("✓ valid ") + pc.yellow(`(${warnings.length} warning(s))`) : pc.green("✓ workflow is valid"));
+    for (const i of warnings) line(i, pc.yellow("⚠"));
     return;
   }
-  console.log(pc.red(`✗ ${issues.length} issue(s):`));
-  for (const i of issues) {
-    const loc = [i.nodeId && `node "${i.nodeId}"`, i.port && `port "${i.port}"`].filter(Boolean).join(", ");
-    console.log(`  ${pc.red("•")} ${i.message}${loc ? pc.dim(` (${loc})`) : ""}`);
-  }
+  console.log(pc.red(`✗ ${errors.length} error(s)`) + (warnings.length ? pc.yellow(` + ${warnings.length} warning(s)`) : "") + ":");
+  for (const i of errors) line(i, pc.red("•"));
+  for (const i of warnings) line(i, pc.yellow("⚠"));
   process.exit(1);
 }
 

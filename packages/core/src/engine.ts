@@ -30,7 +30,8 @@ import {
 } from "./registry.js";
 import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
-import { validateWorkflow } from "./validate.js";
+import { collectIssues, validateWorkflow } from "./validate.js";
+import { WorkflowValidationError } from "./errors.js";
 import type { FrontendContribution, SettingsSection } from "./frontend.js";
 import type { DocsContribution } from "./docs.js";
 import {
@@ -291,7 +292,14 @@ export class Engine {
     opts: { validate?: boolean } = {},
     secretPaths: Record<string, string[]> = {},
   ): this {
-    if (opts.validate !== false) validateWorkflow(workflow, this.ops);
+    if (opts.validate !== false) {
+      // Errors throw (block registration); warnings are advisory — log them so a
+      // file-workflow author who skips `pattern validate` still sees e.g. a
+      // privileged op left reachable without requireAuth.
+      const { ok, issues } = collectIssues(workflow, this.ops);
+      if (!ok) throw new WorkflowValidationError(issues, workflow.id);
+      for (const w of issues) if (w.severity === "warning") console.warn(`[pattern] ⚠ ${workflow.id}: ${w.message}`);
+    }
 
     // Upsert: tear down any prior wiring for this id first, so re-registering an
     // updated definition (e.g. reloaded from a DB) doesn't leave stale hook

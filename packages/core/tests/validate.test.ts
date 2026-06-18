@@ -70,6 +70,60 @@ describe("validation (§6)", () => {
   });
 });
 
+describe("privileged-op-without-auth warning (§9)", () => {
+  /** Engine with a `privileged`-tagged data op registered. */
+  const engineWithPrivileged = () => {
+    const engine = new Engine();
+    engine.registerOp({
+      type: "test.secrets.list",
+      inputs: {},
+      outputs: { secrets: { kind: "value" } },
+      sensitivity: "privileged",
+      execute: async () => ({ secrets: [] }),
+    });
+    return engine;
+  };
+
+  const route = (requireAuth?: unknown): Workflow => ({
+    id: "secrets-route",
+    nodes: [
+      { id: "in", op: "boundary.http.request", config: { method: "GET", path: "/secrets", ...(requireAuth !== undefined ? { requireAuth } : {}) } },
+      { id: "op", op: "test.secrets.list" },
+      { id: "out", op: "boundary.http.response" },
+    ],
+    edges: [
+      { from: { node: "in", port: "out" }, to: { node: "op", port: "in" } },
+      { from: { node: "op", port: "secrets" }, to: { node: "out", port: "body" } },
+    ],
+  });
+
+  it("warns (non-blocking) when a network trigger reaches a privileged op with no requireAuth", () => {
+    const res = collectIssues(route(), engineWithPrivileged().ops);
+    const warn = res.issues.find((i) => i.code === "privileged_without_auth");
+    expect(warn?.severity).toBe("warning");
+    expect(warn?.nodeId).toBe("in");
+    // A warning does NOT fail validation — the workflow still registers + runs.
+    expect(res.ok).toBe(true);
+  });
+
+  it("is silent once the trigger declares requireAuth", () => {
+    for (const auth of [true, { scopes: ["admin"] }]) {
+      const res = collectIssues(route(auth), engineWithPrivileged().ops);
+      expect(res.issues.some((i) => i.code === "privileged_without_auth")).toBe(false);
+      expect(res.ok).toBe(true);
+    }
+  });
+
+  it("is silent for an ordinary (untagged) op on an open route", () => {
+    const engine = new Engine();
+    engine.registerOp({ type: "test.greetings", inputs: {}, outputs: { greetings: { kind: "value" } }, execute: async () => ({ greetings: [] }) });
+    const wf = route();
+    wf.nodes[1]!.op = "test.greetings";
+    wf.edges[1]!.from.port = "greetings";
+    expect(collectIssues(wf, engine.ops).issues.some((i) => i.code === "privileged_without_auth")).toBe(false);
+  });
+});
+
 describe("node comments", () => {
   const wf: Workflow = {
     id: "documented",

@@ -280,12 +280,37 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
     }
   }
 
-  return { ok: issues.length === 0, workflow, issues };
+  // (6) Advisory (warning, never blocking): a network trigger with no
+  // `requireAuth` that can reach a `privileged` op. Authorization is the
+  // trigger's job (who's asking) — the ops are pure — so a forgotten gate would
+  // expose sensitive data unauthenticated. Skip when auth is set OR wired into
+  // the `requireAuth` config port (then it's a deliberate, resolved decision).
+  for (const t of triggers) {
+    if (!t.op.startsWith("boundary.http.")) continue;
+    const auth = (t.config as { requireAuth?: unknown } | undefined)?.requireAuth;
+    const authSet = auth === true || (auth != null && typeof auth === "object");
+    const authWired = workflow.edges.some((e) => e.to.node === t.id && e.to.port === "requireAuth");
+    if (authSet || authWired) continue;
+    const reach = reachableFrom(workflow, t.id);
+    const hit = workflow.nodes.find((n) => reach.nodes.has(n.id) && ops.get(n.op)?.sensitivity === "privileged");
+    if (hit) {
+      issues.push({
+        nodeId: t.id,
+        message: `trigger "${t.id}" (${t.op}) has no requireAuth but can reach the privileged op "${hit.op}" (node "${hit.id}") — add requireAuth (e.g. { scopes: ["admin"] }) to gate it, or this data is exposed unauthenticated`,
+        code: "privileged_without_auth",
+        severity: "warning",
+      });
+    }
+  }
+
+  // Warnings are advisory: a workflow with only warnings still validates + runs.
+  return { ok: !issues.some((i) => i.severity !== "warning"), workflow, issues };
 }
 
 /**
  * Validate a workflow document. Returns the parsed `Workflow` on success;
- * throws `WorkflowValidationError` with all issues on failure.
+ * throws `WorkflowValidationError` with all *error*-severity issues on failure
+ * (warnings never block).
  */
 export function validateWorkflow(input: unknown, ops: OpRegistry): Workflow {
   const { ok, workflow, issues } = collectIssues(input, ops);
