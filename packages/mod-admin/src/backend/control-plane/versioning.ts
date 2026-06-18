@@ -94,7 +94,7 @@ export function diffWorkflows(a: Workflow, b: Workflow, ignoreUi = false): JsonD
   const edgesRemoved = [...aEdges].filter(([k]) => !bEdges.has(k)).map(([, e]) => e);
 
   const meta: JsonDiff["meta"] = [];
-  for (const field of ["name", "description", "tags"] as const) {
+  for (const field of ["name", "description", "tags", "offload"] as const) {
     const av = (a as Record<string, unknown>)[field];
     const bv = (b as Record<string, unknown>)[field];
     if (stableStringify(av) !== stableStringify(bv)) meta.push({ field, before: av, after: bv });

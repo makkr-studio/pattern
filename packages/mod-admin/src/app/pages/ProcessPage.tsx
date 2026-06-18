@@ -11,7 +11,13 @@ interface ProcessStats {
   host: { platform: string; arch: string; release: string; cpuModel: string; cpus: number; loadAvg: number[]; totalMemMb: number; freeMemMb: number; uptimeSec: number };
   process: { pid: number; node: string; uptimeSec: number; cpuPercent: number; rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number };
   eventLoop: { utilization: number; p50Ms: number; p99Ms: number; maxMs: number };
-  transport: { kind?: string; size?: number; inflight?: number[] } & Record<string, unknown>;
+  transport: {
+    kind?: string;
+    size?: number;
+    inflight?: number[];
+    /** The offload worker pool, when one is configured (hybrid: inline + pool). */
+    offload?: { kind?: string; size?: number; inflight?: number[] } & Record<string, unknown>;
+  } & Record<string, unknown>;
 }
 interface BenchPhase {
   wallMs: number;
@@ -203,7 +209,9 @@ export function ProcessPage() {
         <GlassPanel className="space-y-3 p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Run transport</h2>
-            <Badge hue={transport.kind === "worker-pool" ? 150 : 200}>{String(transport.kind ?? "unknown")}</Badge>
+            <Badge hue={transport.kind === "worker-pool" ? 150 : transport.offload ? 150 : 200}>
+              {transport.offload ? "hybrid" : String(transport.kind ?? "unknown")}
+            </Badge>
           </div>
           {transport.kind === "worker-pool" ? (
             <div className="space-y-2">
@@ -211,10 +219,23 @@ export function ProcessPage() {
               <Stat label="In flight">{(transport.inflight ?? []).join(", ") || "0"}</Stat>
               <p className="text-muted text-[11px]">Runs execute on worker threads — CPU-bound workflows can't stall this event loop.</p>
             </div>
+          ) : transport.offload ? (
+            <div className="space-y-2">
+              <Stat label="Default">Inline (host event loop)</Stat>
+              <Stat label="Offload pool">{String(transport.offload.size ?? "?")}× workers</Stat>
+              <Stat label="In flight">{(transport.offload.inflight ?? []).join(", ") || "0"}</Stat>
+              <p className="text-muted text-[11px]">
+                I/O-bound graphs run inline (the loop is already free during their awaits). Workflows marked
+                <span className="font-medium"> Offload</span> in the editor run on the worker pool, so their CPU-bound
+                compute can&rsquo;t stall this event loop (or this admin).
+              </p>
+            </div>
           ) : (
             <p className="text-muted text-[11px]">
               Runs execute on the host event loop. Fine for I/O-bound graphs; a CPU-bound node blocks everything else
-              while it computes — including this admin. The benchmark below quantifies the difference a worker pool makes.
+              while it computes — including this admin. Mark a heavy workflow <span className="font-medium">Offload</span>
+              {" "}(editor → settings) and add a <span className="font-mono">workers</span> pool to move it off the loop;
+              the benchmark below quantifies the difference.
             </p>
           )}
         </GlassPanel>
