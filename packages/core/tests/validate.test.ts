@@ -124,6 +124,68 @@ describe("privileged-op-without-auth warning (§9)", () => {
   });
 });
 
+describe("offload nudges (cpuHeavy_inline / offload_unsafe_op)", () => {
+  /** Engine with a `cpuHeavy`-tagged op registered. */
+  const engineWithHeavy = () => {
+    const engine = new Engine();
+    engine.registerOp({
+      type: "test.crunch",
+      inputs: { in: { kind: "value" } },
+      outputs: { out: { kind: "value" } },
+      cpuHeavy: true,
+      execute: async () => ({ out: 0 }),
+    });
+    return engine;
+  };
+
+  const heavyRoute = (offload?: boolean): Workflow => ({
+    id: "heavy",
+    ...(offload !== undefined ? { offload } : {}),
+    nodes: [
+      { id: "in", op: "boundary.manual", config: { outputs: ["v"] } },
+      { id: "crunch", op: "test.crunch" },
+      { id: "out", op: "boundary.return" },
+    ],
+    edges: [
+      { from: { node: "in", port: "v" }, to: { node: "crunch", port: "in" } },
+      { from: { node: "crunch", port: "out" }, to: { node: "out", port: "value" } },
+    ],
+  });
+
+  it("warns (non-blocking) when a cpuHeavy op runs inline", () => {
+    const res = collectIssues(heavyRoute(), engineWithHeavy().ops);
+    const warn = res.issues.find((i) => i.code === "cpuHeavy_inline");
+    expect(warn?.severity).toBe("warning");
+    expect(warn?.nodeId).toBe("crunch");
+    expect(res.ok).toBe(true); // advisory — still validates
+  });
+
+  it("is silent once the workflow is flagged offload", () => {
+    const res = collectIssues(heavyRoute(true), engineWithHeavy().ops);
+    expect(res.issues.some((i) => i.code === "cpuHeavy_inline")).toBe(false);
+  });
+
+  it("warns when an offloaded workflow touches a live host socket", () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "ws-offloaded",
+      offload: true,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["msg"] } },
+        { id: "send", op: "boundary.ws.send" },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [{ from: { node: "in", port: "msg" }, to: { node: "send", port: "data" } }],
+    };
+    const res = collectIssues(wf, engine.ops);
+    const warn = res.issues.find((i) => i.code === "offload_unsafe_op");
+    expect(warn?.severity).toBe("warning");
+    expect(warn?.nodeId).toBe("send");
+    // The same workflow run inline raises no socket nudge.
+    expect(collectIssues({ ...wf, offload: false }, engine.ops).issues.some((i) => i.code === "offload_unsafe_op")).toBe(false);
+  });
+});
+
 describe("node comments", () => {
   const wf: Workflow = {
     id: "documented",
