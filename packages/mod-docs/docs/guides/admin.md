@@ -30,11 +30,19 @@ appears in its catalog — and is editable inside itself.
 | Where | What |
 |-------|------|
 | **Workflows / Editor** | The canvas: drag ops from the palette, wire ports (value cyan, stream violet, control dashed), fork code workflows, deploy with route-conflict checks. |
-| **Runs** | Every run with a per-node timeline — when each node ran, what flowed through it (sampled I/O, secrets masked), linked sub-runs for tool calls. |
-| **Replay** | Step a finished run event-by-event on the graph. |
+| **Runs** | Every run with a per-node timeline — when each node ran (sub-millisecond), what flowed through it (sampled I/O, secrets masked), linked sub-runs for tool calls. A streaming run reads honestly as **"ready in X · streamed Y"** (time-to-first-byte vs. time-to-last-token); an offloaded run carries a **worker:N** badge. |
+| **Replay** | Step a finished run on the graph — node-by-node, and (with I/O sampling on) **token-by-token**: scrub the stream and watch each chunk transit its edge. |
 | **Catalog (Ops / Mods)** | Everything registered, with ports, config schemas, and which workflows use what. |
-| **Metrics / Process** | Throughput, error rates, host process vitals. |
-| **System** | Settings, secrets (the vault), observability knobs. |
+| **Metrics / Process** | Throughput, error rates, host process vitals, the run transport (inline + any worker pool). |
+| **System** | Settings, secrets (the vault), observability knobs (I/O sampling, retention). |
+
+The trace separates a run's **result-ready** moment (its outputs are available — the
+`RunResult` resolves and the HTTP response starts) from its **true end** (all
+streams drained). That's why a chat turn that streams for seconds no longer reads
+as a few milliseconds, and why closing the browser mid-stream cancels the run
+(the producer stops instead of streaming to a dead socket). Offloaded
+(`offload`) runs execute on a worker but their full trace is forwarded back, so
+they appear here exactly like inline ones.
 
 ## Mods extend the admin
 
