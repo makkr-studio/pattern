@@ -85,23 +85,18 @@ describe("admin secure-by-default (§9)", () => {
     const spaAuthed = await fetch(`${base}/admin`, { headers: { accept: "text/html", cookie } });
     expect(spaAuthed.status).toBe(200);
 
-    // The privileged identity ops ride the admin invoke path with the cookie.
+    // The privileged identity screens ride their OWN dedicated routes with the cookie.
     const svc = engine.service<IdentityService>(IDENTITY_SERVICE)!;
     expect(svc).toBeTruthy();
-    const invoke = await fetch(`${base}/admin/api/invoke`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.users.list" }),
-    });
-    expect(invoke.status).toBe(200);
-    const users = await invoke.json();
+    const listRes = await fetch(`${base}/admin/api/identity/users`, { headers: { cookie } });
+    expect(listRes.status).toBe(200);
+    const users = await listRes.json();
     expect(users.map((u: { email: string }) => u.email)).toEqual(["root@x.io"]);
 
     // The admin can mint a sign-in link for manual delivery — and it works.
-    const mint = await fetch(`${base}/admin/api/invoke`, {
+    const mint = await fetch(`${base}/admin/api/identity/users/${users[0].id}/login-link`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.users.loginLink", input: { userId: users[0].id } }),
+      headers: { cookie },
     });
     expect(mint.status).toBe(200);
     const { copy } = await mint.json(); // `copy` = the result-view's copyable-field convention
@@ -110,19 +105,16 @@ describe("admin secure-by-default (§9)", () => {
     expect(follow.status).toBe(302);
     expect(follow.headers.get("set-cookie")).toMatch(/pattern_session=/);
 
-    // The settings ops round-trip through the invoke path (the Settings page's
-    // contributed sections use exactly this), and the manifest carries the section.
-    const set = await fetch(`${base}/admin/api/invoke`, {
+    // The settings sections round-trip through their dedicated routes (the
+    // Settings page's contributed sections use exactly these), and the manifest
+    // carries the section.
+    const set = await fetch(`${base}/admin/api/identity/settings`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.settings.set", input: { signup: "open" } }),
+      body: JSON.stringify({ signup: "open" }),
     });
     expect((await set.json()).signup).toBe("open");
-    const get = await fetch(`${base}/admin/api/invoke`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.settings.get" }),
-    });
+    const get = await fetch(`${base}/admin/api/identity/settings`, { headers: { cookie } });
     expect((await get.json()).signup).toBe("open");
 
     const manifest = await (await fetch(`${base}/admin/api/ui/manifest`, { headers: { cookie } })).json();
@@ -135,12 +127,8 @@ describe("admin secure-by-default (§9)", () => {
     const detailsPage = manifest.pages.find((p: { path: string }) => p.path === "/x/identity/users/:userId");
     expect(detailsPage?.views?.length).toBeGreaterThanOrEqual(2);
 
-    // …its profile source resolves…
-    const profile = await fetch(`${base}/admin/api/invoke`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.users.get", input: { userId: users[0].id } }),
-    });
+    // …its profile route resolves…
+    const profile = await fetch(`${base}/admin/api/identity/users/${users[0].id}`, { headers: { cookie } });
     expect((await profile.json()).email).toBe("root@x.io");
 
     // …and run stats see the admin API runs THIS user just made (the runs
@@ -167,42 +155,29 @@ describe("admin secure-by-default (§9)", () => {
     expect(runResult.status).toBe("ok");
     expect(JSON.stringify(runResult.outputs)).toContain("root@x.io");
 
-    const stats = await fetch(`${base}/admin/api/invoke`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ source: "identity.users.runStats", input: { userId: users[0].id } }),
-    });
+    const stats = await fetch(`${base}/admin/api/identity/users/${users[0].id}/run-stats`, { headers: { cookie } });
     const rows = await stats.json();
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]).toHaveProperty("workflow");
     expect(rows[0]).toHaveProperty("runs");
 
-    // …and the same invoke WITHOUT the admin scope hits the in-op guard
-    // (defense in depth below the route stamp).
-    const anon = await fetch(`${base}/admin/api/invoke`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: "identity.users.list" }),
-    });
+    // …and the same route WITHOUT the admin scope is refused at the boundary
+    // (the route is admin-stamped; the in-op guard is the backstop below it).
+    const anon = await fetch(`${base}/admin/api/identity/users`);
     expect(anon.status).toBe(401); // stamped route refuses before the op even runs
   });
 
-  it("in-op scope guard holds even when the admin is explicitly open", async () => {
+  it("identity's admin routes stay admin-gated even when the admin is explicitly open", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const engine = new Engine();
     await install(engine, [identityMod({ storage: "memory" }), adminMod({ auth: false })]);
     const { close } = await createHttpHost(engine, { defaultPort: 4892 }).start();
     closer = close;
 
-    // The invoke route is open (auth:false), but the op itself refuses an
-    // anonymous principal — privileged identity data never leaks through an
-    // open admin.
-    const res = await fetch("http://localhost:4892/admin/api/invoke", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: "identity.users.list" }),
-    });
-    expect(res.ok).toBe(false);
-    expect(JSON.stringify(await res.json())).toContain("admin");
+    // The admin is open (auth:false), but identity stamps its OWN screens' routes
+    // with the admin scope — privileged identity data never leaks through an open
+    // admin. (The ops also re-check the scope in-op, defense in depth.)
+    const res = await fetch("http://localhost:4892/admin/api/identity/users");
+    expect(res.status).toBe(401);
   });
 });

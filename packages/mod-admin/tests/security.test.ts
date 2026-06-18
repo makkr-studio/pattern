@@ -1,13 +1,13 @@
 /**
- * mod-admin — security regressions: path traversal, invoke ACL, SPA auth stamping.
+ * mod-admin — security regressions: path traversal + SPA auth stamping.
  *
  * These guard the control plane's trust boundary: slugs/version ids/fixture
- * names become storage path segments, `admin.invoke` runs arbitrary catalog
- * ops, and the SPA workflow must be auth-stamped like every API route.
+ * names become storage path segments, and the SPA workflow must be auth-stamped
+ * like every API route.
  */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, value, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern/core";
 import { createHttpHost, memoryFs } from "@pattern/runtime-node";
 import { adminMod, FlystorageWorkflowStore } from "@pattern/mod-admin";
 
@@ -65,38 +65,6 @@ describe("path traversal is rejected at the store boundary", () => {
     expect(res.ok).toBe(false);
     const txt = await res.text();
     expect(txt).toContain("invalid workflow id");
-  });
-});
-
-describe("admin.invoke ACL", () => {
-  it("refuses control-plane, boundary, and non-reusable ops as data sources", async () => {
-    await startAdmin();
-    for (const source of ["admin.workflow.delete", "admin.workflow.list", "boundary.http.request"]) {
-      const res = await fetch(api("/invoke"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source }),
-      });
-      expect(res.ok).toBe(false);
-      expect(await res.text()).toContain("cannot be invoked");
-    }
-  });
-
-  it("still runs ordinary source ops", async () => {
-    const engine = await startAdmin();
-    engine.registerOp({
-      type: "test.source",
-      inputs: {},
-      outputs: { out: value() },
-      execute: () => ({ out: [{ id: 1 }] }),
-    });
-    const res = await fetch(api("/invoke"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: "test.source" }),
-    });
-    expect(res.ok).toBe(true);
-    expect(await res.json()).toEqual([{ id: 1 }]);
   });
 });
 
