@@ -12,6 +12,7 @@
 import { value, z, type FrontendContribution, type OpContext, type OpDefinition } from "@pattern/core";
 import type { DocumentRow } from "@pattern/mod-store";
 import { CONVERSATIONS, TURNS, stores, type ConversationDoc, type TurnDoc } from "./data.js";
+import { PATHS } from "./admin-routes.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
 
@@ -33,9 +34,9 @@ type JsonHandler = (args: Record<string, unknown>, ctx: OpContext) => unknown | 
 
 /**
  * An admin data op: a PURE domain function (discrete named inputs, a named
- * output) guarded by the `admin` scope in-op. Invoked by the admin's
- * declarative Data pages via admin.invoke (which decomposes the page input onto
- * these ports). NOT reusable:false — invoke must be able to call it.
+ * output) guarded by the `admin` scope in-op. Each is fronted by its own
+ * dedicated route (see `./admin-routes.ts`) that decomposes the request onto
+ * these ports; the op never sees HTTP.
  */
 function adminOp(type: string, description: string, io: { in?: Record<string, z.ZodType>; out: string }, handler: JsonHandler): OpDefinition {
   const inSpec = io.in ?? {};
@@ -187,7 +188,7 @@ export function chatFrontend(): FrontendContribution {
         path: "/x/chat/conversations",
         view: {
           kind: "table",
-          source: "chat.admin.conversations",
+          route: { method: "GET", path: PATHS.conversations },
           columns: [
             { key: "title", label: "Conversation" },
             { key: "owner", label: "Owner" },
@@ -197,19 +198,19 @@ export function chatFrontend(): FrontendContribution {
           ],
           rowActions: [
             { label: "Open", path: "/x/chat/conversations/:id", args: { id: "id" }, icon: "eye" },
-            { label: "Delete", run: "chat.admin.conversation.delete", args: { id: "id" }, icon: "trash-2", confirm: true },
+            { label: "Delete", route: { method: "DELETE", path: PATHS.conversation }, args: { id: "id" }, icon: "trash-2", confirm: true },
           ],
         },
       },
       {
         path: "/x/chat/conversations/:id",
         views: [
-          { view: { kind: "detail", source: "chat.admin.conversation" } },
+          { view: { kind: "detail", route: { method: "GET", path: PATHS.conversation } } },
           {
             title: "Turns",
             view: {
               kind: "table",
-              source: "chat.admin.turns",
+              route: { method: "GET", path: PATHS.conversationTurns },
               columns: [
                 { key: "input", label: "User said" },
                 { key: "status", label: "Status", format: "badge" },
@@ -228,7 +229,7 @@ export function chatFrontend(): FrontendContribution {
       },
       {
         path: "/x/chat/turns/:id",
-        view: { kind: "json", source: "chat.admin.turn" },
+        view: { kind: "json", route: { method: "GET", path: PATHS.turn } },
       },
     ],
   };

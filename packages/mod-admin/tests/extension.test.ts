@@ -38,15 +38,15 @@ describe("M10 — sample mod extends the admin with zero core changes", () => {
     expect(manifest.commands.some((c) => c.id === "sample.greet")).toBe(true);
 
     const tier1 = manifest.pages.find((p) => p.path === "/x/greetings");
-    expect(tier1?.view).toMatchObject({ kind: "table", source: "sample.greetings.list" });
+    expect(tier1?.view).toMatchObject({ kind: "table", route: { method: "GET", path: "/sample/greetings" } });
 
     const tier2 = manifest.pages.find((p) => p.path === "/x/studio");
     expect(tier2?.remote).toBe("/ext/sample-studio.js");
   });
 
-  it("runs the mod's data-source op via admin.invoke (declarative-page data)", async () => {
+  it("serves the mod's data-source through its own dedicated route (declarative-page data)", async () => {
     const { api } = await start();
-    const rows = await api.invoke<Array<{ id: string }>>("sample.greetings.list");
+    const rows = await api.call<Array<{ id: string }>>("GET", "/sample/greetings");
     expect(rows.map((r) => r.id)).toEqual(["ada", "linus", "yukihiro"]);
   });
 

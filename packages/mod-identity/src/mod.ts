@@ -22,6 +22,7 @@ import { DefaultIdentityService } from "./service.js";
 import { sessionAuthProvider } from "./auth-provider.js";
 import { identityOps } from "./ops.js";
 import { endpointWorkflows } from "./workflows.js";
+import { identityAdminRoutes } from "./admin-routes.js";
 import { identityFrontend } from "./frontend.js";
 import { memoryIdentityStores } from "./store/memory.js";
 import { sqliteIdentityStores } from "./store/sqlite.js";
@@ -50,7 +51,9 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     name: "@pattern/mod-identity",
     docs: { filesystem: "identity-docs", title: "Identity", order: 40 },
     ops: identityOps,
-    workflows: endpointWorkflows(opts.mount),
+    // Auth-page routes + the admin Access screens' dedicated routes (one
+    // purposeful endpoint per screen and action, replacing the invoke path).
+    workflows: [...endpointWorkflows(opts.mount), ...identityAdminRoutes()],
     authProviders: [sessionAuthProvider(() => service)],
     hooks: [
       {

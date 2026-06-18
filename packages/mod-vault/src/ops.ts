@@ -39,9 +39,9 @@ function requireScope(ctx: OpContext, scope: string): void {
 
 /**
  * An admin data op: a PURE domain function (discrete named inputs, a named
- * output) guarded by the `admin` scope in-op. Invoked by the admin's
- * declarative pages via admin.invoke (which decomposes the page input onto
- * these ports). NOT reusable:false — invoke must be able to call it.
+ * output) guarded by the `admin` scope in-op. Each is fronted by its own
+ * dedicated route (see `./admin-routes.ts`) that decomposes the request onto
+ * these ports; the op never sees HTTP.
  */
 function adminOp(
   type: string,

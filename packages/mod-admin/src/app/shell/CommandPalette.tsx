@@ -14,8 +14,8 @@ interface Item {
   group: string;
   /** Route to navigate to… */
   go?: string;
-  /** …or an op type to invoke inline (mod commands with `run`). */
-  run?: string;
+  /** …or a dedicated route to call inline and show (mod commands with `route`). */
+  call?: { method?: string; path: string };
 }
 
 /** Fuzzy command palette (⌘K): workflows, ops, pages, registered commands. */
@@ -40,10 +40,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     ];
     for (const w of workflows ?? []) list.push({ id: `wf:${w.slug}`, label: w.name, group: "Workflow", go: `/editor/${w.slug}` });
     for (const o of ops ?? []) list.push({ id: `op:${o.type}`, label: o.type, group: "Op", go: `/ops/${o.type}` });
-    // Mod commands: `path` navigates, `run` invokes the source op inline.
+    // Mod commands: `path` navigates, `route` calls a dedicated route inline.
     for (const c of manifest?.commands ?? []) {
-      if (!c.path && !c.run) continue;
-      list.push({ id: c.id, label: c.label, group: c.group ?? "Command", go: c.path, run: c.path ? undefined : c.run });
+      if (!c.path && !c.route) continue;
+      list.push({ id: c.id, label: c.label, group: c.group ?? "Command", go: c.path, call: c.path ? undefined : c.route });
     }
     return list;
   }, [workflows, ops, manifest]);
@@ -74,13 +74,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       onClose();
       return;
     }
-    if (item.run) {
-      // Run the command's source op and show its data inline (self-reflection:
-      // the palette is wiring over the same invoke endpoint pages use).
+    if (item.call) {
+      // Call the command's dedicated route and show its data inline (the palette
+      // wires over the same purposeful routes the pages use).
       sfx.play("run");
       setResult({ label: item.label, data: "…" });
       api
-        .invoke(item.run)
+        .call(item.call.method ?? "GET", item.call.path)
         .then((data) => {
           setResult({ label: item.label, data });
           sfx.play("ok");

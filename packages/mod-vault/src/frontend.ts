@@ -6,6 +6,7 @@
  */
 
 import type { FrontendContribution } from "@pattern/core";
+import { PATHS } from "./admin-routes.js";
 
 export function vaultFrontend(): FrontendContribution {
   return {
@@ -20,7 +21,7 @@ export function vaultFrontend(): FrontendContribution {
             title: "Secrets",
             view: {
               kind: "table",
-              source: "vault.admin.list",
+              route: { method: "GET", path: PATHS.secrets },
               columns: [
                 { key: "name", label: "Name" },
                 { key: "version", label: "v" },
@@ -28,7 +29,7 @@ export function vaultFrontend(): FrontendContribution {
                 { key: "updated", label: "Rotated", format: "date" },
               ],
               rowActions: [
-                { label: "Delete", run: "vault.admin.delete", args: { name: "name" }, icon: "trash-2", confirm: true },
+                { label: "Delete", route: { method: "DELETE", path: PATHS.secret }, args: { name: "name" }, icon: "trash-2", confirm: true },
               ],
             },
           },
@@ -47,7 +48,7 @@ export function vaultFrontend(): FrontendContribution {
                 },
                 required: ["name", "value"],
               },
-              submit: "vault.admin.write",
+              route: { method: "POST", path: PATHS.secrets },
             },
           },
         ],

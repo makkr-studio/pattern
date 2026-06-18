@@ -32,24 +32,30 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /**
- * A mod-contributed settings section (admin-spec P2): fields bound to a
- * `source` op (current values) and a `submit` op (patches). Edits auto-save —
- * one toggle shouldn't need a Save button — and re-read, so the panel always
- * shows what the server accepted.
+ * A mod-contributed settings section (admin-spec P2): fields bound to a `route`
+ * (current values) and a `submitRoute` (patches) — dedicated endpoints, not a
+ * generic op invoker. Edits auto-save — one toggle shouldn't need a Save button
+ * — and re-read, so the panel always shows what the server accepted.
  */
 function ModSettingsSection({ mod, section, flash }: { mod: string; section: ModSection; flash: (t: string) => void }) {
   const qc = useQueryClient();
+  // Prefer the dedicated route; fall back to the transitional source op.
+  const readKey = section.route ? ["call", section.route.method ?? "GET", section.route.path] : ["invoke", section.source];
   const { data, error } = useQuery({
-    queryKey: ["invoke", section.source],
-    queryFn: () => api.invoke<Record<string, unknown>>(section.source),
+    queryKey: readKey,
+    queryFn: () =>
+      section.route
+        ? api.call<Record<string, unknown>>(section.route.method ?? "GET", section.route.path)
+        : api.invoke<Record<string, unknown>>(section.source ?? ""),
   });
   const [saving, setSaving] = useState(false);
 
   const save = async (key: string, value: unknown) => {
     setSaving(true);
     try {
-      await api.invoke(section.submit, { [key]: value });
-      await qc.invalidateQueries({ queryKey: ["invoke", section.source] });
+      if (section.submitRoute) await api.call(section.submitRoute.method ?? "POST", section.submitRoute.path, { [key]: value });
+      else await api.invoke(section.submit ?? "", { [key]: value });
+      await qc.invalidateQueries({ queryKey: readKey });
       flash(`${section.title}: ${key} saved.`);
     } catch (err) {
       flash(`${section.title}: ${err instanceof Error ? err.message : String(err)}`);
