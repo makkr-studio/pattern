@@ -364,10 +364,10 @@ describe("admin Chats surface", () => {
       });
     };
 
-    // Scope-guarded: anonymous (or non-admin) callers are refused in-op.
-    const denied = await callAdmin("chat.admin.conversations", undefined, { kind: "anonymous" });
-    expect(denied.status).toBe("error");
-    expect(String(denied.error)).toContain("admin");
+    // The op is PURE now — it runs whatever the principal (even anonymous); the
+    // admin gate lives on its route, not in-op. Authorization is not the op's job.
+    const anon = await callAdmin("chat.admin.conversations", undefined, { kind: "anonymous" });
+    expect(anon.status).toBe("ok");
 
     // The guest conversation is a first-class row: owner label + turn count.
     const list = await callAdmin("chat.admin.conversations");

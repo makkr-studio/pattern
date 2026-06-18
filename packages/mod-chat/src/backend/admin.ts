@@ -6,7 +6,8 @@
  * or anonymous — a first-class row: who (username via the identity service
  * when present, else `guest · a1b2c3`), how many turns, when, and a click
  * through to the turn log with run deep-links (the admin-as-agent-debugger
- * story). Sources are `chat.admin.*` ops, admin-scope-guarded in-op.
+ * story). Backed by `chat.admin.*` ops — pure + `privileged`-tagged; their
+ * routes carry the admin gate.
  */
 
 import { value, z, type FrontendContribution, type OpContext, type OpDefinition } from "@pattern/core";
@@ -15,13 +16,6 @@ import { CONVERSATIONS, TURNS, stores, type ConversationDoc, type TurnDoc } from
 import { PATHS } from "./admin-routes.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
-
-function requireScope(ctx: OpContext, scope: string): void {
-  const p = ctx.principal;
-  if (p.kind !== "user" || !(p.scopes ?? []).includes(scope)) {
-    throw new Error(`chat: "${scope}" scope required`);
-  }
-}
 
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -34,9 +28,11 @@ type JsonHandler = (args: Record<string, unknown>, ctx: OpContext) => unknown | 
 
 /**
  * An admin data op: a PURE domain function (discrete named inputs, a named
- * output) guarded by the `admin` scope in-op. Each is fronted by its own
- * dedicated route (see `./admin-routes.ts`) that decomposes the request onto
- * these ports; the op never sees HTTP.
+ * output). It never checks scopes in-op — authorization is the trigger's job
+ * (the Conversations routes stamp `requireAuth: { scopes: ["admin"] }`). The
+ * `sensitivity: "privileged"` tag lets the validator warn if a route exposes one
+ * without a gate. Each is fronted by its own dedicated route (see
+ * `./admin-routes.ts`) that decomposes the request onto these ports.
  */
 function adminOp(type: string, description: string, io: { in?: Record<string, z.ZodType>; out: string }, handler: JsonHandler): OpDefinition {
   const inSpec = io.in ?? {};
@@ -44,10 +40,10 @@ function adminOp(type: string, description: string, io: { in?: Record<string, z.
     type,
     title: type,
     description,
+    sensitivity: "privileged",
     inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
     outputs: { [io.out]: value() },
     execute: async (ctx) => {
-      requireScope(ctx, "admin");
       const args: Record<string, unknown> = {};
       await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
       return { [io.out]: await handler(args, ctx) };

@@ -3,9 +3,10 @@
  *
  * Two authoring shapes:
  *  - **json ops** (single `out`) — whoami + the admin-screen surface
- *    (users/sessions). Privileged ones ALSO check `ctx.principal` scopes
- *    in-op: their endpoint workflows are admin-stamped, but defense in depth
- *    means a workflow author can't accidentally expose them anonymously.
+ *    (users/sessions). The privileged ones are PURE: they never check scopes
+ *    in-op. Authorization is the trigger's job — their admin routes stamp
+ *    `requireAuth: { scopes: ["admin"] }` — and a `sensitivity: "privileged"`
+ *    tag lets the validator warn if a route ever forgets the gate.
  *  - **http ops** ({ status, headers, body }) — the auth pages and redirects
  *    (login page, token callback, logout, bootstrap), where Set-Cookie and
  *    Location ARE the result.
@@ -36,16 +37,16 @@ type JsonHandler = (
 /**
  * A JSON op: discrete named inputs in, a single `out` value out — a PURE domain
  * function. Each is fronted by its own dedicated admin route (see
- * `./admin-routes.ts`) that decomposes the request onto these ports; workflows
- * may also wire them (an automation listing users, say). The `scope` guard is
- * the protection: the RUN's principal must carry it, whatever the entry path.
+ * `./admin-routes.ts`) that decomposes the request onto these ports and carries
+ * the auth; workflows may also wire them (an automation listing users, or a CLI
+ * trigger with no session at all — which is exactly why the op stays scope-free).
  */
 function jsonOp(
   type: string,
   description: string,
   io: { in?: Record<string, z.ZodType>; out: string },
   handler: JsonHandler,
-  opts: { scope?: string } = {},
+  opts: { sensitivity?: "privileged" } = {},
 ): OpDefinition {
   const inSpec = io.in ?? {};
   return {
@@ -54,8 +55,11 @@ function jsonOp(
     inputs: Object.fromEntries(Object.entries(inSpec).map(([k, s]) => [k, value(s)])),
     outputs: { [io.out]: value() },
     description,
+    // Pure: no scope check in-op. Authorization is the trigger's job (the admin
+    // routes stamp `requireAuth: { scopes: ["admin"] }`); `privileged` only flags
+    // the data so the validator catches a route that forgets the gate.
+    ...(opts.sensitivity ? { sensitivity: opts.sensitivity } : {}),
     execute: async (ctx) => {
-      if (opts.scope) requireScope(ctx, opts.scope);
       const args: Record<string, unknown> = {};
       await Promise.all(Object.keys(inSpec).map(async (k) => void (args[k] = ctx.input.has(k) ? await ctx.input.value(k) : undefined)));
       return { [io.out]: await handler(args, identityService(ctx), ctx) };
@@ -143,14 +147,6 @@ const clearCookie = (svc: IdentityService): Record<string, unknown> => ({
   [svc.options.cookieName]: { value: "", maxAge: 0, secure: svc.options.cookieSecure },
 });
 
-/** Defense in depth: privileged ops re-check the run principal's scopes. */
-function requireScope(ctx: OpContext, scope: string): void {
-  const p = ctx.principal;
-  if (p.kind !== "user" || !(p.scopes ?? []).includes(scope)) {
-    throw new Error(`identity: "${scope}" scope required`);
-  }
-}
-
 const page = (body: string, status?: number): AuthResponse => (status !== undefined ? { body, status } : { body });
 const redirectTo = (location: string, cookies?: Record<string, unknown>): AuthResponse =>
   cookies ? { redirect: location, cookies } : { redirect: location };
@@ -180,14 +176,14 @@ const whoami = jsonOp("identity.whoami", "The current principal: kind, id, email
   };
 });
 
-/* ── admin-surface ops (scope-guarded) ─────────────────────────────────── */
+/* ── admin-surface ops (pure; gated by their routes, tagged `privileged`) ── */
 
 const usersList = jsonOp(
   "identity.users.list",
   "List users (admin). Roles flattened for table rendering.",
   { out: "users" },
   async (_args, svc) => (await svc.listUsers()).map(publicUser),
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const usersInvite = jsonOp(
@@ -215,7 +211,7 @@ const usersInvite = jsonOp(
     // `copy` renders as a copyable field in the admin's result view.
     return { ok: true, email, roles, delivered, ...(delivered ? {} : { copy: url }) };
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const usersSetRoles = jsonOp(
@@ -231,7 +227,7 @@ const usersSetRoles = jsonOp(
           .filter(Boolean);
     return publicUser(await svc.setRoles(String(args.userId), roles));
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const usersToggleDisabled = jsonOp(
@@ -243,7 +239,7 @@ const usersToggleDisabled = jsonOp(
     if (!user) throw new Error("user not found");
     return publicUser(await svc.setDisabled(user.id, !user.disabled));
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const usersRevokeSessions = jsonOp(
@@ -254,7 +250,7 @@ const usersRevokeSessions = jsonOp(
     await svc.revokeAllForUser(String(args.userId));
     return { ok: true };
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 /** Minimal shape of the admin's trace sink we read run stats from (feature-detected). */
@@ -289,7 +285,7 @@ const usersGet = jsonOp(
       "user id": user.id,
     };
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const usersRunStats = jsonOp(
@@ -338,7 +334,7 @@ const usersRunStats = jsonOp(
         "last run": new Date(a.lastRun).toLocaleString(),
       }));
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const usersLoginLink = jsonOp(
@@ -359,7 +355,7 @@ const usersLoginLink = jsonOp(
       note: "single use — send it over any channel",
     };
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const settingsGet = jsonOp(
@@ -367,7 +363,7 @@ const settingsGet = jsonOp(
   "Current identity settings (admin): the effective signup policy.",
   { out: "settings" },
   async (_args, svc) => ({ signup: await svc.getSignup() }),
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const settingsSet = jsonOp(
@@ -378,7 +374,7 @@ const settingsSet = jsonOp(
     if (args.signup !== undefined) await svc.setSignup(args.signup as "open" | "invite");
     return { signup: await svc.getSignup() };
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const sessionsList = jsonOp(
@@ -400,7 +396,7 @@ const sessionsList = jsonOp(
       userAgent: s.userAgent ?? "",
     }));
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 const sessionsRevoke = jsonOp(
@@ -411,7 +407,7 @@ const sessionsRevoke = jsonOp(
     await svc.revokeSession(String(args.sessionId));
     return { ok: true };
   },
-  { scope: "admin" },
+  { sensitivity: "privileged" },
 );
 
 /* ── auth pages & flows ────────────────────────────────────────────────── */
