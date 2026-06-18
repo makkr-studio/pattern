@@ -1,11 +1,13 @@
 /**
  * @pattern/mod-store — admin Data browser (Tier-1 declarative, zero build).
  *
- * Collections → documents → one document (full JSON), plus Blobs. Sources
- * are the `store.admin.*` ops (admin-scope-guarded in-op).
+ * Collections → documents → one document (full JSON), plus Blobs. Every view
+ * and action names its own dedicated route (see `./admin-routes.ts`) — there is
+ * no generic op invoker; the renderer just wires over purposeful endpoints.
  */
 
 import type { FrontendContribution } from "@pattern/core";
+import { PATHS } from "./admin-routes.js";
 
 export function storeFrontend(): FrontendContribution {
   return {
@@ -18,7 +20,7 @@ export function storeFrontend(): FrontendContribution {
         path: "/x/store/collections",
         view: {
           kind: "table",
-          source: "store.admin.collections",
+          route: { method: "GET", path: PATHS.collections },
           columns: [
             { key: "name", label: "Collection" },
             { key: "indexes", label: "Indexed fields" },
@@ -33,7 +35,7 @@ export function storeFrontend(): FrontendContribution {
         path: "/x/store/collections/:collection",
         view: {
           kind: "table",
-          source: "store.admin.docs",
+          route: { method: "GET", path: PATHS.docs },
           columns: [
             { key: "id", label: "Id" },
             { key: "version", label: "v" },
@@ -42,19 +44,19 @@ export function storeFrontend(): FrontendContribution {
           ],
           rowActions: [
             { label: "View", path: "/x/store/docs/:collection/:id", args: { collection: "collection", id: "id" }, icon: "eye" },
-            { label: "Delete", run: "store.admin.doc.delete", args: { collection: "collection", id: "id" }, icon: "trash-2", confirm: true },
+            { label: "Delete", route: { method: "DELETE", path: PATHS.doc }, args: { collection: "collection", id: "id" }, icon: "trash-2", confirm: true },
           ],
         },
       },
       {
         path: "/x/store/docs/:collection/:id",
-        view: { kind: "json", source: "store.admin.doc.get" },
+        view: { kind: "json", route: { method: "GET", path: PATHS.doc } },
       },
       {
         path: "/x/store/blobs",
         view: {
           kind: "table",
-          source: "store.admin.blobs",
+          route: { method: "GET", path: PATHS.blobs },
           columns: [
             { key: "id", label: "Id" },
             { key: "mime", label: "Type" },
@@ -63,7 +65,7 @@ export function storeFrontend(): FrontendContribution {
             { key: "created", label: "Created", format: "date" },
           ],
           rowActions: [
-            { label: "Delete", run: "store.admin.blob.delete", args: { id: "id" }, icon: "trash-2", confirm: true },
+            { label: "Delete", route: { method: "DELETE", path: PATHS.blob }, args: { id: "id" }, icon: "trash-2", confirm: true },
           ],
         },
       },

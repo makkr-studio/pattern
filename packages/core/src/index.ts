@@ -27,6 +27,7 @@ export type {
   FrontendContribution,
   MenuEntry,
   PageDef,
+  RouteRef,
   DeclarativeView,
   DeclarativeColumn,
   DeclarativeAction,
@@ -76,6 +77,19 @@ export {
   type WorkflowRegistry,
   type WorkflowChange,
 } from "./registry.js";
+
+// HTTP route builder (the op is an op, the workflow is the service)
+export {
+  httpEndpoint,
+  stampRequireAuth,
+  fromParams,
+  fromQuery,
+  fromBody,
+  type HttpSrc,
+  type PortSource,
+  type RouteIO,
+  type HttpRouteSpec,
+} from "./http-route.js";
 
 // Validation & graph utilities
 export { validateWorkflow, collectIssues, type ValidateResult } from "./validate.js";

@@ -10,7 +10,7 @@
 
 import type { CommandDef, MenuEntry, PageDef, DeclarativeView } from "@pattern/core";
 
-export type { CommandDef, MenuEntry, PageDef, DeclarativeView } from "@pattern/core";
+export type { CommandDef, MenuEntry, PageDef, DeclarativeView, RouteRef } from "@pattern/core";
 
 export interface NavItem extends MenuEntry {}
 
