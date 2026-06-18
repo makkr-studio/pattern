@@ -4,6 +4,7 @@
  */
 
 export * from "./span.js";
+export { now } from "./clock.js";
 export { sampleValue, streamSample, SAMPLE_CAP, type MaskFn } from "./sample.js";
 
 import type { SpanData, TraceSink, Principal } from "../types.js";
@@ -38,7 +39,9 @@ export function consoleTraceSink(
       const mark = span.status === "error" ? "✗" : "·";
       const node = span.attributes["pattern.node.id"] ?? span.name;
       const op = span.attributes["pattern.op.type"] ?? "";
-      log(`  ${mark} ${String(node)} ${op ? `(${op}) ` : ""}${ms}ms`);
+      // Sub-ms now that the clock is high-res — keep the console terse.
+      const dur = ms < 1 ? `${(ms * 1000).toFixed(0)}µs` : `${ms.toFixed(ms < 100 ? 2 : 0)}ms`;
+      log(`  ${mark} ${String(node)} ${op ? `(${op}) ` : ""}${dur}`);
     },
     onRunEnd(run) {
       log(`■ run ${run.runId.slice(0, 8)} ${run.status}`);

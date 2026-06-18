@@ -1,9 +1,14 @@
 import type { PortInfo } from "@pattern/admin-sdk";
 
-/** Human duration from milliseconds. */
+/** Human duration from (possibly fractional) milliseconds — the clock is
+ *  high-res (sub-ms), so a fast node reads in µs instead of collapsing to 0. */
 export function ms(n: number | undefined): string {
   if (n == null) return "—";
-  if (n < 1) return "<1ms";
+  if (n < 1) {
+    const us = n * 1000;
+    return us < 1 ? "<1µs" : `${Math.round(us)}µs`;
+  }
+  if (n < 10) return `${n.toFixed(2)}ms`;
   if (n < 1000) return `${Math.round(n)}ms`;
   if (n < 60000) return `${(n / 1000).toFixed(2)}s`;
   return `${(n / 60000).toFixed(1)}m`;

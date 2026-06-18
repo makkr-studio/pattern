@@ -7,6 +7,7 @@
  */
 
 import type { Span, SpanData, SpanEvent, SpanIo, SpanStatus, TraceSink } from "../types.js";
+import { now } from "./clock.js";
 
 const hex = "0123456789abcdef";
 
@@ -65,7 +66,7 @@ export class SpanImpl implements Span {
     this.parentSpanId = opts.parentSpanId;
     this.name = opts.name;
     this.sink = opts.sink;
-    this.startTime = Date.now();
+    this.startTime = now();
   }
 
   setAttribute(key: string, value: unknown): void {
@@ -75,7 +76,7 @@ export class SpanImpl implements Span {
     Object.assign(this.attributes, attrs);
   }
   addEvent(name: string, attributes?: Record<string, unknown>): void {
-    this.events.push({ name, time: Date.now(), attributes });
+    this.events.push({ name, time: now(), attributes });
   }
   setStatus(status: SpanStatus, error?: unknown): void {
     this.status = status;
@@ -101,7 +102,7 @@ export class SpanImpl implements Span {
       parentSpanId: this.parentSpanId,
       name: this.name,
       startTime: this.startTime,
-      endTime: Date.now(),
+      endTime: now(),
       attributes: this.attributes,
       events: this.events,
       status: this.status === "unset" ? "ok" : this.status,
