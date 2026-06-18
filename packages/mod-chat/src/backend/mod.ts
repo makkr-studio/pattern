@@ -16,6 +16,7 @@ import { STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
 import { resolveOptions, type ChatModOptions } from "./options.js";
 import { chatOps } from "./ops.js";
 import { chatAdminOps, chatFrontend } from "./admin.js";
+import { chatAdminRoutes } from "./admin-routes.js";
 import { ensureChatCollections } from "./data.js";
 import {
   approvalPipelineWorkflow,
@@ -87,6 +88,9 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
   const workflows = [
     spaWorkflow(opts.mount),
     ...crudWorkflows(opts),
+    // The admin Conversations screens' dedicated routes (one purposeful endpoint
+    // per screen and action, replacing the invoke path).
+    ...chatAdminRoutes(),
     blobUploadWorkflow(opts),
     ...(opts.turnPipeline
       ? [turnPipelineWorkflow(opts), approvalPipelineWorkflow(opts), guardrailToolWorkflow(opts)]

@@ -15,6 +15,7 @@ import { resolveOptions, type VaultOptions } from "./options.js";
 import { DefaultVaultService } from "./service.js";
 import { vaultOps } from "./ops.js";
 import { vaultFrontend } from "./frontend.js";
+import { vaultAdminRoutes } from "./admin-routes.js";
 import { memoryVaultStore, sqliteVaultStore } from "./store.js";
 import { VAULT_SERVICE } from "./well-known.js";
 
@@ -36,6 +37,9 @@ export function vaultMod(options: VaultOptions = {}): PatternMod {
     name: "@pattern/mod-vault",
     docs: { filesystem: "vault-docs", title: "Vault", order: 31 },
     ops: vaultOps,
+    // The Secrets screen's dedicated routes — one purposeful endpoint per
+    // action, replacing the generic invoke path.
+    workflows: vaultAdminRoutes(),
     frontend: vaultFrontend(),
     setup: async (engine: Engine) => {
       packagedDocs(engine);

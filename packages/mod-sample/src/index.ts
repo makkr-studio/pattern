@@ -2,8 +2,8 @@
  * @pattern/mod-sample — the mod-admin-spec **M10** proof.
  *
  * Installing this mod extends the admin with **zero admin-core changes**:
- *  - an op (`sample.greetings.list`) used as a declarative data source,
- *  - a **Tier-1** declarative table page + a menu entry + a ⌘K command,
+ *  - a pure op (`sample.greetings.list`) fronted by its own dedicated route,
+ *  - a **Tier-1** declarative table page (bound to that route) + a menu entry + a ⌘K command,
  *  - a **Tier-2** ESM-remote page whose bundle the mod serves itself via a
  *    `boundary.http.app` mount at `/ext`.
  *
@@ -11,8 +11,11 @@
  * (mod-admin-spec §6) works.
  */
 
-import { defineMod, value, z, type OpDefinition, type Workflow } from "@pattern/core";
+import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern/core";
 import { memoryFs, provideFilesystem } from "@pattern/runtime-node";
+
+/** Where the greetings data source is exposed (relative to the admin API mount). */
+const GREETINGS_ROUTE = "/sample/greetings";
 
 const greetings = [
   { id: "ada", language: "English", text: "Hello, Ada!" },
@@ -23,11 +26,27 @@ const greetings = [
 const greetingsList: OpDefinition = {
   type: "sample.greetings.list",
   title: "sample.greetings.list",
-  description: "Returns a static list of greetings (a declarative-page data source).",
+  description: "Returns a static list of greetings (a declarative-page data source). A PURE op with a NAMED output — fronted by its own route below.",
   inputs: {},
-  outputs: { out: value(z.array(z.object({ id: z.string(), language: z.string(), text: z.string() }))) },
-  execute: async () => ({ out: greetings }),
+  outputs: { greetings: value(z.array(z.object({ id: z.string(), language: z.string(), text: z.string() }))) },
+  execute: async () => ({ greetings }),
 };
+
+/**
+ * The greetings data source's dedicated route — how the declarative page + the
+ * ⌘K command reach it. A worked example of the idiom: the op is pure, the
+ * workflow is the service (here a trivial no-input read; `httpEndpoint` still
+ * status-maps the single output onto the response). Public demo data, so it's
+ * not scope-gated.
+ */
+const greetingsRoute: Workflow = httpEndpoint({
+  id: "sample.route.greetings",
+  name: `Sample · GET /admin/api${GREETINGS_ROUTE}`,
+  method: "GET",
+  path: `/admin/api${GREETINGS_ROUTE}`,
+  op: "sample.greetings.list",
+  io: { out: "greetings" },
+});
 
 /** Deliberately CPU-bound (naive fibonacci) — a fat bar for the span waterfall. */
 const crunch: OpDefinition = {
@@ -98,7 +117,7 @@ export default function SampleStudio() {
       { className: "p-6 space-y-4" },
       h("p", { className: "text-muted text-sm" },
         "This page renders with the admin's shared UI kit (GlassPanel, PageHeader, NeonButton, JsonView) and calls the live API through the shared client."),
-      h(NeonButton, { onClick: () => api.invoke("sample.greetings.list").then(setData) }, "Load greetings via api.invoke"),
+      h(NeonButton, { onClick: () => api.call("GET", "/sample/greetings").then(setData) }, "Load greetings via api.call"),
       data && h(JsonView, { value: data, className: "max-h-64" }),
     ),
   );
@@ -123,19 +142,19 @@ const appMount: Workflow = {
 export default defineMod({
   name: "@pattern/mod-sample",
   ops: [greetingsList, crunch],
-  workflows: [appMount, replayShowcase],
+  workflows: [appMount, replayShowcase, greetingsRoute],
   frontend: {
     menu: [
       { category: "Examples", label: "Greetings", icon: "boxes", path: "/x/greetings", order: 10 },
       { category: "Examples", label: "Studio", icon: "package", path: "/x/studio", order: 20 },
     ],
-    commands: [{ id: "sample.greet", label: "Sample: list greetings", group: "Examples", run: "sample.greetings.list" }],
+    commands: [{ id: "sample.greet", label: "Sample: list greetings", group: "Examples", route: { method: "GET", path: GREETINGS_ROUTE } }],
     pages: [
       {
         path: "/x/greetings",
         view: {
           kind: "table",
-          source: "sample.greetings.list",
+          route: { method: "GET", path: GREETINGS_ROUTE },
           columns: [
             { key: "id", label: "ID" },
             { key: "language", label: "Language" },

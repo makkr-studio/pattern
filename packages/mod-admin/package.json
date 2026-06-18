@@ -1,6 +1,6 @@
 {
   "name": "@pattern/mod-admin",
-  "version": "0.1.49",
+  "version": "0.1.50",
   "description": "Pattern admin mod — authorable, self-reflecting control surface (control plane, workflow store, run inspection).",
   "type": "module",
   "license": "MIT",

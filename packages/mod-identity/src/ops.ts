@@ -34,10 +34,11 @@ type JsonHandler = (
 ) => unknown | Promise<unknown>;
 
 /**
- * A JSON op: params/query/body in, a single `out` value out. Deliberately
- * reusable — admin screens reach these through `admin.invoke`, and workflows
- * may wire them (an automation listing users, say). The `scope` guard is the
- * protection: the RUN's principal must carry it, whatever the entry path.
+ * A JSON op: discrete named inputs in, a single `out` value out — a PURE domain
+ * function. Each is fronted by its own dedicated admin route (see
+ * `./admin-routes.ts`) that decomposes the request onto these ports; workflows
+ * may also wire them (an automation listing users, say). The `scope` guard is
+ * the protection: the RUN's principal must carry it, whatever the entry path.
  */
 function jsonOp(
   type: string,
@@ -305,9 +306,16 @@ const usersRunStats = jsonOp(
     if (!canReadRuns(sink)) return [];
     const runs = sink
       .list({ limit: 10_000 })
-      // Synthetic `__invoke_*` wrappers (declarative-page data fetches) are
-      // plumbing, not the user's workflows — they'd drown the real numbers.
-      .filter((r) => r.principal?.kind === "user" && r.principal.id === user.id && !r.workflowId.startsWith("__"));
+      // The admin's declarative-page data fetches (`*.route.admin.*`) and other
+      // `__`-prefixed plumbing are not the user's workflows — exclude them so
+      // they don't drown the real numbers when an admin views their own page.
+      .filter(
+        (r) =>
+          r.principal?.kind === "user" &&
+          r.principal.id === user.id &&
+          !r.workflowId.startsWith("__") &&
+          !r.workflowId.includes(".route.admin."),
+      );
     const byWorkflow = new Map<string, { workflow: string; runs: number; errors: number; lastRun: number; totalMs: number; timed: number }>();
     for (const r of runs) {
       const agg = byWorkflow.get(r.workflowId) ?? { workflow: r.workflowId, runs: 0, errors: 0, lastRun: 0, totalMs: 0, timed: 0 };
