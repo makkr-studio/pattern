@@ -16,7 +16,7 @@
 
 import { Worker } from "node:worker_threads";
 import { availableParallelism } from "node:os";
-import type { RunHandle, RunRequest, RunResult, RunTransport } from "@pattern/core";
+import type { RunHandle, RunRequest, RunResult, RunTransport, TraceEvent } from "@pattern/core";
 
 const WORKER_URL = new URL("./worker/entry.js", import.meta.url);
 
@@ -33,7 +33,11 @@ class WorkerWrapper {
   readonly pending = new Map<string, Pending>();
   inflight = 0;
 
-  constructor(mods: string[], onFatal: (w: WorkerWrapper, err: unknown) => void) {
+  constructor(
+    mods: string[],
+    onFatal: (w: WorkerWrapper, err: unknown) => void,
+    private readonly onTrace?: (evt: TraceEvent) => void,
+  ) {
     this.worker = new Worker(WORKER_URL, { workerData: { mods } });
     this.worker.on("message", (msg: any) => this.onMessage(msg));
     this.worker.on("error", (err) => {
@@ -48,6 +52,13 @@ class WorkerWrapper {
   }
 
   private onMessage(msg: any): void {
+    // Trace events carry their own runId (inside the event) and aren't tied to a
+    // pending entry — handle them before the pending-lookup guard. Tag which
+    // worker ran it so the Runs view can show "ran on worker N".
+    if (msg.type === "trace") {
+      this.tagAndForward(msg.event as TraceEvent);
+      return;
+    }
     const p = this.pending.get(msg.id ?? msg.runId);
     if (!p) return;
     switch (msg.type) {
@@ -102,6 +113,18 @@ class WorkerWrapper {
     }
   }
 
+  /** Stamp the worker's identity onto a forwarded trace event, then hand it up. */
+  private tagAndForward(evt: TraceEvent): void {
+    if (!this.onTrace) return;
+    const executor = `worker:${this.worker.threadId}`;
+    if (evt.kind === "spanEnd") {
+      evt.span.attributes = { ...evt.span.attributes, executor };
+    } else if (evt.kind === "runStart") {
+      (evt.run as { executor?: string }).executor = executor;
+    }
+    this.onTrace(evt);
+  }
+
   run(req: RunRequest, runId: string): Promise<RunResult> {
     this.inflight++;
     return new Promise<RunResult>((resolve, reject) => {
@@ -140,6 +163,13 @@ export interface WorkerPoolOptions {
    * mod-contributed op fails with "unknown op".
    */
   mods?: string[];
+  /**
+   * Receive each offloaded run's trace lifecycle (run start/spans/ready/end),
+   * tagged with the worker that ran it — wire it to the host `engine.ingestTrace`
+   * so offloaded runs appear in the Runs view like inline ones. Omit to drop
+   * worker traces (the runs still execute fine).
+   */
+  onTrace?: (evt: TraceEvent) => void;
 }
 
 export class WorkerPoolTransport implements RunTransport {
@@ -147,15 +177,17 @@ export class WorkerPoolTransport implements RunTransport {
   private rr = 0;
   private closed = false;
   private readonly mods: string[];
+  private readonly onTrace?: (evt: TraceEvent) => void;
 
   constructor(opts: WorkerPoolOptions = {}) {
     const size = Math.max(1, opts.size ?? availableParallelism() - 1);
     this.mods = opts.mods ?? [];
+    this.onTrace = opts.onTrace;
     this.workers = Array.from({ length: size }, () => this.spawn());
   }
 
   private spawn(): WorkerWrapper {
-    return new WorkerWrapper(this.mods, (dead) => this.respawn(dead));
+    return new WorkerWrapper(this.mods, (dead) => this.respawn(dead), this.onTrace);
   }
 
   /** Replace a crashed worker so the pool keeps its capacity. */

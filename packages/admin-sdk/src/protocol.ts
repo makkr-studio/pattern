@@ -185,6 +185,8 @@ export interface RunSummary {
   error?: { message: string };
   /** Set when this run was started by another run (`ctx.invoke`). */
   parent?: RunParentRef;
+  /** Where the run executed when not the host loop (e.g. "worker:3"). */
+  executor?: string;
 }
 
 /** The run + node that started a sub-run via `ctx.invoke`. */
