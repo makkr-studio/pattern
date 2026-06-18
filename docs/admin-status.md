@@ -71,10 +71,11 @@ live backend. Pixel-level visuals still want a real browser pass.
 (`sample.greetings.list`), a **Tier-1** declarative table page, a ⌘K command, a
 menu entry, and a **Tier-2** ESM-remote page whose bundle the mod serves itself
 via a `boundary.http.app` mount at `/ext`. The SPA renders all of it: nav from the
-aggregated manifest, declarative pages via `DeclarativeView` (data through
-`admin.invoke`), and Tier-2 remotes via a runtime `import()` with React shared on
-`window.__PATTERN_ADMIN__`. Proven by `extension.test.ts` + a render test + live
-curl checks (manifest aggregation, `admin.invoke`, the served remote bundle).
+aggregated manifest, declarative pages via `DeclarativeView` (data through each
+view's **dedicated route** — the mod ships one purposeful endpoint per screen,
+not a generic op invoker), and Tier-2 remotes via a runtime `import()` with React
+shared on `window.__PATTERN_ADMIN__`. Proven by `extension.test.ts` + a render
+test + live curl checks (manifest aggregation, the data route, the served remote bundle).
 
 ### Remaining (polish, not blocking)
 - A real browser pass for pixel-level visual polish (needs the Chrome extension
@@ -106,8 +107,9 @@ A four-reviewer audit of the whole repo was triaged and fixed in one pass:
 - **CORS allowlists** no longer echo a fallback origin: a non-matching request
   origin gets *no* `Access-Control-Allow-Origin` header.
 - **`adminMod({ auth })` stamps the SPA workflow** too, not just API routes.
-- **`admin.invoke` ACL**: refuses `admin.*`, `boundary.*`, and `reusable: false`
-  ops as page data sources.
+- **Declarative pages bind to dedicated routes** (not a generic invoker): every
+  screen/action is its own purposeful route workflow, built by `httpEndpoint` and
+  admin-scope-stamped — so the exposed surface is the route table, no ACL needed.
 - **Worker pool**: `sampleIo` crosses the seam; crashed workers respawn in place
   (in-flight runs reject, `inflight` resets); `mods: [...]` option loads mod ops
   in workers; error-path runs always post `done`.

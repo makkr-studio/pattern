@@ -149,24 +149,32 @@ workflow and `npx pattern validate` it.
 A mod's `frontend` block adds UI to the admin — no admin code changes. See
 `mods/quotes.mjs` for a working example (menu + page + command):
 
+Every data view and action binds to a **dedicated route** the mod also ships —
+a pure op fronted by `httpEndpoint(...)` (request → op → response). There is no
+generic op invoker: name a route, not an op. A `RouteRef` is
+`{ method, path }`, where `path` is relative to the admin API mount (e.g.
+`/quotes`); `:tokens` are filled from page/row `args`, leftover args become the
+query (GET) or JSON body (POST). `mods/quotes.mjs` is a complete worked example.
+
 - **Menu**: `{ category, label, icon, path, order }` — `icon` is a lucide name.
 - **Tier-1 page** (no build step): `{ path, view }` where `view` is one of
-  `table` (`{ source, columns, actions?, rowActions? }` — `source` is an op
-  type or workflow id; a `rowAction` `{ label, run, args: { opArg: "rowKey" },
-  confirm? }` invokes `run` with values pulled from the row — or use
-  `path: "/x/mine/:id"` instead of `run` to NAVIGATE, tokens filled from
-  `args`), `form` (`{ schema, submit }`), `chart`, `json`, `markdown`
-  (`{ source }`), `detail` (`{ source }` — one object as labeled rows),
+  `table` (`{ route, columns, actions?, rowActions? }` — `route` reads the rows;
+  a `rowAction` `{ label, route, args: { token: "rowKey" }, confirm? }` calls
+  `route` with values pulled from the row — or use `path: "/x/mine/:id"` instead
+  of `route` to NAVIGATE, tokens filled from `args`), `form`
+  (`{ schema, route }` — submits the values to `route`), `chart`, `json`,
+  `markdown` (`{ route }`), `detail` (`{ route }` — one object as labeled rows),
   `graph` (`{ workflow }`), `iframe` (`{ url }`). Page paths may carry
-  `:params` (passed as args to every source op), and a page may stack
+  `:params` (filled into each view's route path), and a page may stack
   `views: [{ title?, view }]` — that's how you build a details page.
-- **Command** (⌘K palette): `{ id, label, group, run?, path? }`.
+- **Command** (⌘K palette): `{ id, label, group, route?, path? }` — `route`
+  calls a dedicated route and shows its result; `path` navigates.
 - **Settings section** (on System → Settings): `{ id, title, description?,
-  source, submit, fields }` under the mod's `frontend.settings` — `source` is
-  an op returning current values, `submit` receives `{ key: value }` patches,
+  route, submitRoute, fields }` under the mod's `frontend.settings` — `route`
+  returns current values, `submitRoute` receives `{ key: value }` patches,
   fields are `{ key, label, type: toggle|select|text|number, options? }`.
 - **Action results**: row/table actions default to silent (the refreshed
-  table is the feedback); set `result: "show"` when the op's return value is
+  table is the feedback); set `result: "show"` when the route's return value is
   for the operator — objects render as labeled rows and a `copy` key becomes
   a copyable field (relative paths get the origin prepended).
 - **Tier-2 page** (full React): `{ path, remote: "/ext/my-page.js" }` — an ESM
