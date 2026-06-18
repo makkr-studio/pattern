@@ -1,4 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// These boot a host without an auth provider, so the host correctly warns that
+// chat's admin routes aren't enforced — not what we're testing here; silence it.
+beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
 import { Engine, resolvePorts, type Workflow } from "@pattern/core";
 import { createHttpHost } from "@pattern/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern/mod-store";

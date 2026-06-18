@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { Engine, IDENTITY_SERVICE, type PatternMod } from "@pattern/core";
+import { Engine, IDENTITY_SERVICE, collectIssues, type PatternMod, type Workflow } from "@pattern/core";
 import { createHttpHost } from "@pattern/runtime-node";
 import { identityMod, type IdentityService } from "@pattern/mod-identity";
 import { adminMod } from "../src/index.js";
@@ -43,11 +43,39 @@ describe("admin secure-by-default (§9)", () => {
     expect(requireAuthOf(engine, "admin.api.workflows.list")).toEqual({ scopes: ["admin"] });
     expect(requireAuthOf(engine, "admin.spa")).toEqual({ scopes: ["admin"] });
 
-    // auth:false is the explicit opt-out to a truly public admin.
+    // auth:false is the explicit opt-out — declared as an explicit `false`
+    // (acknowledged-public), so the privileged-op validator never nags about it.
     vi.spyOn(console, "log").mockImplementation(() => {});
     const engine2 = new Engine();
     await install(engine2, [identityMod({ storage: "memory" }), adminMod({ auth: false })]);
-    expect(requireAuthOf(engine2, "admin.api.workflows.list")).toBeUndefined();
+    expect(requireAuthOf(engine2, "admin.api.workflows.list")).toBe(false);
+  });
+
+  it("warns when an admin op is wired behind an unspecified-auth trigger; the admin's own acknowledged-public routes stay silent", async () => {
+    const engine = new Engine();
+    await install(engine, [adminMod({ auth: false })]);
+    // The whole control plane is privileged.
+    expect(engine.ops.get("admin.workflow.delete")?.sensitivity).toBe("privileged");
+
+    // A user route whose requireAuth is UNSPECIFIED (the editor's "Public") and
+    // that reaches admin.workflow.delete → advisory warning (non-blocking).
+    const leaky: Workflow = {
+      id: "leaky",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "POST", path: "/danger" } },
+        { id: "del", op: "admin.workflow.delete" },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "in", port: "out" }, to: { node: "del", port: "in" } },
+        { from: { node: "del", port: "result" }, to: { node: "out", port: "body" } },
+      ],
+    };
+    expect(collectIssues(leaky, engine.ops).issues.some((i) => i.code === "privileged_without_auth" && i.severity === "warning")).toBe(true);
+
+    // The admin's OWN route declares an explicit `false` (acknowledged-public) → no nag.
+    const own = engine.workflows.get("admin.api.workflow.delete")!;
+    expect(collectIssues(own, engine.ops).issues.some((i) => i.code === "privileged_without_auth")).toBe(false);
   });
 
   it("the declared requireAuth is advisory-open (warned) with NO provider, enforced with ANY provider", async () => {

@@ -149,8 +149,9 @@ export const endpointSpecs: EndpointSpec[] = [
   { id: "admin.api.templates", method: "GET", path: `${API}/templates`, op: "admin.template.list" },
 ];
 
-/** Stamp `requireAuth` onto a workflow's trigger nodes (admin-spec P6). */
-export function stampRequireAuth(wf: Workflow, requirement: true | { scopes: string[] }): Workflow {
+/** Stamp `requireAuth` onto a workflow's trigger nodes (admin-spec P6). An
+ *  explicit `false` declares "acknowledged-public" (distinct from undefined). */
+export function stampRequireAuth(wf: Workflow, requirement: boolean | { scopes: string[] }): Workflow {
   return {
     ...wf,
     nodes: wf.nodes.map((n) =>
@@ -161,8 +162,9 @@ export function stampRequireAuth(wf: Workflow, requirement: true | { scopes: str
   };
 }
 
-/** Build all admin endpoint workflows, optionally stamping `requireAuth` (P6). */
-export function endpointWorkflows(auth?: true | { scopes: string[] }): Workflow[] {
+/** Build all admin endpoint workflows, stamping the given `requireAuth` (P6).
+ *  `false` is stamped explicitly (acknowledged-public); undefined leaves it off. */
+export function endpointWorkflows(auth?: boolean | { scopes: string[] }): Workflow[] {
   const wfs = endpointSpecs.map(endpoint);
-  return auth ? wfs.map((w) => stampRequireAuth(w, auth)) : wfs;
+  return auth === undefined ? wfs : wfs.map((w) => stampRequireAuth(w, auth));
 }

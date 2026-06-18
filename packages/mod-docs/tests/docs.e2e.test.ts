@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Engine, type PatternMod } from "@pattern/core";
+
+// Boots a host without an auth provider → the host warns that requireAuth routes
+// (the docs auth gate) aren't enforced. Not under test here; silence it.
+beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
 import { createHttpHost, memoryFs, provideFilesystem } from "@pattern/runtime-node";
 import { docsMod } from "../src/index.js";
 

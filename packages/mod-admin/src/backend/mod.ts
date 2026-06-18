@@ -134,16 +134,18 @@ function packagedDocs(engine: Engine): void {
 export function adminMod(options: AdminModOptions = {}): PatternMod {
   const mount = (options.mount ?? "/admin").replace(/\/$/, "") || "/admin";
   // Secure-by-default by DECLARATION, not by environment: the admin always
-  // declares `requireAuth: { scopes: ["admin"] }` — the config is identical
-  // whether or not a provider is installed (so the editor always shows it).
-  // Whether it's *enforced* is the engine's call (it degrades to advisory-open,
-  // with a loud host warning, when no provider exists). `auth: false` is the
-  // explicit opt-out to a truly public admin; `auth: true | { scopes }` overrides.
-  const auth = options.auth === false ? undefined : options.auth === undefined ? { scopes: ["admin"] } : options.auth;
+  // declares an explicit `requireAuth` — `{ scopes: ["admin"] }` by default
+  // (identical config with or without a provider, so the editor always shows it),
+  // or `false` for an acknowledged-public admin (`auth: false`). Either way it's
+  // an *explicit* decision, so the privileged-op validator never nags about the
+  // admin's own routes. Whether a requirement is *enforced* is the engine's call
+  // (it degrades to advisory-open, with a loud host warning, when no provider
+  // exists). `auth: true | { scopes }` overrides.
+  const requirement: boolean | { scopes: string[] } =
+    options.auth === false ? false : options.auth === undefined ? { scopes: ["admin"] } : options.auth;
 
-  // The SPA workflow is auth-stamped like every API route — without this the
-  // admin UI itself would stay publicly reachable.
-  const spa = auth ? stampRequireAuth(spaWorkflow(mount), auth) : spaWorkflow(mount);
+  // The SPA workflow is auth-stamped like every API route.
+  const spa = stampRequireAuth(spaWorkflow(mount), requirement);
 
   // Created in `setup`, bootstrapped in `ready` (after the whole mod batch).
   let controlPlane: DefaultControlPlane | undefined;
@@ -152,7 +154,7 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     name: "@pattern/mod-admin",
     docs: { filesystem: "admin-docs", title: "Admin", order: 20 },
     ops: adminOps,
-    workflows: [...endpointWorkflows(auth), spa],
+    workflows: [...endpointWorkflows(requirement), spa],
     frontend: adminFrontend(mount),
     setup: async (engine: Engine) => {
       packagedDocs(engine);

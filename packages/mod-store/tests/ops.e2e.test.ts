@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Engine, type Workflow } from "@pattern/core";
+
+// Boots a host without an auth provider → the host warns that store's admin
+// routes aren't enforced. Not under test here; silence it.
+beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
 import { createHttpHost } from "@pattern/runtime-node";
 import { storeMod } from "../src/mod.js";
 import { STORE_SERVICE } from "../src/well-known.js";

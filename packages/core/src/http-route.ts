@@ -85,7 +85,7 @@ function schemaFor(ports: Array<[string, PortSource]>): Record<string, unknown> 
 }
 
 /** Stamp `requireAuth` onto a workflow's HTTP boundary nodes. */
-export function stampRequireAuth(wf: Workflow, requirement: true | { scopes: string[] }): Workflow {
+export function stampRequireAuth(wf: Workflow, requirement: boolean | { scopes: string[] }): Workflow {
   return {
     ...wf,
     nodes: wf.nodes.map((n) =>
