@@ -21,7 +21,7 @@ let port = 4990;
 async function start() {
   const p = ++port;
   const engine = new Engine();
-  await engine.useAsync(adminMod({ storage: memoryFs() }));
+  await engine.useAsync(adminMod({ storage: memoryFs(), auth: false }));
   await engine.useAsync(sampleMod); // ← the only extension point
   const host = createHttpHost(engine, { defaultPort: p });
   const { close } = await host.start();

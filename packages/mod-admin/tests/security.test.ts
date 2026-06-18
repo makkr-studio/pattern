@@ -24,7 +24,7 @@ const api = (p: string) => `${BASE}/admin/api${p}`;
 async function startAdmin() {
   BASE = `http://localhost:${++port}`;
   const engine = new Engine();
-  await engine.useAsync(adminMod({ storage: memoryFs() }));
+  await engine.useAsync(adminMod({ storage: memoryFs(), auth: false }));
   const host = createHttpHost(engine, { defaultPort: port });
   const { close } = await host.start();
   closer = close;

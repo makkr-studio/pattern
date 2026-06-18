@@ -34,15 +34,34 @@ describe("admin secure-by-default (§9)", () => {
     expect(requireAuthOf(engine, "identity.route.login")).toBeUndefined();
   });
 
-  it("leaves the admin open without identity, or with an explicit auth:false", async () => {
+  it("leaves the admin open without a provider — but loudly — and silently with auth:false", async () => {
+    // No auth provider → can't enforce, so it serves OPEN but warns on boot.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const engine = new Engine();
     await install(engine, [adminMod()]);
     expect(requireAuthOf(engine, "admin.api.workflows.list")).toBeUndefined();
+    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/UNAUTHENTICATED/);
 
+    // Explicit auth:false (even with a provider present) → open AND silent.
+    warn.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => {});
     const engine2 = new Engine();
     await install(engine2, [identityMod({ storage: "memory" }), adminMod({ auth: false })]);
     expect(requireAuthOf(engine2, "admin.api.workflows.list")).toBeUndefined();
+    expect(warn.mock.calls.some((c) => /UNAUTHENTICATED/.test(String(c[0])))).toBe(false);
+  });
+
+  it("secures the admin when ANY auth provider is present, not just identity", async () => {
+    // A bare auth-provider mod (no identity service) is enough to make auth
+    // enforceable → the admin locks itself by default.
+    const dummyAuthMod: PatternMod = {
+      name: "dummy-auth",
+      authProviders: [{ name: "dummy", authenticate: async () => null }],
+    };
+    const engine = new Engine();
+    await install(engine, [adminMod(), dummyAuthMod]);
+    expect(requireAuthOf(engine, "admin.api.workflows.list")).toEqual({ scopes: ["admin"] });
+    expect(requireAuthOf(engine, "admin.spa")).toEqual({ scopes: ["admin"] });
   });
 
   it("explicit auth options are respected, not overridden", async () => {

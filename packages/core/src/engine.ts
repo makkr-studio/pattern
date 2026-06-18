@@ -238,6 +238,16 @@ export class Engine {
     return this;
   }
 
+  /**
+   * Whether any auth provider is registered — i.e. whether `requireAuth` is
+   * actually *enforceable*. With none, stamping a requirement would brick the
+   * route (every principal is anonymous, no login to get past it), so a host
+   * that wants to secure-by-default keys on this, not a specific provider mod.
+   */
+  hasAuthProvider(): boolean {
+    return this.auth.chain().length > 0;
+  }
+
   declareHook<P>(def: HookDefinition<P>): this {
     this.hooks.declare(def as HookDefinition);
     return this;
