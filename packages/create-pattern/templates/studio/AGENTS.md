@@ -101,6 +101,20 @@ only for genuine projections). Declare each input schema in **one** place. The
 bundled docs (`@pattern/mod-docs` →
 `/docs` → *Designing your API*) is the full version.
 
+## Heavy workflows: Offload to a worker pool
+
+Runs execute on the **host event loop by default** — correct for I/O-bound
+work, which is already free during its awaits. A workflow only stalls the loop
+(and the admin) when an op does **synchronous compute**. For those, set the
+workflow's **`offload`** flag (editor → toolbar gear → *Workflow settings*, or
+`"offload": true` in the JSON) to run that whole workflow on a worker pool
+instead. Tag a compute-bound op `cpuHeavy: true` and the editor nudges toward
+Offload. Enable the pool in `pattern.config.json`: `"workers": 2` (number =
+size, or `{ "size", "mods" }`); with none configured, `offload` is a no-op.
+Offloaded runs use the worker's own services, can't reach live WebSocket
+sockets, and aren't pausable. (`@pattern/mod-docs` → *Projects & mods* →
+*Execution model* is the full version.)
+
 ## Recipe: serve your own frontend
 
 Beyond Tier-2 admin pages (below), a standalone user-facing SPA is **just a

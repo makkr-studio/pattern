@@ -156,6 +156,53 @@ same calls accept workflows loaded from a DB or pushed by an admin API. Upsert
 tears down the previous definition's hook registrations and event subscriptions
 first, so reloading never leaves stale wiring behind.
 
+## Execution model: default inline, flag the heavy ones
+
+Runs execute **on the host event loop by default**. That's the right place for
+the common case: an I/O-bound workflow (HTTP calls, DB reads, an LLM stream)
+spends its time *awaiting*, and the loop is already free during an await — moving
+it to a worker would only add a serialization round-trip for no gain. A run only
+*holds* the loop when an op does **synchronous compute** (a tight numeric loop,
+parsing a big blob, crypto); while that op runs, nothing else does — including
+the admin.
+
+So offload is **selective and author-controlled, at the workflow level**:
+
+- Set a workflow's **`offload`** flag (editor → toolbar gear → *Workflow
+  settings*, or `"offload": true` in the JSON) and the engine runs that whole
+  workflow on a **worker pool** instead of the loop. Everything else stays
+  inline. The flag is the unit because the seam is then crossed once per run (at
+  the boundaries), not once per node — lower latency than per-op offload, and
+  simpler to reason about.
+- An op can declare **`cpuHeavy: true`** — purely a *signal* (like
+  `sensitivity`). It routes nothing; it makes the editor **nudge**: the gear
+  badges amber and the validator warns "*N cpu-heavy nodes — Offload
+  recommended*" when such a node sits in a non-offloaded workflow.
+
+Configure the pool in `pattern.config.json` with **`workers`**:
+
+```jsonc
+{
+  "mods": ["@pattern/mod-sample", "@pattern/mod-admin"],
+  "workers": 2,                                  // pool size; off-loop runs land here
+  // or: "workers": { "size": 2, "mods": ["@pattern/mod-sample"] }
+}
+```
+
+`workers` as a number is the pool size; the object form also picks which mods
+each worker loads (default: the project's `mods`). Exclude host-only mods (e.g.
+`@pattern/mod-admin`) from the worker set via the `{ mods }` form — workers run
+domain ops, not the control plane. **With no `workers` configured, an `offload`
+flag degrades to a graceful no-op** (the run stays inline).
+
+Limits to know: an offloaded workflow runs on the worker's **own** service/store
+instances (a separate connection — fine for file/DB-backed state, not for
+in-memory shared state), it **cannot reach live WebSocket sockets** (the
+validator warns if an offloaded workflow uses `boundary.ws.*`), and offloaded
+runs **aren't pausable** from the editor. The admin's **Process** page shows the
+hybrid (inline default + the worker pool's size/inflight) and benchmarks the
+difference a pool makes on a CPU-bound workflow.
+
 ## Mods
 
 A **mod** is any module exporting a `PatternMod` (default export). It contributes
