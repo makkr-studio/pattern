@@ -55,6 +55,9 @@ const crunch: OpDefinition = {
   description:
     "Burns CPU on purpose: computes fibonacci(n) the naive recursive way (~hundreds of ms at n=36). " +
     "Exists to put a visibly long node span on the Runs waterfall. Outputs { out, tookMs }.",
+  // The canonical CPU-bound demo op: tagging it nudges the editor to suggest the
+  // workflow's Offload flag (run it on the worker pool, off the host loop).
+  cpuHeavy: true,
   inputs: { n: value(z.number()) },
   outputs: { out: value(z.number()), tookMs: value(z.number()) },
   config: z.object({ n: z.number().int().min(1).max(40).default(36) }),
