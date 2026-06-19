@@ -8,6 +8,12 @@ order: 12
 Ops are where the code lives. They're plain functions over Web-standard APIs —
 no framework substrate. This is how you add your own, and bundle them as a mod.
 
+> **Reuse before you create.** Most "glue" is already an op — check the
+> [op reference](/docs/ops) (or `pattern ops <query>`) first. The base catalog
+> covers strings, objects, arrays, math, control flow, time, encoding, HTTP, and
+> streams. Author a new op when you have genuinely new *logic* or a new I/O
+> capability — not to wire existing ops together (that's a workflow).
+
 ## A pure value op
 
 Most ops await some value inputs, compute, and return one value. `pureOp`

@@ -67,11 +67,24 @@ console.log(result.outputs);           // { out: { value: "Hello, world!" } }
 
 ## Where to go next
 
-- [Concepts](concepts.md) — the working mental model: ports, the scheduler, boundaries, hooks, auth, observability.
-- [Create an app](guides/creating-an-app.md) — scaffold a project with `npm create pattern`.
-- [Projects & mods](guides/projects-and-mods.md) — project anatomy, declarative routes, adding mods.
-- [Authoring ops](guides/authoring-ops.md) — write your own ops and bundle them as a mod.
+**Start here**
+
+- [Getting started](getting-started.md) — install, scaffold, and run your first workflow in a minute.
+- [Concepts](concepts.md) — the working mental model: ports, the scheduler, boundaries, hooks, auth.
+- [Architecture](architecture.md) — the design rationale and engine internals.
+
+**Tutorials**
+
+- Author a workflow — [in the admin](guides/workflow-in-the-admin.md) (visual) or [in JSON](guides/workflow-in-json.md) (by hand).
+- [Create an app](guides/creating-an-app.md) and [design its API](guides/designing-your-api.md).
+- [Authoring ops](guides/authoring-ops.md) — write your own logic.
+- [Serve a frontend app](guides/frontend-app-with-workflows.md) — SPAs as workflows, one backend, many branded instances.
+- [Create a third-party mod](guides/creating-a-mod.md) — a publishable package that extends the engine.
+
+**Going further**
+
 - [Agents & chat](guides/agents-and-chat.md) — the AI stack: agents, tools-as-workflows, the chat app.
+- [Identity](guides/identity.md) — users, sessions, roles, login methods.
 - [Extending these docs](guides/extending-the-docs.md) — ship a docs chapter inside your own mod.
 
 These docs are **self-reflecting** where it counts: the op reference and mods
