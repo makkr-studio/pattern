@@ -46,6 +46,14 @@ pure passthrough stream when its client leaves. Offloaded (`offload`) runs
 execute on a worker but their full trace is forwarded back, so they appear here
 exactly like inline ones.
 
+Runs are recorded to a **durable trace store** — SQLite at `.pattern/traces.db`
+by default — so they survive restarts and any process writing that DB shows up:
+a `pattern run` CLI invocation lands in the same Runs list as the host's. It's
+behind an abstraction (`TraceStore`), so the backend can be swapped later; set
+`trace: { persist: false }` in `pattern.config.json` to keep it in-memory
+(ephemeral), and it degrades to in-memory automatically when `node:sqlite` is
+unavailable.
+
 ## Mods extend the admin
 
 A mod can contribute admin pages declaratively — menu entries + table/detail

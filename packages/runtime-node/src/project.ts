@@ -15,8 +15,9 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, TRACE_STORE, type TraceStore, type Workflow } from "@pattern/core";
 import { loadMods } from "./mods.js";
+import { createTraceStore } from "./trace/index.js";
 import { HttpHost } from "./http.js";
 import { WsHost } from "./ws.js";
 import { NodeConnectionRegistry } from "./ws-registry.js";
@@ -48,6 +49,14 @@ export interface PatternConfig {
    * no WS workflows at all. Set false to refuse upgrades entirely.
    */
   ws?: boolean | { path?: string };
+  /**
+   * Run telemetry persistence. Durable SQLite by default so runs survive
+   * restarts and any process writing the same DB (host, workers, `pattern run`)
+   * shows up in the admin. `persist: false` keeps it in-memory (ephemeral);
+   * `path` overrides the default `<project>/.pattern/traces.db`. Degrades to
+   * in-memory automatically when `node:sqlite` is unavailable.
+   */
+  trace?: { persist?: boolean; path?: string; capacity?: number };
 }
 
 /** Identity helper for authoring `pattern.config.ts` with type-checking. */
@@ -138,6 +147,7 @@ export async function loadProject(
   // here so it can be handed to the engine as `offloadTransport`; when the
   // caller brought their own engine, they own its transports (so we skip it).
   let offloadPool: WorkerPoolTransport | undefined;
+  let traceStore: TraceStore | undefined;
 
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
   // The node connection registry up-front means `core.ws.*` ops (notify,
@@ -155,6 +165,20 @@ export async function loadProject(
       onTrace: (evt) => engine.ingestTrace(evt),
     });
     engine.setOffloadTransport(offloadPool);
+  }
+
+  // Durable run telemetry. Created here (before the mods' setup) and provided as
+  // a service so the admin reads it instead of spinning up its own in-memory
+  // store — runs persist across restarts and any process writing the same DB
+  // shows up. Off only when the caller brought their own engine (they own it).
+  if (!opts.engine && config.trace?.persist !== false) {
+    traceStore = await createTraceStore({
+      kind: "sqlite",
+      path: config.trace?.path ?? resolve(baseDir, ".pattern/traces.db"),
+      capacity: config.trace?.capacity,
+    });
+    engine.onTrace(traceStore);
+    engine.provideService(TRACE_STORE, traceStore);
   }
 
   if (config.mods?.length) {
@@ -193,7 +217,7 @@ export async function loadProject(
       const { ports, close } = await http.start();
       // The returned close tears down the worker pool too (idempotent with
       // engine.close(), which also owns it). No pool → a no-op.
-      return { ports, close: async () => void (await close(), await offloadPool?.close()) };
+      return { ports, close: async () => void (await close(), await offloadPool?.close(), await traceStore?.close()) };
     },
   };
 }

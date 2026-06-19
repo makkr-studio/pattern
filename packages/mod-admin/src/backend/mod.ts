@@ -15,17 +15,17 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AUTH_HOME_URL, defineMod, type Engine, type PatternMod, type Workflow } from "@pattern/core";
+import { AUTH_HOME_URL, defineMod, TRACE_STORE, type Engine, type PatternMod, type TraceStore, type Workflow } from "@pattern/core";
 import {
   localFs,
   memoryFs,
   toFilesystem,
   provideFilesystem,
+  MemoryTraceStore,
   type Filesystem,
 } from "@pattern/runtime-node";
 import { DefaultControlPlane } from "./control-plane/control-plane.js";
 import { FlystorageWorkflowStore } from "./control-plane/store.js";
-import { MemoryTraceSink } from "./trace/memory-sink.js";
 import { adminOps } from "./ops/index.js";
 import { endpointWorkflows, stampRequireAuth } from "./workflows/index.js";
 import { ASSETS_FS, registerAdminServices } from "./services.js";
@@ -167,10 +167,16 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
       engine.provideService(AUTH_HOME_URL, mount);
 
       const store = new FlystorageWorkflowStore(storageFs, { prefix: options.storePrefix });
-      const sink = new MemoryTraceSink({ capacity: options.traceCapacity });
+      // Prefer the durable store the host (loadProject) created and provided — so
+      // runs persist and CLI/worker runs in the same DB show up here. Standalone
+      // (tests / no host) fall back to an in-memory store we attach ourselves.
+      let sink = engine.service<TraceStore>(TRACE_STORE);
+      if (!sink) {
+        sink = new MemoryTraceStore({ capacity: options.traceCapacity });
+        engine.onTrace(sink);
+      }
       const cp = new DefaultControlPlane(engine, store);
       registerAdminServices(engine, { controlPlane: cp, sink, engine });
-      engine.onTrace(sink);
       controlPlane = cp;
       // Re-apply persisted admin settings (run retention / exclusion regex /
       // I/O sampling) — best-effort: a bad stored pattern must never block boot.

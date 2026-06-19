@@ -42,7 +42,7 @@ describe("run linkage in the memory sink", () => {
     const res = await engine.run("linked-parent", { input: { items: [1, 2, 3] } });
     expect(res.status).toBe("ok");
 
-    const runs = sink.list({ limit: 10 });
+    const runs = await sink.list({ limit: 10 });
     const parentRun = runs.find((r) => r.workflowId === "linked-parent")!;
     const childRuns = runs.filter((r) => r.workflowId === "linked-child");
     expect(childRuns).toHaveLength(3);
@@ -51,12 +51,12 @@ describe("run linkage in the memory sink", () => {
       expect(c.parent).toEqual({ runId: parentRun.runId, workflowId: "linked-parent", nodeId: "each" });
     }
     // Downward: children() mirrors it (the run-detail Sub-runs list).
-    const kids = sink.children(parentRun.runId);
+    const kids = await sink.children(parentRun.runId);
     expect(kids.map((k) => k.runId).sort()).toEqual(childRuns.map((c) => c.runId).sort());
-    expect(sink.children(childRuns[0]!.runId)).toEqual([]);
+    expect(await sink.children(childRuns[0]!.runId)).toEqual([]);
 
     // And the map node's span carries one `invoke` event per sub-run.
-    const detail = sink.get(parentRun.runId)!;
+    const detail = (await sink.get(parentRun.runId))!;
     const mapSpan = detail.spans.find((s) => s.attributes["pattern.node.id"] === "each")!;
     const invokes = mapSpan.events.filter((e) => e.name === "invoke");
     expect(invokes).toHaveLength(3);
@@ -72,8 +72,8 @@ describe("run linkage in the memory sink", () => {
     engine.setIoSampling(true);
 
     await engine.run("linked-parent", { input: { items: ["a"] } });
-    const childRun = sink.list({ workflow: "linked-child" })[0]!;
-    const spans = sink.get(childRun.runId)!.spans;
+    const childRun = (await sink.list({ workflow: "linked-child" }))[0]!;
+    const spans = (await sink.get(childRun.runId))!.spans;
     // The child's out-gate sampled its captured payload.
     const sampled = spans.filter((s) => s.io !== undefined);
     expect(sampled.length).toBeGreaterThan(0);

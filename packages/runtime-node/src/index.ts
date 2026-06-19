@@ -26,7 +26,16 @@ export { WsHost, createWsHost, type WsBinding, type WsHostOptions } from "./ws.j
 export { NodeConnectionRegistry } from "./ws-registry.js";
 export { WorkerPoolTransport, type WorkerPoolOptions } from "./worker-pool.js";
 export { ScheduleHost, createScheduleHost, cronMatcher } from "./schedule.js";
-export { jsonlTraceSink, sqliteTraceSink } from "./trace.js";
+export {
+  jsonlTraceSink,
+  createTraceStore,
+  MemoryTraceStore,
+  SqliteTraceStore,
+  openSqliteTraceStore,
+  type CreateTraceStoreOptions,
+  type MemoryTraceStoreOptions,
+  type SqliteTraceStoreOptions,
+} from "./trace/index.js";
 export { loadMods, type LoadModsOptions } from "./mods.js";
 export {
   loadProject,
