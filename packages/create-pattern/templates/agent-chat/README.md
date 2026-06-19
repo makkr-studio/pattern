@@ -30,4 +30,26 @@ graph → `boundary.tool.return`. Drop a JSON file in `workflows/` (two
 examples ship in there) and the agent discovers it by itself. Set
 `needsApproval: true` and the chat asks you before each call.
 
-See `AGENTS.md` for the full recipes (your coding agent reads it too).
+## What's inside
+
+```
+{{name}}/
+  pattern.config.json    # mods: chat + agents + agents-openai + store + vault + admin
+  workflows/
+    tool-time.json       # a minimal boundary.tool
+    tool-weather.json    # a tool with validated params + an outbound fetch
+  src/index.ts           # loadProject() → start()
+  .env.example           # OPENAI_API_KEY, PATTERN_VAULT_KEY, CHAT_* switches
+  AGENTS.md              # recipes for your coding agent (CLAUDE.md points here)
+```
+
+Every chat turn runs the `chat.turn.pipeline` workflow — visible (and forkable)
+in the admin. The agent, its tools, and its guardrails are graph nodes.
+
+## Next steps
+
+- **Tune the agent**, **add a guardrail**, **require sign-in**, or **fork the
+  turn pipeline** — `AGENTS.md` has the recipes (your coding agent reads it too).
+- **The handbook** at `/docs` (add `@pattern/mod-docs` if you didn't): the
+  *Agents & chat* chapter and the *Chat* chapter (customizing, multiple
+  branded instances) go deeper.

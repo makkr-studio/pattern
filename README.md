@@ -146,8 +146,8 @@ pnpm local:publish                               # bump patch, build, publish al
 pnpm local:test-create                           # scaffold + install + run against Verdaccio
 ```
 
-- `pnpm local:publish` keeps the packages in lockstep and bumps within
-  `0.1.x` so the templates' `^0.1.0` deps resolve to what you just published.
+- `pnpm local:publish` keeps the packages in lockstep and bumps the patch so the
+  templates' `@pattern/*` deps resolve to what you just published.
   Flags: `--set <version>`, `--no-bump`, `--dry-run`.
 - `pnpm local:test-create` scaffolds into a temp dir, installs the published
   `@pattern/*`, and runs it. Flags: `--template <id>`, `--keep`, `--no-run`.
