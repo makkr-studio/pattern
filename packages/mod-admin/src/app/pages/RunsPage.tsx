@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { motion } from "motion/react";
 import type { RunSummary, SpanData, SpanIoSample } from "@pattern/admin-sdk";
 import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
@@ -18,9 +17,22 @@ const FETCH_WINDOW = 500;
 function nodeOf(span: SpanData): string {
   const id = String(span.attributes["pattern.node.id"] ?? span.name);
   // A per-chunk stream region runs a member once per chunk → many spans for one
-  // node id; the iteration seq keeps the waterfall rows legible.
+  // node id; the iteration seq keeps logs/tail lines legible.
   const seq = span.attributes["pattern.iteration.seq"];
   return seq == null ? id : `${id} #${String(seq)}`;
+}
+
+/** Group node spans by node id, preserving first-appearance order. A per-chunk
+ *  stream region member has many spans here → one waterfall row, a bar per call. */
+function groupByNode(spans: SpanData[]): Map<string, SpanData[]> {
+  const m = new Map<string, SpanData[]>();
+  for (const s of spans) {
+    const id = String(s.attributes["pattern.node.id"]);
+    const arr = m.get(id);
+    if (arr) arr.push(s);
+    else m.set(id, [s]);
+  }
+  return m;
 }
 
 /** One side of a node's sampled I/O: a labeled row per port. */
@@ -57,7 +69,7 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
     <div>
       {/* What am I looking at? One row per node; the bar is when it ran. */}
       <div className="text-muted mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-        <span>One row per node — faint = waiting on inputs, solid = working. Click a bar for its I/O.</span>
+        <span>One row per op — faint = waiting, solid = working; an op called per chunk (a stream region) shows a bar per call. Click a bar for its I/O.</span>
         <span className="flex items-center gap-3">
           {(
             [
@@ -84,73 +96,75 @@ function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: nu
         <span className="w-14 shrink-0" />
       </div>
       <div className="space-y-1.5">
-      {nodes.map((s) => {
-        const left = total ? ((s.startTime - runStart) / total) * 100 : 0;
-        const width = total ? Math.max(1.5, ((s.endTime - s.startTime) / total) * 100) : 100;
-        const color = statusColor(s.status);
-        // Every node launches at t≈0 and blocks on its inputs — the engine
-        // reports that prefix so we can dim it: faint = waiting, solid = working.
-        const blockedMs = Number(s.attributes["pattern.node.blockedMs"] ?? 0);
-        const blocked = total ? Math.min((blockedMs / total) * 100, width - 1) : 0;
-        const active = s.endTime - s.startTime - blockedMs;
-        // Sub-workflow invocations this node made (ctx.invoke) — linkable runs.
-        const invokes = (s.events ?? []).filter((e) => e.name === "invoke");
+      {[...groupByNode(nodes)].map(([nodeId, group]) => {
+        // A region op runs once per chunk → many spans on ONE row, a bar each.
+        const invokes = group.flatMap((s) => (s.events ?? []).filter((e) => e.name === "invoke"));
+        const dur = group.reduce((a, s) => a + (s.endTime - s.startTime), 0);
         return (
-          <div key={s.spanId}>
-            <button onClick={() => setOpen(open === s.spanId ? null : s.spanId)} className="block w-full text-left">
-              <div className="flex items-center gap-3 text-xs">
-                <span className="flex w-40 shrink-0 items-center gap-1 truncate font-mono">
-                  <span className="truncate">{nodeOf(s)}</span>
-                  {invokes.length > 0 && (
-                    <span
-                      className="shrink-0 text-[var(--color-neon-cyan)]"
-                      title={`invoked ${invokes.length} sub-workflow run${invokes.length > 1 ? "s" : ""} — click for links`}
+          <div key={nodeId}>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="flex w-40 shrink-0 items-center gap-1 truncate font-mono">
+                <span className="truncate">{nodeId}</span>
+                {group.length > 1 && <span className="text-muted shrink-0 text-[10px]">×{group.length}</span>}
+                {invokes.length > 0 && (
+                  <span className="shrink-0 text-[var(--color-neon-cyan)]" title={`invoked ${invokes.length} sub-workflow run${invokes.length > 1 ? "s" : ""}`}>
+                    ↳{invokes.length > 1 ? invokes.length : ""}
+                  </span>
+                )}
+              </span>
+              <div className="relative h-4 flex-1 rounded bg-white/5">
+                {group.map((s) => {
+                  const left = total ? ((s.startTime - runStart) / total) * 100 : 0;
+                  const width = total ? Math.max(1.2, ((s.endTime - s.startTime) / total) * 100) : 100;
+                  const color = statusColor(s.status);
+                  const blockedMs = Number(s.attributes["pattern.node.blockedMs"] ?? 0);
+                  const blockedFrac = width ? Math.min((((blockedMs / total) * 100) / width) * 100, 90) : 0;
+                  const seq = s.attributes["pattern.iteration.seq"];
+                  const title = `${seq != null ? `#${String(seq)} · ` : ""}${ms(s.endTime - s.startTime)}${blockedMs > 0 ? ` (waited ${ms(blockedMs)})` : ""}`;
+                  return (
+                    <button
+                      key={s.spanId}
+                      onClick={() => setOpen(open === s.spanId ? null : s.spanId)}
+                      title={title}
+                      className={`absolute top-0 h-4 rounded ${open === s.spanId ? "ring-1 ring-white/60" : ""}`}
+                      style={{ left: `${left}%`, width: `${width}%` }}
                     >
-                      ↳{invokes.length > 1 ? invokes.length : ""}
-                    </span>
-                  )}
-                </span>
-                <div className="relative h-4 flex-1 rounded bg-white/5" {...(blockedMs > 0 ? { title: `waited ${ms(blockedMs)} on inputs · worked ${ms(Math.max(0, active))}` } : {})}>
-                  {blocked > 0.5 && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 0.22 }}
-                      className="absolute top-0 h-4 rounded-l"
-                      style={{ left: `${left}%`, width: `${blocked}%`, background: color }}
-                    />
-                  )}
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.max(1.5, width - blocked)}%` }}
-                    className="absolute top-0 h-4 rounded"
-                    style={{ left: `${left + blocked}%`, background: color, boxShadow: `0 0 10px ${color}` }}
-                  />
-                </div>
-                <span className="text-muted w-14 shrink-0 text-right">{ms(s.endTime - s.startTime)}</span>
+                      {blockedFrac > 1 && <span className="absolute left-0 top-0 h-4 rounded-l" style={{ width: `${blockedFrac}%`, background: color, opacity: 0.22 }} />}
+                      <span className="absolute top-0 bottom-0 right-0 rounded" style={{ left: `${blockedFrac}%`, background: color, boxShadow: `0 0 8px ${color}` }} />
+                    </button>
+                  );
+                })}
               </div>
-            </button>
-            {open === s.spanId && (s.io || s.error || invokes.length > 0) && (
-              <div className="ml-40 mt-1 space-y-2">
-                {s.error && <div className="text-[var(--color-neon-pink)] text-xs">{s.error.message}</div>}
-                {invokes.map((e, i) => (
-                  <Link
-                    key={i}
-                    to={`/runs/${String(e.attributes?.runId ?? "")}`}
-                    className="flex items-center gap-1.5 text-xs text-[var(--color-neon-cyan)] hover:underline"
-                  >
-                    ↳ ran <span className="font-mono">{String(e.attributes?.workflowId ?? "?")}</span>
-                    <span className="text-muted font-mono">{String(e.attributes?.runId ?? "").slice(0, 8)}</span>
-                  </Link>
-                ))}
-                <IoPorts title="In" ports={s.io?.inputs} />
-                <IoPorts title="Out" ports={s.io?.outputs} />
-              </div>
-            )}
-            {open === s.spanId && !s.io && (
-              <div className="text-muted ml-40 mt-1 text-[10px]">
-                No I/O sampled for this run — turn on “Sample run I/O” in Settings → Observability, or run it from the editor.
-              </div>
-            )}
+              <span className="text-muted w-14 shrink-0 text-right">{group.length > 1 ? `×${group.length}` : ms(dur)}</span>
+            </div>
+            {group
+              .filter((s) => open === s.spanId)
+              .map((s) => {
+                const inv = (s.events ?? []).filter((e) => e.name === "invoke");
+                const seq = s.attributes["pattern.iteration.seq"];
+                return (
+                  <div key={s.spanId} className="ml-40 mt-1 space-y-2">
+                    <div className="text-muted text-[10px]">{seq != null ? `iteration #${String(seq)} · ` : ""}{ms(s.endTime - s.startTime)}</div>
+                    {s.error && <div className="text-[var(--color-neon-pink)] text-xs">{s.error.message}</div>}
+                    {inv.map((e, i) => (
+                      <Link key={i} to={`/runs/${String(e.attributes?.runId ?? "")}`} className="flex items-center gap-1.5 text-xs text-[var(--color-neon-cyan)] hover:underline">
+                        ↳ ran <span className="font-mono">{String(e.attributes?.workflowId ?? "?")}</span>
+                        <span className="text-muted font-mono">{String(e.attributes?.runId ?? "").slice(0, 8)}</span>
+                      </Link>
+                    ))}
+                    {s.io ? (
+                      <>
+                        <IoPorts title="In" ports={s.io?.inputs} />
+                        <IoPorts title="Out" ports={s.io?.outputs} />
+                      </>
+                    ) : (
+                      <div className="text-muted text-[10px]">
+                        No I/O sampled for this run — turn on “Sample run I/O” in Settings → Observability, or run it from the editor.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         );
       })}
