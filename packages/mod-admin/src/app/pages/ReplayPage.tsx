@@ -215,6 +215,7 @@ export function ReplayPage() {
       <GlassPanel className="min-h-0 flex-1 overflow-hidden">
         <ReactFlowProvider>
           <ReactFlow
+            className="replay-canvas"
             nodes={decorated.nodes}
             edges={decorated.edges}
             nodeTypes={nodeTypes}
@@ -224,6 +225,7 @@ export function ReplayPage() {
             nodesConnectable={false}
             elementsSelectable={false}
             onEdgeMouseEnter={(ev, edge) => setHover({ x: ev.clientX, y: ev.clientY, edge })}
+            onEdgeMouseMove={(ev, edge) => setHover({ x: ev.clientX, y: ev.clientY, edge })}
             onEdgeMouseLeave={() => setHover(null)}
             proOptions={{ hideAttribution: true }}
           >
