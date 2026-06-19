@@ -1,5 +1,5 @@
 /**
- * mod-admin — control plane + store + versioning (mod-admin-spec M2).
+ * mod-admin — control plane + store + versioning (admin internals M2).
  */
 
 import { describe, it, expect } from "vitest";

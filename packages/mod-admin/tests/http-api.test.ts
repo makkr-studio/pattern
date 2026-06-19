@@ -1,5 +1,5 @@
 /**
- * mod-admin — the self-reflecting API over HTTP, end-to-end (mod-admin-spec M3).
+ * mod-admin — the self-reflecting API over HTTP, end-to-end (admin internals M3).
  * Every admin.* endpoint is a workflow; the sink records runs + aggregates.
  */
 

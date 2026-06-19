@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the `admin.*` op catalog (mod-admin-spec §10).
+ * @pattern/mod-admin — the `admin.*` op catalog (admin internals §10).
  *
  * Each op reaches the control plane / trace sink / engine via `ctx.services`
  * (in-process, P5) and returns value data. They are ordinary `OpDefinition`s, so

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — endpoint workflows (mod-admin-spec §11).
+ * @pattern/mod-admin — endpoint workflows (admin internals §11).
  *
  * The admin API *is* a set of Pattern workflows, and each one is a worked
  * example of the idiom: the op is a PURE domain function with discrete, named

@@ -4,7 +4,7 @@ import { hashHue } from "../lib/format";
 import { highlight } from "./JsonCode";
 import { sfx } from "../lib/sfx";
 
-/** A frosted glass surface. The core surface language (mod-admin-spec §14). */
+/** A frosted glass surface. The core surface language (admin internals §14). */
 export function GlassPanel({ className = "", children, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={`glass rounded-2xl ${className}`} {...rest}>

@@ -1,5 +1,5 @@
 /**
- * mod-admin-spec M10 — the thesis proof: a sample mod extends the admin (Tier-1
+ * admin internals M10 — the thesis proof: a sample mod extends the admin (Tier-1
  * declarative page + ⌘K command + menu + a self-served Tier-2 ESM remote) with
  * **zero admin-core changes**. We only `engine.use` the sample mod.
  */

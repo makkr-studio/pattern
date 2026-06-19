@@ -4,7 +4,7 @@ import { JsonView } from "./ui";
 import { tip } from "./Tooltip";
 
 /**
- * A visual schema builder (mod-admin-spec §12 spirit: forms over raw JSON).
+ * A visual schema builder (admin internals §12 spirit: forms over raw JSON).
  * Edits the JSON Schema wire format directly — what `core.schema.define` emits
  * and the hosts compile — so the builder, the raw-JSON toggle, and wired
  * schema values all agree. Recursive: objects nest fields, arrays nest items.

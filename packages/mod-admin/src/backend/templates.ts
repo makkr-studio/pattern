@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — built-in workflow templates (mod-admin-spec §15.6).
+ * @pattern/mod-admin — built-in workflow templates (admin internals §15.6).
  *
  * "New from template" clones one of these JSON docs into the editor. Mods
  * contribute more via their frontend/ops; these are the starting set.

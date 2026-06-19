@@ -41,7 +41,7 @@ function framePath(w: number, h: number, topTab: boolean, bottomTab: boolean): s
   return d;
 }
 
-/** Replay-state visual treatment (mod-admin-spec §15.1). */
+/** Replay-state visual treatment (admin internals §15.1). */
 const REPLAY: Record<string, { color: string; dim: boolean; pulse: boolean }> = {
   pending: { color: "var(--color-port-control)", dim: true, pulse: false },
   running: { color: "var(--color-neon-cyan)", dim: false, pulse: true },
@@ -136,7 +136,7 @@ function OutputRow({ nodeId, p, top, control = false }: { nodeId: string; p: Por
   );
 }
 
-/** A workflow node rendered from its op's ports (mod-admin-spec §12). Shows a
+/** A workflow node rendered from its op's ports (admin internals §12). Shows a
  *  friendly name + category icon/accent; ports are colored by *data type* (hover
  *  for the full type), config-input ports render as squares, and the implicit
  *  control run ports sit top (in) / bottom (out) for value-less chaining. */

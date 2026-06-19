@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — backend service wiring (mod-admin-spec §3).
+ * @pattern/mod-admin — backend service wiring (admin internals §3).
  *
  * The admin registers three in-process services on the engine; its ops reach
  * them via `ctx.services.<name>`. Bundled access through `adminServices(ctx)`

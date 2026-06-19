@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { JsonCode } from "./JsonCode";
 
 /**
- * A config form generated from a JSON Schema (mod-admin-spec §12) — the
+ * A config form generated from a JSON Schema (admin internals §12) — the
  * `FormFromSchema` kit (not @rjsf). Handles the shapes Zod's `toJSONSchema`
  * emits: object/string/number/integer/boolean/enum/array/nested object, with
  * secret fields masked. Anything it can't model degrades to a JSON field.

@@ -1,6 +1,6 @@
 /**
  * @pattern/mod-admin — an authorable, self-reflecting control surface for a
- * Pattern engine (mod-admin-spec).
+ * Pattern engine (admin internals).
  *
  * The admin is a **mod**: a brick you `engine.use()` (install with
  * `await engine.useAsync(adminMod())` so its async `setup` completes). It
@@ -14,7 +14,7 @@
 
 export { adminMod, default, type AdminModOptions } from "./backend/mod.js";
 
-// Control plane + store + versioning (mod-admin-spec §4, §5, §9)
+// Control plane + store + versioning (admin internals §4, §5, §9)
 export { DefaultControlPlane, type ControlPlaneOptions } from "./backend/control-plane/control-plane.js";
 export { FlystorageWorkflowStore, extractRoute, type FlystorageWorkflowStoreOptions } from "./backend/control-plane/store.js";
 export {
@@ -49,7 +49,7 @@ export {
 } from "@pattern/runtime-node";
 export type { MetricsSummary, LatencyStats, RunDetail, RunSummary, TraceStore } from "@pattern/core";
 
-// Ops, endpoints, introspection, services (mod-admin-spec §10, §11, §3)
+// Ops, endpoints, introspection, services (admin internals §10, §11, §3)
 export { adminOps } from "./backend/ops/index.js";
 export {
   endpointSpecs,

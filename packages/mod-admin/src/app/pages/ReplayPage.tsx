@@ -45,7 +45,7 @@ function peekText(e: ReplayEvent, ioOf: (node: string, port: string) => unknown)
 }
 
 /**
- * Run replay on the graph canvas (mod-admin-spec §15.1). The timeline is an
+ * Run replay on the graph canvas (admin internals §15.1). The timeline is an
  * ordered EVENT LOG — each node's started / per-output / per-stream-chunk /
  * ended moment — not a reconstruction from [start,end] bars. The scrubber steps
  * event-to-event (symmetric forward/back, one transition per step) over a

@@ -16,7 +16,7 @@ function remote(url: string): ComponentType {
 }
 
 /**
- * Renders a mod-contributed page (mod-admin-spec §6) matched by path from the UI
+ * Renders a mod-contributed page (admin internals §6) matched by path from the UI
  * manifest: Tier-1 declarative `view` (or stacked `views`), or a Tier-2 ESM
  * `remote` loaded at runtime. Paths may carry `:params`
  * (`/x/identity/users/:userId`) — matched like routes, exact paths first; the

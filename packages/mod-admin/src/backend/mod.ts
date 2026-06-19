@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the mod (mod-admin-spec §1, §3, §16).
+ * @pattern/mod-admin — the mod (admin internals §1, §3, §16).
  *
  * `engine.use()`-able brick that adds the authorable, self-reflecting control
  * surface: it contributes the `admin.*` ops, the endpoint workflows that expose

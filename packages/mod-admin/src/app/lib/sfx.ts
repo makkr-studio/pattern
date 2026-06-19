@@ -1,5 +1,5 @@
 /**
- * SFX — a tiny WebAudio synthesizer giving the admin a voice (mod-admin-spec §14
+ * SFX — a tiny WebAudio synthesizer giving the admin a voice (admin internals §14
  * "the UI should feel alive"). No samples, no assets: every sound is a few
  * oscillators with an envelope, so the whole soundscape costs ~0 bytes and never
  * blocks. Volumes are deliberately low — texture, not noise.

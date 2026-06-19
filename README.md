@@ -24,7 +24,7 @@ request → agent(tokens: stream) → split(2) ─┬─▶ SSE response body
                                              └─▶ TTS synthesis
 ```
 
-Four defining properties (see [the spec](./pattern-engine-spec.md)):
+Four defining properties (see [Architecture](./packages/mod-docs/docs/architecture.md)):
 
 1. **Workflows are data, not code.** Just op references + config; the engine never `eval`s.
 2. **Ops carry the code.** Each node is an instance of an op — typed input/output ports + an `execute`.
@@ -87,15 +87,15 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 
 | Package | What |
 |---------|------|
-| [`@pattern/core`](./packages/core) | The runtime-neutral engine: types, validation, scheduler, streams, the [op catalog](./docs/op-catalog.md), hooks/events, auth, observability. One dependency: Zod. |
+| [`@pattern/core`](./packages/core) | The runtime-neutral engine: types, validation, scheduler, streams, the base op catalog (generated reference at `/docs/ops`), hooks/events, auth, observability. One dependency: Zod. |
 | [`@pattern/runtime-node`](./packages/runtime-node) | Node adapter: HTTP/WebSocket/CLI/schedule hosts, `node:worker_threads` pool transport, socket-bound connection registry, JSONL/SQLite trace sinks, the `pattern` CLI. |
 | [`@pattern/mod-admin`](./packages/mod-admin) | The admin mod: an authorable, self-reflecting control surface — control plane, workflow store + versioning, run/metrics sink, the `admin.*` ops + workflow-backed HTTP API, and a React 19 / xyflow / Tailwind v4 glassmorphism **SPA** (catalog, graph editor, runs+replay, versions+diff, system map, metrics). |
 | [`@pattern/admin-sdk`](./packages/admin-sdk) | The admin extension surface: a typed API client over the workflow-backed endpoints (incl. SSE tail) + nav/command helpers + shared protocol types. |
-| [`@pattern/mod-identity`](./packages/mod-identity) | The optional [identity brick](./docs/identity.md): users, revocable cookie sessions (CAS-backed sqlite), roles→scopes, single-use token kernel, login page, bootstrap-on-first-boot, WS session rooms, admin Users/Sessions screens. Installing it flips the admin to secure-by-default. |
+| [`@pattern/mod-identity`](./packages/mod-identity) | The optional [identity brick](./packages/mod-docs/docs/guides/identity.md): users, revocable cookie sessions (CAS-backed sqlite), roles→scopes, single-use token kernel, login page, bootstrap-on-first-boot, WS session rooms, admin Users/Sessions screens. Installing it flips the admin to secure-by-default. |
 | [`@pattern/mod-auth-magic-link`](./packages/mod-auth-magic-link) | Email magic-link login — the reference identity provider mod. Delivery via the `identity.deliverToken` hook; the console fallback doubles as the zero-config dev login. |
-| [`@pattern/mod-store`](./packages/mod-store) | Generic persistence for [agents & apps](./docs/agents-and-chat.md): JSON document collections with declared indexes, a blob store, and TTL'd CAS **leases** with run-settle auto-release. SQLite or memory; admin Data browser. |
+| [`@pattern/mod-store`](./packages/mod-store) | Generic persistence for [agents & apps](./packages/mod-docs/docs/guides/agents-and-chat.md): JSON document collections with declared indexes, a blob store, and TTL'd CAS **leases** with run-settle auto-release. SQLite or memory; admin Data browser. |
 | [`@pattern/mod-vault`](./packages/mod-vault) | Encrypted-at-rest secrets (AES-256-GCM, `PATTERN_VAULT_KEY`): a `vault.read` node whose values are masked out of run samples, plus a write-only Secrets admin screen. |
-| [`@pattern/mod-agents`](./packages/mod-agents) | The neutral [agent contracts](./docs/agents-and-chat.md): agent/toolset/guardrail descriptors on edges, the turn event protocol, the `boundary.tool` workflow pair (engine-validated params, linked sub-runs), the live tool registry. |
+| [`@pattern/mod-agents`](./packages/mod-agents) | The neutral [agent contracts](./packages/mod-docs/docs/guides/agents-and-chat.md): agent/toolset/guardrail descriptors on edges, the turn event protocol, the `boundary.tool` workflow pair (engine-validated params, linked sub-runs), the live tool registry. |
 | [`@pattern/mod-agents-openai`](./packages/mod-agents-openai) | The OpenAI Agents SDK provider: streaming `agents.run`, HITL `agents.run.resume`, MCP servers (pooled), history compaction as a node, realtime key minting. Scripted-model test seam — the suite runs without an API key. |
 | [`@pattern/mod-docs`](./packages/mod-docs) | **Self-reflecting docs** at `/docs`: every installed mod contributes a markdown chapter shipped in its own package (version-locked), the op reference is generated from the live registry merged with per-op prose, ` ```workflow ` fences render as real graphs, ⌘K search, and `/docs/llms.txt` for agent readers. |
 | [`@pattern/mod-chat`](./packages/mod-chat) | A complete chat **product app** at `/chat`: streaming transcript with the strand (tool buds, approvals, error cards), image input, Stop, refresh-recovery from the persisted turn log — and the turn pipeline is a workflow you can fork. |
@@ -104,12 +104,17 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 
 ## Docs
 
-- [Concepts](./docs/concepts.md) — ports, edges, the scheduler, boundaries, hooks vs events, auth.
-- [Projects & mods](./docs/projects-and-mods.md) — `pattern.config.json`, declarative HTTP routes, runtime-modifiable workflows, the mod system.
-- [Op catalog](./docs/op-catalog.md) — every base op, grouped, with ports & config.
-- [Authoring ops & mods](./docs/authoring-ops.md) — write your own ops, boundaries, and plugins.
-- [Identity](./docs/identity.md) — users, sessions, roles, login methods, the `user` port, WS session rooms.
-- [The spec](./pattern-engine-spec.md) — the full design of record.
+The full handbook is served at **`/docs`** by [`@pattern/mod-docs`](./packages/mod-docs)
+— every installed mod contributes a chapter shipped in its own package, the op
+reference is generated from the live registry, and `/docs/llms.txt` concatenates it
+all for agent readers. The source markdown lives in
+[`packages/mod-docs/docs`](./packages/mod-docs/docs):
+
+- [Concepts](./packages/mod-docs/docs/concepts.md) — ports, edges, the scheduler, boundaries, hooks vs events, auth.
+- [Architecture](./packages/mod-docs/docs/architecture.md) — the design rationale and engine internals.
+- [Projects & mods](./packages/mod-docs/docs/guides/projects-and-mods.md) — `pattern.config.json`, declarative HTTP routes, runtime-modifiable workflows, the mod system.
+- [Authoring ops](./packages/mod-docs/docs/guides/authoring-ops.md) — write your own ops, boundaries, and mods.
+- The generated **op reference** at `/docs/ops`, with per-op "when to use" prose.
 
 ## CLI
 
@@ -157,7 +162,7 @@ surface). Storage sits on [flystorage](https://flystorage.dev), so S3/GCS/Azure
 adapters drop in. The worker pool loads mods via `WorkerPoolTransport({ mods })`.
 Designed-for-but-not-built (no architectural blockers): durable/resumable runs
 and distributed execution behind the same `RunTransport`. See
-[§13 of the spec](./pattern-engine-spec.md).
+[Architecture → Distribution](./packages/mod-docs/docs/architecture.md).
 
 ## License
 

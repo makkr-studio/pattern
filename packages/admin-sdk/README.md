@@ -1,7 +1,7 @@
 # @pattern/admin-sdk
 
 The stable surface admin UIs and mods import to extend [`@pattern/mod-admin`](../mod-admin)
-(mod-admin-spec §6, §12) — the adoption lever.
+(see the [admin internals](../mod-admin/docs/internals.md) §6, §12) — the adoption lever.
 
 > **This release ships the framework-agnostic core**: the wire-protocol types, a
 > typed API client over the workflow-backed endpoints (incl. the SSE run tail),

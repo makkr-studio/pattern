@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the admin's own frontend contribution (mod-admin-spec §6).
+ * @pattern/mod-admin — the admin's own frontend contribution (admin internals §6).
  *
  * The admin builds its nav from the *same* `FrontendContribution` surface mods
  * use (dogfooding = proof the surface is sufficient). The declarative pages here

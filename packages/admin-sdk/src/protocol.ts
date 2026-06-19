@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — wire protocol (mod-admin-spec §9, §10).
+ * @pattern/admin-sdk — wire protocol (admin internals §9, §10).
  *
  * The data shapes the admin API speaks over HTTP. These mirror the `admin.*` op
  * I/O; the SDK owns them as the *client-facing contract* (the backend produces
