@@ -143,3 +143,50 @@ describe("streams — split policies", () => {
     expect(result.slow).toEqual(expected.reduce((a, b) => a + b, 0)); // slow branch too — none lost
   });
 });
+
+describe("streams — pluck / template (lightweight per-chunk, no sub-workflow)", () => {
+  it("pluck extracts a dot-path per chunk and drops chunks missing it", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "pluck-demo",
+      nodes: [
+        { id: "t", op: "boundary.manual", config: { outputs: ["items"] } },
+        { id: "e", op: "core.stream.emit" },
+        { id: "p", op: "core.stream.pluck", config: { path: "delta.text" } },
+        { id: "acc", op: "core.stream.accumulate", config: { mode: "array" } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "t", port: "items" }, to: { node: "e", port: "in" } },
+        { from: { node: "e", port: "out" }, to: { node: "p", port: "in" } },
+        { from: { node: "p", port: "out" }, to: { node: "acc", port: "in" } },
+        { from: { node: "acc", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    };
+    // Agent-like frames: text deltas interleaved with control frames missing the path.
+    const items = [{ delta: { text: "Hello" } }, { type: "ping" }, { delta: { text: " World" } }];
+    expect(await run(engine, wf, { items })).toEqual({ value: ["Hello", " World"] });
+  });
+
+  it("template renders {{path}} per chunk into a string stream", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "tpl-demo",
+      nodes: [
+        { id: "t", op: "boundary.manual", config: { outputs: ["items"] } },
+        { id: "e", op: "core.stream.emit" },
+        { id: "tpl", op: "core.stream.template", config: { template: "{{ i }}:{{ t }}" } },
+        { id: "acc", op: "core.stream.accumulate", config: { mode: "concat" } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "t", port: "items" }, to: { node: "e", port: "in" } },
+        { from: { node: "e", port: "out" }, to: { node: "tpl", port: "in" } },
+        { from: { node: "tpl", port: "out" }, to: { node: "acc", port: "in" } },
+        { from: { node: "acc", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    };
+    const items = [{ i: 1, t: "a" }, { i: 2, t: "b" }];
+    expect(await run(engine, wf, { items })).toEqual({ value: "1:a2:b" });
+  });
+});

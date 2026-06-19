@@ -14,6 +14,8 @@
 import { defineOp, required, stream, value, z } from "../ops-core/helpers.js";
 import { StreamHub } from "../scheduler/slots.js";
 import { iterableToStream, streamToIterable } from "./util.js";
+import { getPath } from "../ops-core/objects.js";
+import { renderTemplate } from "../ops-core/strings.js";
 import type { OpDefinition, Ports } from "../types.js";
 
 const subworkflowRef = z.union([z.object({ workflowId: z.string() }), z.object({ workflow: z.any() })]);
@@ -267,4 +269,49 @@ export const filter: OpDefinition = defineOp({
   },
 });
 
-export const streamOps: OpDefinition[] = [split, merge, accumulate, emit, map, filter];
+export const pluck: OpDefinition = defineOp({
+  type: "core.stream.pluck",
+  title: "core.stream.pluck",
+  description:
+    "Extract `config.path` (dot/bracket) from each chunk and re-emit as a stream — no sub-workflow. " +
+    "Chunks where the path is missing are dropped, so e.g. agent frames like { delta: { text } } become a clean text stream via path 'delta.text'.",
+  inputs: { in: stream() },
+  outputs: { out: stream() },
+  config: z.object({ path: z.string() }),
+  execute: (ctx) => {
+    const { path } = ctx.config as { path: string };
+    const input = ctx.input.stream("in");
+    const out = iterableToStream(
+      (async function* () {
+        for await (const item of streamToIterable(input)) {
+          const v = getPath(item, path);
+          if (v !== undefined && v !== null) yield v;
+        }
+      })(),
+    );
+    return { out };
+  },
+});
+
+export const template: OpDefinition = defineOp({
+  type: "core.stream.template",
+  title: "core.stream.template",
+  description:
+    "Render a string per chunk from `{{ dot.path }}` placeholders over the chunk, and re-emit as a stream — no sub-workflow. " +
+    "Great for formatting object chunks (e.g. agent deltas) into display text.",
+  inputs: { in: stream() },
+  outputs: { out: stream() },
+  config: z.object({ template: z.string() }),
+  execute: (ctx) => {
+    const { template: tpl } = ctx.config as { template: string };
+    const input = ctx.input.stream("in");
+    const out = iterableToStream(
+      (async function* () {
+        for await (const item of streamToIterable(input)) yield renderTemplate(tpl, item);
+      })(),
+    );
+    return { out };
+  },
+});
+
+export const streamOps: OpDefinition[] = [split, merge, accumulate, emit, map, filter, pluck, template];
