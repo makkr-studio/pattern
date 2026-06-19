@@ -32,6 +32,7 @@ import {
   type Workflow,
 } from "@pattern/core";
 import { loadMods } from "../mods.js";
+import { loadWorkflowDir } from "../project.js";
 import { runCli } from "../cli.js";
 import { createTraceStore } from "../trace/index.js";
 
@@ -79,7 +80,7 @@ function usage(): void {
   ${pc.cyan("pattern ops")} <query>           filter by prefix, or full detail on an exact type
   ${pc.cyan("pattern graph")} <file.json>     print a workflow's graph
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
-  ${pc.cyan("pattern run")} <file.json> [-- args]   run a boundary.cli workflow once (records to the trace store)
+  ${pc.cyan("pattern run")} <file.json|id> [-- args]  run a boundary.cli workflow once by file or id (records to the trace store)
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
   ${pc.cyan("pattern load")} <scenario.json>  open-loop load test with engine flight-recording
                               ${pc.dim("--sweep  find max sustainable rps   --url <u>  target a running server")}
@@ -152,26 +153,51 @@ async function cmdValidate(file: string | undefined): Promise<void> {
 }
 
 /**
- * `pattern run <file.json> [-- args]` — run a `boundary.cli` workflow once.
- * Loads the project's mods (so app/npm ops resolve), registers the workflow,
- * attaches the durable trace store so the run shows up in the admin like any
- * other, runs it (args after `--` reach the workflow's `args`/`parsed`/stdin),
- * and exits with the workflow's CLI exit code.
+ * `pattern run <file.json|id> [-- args]` — run a `boundary.cli` workflow once.
+ * The target is an explicit workflow file, OR the **id** of a registered
+ * workflow — including one authored in the admin (those load from `.pattern`
+ * when the project's mods install) and file workflows under `./workflows`. Loads
+ * the project (so app/npm ops + stored workflows resolve), attaches the durable
+ * trace store so the run shows up in the admin like any other, runs it (args
+ * after `--` reach `args`/`parsed`/stdin), and exits with the CLI exit code.
  */
 async function cmdRun(rest: string[]): Promise<void> {
   const dash = rest.indexOf("--");
-  const file = dash >= 0 ? rest.slice(0, dash).find((a) => !a.startsWith("-")) : rest[0];
+  const target = dash >= 0 ? rest.slice(0, dash).find((a) => !a.startsWith("-")) : rest[0];
   const argv = dash >= 0 ? rest.slice(dash + 1) : rest.slice(1);
-  const doc = loadWorkflow(file) as Workflow;
+  if (!target) {
+    console.error(pc.red("expected a workflow file or id:  pattern run <file.json|id> [-- args]"));
+    process.exit(1);
+  }
 
+  // Loads the mods → the admin's control plane registers stored (admin-authored)
+  // workflows from `.pattern` during its `ready` hook.
   const engine = await projectEngine();
   // CLI runs are one-shot and interactive — sample I/O so their replay has data.
   engine.setIoSampling(true);
-  try {
-    await engine.registerWorkflowAsync(doc);
-  } catch (err) {
-    console.error(pc.red(`✗ ${(err as Error).message}`));
-    process.exit(1);
+  // Also register file-based workflows so `pattern run <id>` resolves those too.
+  for (const wf of await loadWorkflowDir(resolve(process.cwd(), "workflows"))) {
+    if (!engine.workflows.has(wf.id)) await engine.registerWorkflowAsync(wf).catch(() => {});
+  }
+
+  // Resolve the target: an explicit file path wins; otherwise it's a workflow id.
+  let doc: Workflow | undefined;
+  if (existsSync(target)) {
+    try {
+      doc = JSON.parse(readFileSync(target, "utf8")) as Workflow;
+      await engine.registerWorkflowAsync(doc);
+    } catch (err) {
+      console.error(pc.red(`✗ ${(err as Error).message}`));
+      process.exit(1);
+    }
+  } else {
+    doc = engine.workflows.get(target);
+    if (!doc) {
+      console.error(pc.red(`no workflow file "${target}", and no registered workflow with id "${target}".`));
+      console.error(pc.dim("  Admin-authored workflows load from .pattern — make sure @pattern/mod-admin is in your mods."));
+      console.error(pc.dim("  `pattern ops` and the admin's Workflows list show what's available."));
+      process.exit(1);
+    }
   }
 
   const store = await createTraceStore({ kind: "sqlite", path: resolve(process.cwd(), ".pattern/traces.db") });
