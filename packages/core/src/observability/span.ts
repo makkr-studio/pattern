@@ -78,8 +78,8 @@ export class SpanImpl implements Span {
   setAttributes(attrs: Record<string, unknown>): void {
     Object.assign(this.attributes, attrs);
   }
-  addEvent(name: string, attributes?: Record<string, unknown>): void {
-    this.events.push({ name, time: now(), attributes });
+  addEvent(name: string, attributes?: Record<string, unknown>, time?: number): void {
+    this.events.push({ name, time: time ?? now(), attributes });
   }
   setStatus(status: SpanStatus, error?: unknown): void {
     this.status = status;

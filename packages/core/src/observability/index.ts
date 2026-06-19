@@ -5,7 +5,7 @@
 
 export * from "./span.js";
 export { now } from "./clock.js";
-export { sampleValue, streamSample, SAMPLE_CAP, type MaskFn } from "./sample.js";
+export { sampleValue, sampleChunk, streamSample, SAMPLE_CAP, type MaskFn } from "./sample.js";
 
 import type { SpanData, TraceSink, Principal } from "../types.js";
 

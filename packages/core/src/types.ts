@@ -137,7 +137,8 @@ export interface Span {
   readonly spanId: string;
   setAttribute(key: string, value: unknown): void;
   setAttributes(attrs: Record<string, unknown>): void;
-  addEvent(name: string, attributes?: Record<string, unknown>): void;
+  /** `time` (epoch ms) backdates the event; defaults to now() when omitted. */
+  addEvent(name: string, attributes?: Record<string, unknown>, time?: number): void;
   setStatus(status: SpanStatus, error?: unknown): void;
   /** Attach an opt-in I/O sample to this node span (T1). */
   setIo(io: SpanIo): void;
