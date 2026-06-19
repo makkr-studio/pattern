@@ -281,16 +281,16 @@ const portsCompatibleOp = adminOp("admin.ports.compatible", "Check whether two p
 
 // ── Runs / metrics ──
 
-const runList = adminOp("admin.run.list", "Recent runs from the in-memory sink.", { in: { workflow: Q(z.string().optional()), status: Q(z.string().optional()), limit: Q(z.number().optional()) }, out: "runs" }, (args, { sink }) =>
+const runList = adminOp("admin.run.list", "Recent runs from the trace store.", { in: { workflow: Q(z.string().optional()), status: Q(z.string().optional()), limit: Q(z.number().optional()) }, out: "runs" }, (args, { sink }) =>
   sink.list({ workflow: args.workflow as string | undefined, status: args.status as string | undefined, limit: args.limit ? Number(args.limit) : undefined }),
 );
-const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captured).", { in: { runId: P() }, out: "run" }, (args, { sink, engine }) => {
-  const detail = sink.get(str(args.runId, "runId"));
+const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captured).", { in: { runId: P() }, out: "run" }, async (args, { sink, engine }) => {
+  const detail = await sink.get(str(args.runId, "runId"));
   if (!detail) return detail;
   // Live control state: is the run still in flight, and is it paused?
   const paused = engine.runPaused(str(args.runId, "runId"));
   // Sub-runs this run started via ctx.invoke — the "invoked by" link's mirror.
-  const children = sink.children(str(args.runId, "runId"));
+  const children = await sink.children(str(args.runId, "runId"));
   return { ...detail, inflight: paused !== undefined, paused: paused ?? false, children };
 });
 

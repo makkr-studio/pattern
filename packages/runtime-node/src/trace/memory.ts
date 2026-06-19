@@ -1,68 +1,29 @@
 /**
- * @pattern/mod-admin — in-memory trace sink (mod-admin-spec T4, §15.1, §15.11).
+ * @pattern/runtime-node — in-memory trace store (§10).
  *
  * A bounded ring buffer of recent runs (+ their node spans) plus rolling
  * aggregates: windowed run/error counters and a per-workflow latency histogram.
- * Powers the runs list, run-replay (reads stored spans + opt-in I/O samples),
- * live tail (a span stream wired to an SSE out-gate), and the metrics strip.
+ * Powers the runs list, run-replay (stored spans + opt-in I/O samples), the live
+ * span tail (an SSE out-gate), and the metrics strip. The default `TraceStore`
+ * when no durable backend is configured (and the parity baseline for tests).
  *
- * Emit-don't-persist: this lives in the mod and subscribes via `engine.onTrace`.
- * Windows are labelled honestly (since-boot / last N minutes).
+ * Was `MemoryTraceSink` in mod-admin; moved here so the host, the worker bridge,
+ * and the CLI bin share one implementation behind core's `TraceStore`.
  */
 
-import { now as hiResNow, type Principal, type RunParentRef, type SpanData, type TraceSink } from "@pattern/core";
-
-export interface RunSummary {
-  runId: string;
-  traceId: string;
-  workflowId: string;
-  trigger: string;
-  principal: Principal;
-  status: "ok" | "error" | "running" | "streaming";
-  /** epoch ms */
-  startTime: number;
-  /** epoch ms; undefined while running */
-  endTime?: number;
-  /** Total run time, start → true end (all streams drained). */
-  durationMs?: number;
-  /** Time to result-ready (out-gates captured). For a streaming run this is ≪
-   *  durationMs — "ready in X · streamed Y"; ≈ durationMs for non-streaming. */
-  readyMs?: number;
-  /** How the run truly ended (drain vs the TTL backstop). */
-  endedBy?: "drain" | "timeout";
-  spanCount: number;
-  error?: { message: string };
-  /** Set when this run was started by another run (`ctx.invoke`). */
-  parent?: RunParentRef;
-  /** Where the run executed when not the host loop (e.g. "worker:3"). */
-  executor?: string;
-}
-
-export interface RunDetail {
-  summary: RunSummary;
-  spans: SpanData[];
-}
-
-export interface LatencyStats {
-  workflowId: string;
-  count: number;
-  errors: number;
-  p50: number;
-  p95: number;
-  p99: number;
-  maxMs: number;
-}
-
-export interface MetricsSummary {
-  /** The window these figures cover. */
-  window: { label: string; sinceBoot: boolean; minutes?: number };
-  runs: number;
-  errors: number;
-  errorRate: number;
-  inFlight: number;
-  runsPerMin: number;
-  perWorkflow: LatencyStats[];
-}
+import {
+  now as hiResNow,
+  type LatencyStats,
+  type MetricsSummary,
+  type Principal,
+  type RunDetail,
+  type RunFilter,
+  type RunParentRef,
+  type RunSummary,
+  type SpanData,
+  type TraceStore,
+  type TraceStoreConfig,
+} from "@pattern/core";
 
 interface InProgress {
   summary: RunSummary;
@@ -75,7 +36,7 @@ const percentile = (sorted: number[], p: number): number => {
   return sorted[Math.max(0, idx)] ?? 0;
 };
 
-export interface MemoryTraceSinkOptions {
+export interface MemoryTraceStoreOptions {
   /** Max finished runs retained in the ring buffer. Default 500. */
   capacity?: number;
   /** Clock (overridable in tests). Default: core's high-res `now()` so run
@@ -83,7 +44,7 @@ export interface MemoryTraceSinkOptions {
   now?: () => number;
 }
 
-export class MemoryTraceSink implements TraceSink {
+export class MemoryTraceStore implements TraceStore {
   private capacity: number;
   private readonly now: () => number;
   private readonly bootTime: number;
@@ -101,7 +62,7 @@ export class MemoryTraceSink implements TraceSink {
   /** Live span subscribers for the tail (filtered by workflow). */
   private readonly subscribers = new Set<{ workflowId?: string; push: (s: SpanData) => void; close: () => void }>();
 
-  constructor(opts: MemoryTraceSinkOptions = {}) {
+  constructor(opts: MemoryTraceStoreOptions = {}) {
     this.capacity = opts.capacity ?? 500;
     this.now = opts.now ?? hiResNow;
     this.bootTime = this.now();
@@ -109,12 +70,10 @@ export class MemoryTraceSink implements TraceSink {
 
   // ── Runtime-adjustable config (admin Settings → Observability) ──
 
-  /** Current retention/exclusion, for the settings UI. */
-  config(): { capacity: number; exclude: string | null } {
+  config(): TraceStoreConfig {
     return { capacity: this.capacity, exclude: this.excludeSource };
   }
 
-  /** Resize the ring buffer (trims oldest immediately). */
   setCapacity(n: number): void {
     this.capacity = Math.max(10, Math.min(10_000, Math.floor(n)));
     while (this.runs.length > this.capacity) {
@@ -135,6 +94,8 @@ export class MemoryTraceSink implements TraceSink {
     this.exclude = new RegExp(pattern); // may throw — caller surfaces it
     this.excludeSource = pattern;
   }
+
+  // ── Write side (TraceSink) ──
 
   onRunStart(run: {
     runId: string;
@@ -221,9 +182,9 @@ export class MemoryTraceSink implements TraceSink {
     }
   }
 
-  // ── Queries (used by admin.run.* and admin.metrics.summary) ──
+  // ── Read side (TraceStore) ──
 
-  list(filter: { workflow?: string; status?: string; limit?: number } = {}): RunSummary[] {
+  async list(filter: RunFilter = {}): Promise<RunSummary[]> {
     const limit = filter.limit ?? 50;
     const out: RunSummary[] = [];
     // Newest first; include in-flight runs at the top.
@@ -237,7 +198,7 @@ export class MemoryTraceSink implements TraceSink {
     return out;
   }
 
-  get(runId: string): RunDetail | null {
+  async get(runId: string): Promise<RunDetail | null> {
     const rec = this.byRunId.get(runId);
     if (rec) return rec;
     for (const r of this.inProgress.values()) if (r.summary.runId === runId) return r;
@@ -246,7 +207,7 @@ export class MemoryTraceSink implements TraceSink {
 
   /** Sub-runs this run started via `ctx.invoke`, oldest first (linear scan —
    *  the ring buffer is bounded, and this only runs on a run-detail view). */
-  children(runId: string): RunSummary[] {
+  async children(runId: string): Promise<RunSummary[]> {
     const out: RunSummary[] = [];
     for (const r of this.runs) if (r.summary.parent?.runId === runId) out.push(r.summary);
     for (const r of this.inProgress.values()) if (r.summary.parent?.runId === runId) out.push(r.summary);
@@ -284,7 +245,7 @@ export class MemoryTraceSink implements TraceSink {
     });
   }
 
-  metrics(window?: { minutes?: number }): MetricsSummary {
+  async metrics(window?: { minutes?: number }): Promise<MetricsSummary> {
     const minutes = window?.minutes;
     const since = minutes ? this.now() - minutes * 60_000 : this.bootTime;
     const inWindow = this.runs.filter((r) => r.summary.startTime >= since);
@@ -330,5 +291,10 @@ export class MemoryTraceSink implements TraceSink {
       runsPerMin: inWindow.length / elapsedMin,
       perWorkflow,
     };
+  }
+
+  async close(): Promise<void> {
+    for (const sub of this.subscribers) sub.close();
+    this.subscribers.clear();
   }
 }

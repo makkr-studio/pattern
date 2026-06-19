@@ -39,15 +39,15 @@ export type {
   WorkflowStore,
 } from "./backend/control-plane/types.js";
 
-// Trace sink + aggregates (T4)
+// Trace store + aggregates (T4) — the store now lives in runtime-node behind
+// core's `TraceStore`; these re-exports keep the historical import paths working.
 export {
-  MemoryTraceSink,
-  type MetricsSummary,
-  type LatencyStats,
-  type RunDetail,
-  type RunSummary,
-  type MemoryTraceSinkOptions,
-} from "./backend/trace/memory-sink.js";
+  MemoryTraceStore,
+  MemoryTraceStore as MemoryTraceSink, // deprecated alias
+  type MemoryTraceStoreOptions,
+  type MemoryTraceStoreOptions as MemoryTraceSinkOptions, // deprecated alias
+} from "@pattern/runtime-node";
+export type { MetricsSummary, LatencyStats, RunDetail, RunSummary, TraceStore } from "@pattern/core";
 
 // Ops, endpoints, introspection, services (mod-admin-spec §10, §11, §3)
 export { adminOps } from "./backend/ops/index.js";

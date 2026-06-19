@@ -42,19 +42,19 @@ describe("memory sink: streaming run dual-duration + late span", () => {
     const res = await engine.run(wf, { input: { v: 1 } });
 
     // Result-ready: the run is still in-progress as "streaming", with readyMs set.
-    const live = sink.get(res.runId)!;
+    const live = (await sink.get(res.runId))!;
     expect(live.summary.status).toBe("streaming");
     expect(live.summary.readyMs).toBeGreaterThanOrEqual(0);
     expect(live.summary.durationMs).toBeUndefined();
     // It shows up in the runs list as a live (streaming) run.
-    expect(sink.list().some((s) => s.runId === res.runId && s.status === "streaming")).toBe(true);
+    expect((await sink.list()).some((s) => s.runId === res.runId && s.status === "streaming")).toBe(true);
 
     await new Promise((r) => setTimeout(r, 20));
     release();
     await tick();
 
     // True end: finalized, longer than readyMs, and the tail span is retained.
-    const done = sink.get(res.runId)!;
+    const done = (await sink.get(res.runId))!;
     expect(done.summary.status).toBe("ok");
     expect(done.summary.durationMs!).toBeGreaterThanOrEqual(done.summary.readyMs!);
     expect(done.summary.durationMs! - done.summary.readyMs!).toBeGreaterThan(10);

@@ -25,8 +25,8 @@ describe("run logs reach the trace sink", () => {
     const res = await engine.run("logs-demo", { input: { value: 42 } });
     expect(res.status).toBe("ok");
 
-    const run = sink.list()[0]!;
-    const detail = sink.get(run.runId)!;
+    const run = (await sink.list())[0]!;
+    const detail = (await sink.get(run.runId))!;
     const events = detail.spans.flatMap((s) => s.events.filter((e) => e.name.startsWith("log.")));
     expect(events).toHaveLength(1);
     expect(events[0]!.name).toBe("log.warn");

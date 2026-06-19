@@ -4,6 +4,7 @@
  */
 
 export * from "./span.js";
+export * from "./store.js";
 export { now } from "./clock.js";
 export { sampleValue, sampleChunk, streamSample, SAMPLE_CAP, type MaskFn } from "./sample.js";
 

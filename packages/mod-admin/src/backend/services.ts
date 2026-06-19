@@ -8,10 +8,9 @@
  * use the default in-process transport.
  */
 
-import type { Engine, OpContext } from "@pattern/core";
+import type { Engine, OpContext, TraceStore } from "@pattern/core";
 import type { ControlPlane } from "./control-plane/types.js";
 import { ADMIN_CONTROL_PLANE } from "./control-plane/types.js";
-import type { MemoryTraceSink } from "./trace/memory-sink.js";
 
 export const ADMIN_TRACE_SINK = "adminTraceSink";
 export const ADMIN_ENGINE = "adminEngine";
@@ -21,7 +20,7 @@ export const ASSETS_FS = "admin-assets";
 
 export interface AdminBackend {
   controlPlane: ControlPlane;
-  sink: MemoryTraceSink;
+  sink: TraceStore;
   engine: Engine;
 }
 
@@ -35,7 +34,7 @@ export function registerAdminServices(engine: Engine, backend: AdminBackend): vo
 /** Read the admin backend out of an op's context (throws if not installed). */
 export function adminServices(ctx: OpContext): AdminBackend {
   const controlPlane = ctx.services[ADMIN_CONTROL_PLANE] as ControlPlane | undefined;
-  const sink = ctx.services[ADMIN_TRACE_SINK] as MemoryTraceSink | undefined;
+  const sink = ctx.services[ADMIN_TRACE_SINK] as TraceStore | undefined;
   const engine = ctx.services[ADMIN_ENGINE] as Engine | undefined;
   if (!controlPlane || !sink || !engine) {
     throw new Error("admin backend services are not registered (use the mod-admin mod)");

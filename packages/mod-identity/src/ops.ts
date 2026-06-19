@@ -253,15 +253,17 @@ const usersRevokeSessions = jsonOp(
   { sensitivity: "privileged" },
 );
 
-/** Minimal shape of the admin's trace sink we read run stats from (feature-detected). */
+/** Minimal shape of the admin's trace store we read run stats from (feature-detected). */
 interface RunsReadable {
-  list(filter?: { limit?: number }): Array<{
-    workflowId: string;
-    status: string;
-    startTime: number;
-    durationMs?: number;
-    principal?: { kind?: string; id?: string };
-  }>;
+  list(filter?: { limit?: number }): Promise<
+    Array<{
+      workflowId: string;
+      status: string;
+      startTime: number;
+      durationMs?: number;
+      principal?: { kind?: string; id?: string };
+    }>
+  >;
 }
 const canReadRuns = (s: unknown): s is RunsReadable => typeof (s as RunsReadable | undefined)?.list === "function";
 
@@ -300,8 +302,7 @@ const usersRunStats = jsonOp(
     // the sink's retained window (bounded ring buffer), not all time.
     const sink = ctx.services["adminTraceSink"];
     if (!canReadRuns(sink)) return [];
-    const runs = sink
-      .list({ limit: 10_000 })
+    const runs = (await sink.list({ limit: 10_000 }))
       // The admin's declarative-page data fetches (`*.route.admin.*`) and other
       // `__`-prefixed plumbing are not the user's workflows — exclude them so
       // they don't drown the real numbers when an admin views their own page.

@@ -18,6 +18,7 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import {
   Engine,
@@ -28,8 +29,11 @@ import {
   z,
   type OpDefinition,
   type PortSpec,
+  type Workflow,
 } from "@pattern/core";
 import { loadMods } from "../mods.js";
+import { runCli } from "../cli.js";
+import { createTraceStore } from "../trace/index.js";
 
 const pc = {
   bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
@@ -50,6 +54,8 @@ async function main(): Promise<void> {
       return cmdGraph(rest[0]);
     case "validate":
       return cmdValidate(rest[0]);
+    case "run":
+      return cmdRun(rest);
     case "dev":
       return cmdDev(rest[0]);
     case "load":
@@ -73,6 +79,7 @@ function usage(): void {
   ${pc.cyan("pattern ops")} <query>           filter by prefix, or full detail on an exact type
   ${pc.cyan("pattern graph")} <file.json>     print a workflow's graph
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
+  ${pc.cyan("pattern run")} <file.json> [-- args]   run a boundary.cli workflow once (records to the trace store)
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
   ${pc.cyan("pattern load")} <scenario.json>  open-loop load test with engine flight-recording
                               ${pc.dim("--sweep  find max sustainable rps   --url <u>  target a running server")}
@@ -142,6 +149,45 @@ async function cmdValidate(file: string | undefined): Promise<void> {
   for (const i of errors) line(i, pc.red("•"));
   for (const i of warnings) line(i, pc.yellow("⚠"));
   process.exit(1);
+}
+
+/**
+ * `pattern run <file.json> [-- args]` — run a `boundary.cli` workflow once.
+ * Loads the project's mods (so app/npm ops resolve), registers the workflow,
+ * attaches the durable trace store so the run shows up in the admin like any
+ * other, runs it (args after `--` reach the workflow's `args`/`parsed`/stdin),
+ * and exits with the workflow's CLI exit code.
+ */
+async function cmdRun(rest: string[]): Promise<void> {
+  const dash = rest.indexOf("--");
+  const file = dash >= 0 ? rest.slice(0, dash).find((a) => !a.startsWith("-")) : rest[0];
+  const argv = dash >= 0 ? rest.slice(dash + 1) : rest.slice(1);
+  const doc = loadWorkflow(file) as Workflow;
+
+  const engine = await projectEngine();
+  // CLI runs are one-shot and interactive — sample I/O so their replay has data.
+  engine.setIoSampling(true);
+  try {
+    await engine.registerWorkflowAsync(doc);
+  } catch (err) {
+    console.error(pc.red(`✗ ${(err as Error).message}`));
+    process.exit(1);
+  }
+
+  const store = await createTraceStore({ kind: "sqlite", path: resolve(process.cwd(), ".pattern/traces.db") });
+  engine.onTrace(store);
+
+  let code = 0;
+  try {
+    code = await runCli(engine, doc, { argv });
+  } catch (err) {
+    // The most common case: the workflow has no `boundary.cli` trigger.
+    console.error(pc.red(`✗ ${(err as Error).message}`));
+    code = 1;
+  } finally {
+    await store.close();
+  }
+  process.exit(code);
 }
 
 // ── pattern ops ──────────────────────────────────────────────────────────────
