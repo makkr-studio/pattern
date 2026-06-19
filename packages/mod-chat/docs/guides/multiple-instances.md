@@ -38,6 +38,11 @@ sends its `namespace` in that segment, and the ops **partition the store** by it
 So `/sales` and `/support` share every endpoint yet keep **separate conversation
 lists**, even on the same device. `/me` has no scoped data, so it stays bare.
 
+`namespace` is optional: it defaults to the last segment of `mount` (so
+`mount: "/sales"` → namespace `"sales"`), and `"default"` if the mount is bare.
+Because it's decoupled from the path, two instances on different mounts can share
+one namespace (same data, different brand) by naming the same `namespace`.
+
 The brand (`accent`/`title`) + the namespace + the shared `apiBase` ride the
 `chat.app` node's `manifest`, which the host injects as `window.__APP__` into the
 served `index.html`. One static bundle, hosted anywhere, learns its identity at

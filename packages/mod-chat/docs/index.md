@@ -1,32 +1,103 @@
 # Chat
 
-`@pattern/mod-chat` is the complete chat application at `/chat`: a
-transcript-style SPA (the strand rail shows tool calls live), conversations
-+ a persisted per-turn event log in mod-store, lease-guarded turns with Stop,
-image input, sign-in / guests, and HITL approvals.
+`@pattern/mod-chat` is a complete, hosted chat application — a transcript-style
+SPA over a lease-guarded, event-sourced turn pipeline.
 
-Needs `@pattern/mod-store` + an agents provider
-(`@pattern/mod-agents` + `@pattern/mod-agents-openai`).
+## When to use it
+
+Reach for `chatMod()` when you want a finished assistant product, not a
+primitive: a real SPA (the strand rail shows tool calls live), conversations +
+a persisted per-turn event log, lease-guarded turns with Stop, image input,
+sign-in / guests, HITL approvals, and an admin "Conversations" surface — all
+wired. Brand it, point it at an agent, host it many times.
+
+**When not to:** if you only need the agent machinery (an agent loop, tools,
+streaming) inside your own UI or endpoint, drop down to `@pattern/mod-agents`
+and wire `agents.agent` / `agents.run` yourself — this mod is the whole app on
+top of that, and you'd be fighting its SPA, routes, and turn bookkeeping. It is
+not a building block to compose into another surface.
+
+## Prerequisites
+
+Install alongside, in your `pattern.config.json` mods:
+
+- `@pattern/mod-store` — conversations, turn docs, blobs, and the per-turn
+  lease all live here. `ready` throws without it.
+- An agents provider — `@pattern/mod-agents` (the agent ops the pipeline runs)
+  plus a model backend like `@pattern/mod-agents-openai`. The shipped pipeline's
+  `agents.run` needs `OPENAI_API_KEY` (or wire `vault.read` → its `apiKey`).
+
+Optional but assumed by the defaults: `@pattern/mod-identity` +
+`@pattern/mod-auth-magic-link` (for the sign-in card the SPA renders) — without
+them, everyone is a guest, which is fine.
+
+## Minimal config
+
+```ts
+import { chatMod } from "@pattern/mod-chat";
+
+chatMod() // an assistant at /chat, guests allowed, the default agent
+```
+
+```ts
+chatMod({
+  agent: { name: "Aria", instructions: "Be concise and warm.", model: "gpt-4o" },
+})
+```
+
+`agent.{name,instructions,model}` are the no-fork knobs; everything else has a
+sensible default (see [Customizing](./guides/customizing.md)).
+
+## Integration
+
+The mod registers ONE shared backend (the `chat.*` ops, the CRUD + turn-pipeline
+routes, the admin screens) and one or more branded SPA instances. Its routes
+mount under `mount` (default `/chat`); the SPA's `apiBase` points at
+`{mount}/api`. Auth and sign-in interoperate with `@pattern/mod-identity`'s
+`user` port and magic-link mod — `requireAuth` defaults to
+`{ env: "CHAT_REQUIRE_AUTH" }`, so the host reads the switch per request.
 
 ## The turn pipeline is a workflow
 
-Every message runs `chat.turn.pipeline` — a real workflow you can **fork** in
-the admin (then disable the built-in): swap models, add guardrails, insert
-compaction, narrow toolsets. The interesting middle is visible nodes, not
-framework internals. Common knobs without forking:
-`chatMod({ agent: { instructions, model } })`.
+Every message runs `chat.turn.pipeline` — a real workflow whose interesting
+middle (`agents.agent`, `agents.run`, tools, guardrails) is visible, editable
+nodes. **Fork** it in the admin to swap models, add guardrails, insert
+compaction, or narrow toolsets. The bookends `chat.turn.begin` and
+`chat.events.sink` stay; you rewire the rest. See
+[Customizing](./guides/customizing.md).
 
 ## Reliability model
 
-The store is the source of truth, SSE is a live tail: every event lands in
-the turn doc as it streams, every turn reaches a terminal status, refresh
-mid-turn replays and re-attaches. Errors render as inline cards — never a
-white screen.
+The store is the source of truth; SSE is a live tail. Every event lands in the
+turn doc as it streams, every turn reaches a terminal status (even a sink crash
+records one), refresh mid-turn replays and re-attaches, and errors render as
+inline cards — never a white screen.
 
 ## Who may chat
 
-Guests are device-scoped by default. One switch gates it:
-`CHAT_REQUIRE_AUTH=true` (or a scope list) — every chat route follows it,
-forks included; the app shows its own magic-link sign-in. Admin → **Chat →
-Conversations** lists every conversation, guests included, with run
-deep-links per turn.
+Guests are device-scoped by default (a `chat_device` cookie). One switch gates
+it: `CHAT_REQUIRE_AUTH=true` (or a comma-separated scope list) — every chat
+route follows it, forks included, and the app shows its own magic-link sign-in.
+Admin → **Chat → Conversations** lists every conversation, guests included, with
+run deep-links per turn.
+
+## Worked example: a branded sales + support desk
+
+```ts
+chatMod({
+  instances: [
+    {
+      mount: "/sales",
+      namespace: "sales",
+      brand: { accent: "#d2691e", title: "Pattern Sales" },
+      agent: { name: "sales", instructions: "Upbeat sales assistant. Lead with value." },
+    },
+    { mount: "/support", namespace: "support", brand: { accent: "#2563eb", title: "Pattern Support" } },
+  ],
+})
+```
+
+Two branded SPAs over one backend, each with its own conversation list; `/sales`
+gets a namespace-pinned pipeline fork running the sales agent while `/support`
+falls back to the generic one. See
+[Hosting several branded instances](./guides/multiple-instances.md).

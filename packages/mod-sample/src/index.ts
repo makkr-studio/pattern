@@ -11,8 +11,10 @@
  * (admin internals §6) works.
  */
 
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern/core";
-import { memoryFs, provideFilesystem } from "@pattern/runtime-node";
+import { localFs, memoryFs, provideFilesystem } from "@pattern/runtime-node";
 
 /** Where the greetings data source is exposed (relative to the admin API mount). */
 const GREETINGS_ROUTE = "/sample/greetings";
@@ -144,6 +146,7 @@ const appMount: Workflow = {
 
 export default defineMod({
   name: "@pattern/mod-sample",
+  docs: { filesystem: "sample-docs", title: "Sample", order: 90 },
   ops: [greetingsList, crunch],
   workflows: [appMount, replayShowcase, greetingsRoute],
   frontend: {
@@ -172,5 +175,12 @@ export default defineMod({
     const fs = memoryFs();
     void fs.write("sample-studio.js", STUDIO_REMOTE);
     provideFilesystem(engine, "sample-assets", fs);
+    // The packaged docs/ chapter (the `docs` contribution points at "sample-docs").
+    try {
+      const dir = fileURLToPath(new URL("../docs", import.meta.url));
+      if (existsSync(dir)) provideFilesystem(engine, "sample-docs", localFs(dir));
+    } catch {
+      /* packaged without docs — the contribution is simply skipped */
+    }
   },
 });
