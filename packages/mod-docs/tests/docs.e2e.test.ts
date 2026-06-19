@@ -160,10 +160,12 @@ describe("the generated op reference", () => {
     )!;
     expect(condition.dataType).toBe("boolean");
 
-    // Unknown type → 404; a trivial op with no prose file → prose null.
+    // Unknown type → 404; an op with no prose file → prose null. (`docs.page` is
+    // an internal control-plane op — those skip prose; every shipped core op now
+    // carries "when to use" prose, and the fixture's `fake.op` ships its own.)
     expect((await fetch(`${base}/docs/api/op?type=no.such.op`)).status).toBe(404);
-    const xor = (await (await fetch(`${base}/docs/api/op?type=core.bool.xor`)).json()) as { prose: string | null };
-    expect(xor.prose).toBeNull();
+    const noProse = (await (await fetch(`${base}/docs/api/op?type=docs.page`)).json()) as { prose: string | null };
+    expect(noProse.prose).toBeNull();
 
     // Mods list with chapter slugs.
     const mods = (await (await fetch(`${base}/docs/api/mods`)).json()) as {

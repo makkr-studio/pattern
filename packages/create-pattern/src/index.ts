@@ -530,7 +530,7 @@ const WHOAMI_WORKFLOW = `{
 async function applyAuth(targetDir: string, packId: string): Promise<void> {
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
-  for (const mod of AUTH_MODS) pkg.dependencies[mod] = "^0.1.0";
+  for (const mod of AUTH_MODS) pkg.dependencies[mod] = "^0.2.0";
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
   const cfgPath = join(targetDir, "pattern.config.json");
@@ -569,7 +569,7 @@ async function applyVaultKey(targetDir: string): Promise<void> {
 async function applyDocs(targetDir: string): Promise<void> {
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
-  pkg.dependencies[DOCS_MOD] = "^0.1.0";
+  pkg.dependencies[DOCS_MOD] = "^0.2.0";
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
   const cfgPath = join(targetDir, "pattern.config.json");
