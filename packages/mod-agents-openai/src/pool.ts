@@ -12,6 +12,32 @@ import type { ToolRef } from "@pattern/mod-agents";
 
 type McpRef = Extract<ToolRef, { origin: "mcp" }>;
 
+/**
+ * Split a command line into tokens, honoring single/double quotes (so an arg
+ * with spaces survives). Unquoted runs of non-space become one token each.
+ */
+export function splitCommand(line: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) out.push(m[1] ?? m[2] ?? m[3] ?? "");
+  return out;
+}
+
+/**
+ * Resolve a stdio MCP invocation from the config, the practical way: `command`
+ * may be a bare executable OR a whole command line pasted verbatim (e.g. from
+ * Docker Desktop: "docker mcp gateway run --profile X") — it's tokenized and any
+ * extra tokens become leading args. Explicit `args` are appended. Everything is
+ * trimmed and blanks dropped, so a stray trailing space or comma can't ENOENT.
+ */
+export function stdioInvocation(command: string, args?: string[]): { command: string; args: string[] } {
+  const tokens = splitCommand((command ?? "").trim());
+  const cmd = tokens[0];
+  if (!cmd) throw new Error("agents: a stdio MCP server needs a command");
+  return { command: cmd, args: [...tokens.slice(1), ...(args ?? [])].map((a) => a.trim()).filter((a) => a.length > 0) };
+}
+
 const pool = new Map<string, Promise<MCPServer>>();
 
 function keyOf(ref: McpRef): string {
@@ -33,12 +59,8 @@ export function mcpServerFor(ref: McpRef): Promise<MCPServer> {
         });
       } else {
         if (!ref.command) throw new Error("agents: a stdio MCP server needs a command");
-        server = new MCPServerStdio({
-          command: ref.command,
-          args: ref.args,
-          env: ref.env,
-          name: ref.serverLabel,
-        });
+        const { command, args } = stdioInvocation(ref.command, ref.args);
+        server = new MCPServerStdio({ command, args, env: ref.env, name: ref.serverLabel });
       }
       await server.connect();
       return server;

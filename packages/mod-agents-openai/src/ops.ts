@@ -271,7 +271,9 @@ const mcpOp: OpDefinition = {
   type: "agents.mcp.server",
   title: "agents.mcp.server",
   description:
-    "An MCP server as a toolset value (connection pooled for the process). http: url (+headers) · stdio: command (+args).",
+    "An MCP server as a toolset value (connection pooled for the process). http: url (+headers) · stdio: command " +
+    "(+args). For stdio you can paste a WHOLE command line into `command` (e.g. \"docker mcp gateway run --profile X\") " +
+    "— it's tokenized automatically; `args` are appended. Stray spaces/blank args are ignored.",
   config: z.object({
     transport: z.enum(["http", "stdio"]).default("http"),
     url: z.string().optional(),
