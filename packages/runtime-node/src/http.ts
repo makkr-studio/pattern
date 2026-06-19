@@ -91,6 +91,32 @@ interface AppMount {
   immutableAssets: boolean;
   cors?: CorsPolicy;
   requireAuth?: unknown;
+  /** App bootstrap (e.g. brand) injected as `window.__APP__` into the entry HTML
+   *  (+ a `<base href>` so the bundle is mount-portable). Absent → no injection. */
+  manifest?: Record<string, unknown>;
+}
+
+/**
+ * Inject the app bootstrap into entry HTML: a `<base href="${mount}/">` (so a
+ * bundle built with relative asset URLs resolves under ANY mount) and a
+ * `window.__APP__` carrying the app's manifest plus the mount/apiBase the host
+ * resolved. Inserted right after `<head>` so the base governs every relative URL
+ * below it. JSON `<` is escaped so a stray `</script>` can't break out.
+ */
+function injectBootstrap(bytes: Uint8Array, mount: string, manifest: Record<string, unknown>): Uint8Array {
+  let html: string;
+  try {
+    html = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  } catch {
+    return bytes;
+  }
+  const baseHref = `${mount}/`.replace(/\/{2,}/g, "/"); // "" → "/", "/sales" → "/sales/"
+  const boot = { ...manifest, mount: mount || "/", apiBase: `${mount}/api` };
+  const json = JSON.stringify(boot).replace(/</g, "\\u003c");
+  const inject = `<base href="${baseHref}"><script>window.__APP__=${json}</script>`;
+  const head = html.match(/<head[^>]*>/i);
+  html = head ? html.slice(0, head.index! + head[0].length) + inject + html.slice(head.index! + head[0].length) : inject + html;
+  return new TextEncoder().encode(html);
 }
 
 /** Read a positive integer port from the PORT env var, if valid. */
@@ -297,7 +323,7 @@ export class HttpHost {
         if (op?.type !== "boundary.http.app") continue;
         const cfg = parseConfig(op, node.config);
         const mount = normalizeMount(cfg.mount ?? "/");
-        let app: { filesystem?: unknown; spaFallback?: unknown; immutableAssets?: unknown } | undefined;
+        let app: { filesystem?: unknown; spaFallback?: unknown; immutableAssets?: unknown; manifest?: unknown } | undefined;
         try {
           const result = await this.engine.runFrom(wf, node.id, { mount: cfg.mount ?? "/" }, ANONYMOUS);
           if (result.status === "error") throw result.error;
@@ -319,6 +345,7 @@ export class HttpHost {
           immutableAssets: Boolean(app.immutableAssets),
           cors: normalizeCors(cfg.cors),
           requireAuth: cfg.requireAuth,
+          manifest: app.manifest && typeof app.manifest === "object" ? (app.manifest as Record<string, unknown>) : undefined,
         });
       }
     }
@@ -604,9 +631,14 @@ export class HttpHost {
     const isHtmlEntry = servedFallback || rel === app.spaFallback;
     if (app.immutableAssets && !isHtmlEntry) headers["cache-control"] = "public, max-age=31536000, immutable";
     else if (isHtmlEntry) headers["cache-control"] = "no-cache";
+    // Entry HTML of a bootstrap-aware app: inject a mount-portable <base href>
+    // and window.__APP__ so the SAME static bundle works under any mount and
+    // learns its brand/apiBase at load. Other assets (and apps without a
+    // manifest, e.g. admin) are served byte-for-byte.
+    const out = isHtmlEntry && app.manifest ? injectBootstrap(bytes, app.mount, app.manifest) : bytes;
     res.writeHead(200, headers);
     if (method === "HEAD") return void res.end();
-    res.end(Buffer.from(bytes));
+    res.end(Buffer.from(out));
   }
 
   private preflight(req: IncomingMessage, res: ServerResponse, cors: CorsPolicy, port: number, pathname: string): void {

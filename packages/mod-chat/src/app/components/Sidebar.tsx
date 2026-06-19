@@ -8,6 +8,7 @@
 
 import React from "react";
 import { chatStore } from "../lib/store";
+import { appBoot, brandTitle } from "../lib/config";
 import { isMuted, toggleMute } from "../lib/sfx";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { Conversation, Me } from "../lib/types";
@@ -117,14 +118,14 @@ export function Sidebar({
         style={{ borderColor: "var(--line-soft)", background: "var(--bg)" }}
       >
         <div className="flex items-center justify-between px-4 pb-2 pt-4">
-          <a href="/chat/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+          <a href={`${appBoot.mount}/`} className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
               <circle cx="6" cy="6" r="2.4" fill="var(--accent)" />
               <circle cx="18" cy="9" r="2.4" fill="var(--fg-faint)" />
               <circle cx="9" cy="18" r="2.4" fill="var(--fg-faint)" />
               <path d="M8 7.2 15.8 8.6M7.2 8.2 8.6 15.8M16.3 11l-5.6 5.4" stroke="var(--fg-faint)" strokeWidth="1.3" />
             </svg>
-            Pattern Chat
+            {brandTitle}
           </a>
           <div className="flex items-center gap-1">
             <button

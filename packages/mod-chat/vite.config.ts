@@ -12,7 +12,11 @@ const dir = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  */
 export default defineConfig({
   root: dir("src/app"),
-  base: "/chat/",
+  // Relative asset URLs so the bundle is MOUNT-PORTABLE: the host injects a
+  // `<base href="${mount}/">` into the served index.html (runtime-node's
+  // injectBootstrap), and `./assets/...` then resolve under whatever mount this
+  // instance is served at — /chat, /sales, /support… (see app/lib/config.ts).
+  base: "./",
   plugins: [react(), tailwindcss()],
   build: {
     outDir: dir("dist-app"),

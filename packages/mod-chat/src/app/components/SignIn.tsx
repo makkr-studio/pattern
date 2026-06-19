@@ -8,6 +8,7 @@
 
 import React, { useState } from "react";
 import { requestMagicLink } from "../lib/api";
+import { brandTitle } from "../lib/config";
 import type { Me } from "../lib/types";
 
 export function SignIn({ me, onDismiss }: { me: Me; onDismiss?: () => void }) {
@@ -41,7 +42,7 @@ export function SignIn({ me, onDismiss }: { me: Me; onDismiss?: () => void }) {
             <circle cx="9" cy="18" r="2.4" fill="var(--fg-faint)" />
             <path d="M8 7.2 15.8 8.6M7.2 8.2 8.6 15.8M16.3 11l-5.6 5.4" stroke="var(--fg-faint)" strokeWidth="1.3" />
           </svg>
-          <span className="text-[16px] font-semibold tracking-tight">Pattern Chat</span>
+          <span className="text-[16px] font-semibold tracking-tight">{brandTitle}</span>
         </div>
 
         {phase === "sent" ? (
