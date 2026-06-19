@@ -50,6 +50,31 @@ boundary.http.request → core.object.get (the prompt field) ┐
 agents.tools.workflows → agents.agent → agents.run → boundary.http.response
 ```
 
+The full shape, as JSON (this is `workflows/agent-answer.json` — the archetype to
+copy; verify ports with `npx pattern ops agents.run`):
+
+```json
+{
+  "id": "agent-answer",
+  "name": "POST /ask — agent answers (with a tool)",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/ask" } },
+    { "id": "question", "op": "core.object.get", "config": { "path": "question" } },
+    { "id": "tools", "op": "agents.tools.workflows" },
+    { "id": "agent", "op": "agents.agent", "config": { "name": "assistant", "instructions": "Be concise. Use a tool when it helps.", "model": "gpt-4.1-mini" } },
+    { "id": "run", "op": "agents.run" },
+    { "id": "out", "op": "boundary.http.response" }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "body" }, "to": { "node": "question", "port": "object" } },
+    { "from": { "node": "tools", "port": "toolset" }, "to": { "node": "agent", "port": "tools" } },
+    { "from": { "node": "agent", "port": "agent" }, "to": { "node": "run", "port": "agent" } },
+    { "from": { "node": "question", "port": "out" }, "to": { "node": "run", "port": "input" } },
+    { "from": { "node": "run", "port": "output" }, "to": { "node": "out", "port": "body" } }
+  ]
+}
+```
+
 Keep the HTTP concerns on the boundary (method/path/validation/auth); wire the
 extracted prompt into `agents.run.input` and `agents.run.output` into the
 response body. Want it editor/CLI-only instead of HTTP? Swap the

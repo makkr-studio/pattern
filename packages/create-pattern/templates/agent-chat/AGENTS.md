@@ -47,7 +47,30 @@ shape, `tool-weather.json` for validated params + an outbound HTTP call):
 2. …your graph… (`args` output carries the validated arguments)
 3. `boundary.tool.return` — wire your result into `result`
 
-Restart (or deploy from the admin) and the agent sees it immediately — the
+A complete tool with validated params + an outbound call (this is
+`tool-weather.json` — the archetype to copy):
+
+```json
+{
+  "id": "tool-weather",
+  "name": "Tool · get_weather",
+  "nodes": [
+    { "id": "in", "op": "boundary.tool", "config": { "name": "get_weather", "description": "Current weather for a city.", "params": { "type": "object", "properties": { "city": { "type": "string", "description": "City name, e.g. Paris" } }, "required": ["city"] } } },
+    { "id": "url", "op": "core.string.template", "config": { "template": "https://wttr.in/{{city}}?format=3" } },
+    { "id": "fetch", "op": "core.http.fetch", "config": { "responseType": "text" } },
+    { "id": "out", "op": "boundary.tool.return" }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "args" }, "to": { "node": "url", "port": "data" } },
+    { "from": { "node": "url", "port": "out" }, "to": { "node": "fetch", "port": "url" } },
+    { "from": { "node": "fetch", "port": "body" }, "to": { "node": "out", "port": "result" } }
+  ]
+}
+```
+
+The engine validates `params` (JSON Schema) before the graph runs, so `args`
+carries clean arguments. Restart (or deploy from the admin) and the agent sees it
+immediately — the
 pipeline's `agents.tools.workflows` node picks up every tool by default.
 Set `"needsApproval": true` on the trigger config to gate it behind a human
 Approve/Deny in the chat (HITL).
