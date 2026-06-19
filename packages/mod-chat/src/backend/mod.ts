@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { boundaries, defineMod, value, z, type Engine, type OpDefinition, type PatternMod } from "@pattern/core";
 import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern/runtime-node";
 import { STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
-import { resolveInstances, type ChatModOptions } from "./options.js";
+import { resolveInstances, resolveOptions, type ChatModOptions } from "./options.js";
 import { chatOps } from "./ops.js";
 import { chatAdminOps, chatFrontend } from "./admin.js";
 import { chatAdminRoutes } from "./admin-routes.js";
@@ -55,8 +55,9 @@ const chatAppOp: OpDefinition = {
   title: "Pattern Chat app",
   description:
     "The chat SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount. " +
-    "`accent`/`title` brand THIS instance — they ride the app descriptor's `manifest`, which the host injects as " +
-    "`window.__APP__` into the served index.html, so the same bundle can be hosted many times with different looks.",
+    "`namespace` scopes this instance's data on the SHARED backend at `api` (decoupled from where the SPA mounts); " +
+    "`accent`/`title` brand it. All ride the app descriptor's `manifest`, injected as `window.__APP__` into the " +
+    "served index.html — so one bundle is hosted many times, each branded and data-partitioned, no route duplication.",
   reusable: true,
   inputs: {},
   outputs: { app: value(boundaries.appDescriptorSchema) },
@@ -64,22 +65,29 @@ const chatAppOp: OpDefinition = {
     filesystem: z.string().default(CHAT_ASSETS_FS),
     spaFallback: z.string().default("index.html"),
     immutableAssets: z.boolean().default(true),
+    /** The shared backend mount this SPA calls (its API lives at `${api}/api`). */
+    api: z.string().default("/chat"),
+    /** Logical data partition (decoupled from the mount). Default "default". */
+    namespace: z.string().default("default"),
     /** Brand accent (any CSS color) — themes the chat UI's `--accent`. */
     accent: z.string().optional(),
     /** Document title + sidebar wordmark for this instance. */
     title: z.string().optional(),
   }),
   execute: (ctx) => {
-    const { filesystem, spaFallback, immutableAssets, accent, title } = ctx.config as {
+    const { filesystem, spaFallback, immutableAssets, api, namespace, accent, title } = ctx.config as {
       filesystem: string;
       spaFallback: string;
       immutableAssets: boolean;
+      api: string;
+      namespace: string;
       accent?: string;
       title?: string;
     };
-    // The host injects `manifest` (+ the resolved mount/apiBase it knows) as
-    // window.__APP__. Its mere presence opts this app into bootstrap injection.
-    const manifest: Record<string, unknown> = {};
+    // The host injects `manifest` as window.__APP__ (its presence opts in). We set
+    // apiBase to the SHARED backend's api root — NOT this SPA's mount — so a SPA at
+    // /sales talks to /chat/api; the SPA appends the namespace per scoped route.
+    const manifest: Record<string, unknown> = { namespace, apiBase: `${api}/api` };
     if (accent) manifest.accent = accent;
     if (title) manifest.title = title;
     return { app: { filesystem, spaFallback, immutableAssets, manifest } };
@@ -98,12 +106,13 @@ function packagedDocs(engine: Engine): void {
 }
 
 export function chatMod(options: ChatModOptions = {}): PatternMod {
-  // One mod, possibly MANY instances: ops, admin screens, store and assets are
-  // shared (registered once); each instance contributes its own mount-scoped,
-  // slug-namespaced route + SPA + pipeline workflows. A single (no `instances`)
-  // config resolves to one instance with slug "" → the canonical ids.
-  const instances = resolveInstances(options);
-  const opts = instances[0]!; // resolveInstances always yields ≥1 instance
+  // ONE shared backend (ops, store, admin screens, CRUD + turn routes), fronted
+  // by MANY branded SPA instances. The backend's conversation/turn routes carry
+  // a `:ns` segment; each instance's SPA sends its namespace there, so there's no
+  // per-instance route duplication. An instance with its own `agent` mints a
+  // namespace-pinned fork of the turn pipeline (its hardwired :ns path wins).
+  const opts = resolveOptions(options);
+  const { instances, pins } = resolveInstances(options);
   let engineRef: Engine | undefined;
 
   // Build ops FIRST — they register their route I/O (chatOpRoutes), which the
@@ -111,17 +120,20 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
   const ops = [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp];
 
   const workflows = [
-    // The admin Conversations screens' dedicated routes — one shared set under
-    // /admin, instance-agnostic (they operate on the shared chat store).
+    // The shared backend — one set of routes + pipeline for every instance.
+    ...crudWorkflows(opts),
     ...chatAdminRoutes(),
-    ...instances.flatMap((inst) => [
-      spaWorkflow(inst),
-      ...crudWorkflows(inst),
-      blobUploadWorkflow(inst),
-      ...(inst.turnPipeline
-        ? [turnPipelineWorkflow(inst), approvalPipelineWorkflow(inst), guardrailToolWorkflow(inst)]
-        : []),
-    ]),
+    blobUploadWorkflow(opts),
+    ...(opts.turnPipeline
+      ? [
+          turnPipelineWorkflow(opts), // generic /:ns pipeline (the fallback)
+          ...pins.map((pin) => turnPipelineWorkflow(opts, pin)), // per-namespace forks
+          approvalPipelineWorkflow(opts),
+          guardrailToolWorkflow(opts),
+        ]
+      : []),
+    // One branded SPA per instance, all talking to the shared backend.
+    ...instances.map((inst) => spaWorkflow(inst)),
   ];
 
   return defineMod({

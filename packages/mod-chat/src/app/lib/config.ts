@@ -8,10 +8,12 @@
  * `/chat` mount the dev proxy targets.
  */
 export interface AppBoot {
-  /** This instance's URL prefix, e.g. "/chat" or "/sales" ("/" at root). */
+  /** This SPA's URL prefix, e.g. "/chat" or "/sales" ("/" at root). */
   mount: string;
-  /** API root for this instance, e.g. "/chat/api". */
+  /** The SHARED backend's API root, e.g. "/chat/api" (may differ from `mount`). */
   apiBase: string;
+  /** Data partition sent on scoped API calls (decoupled from the mount). */
+  namespace: string;
   /** Brand accent (any CSS color) → the chat UI's `--accent`. */
   accent?: string;
   /** Instance title (document title + sidebar wordmark). */
@@ -23,6 +25,7 @@ const injected = (globalThis as { __APP__?: Partial<AppBoot> }).__APP__ ?? {};
 export const appBoot: AppBoot = {
   mount: injected.mount ?? "/chat",
   apiBase: injected.apiBase ?? "/chat/api",
+  namespace: injected.namespace ?? "default",
   accent: injected.accent,
   title: injected.title,
 };

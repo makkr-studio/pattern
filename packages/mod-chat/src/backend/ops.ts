@@ -28,10 +28,12 @@ import { AGENTS_SERVICE, messagePartSchema, turnEventSchema, type AgentsService,
 import type { DocumentRow, PatternStores } from "@pattern/mod-store";
 import {
   CONVERSATIONS,
+  DEFAULT_NS,
   DEVICE_COOKIE,
   TURNS,
   conversationView,
   mayAccess,
+  nsOf,
   scopeFrom,
   stores,
   turnView,
@@ -155,7 +157,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
   const create = chatOp(
     "chat.conversations.create",
     "Create a conversation (mints the anonymous device session for guests).",
-    { in: { user: U(), device: Dev(), title: B(z.string().optional()) }, out: "conversation", ok: 201, cookiesPort: "cookies" },
+    { in: { user: U(), device: Dev(), ns: P(), title: B(z.string().optional()) }, out: "conversation", ok: 201, cookiesPort: "cookies" },
     async (inputs, ctx) => {
       const svc = stores(ctx);
       const user = inputs.user as { id?: string } | null;
@@ -170,6 +172,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
         title: String(inputs.title ?? "New conversation"),
         ownerId,
         deviceId,
+        namespace: String(inputs.ns ?? DEFAULT_NS),
         history: [],
         createdAt: now,
         updatedAt: now,
@@ -180,13 +183,16 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     },
   );
 
-  const list = chatOp("chat.conversations.list", "List the caller's conversations, newest first.", { in: { user: U(), device: Dev() }, out: "list" }, async (inputs, ctx) => {
+  const list = chatOp("chat.conversations.list", "List the caller's conversations in this namespace, newest first.", { in: { user: U(), device: Dev(), ns: P() }, out: "list" }, async (inputs, ctx) => {
     const svc = stores(ctx);
     const scope = scopeFrom(inputs.user as { id?: string } | null, inputs.device as string | undefined);
     const where = scope.ownerId != null ? { ownerId: scope.ownerId } : scope.deviceId != null ? { deviceId: scope.deviceId } : undefined;
     if (!where) return { conversations: [] };
+    const ns = String(inputs.ns ?? DEFAULT_NS);
     const rows = await svc.docs.query({ collection: CONVERSATIONS, where, orderBy: "updatedAt", orderDir: "desc", limit: 200 });
-    return { conversations: rows.map(conversationView) };
+    // Partition by namespace in memory (legacy/absent reads as "default"), so the
+    // shared backend keeps each branded instance's list separate without an index.
+    return { conversations: rows.filter((r) => nsOf(r.data as unknown as ConversationDoc) === ns).map(conversationView) };
   });
 
   const get = chatOp("chat.conversations.get", "One conversation (scope-checked).", { in: { user: U(), device: Dev(), id: P() }, out: "conversation" }, async (inputs, ctx) => {

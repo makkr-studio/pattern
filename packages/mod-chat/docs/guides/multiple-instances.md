@@ -5,50 +5,56 @@ order: 20
 
 # Hosting several branded instances
 
-One `chatMod` can serve the **same app many times** — each at its own mount,
-with its own brand and its own agent. Same bundle, different doors, different
-purposes (a `/sales` desk, a `/support` centre, an internal `/ops` bot…).
+One `chatMod` registers **one shared backend** and fronts it with **many branded
+SPA instances** — same bundle, different look, different data, different agent.
+A `/sales` desk, a `/support` centre, an internal `/ops` bot… all over a single
+set of endpoints.
 
 ```ts
 chatMod({
   instances: [
     {
-      slug: "sales",
       mount: "/sales",
+      namespace: "sales",
       brand: { accent: "#d2691e", title: "Pattern Sales" },
       agent: { name: "sales", instructions: "Upbeat sales assistant. Lead with value." },
     },
     {
-      slug: "support",
       mount: "/support",
+      namespace: "support",
       brand: { accent: "#2563eb", title: "Pattern Support" },
-      agent: { name: "support", instructions: "Calm, precise. Give step-by-step fixes." },
+      // no agent → falls back to the generic turn pipeline
     },
   ],
 })
 ```
 
-Each entry is layered over the top-level options, so shared settings
-(`requireAuth`, `maxTurns`, `guardrail`…) are set once and inherited.
+## Namespace, decoupled from the path
 
-## What's shared vs per-instance
+The backend (conversations, turns, `/me`, blobs) is registered **once** at the
+top-level `mount` (default `/chat`). Its data routes carry a `:ns` segment, e.g.
+`/chat/api/:ns/conversations`. Each instance's SPA — served at its own `mount` —
+sends its `namespace` in that segment, and the ops **partition the store** by it.
+So `/sales` and `/support` share every endpoint yet keep **separate conversation
+lists**, even on the same device. `/me` has no scoped data, so it stays bare.
 
-Registered **once**: the ops, the chat store + collections, the SPA bundle, and
-the admin **Chat** screens. **Per instance**: the SPA mount, all API routes, and
-the turn/approval pipelines — their workflow ids are namespaced by `slug`
-(`chat.spa` → `chat.sales.spa`), so they never collide and each shows up
-separately in the admin. Each instance's `chat.{slug}.turn.pipeline` is a normal
-workflow you can fork (see [Customizing the chat](./customizing.md)).
+The brand (`accent`/`title`) + the namespace + the shared `apiBase` ride the
+`chat.app` node's `manifest`, which the host injects as `window.__APP__` into the
+served `index.html`. One static bundle, hosted anywhere, learns its identity at
+load. (A single instance — no `instances` — keeps the canonical ids and the
+`/chat` mount, unchanged.)
 
-## How brand reaches the UI
+## A per-instance turn pipeline, by forking alone
 
-`brand.accent` / `brand.title` are set on the instance's `chat.app` node and ride
-the app descriptor's `manifest`. The host injects it as `window.__APP__` into the
-served `index.html`, alongside a `<base href="${mount}/">` and the instance's
-`apiBase`. The SPA reads `window.__APP__` on boot: it sets the UI's `--accent`,
-the document/wordmark title, and derives its API root from `apiBase`.
+The turn pipeline is the generic `/chat/api/:ns/conversations/:id/turns`
+workflow. Give an instance its own `agent` and the mod mints a **namespace-pinned
+fork** at `/chat/api/sales/conversations/:id/turns` — a *hardwired* path that
+**out-ranks** the generic `:ns` route (the host matches most-specific-first). So
+`/sales` turns run the sales agent while `/support`, un-forked, falls back to the
+generic pipeline. No registry, no dispatch config — pipeline selection is just a
+more-specific route. (This is general: forking any workflow with a concrete path
+in place of a `:param` overrides the generic handler.)
 
-That injection is also what makes ONE static bundle **mount-portable** — built
-with relative asset URLs, it resolves under whatever mount it's served at. A
-single instance (no `instances`) keeps the canonical `/chat` ids and behaves
-exactly as before.
+To go beyond agent config — RAG, compaction, a different toolset — fork the whole
+`chat.turn.pipeline` in the admin and give its trigger the hardwired `:ns` path.
+See [Customizing the chat](./customizing.md).

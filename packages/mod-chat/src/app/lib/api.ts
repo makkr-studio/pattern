@@ -3,7 +3,11 @@
 import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
 import { appBoot } from "./config";
 
+// Two roots on the SHARED backend: `API` for unscoped calls (/me, blobs) and
+// `NS` for conversation/turn calls, which carry this instance's namespace in the
+// path so the backend partitions data (and a per-namespace pipeline fork wins).
 const API = appBoot.apiBase;
+const NS = `${API}/${appBoot.namespace}`;
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok && res.status !== 201) {
@@ -24,26 +28,26 @@ export const api = {
 
   conversations: {
     list: async (): Promise<Conversation[]> =>
-      (await json<{ conversations: Conversation[] }>(await fetch(`${API}/conversations`))).conversations,
+      (await json<{ conversations: Conversation[] }>(await fetch(`${NS}/conversations`))).conversations,
     create: async (title?: string): Promise<Conversation> =>
       json(
-        await fetch(`${API}/conversations`, {
+        await fetch(`${NS}/conversations`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(title ? { title } : {}),
         }),
       ),
-    get: async (id: string): Promise<Conversation> => json(await fetch(`${API}/conversations/${id}`)),
+    get: async (id: string): Promise<Conversation> => json(await fetch(`${NS}/conversations/${id}`)),
     delete: async (id: string): Promise<void> => {
-      await json(await fetch(`${API}/conversations/${id}`, { method: "DELETE" }));
+      await json(await fetch(`${NS}/conversations/${id}`, { method: "DELETE" }));
     },
   },
 
   turns: {
     list: async (conversationId: string): Promise<Turn[]> =>
-      (await json<{ turns: Turn[] }>(await fetch(`${API}/conversations/${conversationId}/turns`))).turns,
+      (await json<{ turns: Turn[] }>(await fetch(`${NS}/conversations/${conversationId}/turns`))).turns,
     stop: async (conversationId: string, turnId: string): Promise<void> => {
-      await fetch(`${API}/conversations/${conversationId}/turns/${turnId}/stop`, { method: "POST" });
+      await fetch(`${NS}/conversations/${conversationId}/turns/${turnId}/stop`, { method: "POST" });
     },
   },
 
@@ -93,7 +97,7 @@ export async function* streamTurn(
   content: MessagePart[],
   turnId: string,
 ): AsyncGenerator<TurnEvent> {
-  const res = await fetch(`${API}/conversations/${conversationId}/turns`, {
+  const res = await fetch(`${NS}/conversations/${conversationId}/turns`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
     body: JSON.stringify({ turnId, content }),
@@ -117,7 +121,7 @@ export async function* streamApproval(
   interruptionId: string,
   approved: boolean,
 ): AsyncGenerator<TurnEvent> {
-  const res = await fetch(`${API}/conversations/${conversationId}/turns/${turnId}/approve`, {
+  const res = await fetch(`${NS}/conversations/${conversationId}/turns/${turnId}/approve`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
     body: JSON.stringify({ interruptionId, approved }),
