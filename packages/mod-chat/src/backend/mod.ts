@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { boundaries, defineMod, value, z, type Engine, type OpDefinition, type PatternMod } from "@pattern/core";
 import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern/runtime-node";
 import { STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
-import { resolveOptions, type ChatModOptions } from "./options.js";
+import { resolveInstances, type ChatModOptions } from "./options.js";
 import { chatOps } from "./ops.js";
 import { chatAdminOps, chatFrontend } from "./admin.js";
 import { chatAdminRoutes } from "./admin-routes.js";
@@ -98,7 +98,12 @@ function packagedDocs(engine: Engine): void {
 }
 
 export function chatMod(options: ChatModOptions = {}): PatternMod {
-  const opts = resolveOptions(options);
+  // One mod, possibly MANY instances: ops, admin screens, store and assets are
+  // shared (registered once); each instance contributes its own mount-scoped,
+  // slug-namespaced route + SPA + pipeline workflows. A single (no `instances`)
+  // config resolves to one instance with slug "" → the canonical ids.
+  const instances = resolveInstances(options);
+  const opts = instances[0]!; // resolveInstances always yields ≥1 instance
   let engineRef: Engine | undefined;
 
   // Build ops FIRST — they register their route I/O (chatOpRoutes), which the
@@ -106,15 +111,17 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
   const ops = [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp];
 
   const workflows = [
-    spaWorkflow(opts.mount),
-    ...crudWorkflows(opts),
-    // The admin Conversations screens' dedicated routes (one purposeful endpoint
-    // per screen and action, replacing the invoke path).
+    // The admin Conversations screens' dedicated routes — one shared set under
+    // /admin, instance-agnostic (they operate on the shared chat store).
     ...chatAdminRoutes(),
-    blobUploadWorkflow(opts),
-    ...(opts.turnPipeline
-      ? [turnPipelineWorkflow(opts), approvalPipelineWorkflow(opts), guardrailToolWorkflow(opts)]
-      : []),
+    ...instances.flatMap((inst) => [
+      spaWorkflow(inst),
+      ...crudWorkflows(inst),
+      blobUploadWorkflow(inst),
+      ...(inst.turnPipeline
+        ? [turnPipelineWorkflow(inst), approvalPipelineWorkflow(inst), guardrailToolWorkflow(inst)]
+        : []),
+    ]),
   ];
 
   return defineMod({
