@@ -182,6 +182,18 @@ body {
 .react-flow__edge:hover .react-flow__edge-path {
   stroke-width: 3;
 }
+
+/* Replay is a read-only canvas (elementsSelectable=false), which makes xyflow
+   mark every edge `inactive` → pointer-events:none. But replay still wants edge
+   HOVER for the value/token peek, so re-enable hit-testing on the interaction
+   path here only. Higher specificity than xyflow's `.react-flow__edge.inactive`. */
+.replay-canvas .react-flow__edge.inactive,
+.replay-canvas .react-flow__edge {
+  pointer-events: visibleStroke;
+}
+.replay-canvas .react-flow__edge .react-flow__edge-interaction {
+  pointer-events: stroke;
+}
 .react-flow__edge.selected .react-flow__edge-path,
 .react-flow__edge.selectable.selected .react-flow__edge-path {
   stroke-width: 4 !important;
