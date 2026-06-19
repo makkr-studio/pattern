@@ -423,6 +423,10 @@ export async function openSqliteTraceStore(path: string, opts: SqliteTraceStoreO
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL");
+  // Multi-process: a CLI run, or a dev-server restart, may open the file while
+  // another connection holds the write lock — wait for it instead of failing
+  // (which would silently drop this process to the in-memory fallback).
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec(SCHEMA);
   return new SqliteTraceStore(db, opts);
 }
