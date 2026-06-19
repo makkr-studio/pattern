@@ -1,0 +1,1 @@
+Collapse any value to a boolean by JS truthiness, ready for a `core.flow.branch` or `core.flow.gate` condition. Note `0`, `""`, and `null` become `false`; for an explicit null-only test use `core.cast.isNull` instead.

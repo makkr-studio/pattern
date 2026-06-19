@@ -1,0 +1,1 @@
+True if any element's **sub-workflow** result is truthy — the existential check. To test a literal value rather than a predicate, `core.array.includes` is simpler; for the item itself use `core.array.find`. Runs one linked sub-run per element.

@@ -1,0 +1,1 @@
+Assemble a URL string from `{ base, pathname?, query? }`, resolving `pathname` against `base` and appending `query` entries as encoded params. Reach for it when calling an API with `core.http.fetch` so you never hand-concatenate and forget to escape; `base` is required.

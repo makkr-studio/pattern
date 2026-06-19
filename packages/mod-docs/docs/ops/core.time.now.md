@@ -1,0 +1,1 @@
+Current wall-clock time as epoch milliseconds. Non-deterministic, so a run that reads it can't be replayed bit-for-bit; feed it into `core.time.add`/`core.time.format` rather than parsing your own date strings.

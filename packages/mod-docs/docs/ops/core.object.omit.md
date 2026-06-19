@@ -1,0 +1,1 @@
+Denylist projection — drop `config.keys`, keep the rest. Reach for it to strip a few sensitive or noisy fields (`password`, internal ids) while preserving an unknown remainder. Inverse of `core.object.pick`; both operate on top-level keys only, not nested paths (use `core.object.delete` for those).

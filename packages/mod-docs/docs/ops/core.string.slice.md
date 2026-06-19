@@ -1,0 +1,1 @@
+Extract a substring by index (`config.start` to `config.end`, end exclusive; negatives count from the end). Use it for fixed-position cuts; to split on a delimiter use `core.string.split`, and to pull a pattern use `core.string.match`.

@@ -1,0 +1,1 @@
+Returns the first item whose **sub-workflow** predicate returns truthy (the item, not its index — that is `core.array.indexOf`), or `undefined` if none match. Each element is a linked sub-run, so it does not short-circuit. When a yes/no answer is enough, `core.array.some` is cheaper to read.

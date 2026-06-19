@@ -1,0 +1,1 @@
+Server-side close of a WebSocket connection, optionally with a `code`/`reason`. Reach for it to evict a connection on auth failure or idle timeout; for "drop this user from a topic but keep the socket" use `core.ws.leave` instead.

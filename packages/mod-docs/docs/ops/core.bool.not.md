@@ -1,0 +1,1 @@
+Invert a boolean — flip a comparison or `core.cast.isNull` result before it feeds a `core.flow.branch`. Often cheaper than swapping a comparison op (e.g. `not` of `core.cmp.eq` instead of `core.cmp.neq`) when you already have the boolean.

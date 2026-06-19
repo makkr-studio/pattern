@@ -1,0 +1,1 @@
+Membership test by deep equality — the boolean answer to "is this value in the list?". When you need the position instead, use `core.array.indexOf`; to test by a predicate rather than a literal value, use `core.array.some`.

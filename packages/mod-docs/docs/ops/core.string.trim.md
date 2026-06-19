@@ -1,0 +1,1 @@
+Strip leading and trailing whitespace — the standard cleanup on user input or fetched text before comparison or storage. Pair with `core.string.lower` to normalize before an equality or `core.string.includes` check.

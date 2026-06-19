@@ -1,0 +1,1 @@
+Build an object from an array of `[key, value]` pairs — the close of an entries round-trip after transforming with array ops. Inverse of `core.object.entries`; pairs produced by `core.array.zip` plug in directly.

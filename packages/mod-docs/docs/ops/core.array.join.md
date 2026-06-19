@@ -1,0 +1,1 @@
+Collapse a list into one string with a separator (default `,`). Identical in effect to `core.string.join`; reach for whichever family the surrounding graph already lives in. To go the other way, `core.string.split`.

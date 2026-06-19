@@ -1,0 +1,1 @@
+Keeps items whose **sub-workflow** (config ref) returns a truthy `{ value }`, applied once per element as a linked sub-run — the predicate receives `{ item, index }`. For filtering a live stream as chunks arrive, use the stream bridge rather than buffering into an array first. To also keep the rejects, use `core.array.partition`, which returns both `{ pass, fail }` in one pass.

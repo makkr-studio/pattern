@@ -1,0 +1,1 @@
+Wait `ms` then forward `value` on the data path — a delay that carries a payload through. Cancellation-aware: aborting the run clears the pending timer. When you only need to sequence control flow (no value to thread), prefer the control-port `core.flow.delay`.

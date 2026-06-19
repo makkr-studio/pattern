@@ -1,0 +1,1 @@
+Transform every value through a referenced **sub-workflow** (`{ value, key }` → `{ value }`) while preserving keys — one linked sub-run per entry, run sequentially. Reach for it to normalize or enrich a record's fields uniformly. If the sub-workflow omits `value`, the original is kept. To transform an array instead, use `core.array.map`.

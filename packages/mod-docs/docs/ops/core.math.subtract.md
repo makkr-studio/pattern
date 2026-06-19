@@ -1,0 +1,1 @@
+Use for a numeric delta — remaining budget, elapsed count, the gap between two extracted fields. Feed the difference into `core.cmp.lt`/`core.cmp.gt` to gate downstream work on whether it crossed zero.

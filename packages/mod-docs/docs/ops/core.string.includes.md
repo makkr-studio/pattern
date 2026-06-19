@@ -1,0 +1,1 @@
+Substring membership test — case-sensitive, so normalize with `core.string.lower` first if needed. For position-anchored checks use `core.string.startsWith` / `core.string.endsWith`; for pattern matching use `core.string.match`.

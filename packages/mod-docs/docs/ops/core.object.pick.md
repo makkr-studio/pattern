@@ -1,0 +1,1 @@
+Allowlist projection — keep only `config.keys` that are present, dropping everything else. The safe way to shape an outbound body so internal fields never leak. Inverse is `core.object.omit`; to assemble a shape from separate ports use `core.object.build`.

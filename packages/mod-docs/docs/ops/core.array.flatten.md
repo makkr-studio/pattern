@@ -1,0 +1,1 @@
+Collapse nested arrays one level by default, or up to `config.depth`. When you map each item to an array and want the results merged, prefer `core.array.flatMap`, which maps and flattens one level in a single step.

@@ -1,0 +1,1 @@
+Use to take the larger of two numbers — floor a value (e.g. `max(x, 0)` to keep it non-negative) or pick the winner of two scores. Combine with `core.math.min` to clamp both ends, or reach for `core.math.clamp` to do it in one node.

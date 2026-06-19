@@ -1,0 +1,1 @@
+Get a runtime type tag to branch on the shape of a value — it refines plain `typeof` by reporting `"null"` and `"array"` distinctly. Feed the string into a `core.cmp.eq` against `"array"`/`"object"`/`"string"` to route polymorphic input.

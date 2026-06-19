@@ -1,0 +1,1 @@
+UTF-8-safe base64 encoding of a string. Use it to pack binary-ish or multibyte text into an ASCII-clean field (a header, a data URI); for signing or fingerprinting reach for `core.hash`/`core.crypto.hmac` instead — base64 is encoding, not security.

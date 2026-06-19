@@ -1,0 +1,1 @@
+Percent-encode a single string via `encodeURIComponent` — for escaping one path segment or query value. To assemble a whole query string from an object prefer `core.query.build`, which handles every key at once.

@@ -1,0 +1,1 @@
+Pair two parallel arrays positionally into `[a, b]` tuples, truncated to the shorter one. Pair with `core.array.map` to combine each tuple, or feed the result to `core.object.fromEntries` when the tuples are `[key, value]`.
