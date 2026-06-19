@@ -144,6 +144,29 @@ describe("streams — split policies", () => {
   });
 });
 
+describe("streams — map runs an INLINE sub-workflow per chunk", () => {
+  it("accepts a whole workflow in config (no separate deploy) and re-streams results", async () => {
+    const engine = new Engine();
+    const wf: Workflow = {
+      id: "map-inline",
+      nodes: [
+        { id: "t", op: "boundary.manual", config: { outputs: ["items"] } },
+        { id: "e", op: "core.stream.emit" },
+        { id: "m", op: "core.stream.map", config: { workflow: { workflow: doubleSub } } }, // ← inline body
+        { id: "acc", op: "core.stream.accumulate", config: { mode: "array" } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "t", port: "items" }, to: { node: "e", port: "in" } },
+        { from: { node: "e", port: "out" }, to: { node: "m", port: "in" } },
+        { from: { node: "m", port: "out" }, to: { node: "acc", port: "in" } },
+        { from: { node: "acc", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    };
+    expect(await run(engine, wf, { items: [1, 2, 3] })).toEqual({ value: [2, 4, 6] });
+  });
+});
+
 describe("streams — pluck / template (lightweight per-chunk, no sub-workflow)", () => {
   it("pluck extracts a dot-path per chunk and drops chunks missing it", async () => {
     const engine = new Engine();
