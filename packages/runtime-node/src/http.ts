@@ -69,6 +69,8 @@ interface CompiledRoute {
   port: number;
   regex: RegExp;
   paramNames: string[];
+  /** Per-segment specificity (static=2, :param=1) for most-specific-wins. */
+  spec: number[];
   workflowId: string;
   trigger: string;
   bodyMode: "buffered" | "stream";
@@ -125,6 +127,31 @@ function envPort(): number | undefined {
   if (!raw) return undefined;
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Per-segment route specificity: a static segment (2) outranks a `:param` (1).
+ * Compared left-to-right, this makes a HARDWIRED path win over a parametrized
+ * one that also matches — e.g. `/api/sales/turns` takes precedence over the
+ * generic `/api/:ns/turns`. So forking a workflow with a concrete path in place
+ * of a `:param` overrides the generic handler, for any route, not just chat.
+ */
+function routeSpec(path: string): number[] {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((seg) => (seg.startsWith(":") ? 1 : 2));
+}
+
+/** Order routes most-specific-first (stable, so equal specificity keeps registration order). */
+function bySpecificity(a: { spec: number[] }, b: { spec: number[] }): number {
+  const n = Math.max(a.spec.length, b.spec.length);
+  for (let i = 0; i < n; i++) {
+    const x = a.spec[i] ?? -1;
+    const y = b.spec[i] ?? -1;
+    if (x !== y) return y - x; // higher specificity first
+  }
+  return 0;
 }
 
 function compilePath(path: string): { regex: RegExp; paramNames: string[] } {
@@ -293,6 +320,7 @@ export class HttpHost {
           port: cfg.port ?? this.defaultPort,
           regex,
           paramNames,
+          spec: routeSpec(cfg.path),
           workflowId: wf.id,
           trigger: node.id,
           bodyMode: cfg.bodyMode === "stream" ? "stream" : "buffered",
@@ -305,7 +333,8 @@ export class HttpHost {
         });
       }
     }
-    return routes;
+    // Most-specific-first, so a hardwired path out-matches a generic :param one.
+    return routes.sort(bySpecificity);
   }
 
   /**

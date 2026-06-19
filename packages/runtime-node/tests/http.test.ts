@@ -68,6 +68,45 @@ describe("HTTP host — declarative routing", () => {
     expect(await res.text()).toBe("Hi ada");
   });
 
+  it("prefers a hardwired path over a generic :param route (most-specific-wins)", async () => {
+    const engine = new Engine();
+    // Register the GENERIC route FIRST — without specificity ordering, plain
+    // first-match would (wrongly) answer every namespace with the generic one.
+    const generic: Workflow = {
+      id: "turn-generic",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "POST", path: "/api/:ns/turns" } },
+        { id: "msg", op: "core.string.template", config: { template: "generic:{{ ns }}" } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "in", port: "params" }, to: { node: "msg", port: "data" } },
+        { from: { node: "msg", port: "out" }, to: { node: "out", port: "body" } },
+      ],
+    };
+    // A fork that hardwires the namespace in the path — should win for /sales.
+    const specific: Workflow = {
+      id: "turn-sales",
+      nodes: [
+        { id: "in", op: "boundary.http.request", config: { method: "POST", path: "/api/sales/turns" } },
+        { id: "msg", op: "core.string.template", config: { template: "sales-pipeline" } },
+        { id: "out", op: "boundary.http.response" },
+      ],
+      edges: [
+        { from: { node: "in", port: "params" }, to: { node: "msg", port: "data" } },
+        { from: { node: "msg", port: "out" }, to: { node: "out", port: "body" } },
+      ],
+    };
+    engine.registerWorkflow(generic);
+    engine.registerWorkflow(specific);
+    await startOn(engine, 4811);
+
+    // /sales → the hardwired fork wins over the generic :ns route.
+    expect(await (await fetch("http://localhost:4811/api/sales/turns", { method: "POST" })).text()).toBe("sales-pipeline");
+    // Any other namespace → the generic :ns route still serves it.
+    expect(await (await fetch("http://localhost:4811/api/support/turns", { method: "POST" })).text()).toBe("generic:support");
+  });
+
   it("validates the body against the declared JSON Schema (400 on mismatch)", async () => {
     const engine = new Engine();
     const wf: Workflow = {
