@@ -44,4 +44,8 @@ export interface PatternAdminGlobal {
   api: AdminClient;
   /** The glass component kit. */
   ui: PatternAdminUi;
+  /** The host's motion.dev factory (`motion.div`, …) — shared so Tier-2 pages animate with the same library. */
+  motion: unknown;
+  /** The host's lucide-react icon namespace (`lucide.Box`, …) — the admin's icon set, shared. */
+  lucide: unknown;
 }
