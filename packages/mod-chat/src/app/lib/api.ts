@@ -1,8 +1,9 @@
 /** Pattern Chat — API client (pure fetch; SSE via ReadableStream). */
 
 import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
+import { appBoot } from "./config";
 
-const API = "/chat/api";
+const API = appBoot.apiBase;
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok && res.status !== 201) {
@@ -77,7 +78,7 @@ export async function requestMagicLink(requestPath: string, email: string): Prom
   const res = await fetch(requestPath, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, next: "/chat/" }),
+    body: JSON.stringify({ email, next: `${appBoot.mount}/` }),
   });
   if (!res.ok) throw new Error(`sign-in request failed (${res.status})`);
 }

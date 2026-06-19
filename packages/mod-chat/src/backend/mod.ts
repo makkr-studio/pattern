@@ -54,7 +54,9 @@ const chatAppOp: OpDefinition = {
   type: "chat.app",
   title: "Pattern Chat app",
   description:
-    "The chat SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount.",
+    "The chat SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount. " +
+    "`accent`/`title` brand THIS instance — they ride the app descriptor's `manifest`, which the host injects as " +
+    "`window.__APP__` into the served index.html, so the same bundle can be hosted many times with different looks.",
   reusable: true,
   inputs: {},
   outputs: { app: value(boundaries.appDescriptorSchema) },
@@ -62,8 +64,26 @@ const chatAppOp: OpDefinition = {
     filesystem: z.string().default(CHAT_ASSETS_FS),
     spaFallback: z.string().default("index.html"),
     immutableAssets: z.boolean().default(true),
+    /** Brand accent (any CSS color) — themes the chat UI's `--accent`. */
+    accent: z.string().optional(),
+    /** Document title + sidebar wordmark for this instance. */
+    title: z.string().optional(),
   }),
-  execute: (ctx) => ({ app: { ...(ctx.config as object) } }),
+  execute: (ctx) => {
+    const { filesystem, spaFallback, immutableAssets, accent, title } = ctx.config as {
+      filesystem: string;
+      spaFallback: string;
+      immutableAssets: boolean;
+      accent?: string;
+      title?: string;
+    };
+    // The host injects `manifest` (+ the resolved mount/apiBase it knows) as
+    // window.__APP__. Its mere presence opts this app into bootstrap injection.
+    const manifest: Record<string, unknown> = {};
+    if (accent) manifest.accent = accent;
+    if (title) manifest.title = title;
+    return { app: { filesystem, spaFallback, immutableAssets, manifest } };
+  },
 };
 
 

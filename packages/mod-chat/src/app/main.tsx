@@ -8,6 +8,7 @@ import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { chatStore } from "./lib/store";
 import { connectNotify } from "./lib/ws";
+import { applyBrand, brandTitle } from "./lib/config";
 import { Sidebar } from "./components/Sidebar";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
@@ -105,7 +106,7 @@ function App() {
             </svg>
           </button>
           <span className="min-w-0 flex-1 truncate text-center text-[14px] font-medium">
-            {state.conversations.find((c) => c.id === state.currentId)?.title || "Pattern Chat"}
+            {state.conversations.find((c) => c.id === state.currentId)?.title || brandTitle}
           </span>
           <button
             onClick={() => void chatStore.open(null)}
@@ -144,6 +145,7 @@ function App() {
   );
 }
 
+applyBrand();
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
