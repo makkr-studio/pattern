@@ -32,7 +32,7 @@ import {
   type Workflow,
 } from "@pattern/core";
 import { loadMods } from "../mods.js";
-import { loadWorkflowDir } from "../project.js";
+import { loadWorkflowDir, loadDotEnv } from "../project.js";
 import { runCli } from "../cli.js";
 import { createTraceStore } from "../trace/index.js";
 
@@ -89,11 +89,14 @@ function usage(): void {
 }
 
 /**
- * Build an engine the way the project will at runtime: core ops + every mod
- * declared in `pattern.config.json` (when present). Workflows are *not*
- * registered and no server starts — this is introspection only.
+ * Build an engine the way the project will at runtime: the project's `.env`
+ * loaded (so mod setup — the vault reading PATTERN_VAULT_KEY, agents reading
+ * OPENAI_API_KEY — and `$env` config see it, just like `loadProject`), then core
+ * ops + every mod declared in `pattern.config.json` (when present). Workflows are
+ * *not* registered and no server starts — this is introspection (+ `pattern run`).
  */
 async function projectEngine(): Promise<Engine> {
+  loadDotEnv(process.cwd());
   const engine = new Engine({ env: process.env });
   if (existsSync("pattern.config.json")) {
     try {
