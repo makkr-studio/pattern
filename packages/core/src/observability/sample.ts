@@ -41,6 +41,25 @@ export function sampleValue(value: unknown, mask?: MaskFn): IoSample {
 }
 
 /**
+ * A glimpse of a single stream chunk for replay scrubbing: masked, clipped to a
+ * tight `cap` (a glimpse is enough to follow a token stream; binary is unreadable
+ * regardless), and reporting the byte size it cost so the caller can hold a
+ * per-stream budget. Unlike {@link sampleValue} the preview stays a string — one
+ * chunk is a fragment, not a structured port value.
+ */
+export function sampleChunk(value: unknown, cap: number, mask?: MaskFn): { preview: string; truncated: boolean; bytes: number } {
+  const masked = mask ? mask(value) : value;
+  let s: string;
+  try {
+    s = typeof masked === "string" ? masked : (JSON.stringify(masked) ?? String(masked));
+  } catch {
+    s = String(masked);
+  }
+  if (s.length > cap) return { preview: `${s.slice(0, cap)}…`, truncated: true, bytes: cap };
+  return { preview: s, truncated: false, bytes: s.length };
+}
+
+/**
  * A placeholder sample for a stream port. We never drain the stream to sample it
  * (that would consume data meant for downstream consumers and change behavior),
  * so the head is empty and the sample is flagged truncated.

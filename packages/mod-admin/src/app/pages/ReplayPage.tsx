@@ -1,42 +1,56 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ReactFlow, Background, Controls, ReactFlowProvider } from "@xyflow/react";
+import { ReactFlow, Background, Controls, ReactFlowProvider, type Edge as RFEdge } from "@xyflow/react";
 import type { SpanData } from "@pattern/admin-sdk";
 import { useOps, useRun, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap, type ReplayState } from "../editor/graph";
 import { OpNode } from "../editor/OpNode";
 import { FrameNode } from "../editor/FrameNode";
 import { PortalEdge } from "../editor/PortalEdge";
-import { Badge, GlassPanel, NeonButton, PageHeader, Spinner } from "../components/ui";
+import { Badge, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { ms, statusColor } from "../lib/format";
 import { Pause, Play, SkipBack, SkipForward } from "../components/icon";
+import {
+  buildReplayEvents,
+  nodeIdOf,
+  stateAt,
+  stepBack as stepBackTo,
+  stepForward as stepForwardTo,
+  type ReplayEvent,
+  type ReplayEventKind,
+} from "../lib/replay";
 
 const nodeTypes = { op: OpNode, frame: FrameNode };
 const edgeTypes = { portal: PortalEdge };
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
-function nodeIdOf(span: SpanData): string | undefined {
-  const id = span.attributes["pattern.node.id"];
-  return typeof id === "string" ? id : undefined;
-}
+const TICK_COLOR: Record<ReplayEventKind, string> = {
+  started: "var(--color-neon-cyan)",
+  output: "var(--color-port-value)",
+  chunk: "var(--color-port-stream)",
+  ended: "var(--color-neon-lime)",
+  skipped: "var(--color-port-control)",
+};
 
-/** When the node actually started WORKING — every node launches at t≈0 and
- *  blocks on its inputs first, so raw startTime would light them all at once. */
-function effectiveStart(span: SpanData): number {
-  return span.startTime + Number(span.attributes["pattern.node.blockedMs"] ?? 0);
-}
-
-function stateAt(span: SpanData, t: number): ReplayState {
-  if (t < effectiveStart(span)) return "pending";
-  if (t < span.endTime) return "running";
-  if (span.events?.some((e) => e.name === "skipped")) return "skipped";
-  return span.status === "error" ? "error" : "ok";
+/** A compact, inline glimpse of whatever happened at this event. */
+function peekText(e: ReplayEvent, ioOf: (node: string, port: string) => unknown): string {
+  if (e.kind === "chunk") return typeof e.preview === "string" ? e.preview : JSON.stringify(e.preview);
+  if (e.kind === "output") {
+    const v = ioOf(e.node, e.port ?? "");
+    return v === undefined ? "(value passed)" : typeof v === "string" ? v : JSON.stringify(v);
+  }
+  if (e.kind === "started") return "started working";
+  return e.status ?? "done";
 }
 
 /**
- * Run replay on the graph canvas (mod-admin-spec §15.1): a scrubber with
- * play/pause/step/speed; nodes transition pending→running→ok|error|skipped at
- * the scrubber's position, and edges illuminate once their source completed.
+ * Run replay on the graph canvas (mod-admin-spec §15.1). The timeline is an
+ * ordered EVENT LOG — each node's started / per-output / per-stream-chunk /
+ * ended moment — not a reconstruction from [start,end] bars. The scrubber steps
+ * event-to-event (symmetric forward/back, one transition per step) over a
+ * real-time track ticked at every event; nodes transition pending→running→
+ * ok|error|skipped and edges illuminate as data flows. Hover an edge to see the
+ * value (or current token) that crossed it.
  */
 export function ReplayPage() {
   const { runId } = useParams();
@@ -47,43 +61,28 @@ export function ReplayPage() {
 
   // Timeline bounds from node spans.
   const nodeSpans = useMemo(() => (run?.spans ?? []).filter((s) => nodeIdOf(s)), [run]);
+  const spanByNode = useMemo(() => new Map(nodeSpans.map((s) => [nodeIdOf(s)!, s])), [nodeSpans]);
   const t0 = useMemo(() => (nodeSpans.length ? Math.min(...nodeSpans.map((s) => s.startTime)) : 0), [nodeSpans]);
   const t1 = useMemo(() => (nodeSpans.length ? Math.max(...nodeSpans.map((s) => s.endTime)) : 0), [nodeSpans]);
   const total = Math.max(0, t1 - t0);
 
-  // Per-chunk stream events (when I/O sampling was on) — each a token transiting
-  // a stream edge, with a real offset. Powers token-by-token scrubbing + peeks.
-  const chunks = useMemo(() => {
-    const out: Array<{ node: string; port: string; seq: number; preview: unknown; truncated?: boolean; at: number }> = [];
-    for (const s of nodeSpans) {
-      const node = nodeIdOf(s)!;
-      for (const e of s.events ?? []) {
-        if (e.name !== "stream.chunk") continue;
-        const a = e.attributes ?? {};
-        out.push({
-          node,
-          port: String(a.port ?? ""),
-          seq: Number(a.seq ?? 0),
-          preview: a.preview,
-          truncated: Boolean(a.truncated),
-          at: Math.max(0, e.time - t0),
-        });
-      }
-    }
-    return out.sort((a, b) => a.at - b.at);
-  }, [nodeSpans, t0]);
+  // The event log: every span's lifecycle moments, flattened + time-sorted. The
+  // single source of discrete scrubber positions (see lib/replay).
+  const events = useMemo(() => buildReplayEvents(nodeSpans, t0), [nodeSpans, t0]);
+
+  const chunks = useMemo(() => events.filter((e) => e.kind === "chunk"), [events]);
 
   const [t, setT] = useState(0); // offset from t0, ms
 
-  // The chunk that has most recently transited at the scrubber position.
-  const currentChunk = useMemo(() => {
-    let hit: (typeof chunks)[number] | null = null;
-    for (const c of chunks) {
-      if (c.at <= t) hit = c;
+  // The event the scrubber is currently on (last at ≤ t) — drives the peek.
+  const current = useMemo(() => {
+    let hit: ReplayEvent | null = null;
+    for (const e of events) {
+      if (e.at <= t) hit = e;
       else break;
     }
     return hit;
-  }, [chunks, t]);
+  }, [events, t]);
 
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
@@ -111,40 +110,26 @@ export function ReplayPage() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing, speed, total]);
 
-  // Step marks = every instant a node CHANGES state: when it starts working
-  // (effective start — raw span starts all collapse to t≈0, which made the
-  // step buttons jump straight to the end) and when it finishes. Marks closer
-  // than 2ms cluster into one step.
-  const marks = useMemo(() => {
-    const raw = new Set<number>([0, total]);
-    for (const s of nodeSpans) {
-      raw.add(Math.max(0, effectiveStart(s) - t0));
-      raw.add(Math.max(0, s.endTime - t0));
-    }
-    // Each sampled chunk is its own step, so you can scrub token-by-token.
-    for (const c of chunks) raw.add(c.at);
-    const sorted = [...raw].sort((a, b) => a - b);
-    const clustered: number[] = [];
-    for (const m of sorted) {
-      if (clustered.length === 0 || m - clustered[clustered.length - 1]! > 2) clustered.push(m);
-    }
-    return clustered;
-  }, [nodeSpans, t0, total, chunks]);
-  // Land just PAST the mark (+1ms) so the state flip is visible; stepping pauses.
-  const stepBack = () => {
-    setPlaying(false);
-    setT((cur) => {
-      const prev = marks.filter((m) => m < cur - 2).pop();
-      return prev === undefined ? 0 : Math.min(prev + 1, total);
-    });
-  };
+  // Stepping = move one event in the log. Symmetric by construction: forward
+  // lands on the first event strictly after the cursor, back on the last one
+  // strictly before — N forward then N back returns home. Same-instant events
+  // are one stop (strict inequality skips the cluster together).
   const stepForward = () => {
     setPlaying(false);
-    setT((cur) => {
-      const next = marks.find((m) => m > cur + 1);
-      return next === undefined ? total : Math.min(next + 1, total);
-    });
+    setT((cur) => stepForwardTo(events, cur, total));
   };
+  const stepBack = () => {
+    setPlaying(false);
+    setT((cur) => stepBackTo(events, cur));
+  };
+
+  // Ticks rendered over the track (downsampled for pathological streams; the
+  // step buttons still traverse the full event list).
+  const ticks = useMemo(() => {
+    if (total <= 0) return [] as ReplayEvent[];
+    const stride = events.length > 400 ? Math.ceil(events.length / 400) : 1;
+    return events.filter((_, i) => i % stride === 0);
+  }, [events, total]);
 
   const doc = wfData?.liveDoc;
   const flow = useMemo(() => (doc && opMap.size ? buildFlow(doc, opMap) : null), [doc, opMap]);
@@ -187,6 +172,13 @@ export function ReplayPage() {
     return { nodes, edges };
   }, [flow, stateSig]);
 
+  // Edge hover — the value (or current token) that crossed this edge.
+  const [hover, setHover] = useState<{ x: number; y: number; edge: RFEdge } | null>(null);
+  const ioOf = (node: string, port: string): unknown => {
+    const io = spanByNode.get(node)?.io?.outputs?.[port];
+    return io?.kind === "value" ? io.preview : undefined;
+  };
+
   if (runLoading || wfLoading) return <Spinner />;
   if (!run || !runId) {
     return <GlassPanel className="text-muted p-8 text-sm">Run not found (it may have been evicted from the ring buffer).</GlassPanel>;
@@ -203,11 +195,13 @@ export function ReplayPage() {
     );
   }
 
+  const seen = events.filter((e) => e.at <= t).length;
+
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col">
       <PageHeader
         title={`Replay · ${run.summary.workflowId}`}
-        subtitle="Scrub through the run — nodes light up as they execute; edges illuminate as data flows."
+        subtitle="Scrub the run event-by-event — nodes light up as they execute; hover an edge to see what flowed through it."
         actions={
           <div className="flex items-center gap-2">
             <Badge hue={run.summary.status === "error" ? 340 : 150}>{run.summary.status}</Badge>
@@ -229,6 +223,8 @@ export function ReplayPage() {
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
+            onEdgeMouseEnter={(ev, edge) => setHover({ x: ev.clientX, y: ev.clientY, edge })}
+            onEdgeMouseLeave={() => setHover(null)}
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={22} size={1.6} color="var(--canvas-dot)" />
@@ -237,32 +233,39 @@ export function ReplayPage() {
         </ReactFlowProvider>
       </GlassPanel>
 
-      {/* Live data peek — the token transiting at the scrubber, when I/O sampling
-          was on. Turns replay from node-by-node into token-by-token. */}
-      {chunks.length > 0 && (
+      {/* Live data peek — the event the scrubber sits on (stream token, value,
+          or a node transition). Turns replay from node-by-node into atom-by-atom. */}
+      {events.length > 0 && (
         <GlassPanel className="mt-3 flex items-center gap-3 px-4 py-2 text-xs">
-          <span className="text-muted shrink-0 font-semibold uppercase tracking-wider">stream</span>
-          {currentChunk ? (
+          <span className="shrink-0 font-semibold uppercase tracking-wider" style={{ color: current ? TICK_COLOR[current.kind] : "var(--color-port-control)" }}>
+            {current?.kind ?? "event"}
+          </span>
+          {current ? (
             <>
-              <span className="font-mono text-[var(--color-port-stream)]" title="producing node · port">
-                {currentChunk.node}.{currentChunk.port}
+              <span className="font-mono text-[var(--color-port-stream)]" title="node · port">
+                {current.node}
+                {current.port ? `.${current.port}` : ""}
               </span>
-              <span className="text-muted shrink-0">#{currentChunk.seq}</span>
-              <span className="min-w-0 flex-1 truncate font-mono" title={String(currentChunk.preview ?? "")}>
-                {typeof currentChunk.preview === "string" ? currentChunk.preview : JSON.stringify(currentChunk.preview)}
+              {current.kind === "chunk" && <span className="text-muted shrink-0">#{current.seq}</span>}
+              <span className="min-w-0 flex-1 truncate font-mono" title={peekText(current, ioOf)}>
+                {peekText(current, ioOf)}
               </span>
-              {currentChunk.truncated && <span className="text-muted shrink-0 text-[10px]">(capped)</span>}
+              {current.truncated && <span className="text-muted shrink-0 text-[10px]">(glimpse)</span>}
+              {current.sampled && <span className="text-muted shrink-0 text-[10px]">(downsampled)</span>}
             </>
           ) : (
-            <span className="text-muted">scrub forward to watch {chunks.length} chunk{chunks.length > 1 ? "s" : ""} transit…</span>
+            <span className="text-muted">scrub forward to step through {events.length} events…</span>
           )}
-          <span className="text-muted ml-auto shrink-0 tabular-nums">{chunks.filter((c) => c.at <= t).length}/{chunks.length}</span>
+          <span className="text-muted ml-auto shrink-0 tabular-nums">
+            {seen}/{events.length}
+            {chunks.length > 0 ? ` · ${chunks.filter((c) => c.at <= t).length}/${chunks.length} chunks` : ""}
+          </span>
         </GlassPanel>
       )}
 
       {/* Transport bar */}
       <GlassPanel className="mt-3 flex items-center gap-3 px-4 py-3">
-        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Previous node event" title="Step back — previous node event" onClick={stepBack}>
+        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Previous event" title="Step back — previous event" onClick={stepBack}>
           <SkipBack size={14} />
         </NeonButton>
         <NeonButton
@@ -277,23 +280,38 @@ export function ReplayPage() {
         >
           {playing ? <Pause size={14} /> : <Play size={14} />}
         </NeonButton>
-        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Next node event" title="Step forward — next node event" onClick={stepForward}>
+        <NeonButton variant="ghost" className="!px-2 !py-1.5" aria-label="Next event" title="Step forward — next event" onClick={stepForward}>
           <SkipForward size={14} />
         </NeonButton>
 
-        <input
-          type="range"
-          min={0}
-          max={Math.max(1, total)}
-          step={1}
-          value={Math.min(t, total)}
-          onChange={(e) => {
-            setPlaying(false);
-            setT(Number(e.target.value));
-          }}
-          aria-label="Replay position"
-          className="flex-1 accent-[var(--color-neon-cyan)]"
-        />
+        {/* Real-time track with a tick per event (the step targets). */}
+        <div className="flex-1">
+          <div className="relative mb-1 h-2">
+            {ticks.map((e, i) => (
+              <span
+                key={i}
+                className="absolute top-0 h-2 w-px opacity-70"
+                style={{ left: `${total > 0 ? (e.at / total) * 100 : 0}%`, background: TICK_COLOR[e.kind] }}
+              />
+            ))}
+            {total > 0 && (
+              <span className="absolute top-0 h-2 w-0.5 bg-white" style={{ left: `${(Math.min(t, total) / total) * 100}%` }} />
+            )}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(1, total)}
+            step={total > 100 ? 1 : 0.01}
+            value={Math.min(t, total)}
+            onChange={(e) => {
+              setPlaying(false);
+              setT(Number(e.target.value));
+            }}
+            aria-label="Replay position"
+            className="w-full accent-[var(--color-neon-cyan)]"
+          />
+        </div>
 
         <span className="text-muted w-28 text-right font-mono text-xs">
           {ms(t)} / {ms(total)}
@@ -322,6 +340,69 @@ export function ReplayPage() {
           ))}
         </div>
       </GlassPanel>
+
+      {hover && <EdgeHoverCard hover={hover} spanByNode={spanByNode} chunks={chunks} t={t} />}
+    </div>
+  );
+}
+
+/** Floating peek of the value/token that crossed the hovered edge. */
+function EdgeHoverCard({
+  hover,
+  spanByNode,
+  chunks,
+  t,
+}: {
+  hover: { x: number; y: number; edge: RFEdge };
+  spanByNode: Map<string, SpanData>;
+  chunks: ReplayEvent[];
+  t: number;
+}) {
+  const { edge } = hover;
+  const node = edge.source;
+  const port = edge.sourceHandle ?? "";
+  const kind = (edge.data as { kind?: string } | undefined)?.kind;
+  const span = spanByNode.get(node);
+
+  let body: React.ReactNode;
+  if (kind === "control") {
+    body = <span className="text-muted">control pulse</span>;
+  } else if (kind === "stream") {
+    let last: ReplayEvent | undefined;
+    let count = 0;
+    for (const c of chunks) {
+      if (c.node !== node || c.port !== port) continue;
+      count++;
+      if (c.at <= t) last = c;
+    }
+    body = last ? (
+      <>
+        <div className="text-muted mb-1 text-[10px]">
+          token #{last.seq} of {count}
+          {last.truncated ? " · glimpse" : ""}
+        </div>
+        <div className="font-mono break-words">{typeof last.preview === "string" ? last.preview : JSON.stringify(last.preview)}</div>
+      </>
+    ) : count > 0 ? (
+      <span className="text-muted">scrub forward — {count} tokens streamed here</span>
+    ) : (
+      <span className="text-muted">stream (I/O sampling off)</span>
+    );
+  } else {
+    const io = span?.io?.outputs?.[port];
+    body =
+      io?.kind === "value" ? <JsonView value={io.preview} className="max-h-40" /> : <span className="text-muted">value (I/O sampling off)</span>;
+  }
+
+  return (
+    <div
+      className="pointer-events-none fixed z-50 max-w-sm rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-xs shadow-xl backdrop-blur"
+      style={{ left: hover.x + 14, top: hover.y + 14 }}
+    >
+      <div className="mb-1 font-mono text-[var(--color-neon-cyan)]">
+        {node}.{port}
+      </div>
+      {body}
     </div>
   );
 }

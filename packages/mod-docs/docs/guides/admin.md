@@ -31,7 +31,7 @@ appears in its catalog — and is editable inside itself.
 |-------|------|
 | **Workflows / Editor** | The canvas: drag ops from the palette, wire ports (value cyan, stream violet, control dashed), fork code workflows, deploy with route-conflict checks. |
 | **Runs** | Every run with a per-node timeline — when each node ran (sub-millisecond), what flowed through it (sampled I/O, secrets masked), linked sub-runs for tool calls. A streaming run reads honestly as **"ready in X · streamed Y"** (time-to-first-byte vs. time-to-last-token); an offloaded run carries a **worker:N** badge. |
-| **Replay** | Step a finished run on the graph — node-by-node, and (with I/O sampling on) **token-by-token**: scrub the stream and watch each chunk transit its edge. |
+| **Replay** | Step a finished run on the graph as an ordered **event log** — each node's start, every value output, and (with I/O sampling on) **every stream chunk** are discrete steps on a real-time track ticked at each event. Stepping is symmetric (forward-N then back-N returns home); **hover any edge** to see the value — or the current token — that crossed it. |
 | **Catalog (Ops / Mods)** | Everything registered, with ports, config schemas, and which workflows use what. |
 | **Metrics / Process** | Throughput, error rates, host process vitals, the run transport (inline + any worker pool). |
 | **System** | Settings, secrets (the vault), observability knobs (I/O sampling, retention). |

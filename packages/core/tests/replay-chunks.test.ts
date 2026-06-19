@@ -48,11 +48,47 @@ describe("replay: per-chunk stream events", () => {
     expect(chunkEvents(spans)).toHaveLength(0);
   });
 
-  it("caps long streams at 64 events + a 'capped' marker", async () => {
+  it("captures a long stream in FULL under the byte budget (no flat 64 cap)", async () => {
+    // 200 small tokens are far under the 256 KB budget → every one recorded.
     const items = Array.from({ length: 200 }, (_, i) => `t${i}`);
     const spans = await spansOf(items, true);
     const emit = spans.find((s) => s.attributes["pattern.node.id"] === "emit")!;
-    expect(chunkEvents(spans)).toHaveLength(64);
-    expect((emit.events ?? []).some((e) => e.name === "stream.chunk.capped")).toBe(true);
+    expect(chunkEvents(spans)).toHaveLength(200);
+    expect(emit.events?.some((e) => e.name === "stream.chunk.capped")).toBe(false);
+  });
+
+  it("clips each chunk to a tight glimpse (binary/huge tokens stay bounded)", async () => {
+    const big = "x".repeat(5000);
+    const spans = await spansOf([big], true);
+    const [ev] = chunkEvents(spans);
+    expect(ev?.attributes?.truncated).toBe(true);
+    expect(String(ev?.attributes?.preview).length).toBeLessThan(300); // ~256 + ellipsis
+  });
+
+  it("downsamples past the budget instead of cutting off — coverage spans the stream", async () => {
+    // Each ~300-char token costs a 256 B glimpse; >1024 of them exceeds 256 KB.
+    const items = Array.from({ length: 1100 }, (_, i) => `${i}`.padEnd(300, "."));
+    const spans = await spansOf(items, true);
+    const emit = spans.find((s) => s.attributes["pattern.node.id"] === "emit")!;
+    const evs = chunkEvents(spans);
+    expect(evs.length).toBeGreaterThan(64); // well past the old cap
+    expect(evs.length).toBeLessThan(items.length); // but bounded — tail downsampled
+    expect(emit.events?.some((e) => e.name === "stream.chunk.capped")).toBe(true);
+    expect(evs.some((e) => e.attributes?.sampled === true)).toBe(true); // downsampled chunks flagged
+    // A late chunk is still represented (coverage didn't stop at the budget).
+    expect(Number(evs[evs.length - 1]!.attributes?.seq)).toBeGreaterThan(1024);
+  });
+
+  it("emits a `started` event and an `output` event per value port", async () => {
+    const spans = await spansOf(["a"], true);
+    const acc = spans.find((s) => s.attributes["pattern.node.id"] === "acc")!;
+    const started = acc.events?.find((e) => e.name === "started");
+    expect(started).toBeDefined();
+    expect(typeof started!.time).toBe("number");
+    expect(typeof started!.attributes?.blockedMs).toBe("number");
+    // The accumulator's value output fired exactly once on its `out` port.
+    const outs = (acc.events ?? []).filter((e) => e.name === "output");
+    expect(outs).toHaveLength(1);
+    expect(outs[0]!.attributes?.port).toBe("out");
   });
 });
