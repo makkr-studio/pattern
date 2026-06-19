@@ -376,7 +376,7 @@ export function RunsPage() {
     <>
       <PageHeader
         title="Runs"
-        subtitle="Recent runs from the in-memory sink. Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
+        subtitle="Recent runs from the durable trace store (persisted across restarts; CLI runs land here too). Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
       />
       <div className="grid grid-cols-[1fr_1.3fr] gap-6">
         <div className="space-y-4">
