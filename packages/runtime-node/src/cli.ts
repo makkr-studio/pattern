@@ -65,11 +65,18 @@ export async function runCli(
 
   if (payload.stdoutStream instanceof ReadableStream) {
     const reader = payload.stdoutStream.getReader();
+    let last = "";
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      process.stdout.write(value instanceof Uint8Array ? Buffer.from(value) : String(value));
+      const chunk = value instanceof Uint8Array ? Buffer.from(value) : String(value);
+      process.stdout.write(chunk);
+      last = typeof chunk === "string" ? chunk : chunk.toString("utf8");
     }
+    // A streamed result that doesn't end in a newline leaves a partial line:
+    // zsh/bash mark it (and it can look like the output "vanished" on exit).
+    // Terminate it like the value-stdout path does.
+    if (last && !last.endsWith("\n")) process.stdout.write("\n");
   } else if (payload.stdout != null) {
     const out = payload.stdout;
     process.stdout.write(out instanceof Uint8Array ? Buffer.from(out) : typeof out === "string" ? out : JSON.stringify(out));

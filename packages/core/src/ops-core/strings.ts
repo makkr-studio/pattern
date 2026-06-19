@@ -12,6 +12,15 @@ import { getPath } from "./objects.js";
 
 const str = z.string();
 
+/** Interpolate `{{ dot.path }}` placeholders over `data` (objects → JSON, null →
+ *  ""). Shared by `core.string.template` and `core.stream.template`. */
+export function renderTemplate(template: string, data: unknown): string {
+  return template.replace(/\{\{\s*([\w.[\]]+)\s*\}\}/g, (_, path: string) => {
+    const v = getPath(data, path);
+    return v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  });
+}
+
 export const stringOps: OpDefinition[] = [
   pureOp({
     type: "core.string.concat",
@@ -130,13 +139,7 @@ export const stringOps: OpDefinition[] = [
     inputs: { data: required(z.record(z.string(), z.unknown())) },
     output: str,
     config: z.object({ template: z.string() }),
-    compute: ({ data }, ctx) => {
-      const { template } = ctx.config as { template: string };
-      return template.replace(/\{\{\s*([\w.[\]]+)\s*\}\}/g, (_, path: string) => {
-        const v = getPath(data, path);
-        return v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
-      });
-    },
+    compute: ({ data }, ctx) => renderTemplate((ctx.config as { template: string }).template, data),
   }),
 ];
 
