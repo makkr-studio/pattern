@@ -1,0 +1,1 @@
+Delete a blob's bytes and metadata by id; `ok` is true when something was removed (idempotent on a miss). Blobs aren't garbage-collected, so when a document that referenced one is deleted (`store.delete`), delete its blob in the same workflow or it leaks bytes on disk. The admin Data browser exposes the same action behind the admin gate.

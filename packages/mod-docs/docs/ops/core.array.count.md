@@ -1,0 +1,1 @@
+Count items deep-equal to `value`; leave `value` unwired and it returns the total length, same as `core.array.length`. To count by a predicate rather than a literal, `core.array.filter` then take its `core.array.length`.

@@ -1,0 +1,1 @@
+Bucket objects into a record keyed by a dot-path field (`config.path`) — the move for "items per category". The key is stringified, so distinct values that share a string form collapse together. To then act on each bucket, follow with `core.object.mapValues`.

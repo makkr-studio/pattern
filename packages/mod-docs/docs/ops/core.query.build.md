@@ -1,0 +1,1 @@
+Encode an object into a query string, escaping every key and value. Use it when assembling an outbound request; values are stringified, so flatten nested objects first. Often paired with `core.url.build` (which can take the query inline) or `core.http.fetch`.

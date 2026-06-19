@@ -1,0 +1,1 @@
+Emits the Pattern Admin SPA as an app descriptor — the one admin op meant for authoring. Drop it between a `boundary.http.app` mount and `boundary.http.app.serve` to serve the admin UI (the `admin.spa` workflow is exactly this trio). Use it only to host the admin's own bundle; for your mod's assets reach for `core.app.static` against your own registered filesystem instead.

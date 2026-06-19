@@ -1,0 +1,1 @@
+Generate a numeric sequence `[start, end)` from config alone — it has no inputs. The seed for counted loops: feed the range into `core.array.map` to do something N times, or into `core.array.chunk` for offsets. `step` of `0` throws.

@@ -1,0 +1,1 @@
+Coerce any value to a string before interpolation or display. Objects and arrays come out JSON-stringified and null/undefined become `""` — so it never throws, but for pretty or schema-aware JSON reach for a dedicated serialize op rather than relying on this.

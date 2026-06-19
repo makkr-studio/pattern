@@ -1,0 +1,1 @@
+Shift an epoch-ms timestamp forward by a fixed duration (`ms`/`seconds`/`minutes`/`hours`/`days` summed). Use it for deadlines and expiries — e.g. `core.time.now` + `{ minutes: 15 }` for a token TTL. Calendar-aware math (month/year boundaries) is out of scope; this is plain millisecond arithmetic.

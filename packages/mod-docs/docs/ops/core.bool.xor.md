@@ -1,0 +1,1 @@
+True when exactly one of two booleans holds — use it to detect a mismatch between two flags or to branch on "one but not both." Less common than `core.bool.and`/`core.bool.or`; reach for it only when that exclusive semantics is exactly what you want.

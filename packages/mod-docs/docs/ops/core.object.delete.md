@@ -1,0 +1,1 @@
+Return a clone with `config.path` removed (immutable); on an array index it splices the element out. To drop several top-level keys at once, `core.object.omit` is more direct. Inverse of `core.object.set`.

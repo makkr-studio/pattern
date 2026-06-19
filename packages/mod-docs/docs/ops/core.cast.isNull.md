@@ -1,0 +1,1 @@
+The presence check — true for both null and undefined, so use it to branch on a missing extracted field. To supply a fallback value rather than branch, prefer `core.cast.coalesce`; to invert this into an "is present" flag, follow with `core.bool.not`.

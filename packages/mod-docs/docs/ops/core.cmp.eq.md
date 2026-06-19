@@ -1,0 +1,1 @@
+The deep-equality test — use it to match an extracted field against an expected value and feed the boolean into a `core.flow.branch` or `core.flow.gate` condition. Comparison is structural, so it also equates two objects or arrays with the same shape, not just scalars; for the inverse reach for `core.cmp.neq`.

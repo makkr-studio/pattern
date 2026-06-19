@@ -1,0 +1,1 @@
+Shallow merge of two objects, `b` winning on key collisions — the standard way to layer overrides (defaults then user values). It replaces nested objects wholesale; when you need nested objects and arrays combined, use `core.object.mergeDeep`.

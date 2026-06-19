@@ -1,0 +1,1 @@
+A deliberately CPU-bound load — reach for it only in benchmarks and demos to make event-loop blocking visible or give a worker transport something heavy to chew on. Not a real arithmetic op; never put it on a hot path. Pair it with the `offload` flag to demonstrate worker routing.

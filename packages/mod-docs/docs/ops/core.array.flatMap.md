@@ -1,0 +1,1 @@
+Higher-order `core.array.map` that flattens one level: each element's **sub-workflow** returns a `{ value }` that may be an array, and the results are merged. Reach for it when one input fans out to zero-or-many outputs (expand, explode). Like all the higher-order array ops it runs one linked sub-run per element; for per-chunk streaming work use the stream bridge instead.

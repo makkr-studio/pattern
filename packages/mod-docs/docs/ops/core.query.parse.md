@@ -1,0 +1,1 @@
+Decode a query string into a flat object of string values (a leading `?` is optional). Every value is a string — cast with `core.cast.toNumber`/`toBoolean` as needed. For an inbound request you rarely need this: `boundary.http.request` already exposes a parsed `query`.

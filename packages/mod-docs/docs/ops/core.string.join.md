@@ -1,0 +1,1 @@
+Collapse an array into one string with a `separator` (default `,`); non-string elements are stringified. Same effect as `core.array.join`. To concatenate with no delimiter use `core.string.concat`; reverse it with `core.string.split`.

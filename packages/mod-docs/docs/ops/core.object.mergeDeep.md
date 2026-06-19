@@ -1,0 +1,1 @@
+Recursive merge of `b` into `a`: nested objects merge, arrays concatenate, and scalars from `b` win. Reach for it when overriding deep config trees. If you want `b` to replace nested branches outright, the shallow `core.object.merge` is what you want; note array concatenation can surprise you with duplicates.

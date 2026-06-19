@@ -1,0 +1,1 @@
+Order a list, optionally by a dot-path key (e.g. `config.path: "score"`) for arrays of objects. Set `numeric: true` for numbers — the default string comparison would order `"10"` before `"2"`. Commonly paired with `core.array.first` / `core.array.slice` to take the top results.

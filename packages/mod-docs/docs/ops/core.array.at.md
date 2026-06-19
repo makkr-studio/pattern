@@ -1,0 +1,1 @@
+Use when you need a specific positional element and the index is a fixed knob — including negatives (`-1` is the last item). For the common ends prefer the clearer `core.array.first` / `core.array.last`; for a runtime index, compute it and wire it instead of hardcoding `config.index`.

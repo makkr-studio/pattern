@@ -1,0 +1,1 @@
+Reach for this to combine two numeric values mid-graph — a running total, an offset, a sum of two extracted fields. Pair the result with a comparison op like `core.cmp.gt` to drive a `core.flow.branch` threshold.
