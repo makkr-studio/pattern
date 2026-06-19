@@ -1,23 +1,41 @@
 /** @pattern/mod-chat — options & defaults. */
 
+/** Brand the SPA reads from window.__APP__. */
+export interface ChatBrand {
+  accent?: string;
+  title?: string;
+}
+
+/**
+ * One hosted SPA instance: a branded mount over the SHARED backend. The
+ * `namespace` (decoupled from the mount) partitions its data; an optional
+ * `agent` mints a namespace-pinned fork of the turn pipeline so this instance's
+ * turns run a different agent (its hardwired :ns path overrides the generic).
+ */
+export interface ChatInstanceOptions {
+  /** Where this SPA is served, e.g. "/sales". */
+  mount: string;
+  /** Data partition (defaults to the mount's last segment, else "default"). */
+  namespace?: string;
+  brand?: ChatBrand;
+  /** Override the agent for THIS namespace only (→ a pinned turn-pipeline fork). */
+  agent?: { name?: string; instructions?: string; model?: string };
+}
+
 export interface ChatModOptions {
-  /** Where the chat app mounts (UI + API under here). Default "/chat". */
+  /** Where the SHARED backend (API) and the default SPA mount live. Default "/chat". */
   mount?: string;
+  /** The default instance's data namespace. Default "default". */
+  namespace?: string;
+  /** The default instance's brand. */
+  brand?: ChatBrand;
   /**
-   * Short instance id. Namespaces THIS instance's workflow ids (and its
-   * guardrail tool) so several instances can be hosted side by side without
-   * colliding. Default "" — the canonical, unprefixed ids (single-instance).
+   * Host the SAME app several times: one shared backend, many branded SPA
+   * mounts. Each is a light SPA over the backend at `mount`, partitioned by its
+   * `namespace`. When set, the top-level mount still hosts the backend (and,
+   * unless an instance also mounts there, no default SPA).
    */
-  slug?: string;
-  /** Per-instance brand the SPA reads from window.__APP__ (accent + title). */
-  brand?: { accent?: string; title?: string };
-  /**
-   * Host the SAME chat app multiple times, each with its own mount, brand and
-   * agent — "the same instance, many purposes". Each entry is a ChatModOptions
-   * layered over the top-level defaults; give each a distinct `mount` + `slug`.
-   * When set, the top-level mount/brand/agent serve only as defaults.
-   */
-  instances?: ChatModOptions[];
+  instances?: ChatInstanceOptions[];
   /** SPA assets dir override (defaults to the bundled dist-app). */
   assets?: string;
   /**
@@ -65,10 +83,9 @@ export interface ChatModOptions {
   logoutPath?: string;
 }
 
+/** The resolved SHARED backend config (one set of ops + routes, all instances). */
 export interface ResolvedChatOptions {
   mount: string;
-  slug: string;
-  brand: { accent?: string; title?: string };
   assets?: string;
   agent: { name: string; instructions: string; model?: string };
   turnPipeline: boolean;
@@ -78,6 +95,20 @@ export interface ResolvedChatOptions {
   requireAuth?: unknown;
   loginRequestPath: string;
   logoutPath: string;
+}
+
+/** A resolved SPA instance (fed to spaWorkflow). */
+export interface ResolvedInstance {
+  mount: string;
+  api: string;
+  namespace: string;
+  brand: ChatBrand;
+}
+
+/** A resolved namespace-pinned agent (fed to turnPipelineWorkflow as a fork). */
+export interface ResolvedPin {
+  namespace: string;
+  agent: { name: string; instructions: string; model?: string };
 }
 
 /** The shipped classifier prompt. Replies on one line: `ALLOW`, or `BLOCK: <reason>`.
@@ -97,23 +128,46 @@ function envEnabled(): boolean {
   return !(raw && /^(false|0|off|no)$/i.test(raw.trim()));
 }
 
+/** Strip a trailing slash; root stays the given default. */
+function norm(mount: string, dflt: string): string {
+  return mount.replace(/\/$/, "") || dflt;
+}
+
 /**
- * Resolve to a LIST of instances: `options.instances` (each layered over the
- * top-level defaults) when present, else a single instance from the top-level
- * options. The single, no-instances case keeps slug "" → unprefixed ids, so it
- * is byte-compatible with the pre-multi-instance mod.
+ * Resolve the hosted SPA instances and any namespace-pinned agents. With no
+ * `instances`, that's a single default SPA at `mount` (namespace "default") —
+ * byte-compatible with the single-instance mod. The backend always lives at
+ * `mount`; every instance's SPA points its `api` there.
  */
-export function resolveInstances(options: ChatModOptions = {}): ResolvedChatOptions[] {
-  const { instances, ...base } = options;
-  if (instances?.length) return instances.map((inst) => resolveOptions({ ...base, ...inst }));
-  return [resolveOptions(base)];
+export function resolveInstances(options: ChatModOptions = {}): { instances: ResolvedInstance[]; pins: ResolvedPin[] } {
+  const api = norm(options.mount ?? "/chat", "/chat");
+  if (!options.instances?.length) {
+    const namespace = options.namespace ?? "default";
+    return { instances: [{ mount: api, api, namespace, brand: options.brand ?? {} }], pins: [] };
+  }
+  const instances: ResolvedInstance[] = [];
+  const pins: ResolvedPin[] = [];
+  for (const inst of options.instances) {
+    const mount = norm(inst.mount, "/chat");
+    const namespace = inst.namespace ?? mount.split("/").filter(Boolean).pop() ?? "default";
+    instances.push({ mount, api, namespace, brand: inst.brand ?? {} });
+    if (inst.agent) {
+      pins.push({
+        namespace,
+        agent: {
+          name: inst.agent.name ?? namespace,
+          instructions: inst.agent.instructions ?? "You are a helpful, concise assistant.",
+          model: inst.agent.model,
+        },
+      });
+    }
+  }
+  return { instances, pins };
 }
 
 export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOptions {
   return {
-    mount: (options.mount ?? "/chat").replace(/\/$/, "") || "/chat",
-    slug: (options.slug ?? "").trim(),
-    brand: { accent: options.brand?.accent, title: options.brand?.title },
+    mount: norm(options.mount ?? "/chat", "/chat"),
     assets: options.assets,
     agent: {
       name: options.agent?.name ?? "assistant",

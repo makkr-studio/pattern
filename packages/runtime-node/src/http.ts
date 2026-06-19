@@ -113,7 +113,10 @@ function injectBootstrap(bytes: Uint8Array, mount: string, manifest: Record<stri
     return bytes;
   }
   const baseHref = `${mount}/`.replace(/\/{2,}/g, "/"); // "" → "/", "/sales" → "/sales/"
-  const boot = { ...manifest, mount: mount || "/", apiBase: `${mount}/api` };
+  // apiBase defaults to this mount's /api, but a manifest may point at a SHARED
+  // backend elsewhere (a branded SPA at /sales calling /chat/api).
+  const apiBase = typeof manifest.apiBase === "string" ? manifest.apiBase : `${mount}/api`;
+  const boot = { ...manifest, mount: mount || "/", apiBase };
   const json = JSON.stringify(boot).replace(/</g, "\\u003c");
   const inject = `<base href="${baseHref}"><script>window.__APP__=${json}</script>`;
   const head = html.match(/<head[^>]*>/i);

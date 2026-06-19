@@ -19,7 +19,7 @@
 import type { Workflow } from "@pattern/core";
 import { chatOpRoutes, type ChatInSpec } from "./ops.js";
 import { DEVICE_COOKIE } from "./data.js";
-import type { ResolvedChatOptions } from "./options.js";
+import type { ResolvedChatOptions, ResolvedInstance, ResolvedPin } from "./options.js";
 
 interface RouteSpec {
   id: string;
@@ -86,19 +86,22 @@ function route(spec: RouteSpec, requireAuth?: unknown): Workflow {
 
 export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
   const api = `${opts.mount}/api`;
-  const id = (base: string) => wid(opts.slug, base);
+  // Conversation routes carry a `:ns` segment: the SPA sends its (path-decoupled)
+  // namespace there, and the ops partition the store by it. So ONE shared backend
+  // serves every branded instance — no per-instance route duplication. `/me` has
+  // no scoped data, so it stays bare.
   const specs: RouteSpec[] = [
-    { id: id("chat.route.conversations.create"), method: "POST", path: `${api}/conversations`, op: "chat.conversations.create" },
-    { id: id("chat.route.conversations.list"), method: "GET", path: `${api}/conversations`, op: "chat.conversations.list" },
-    { id: id("chat.route.conversations.get"), method: "GET", path: `${api}/conversations/:id`, op: "chat.conversations.get" },
-    { id: id("chat.route.conversations.delete"), method: "DELETE", path: `${api}/conversations/:id`, op: "chat.conversations.delete" },
-    { id: id("chat.route.turns.list"), method: "GET", path: `${api}/conversations/:id/turns`, op: "chat.turns.list" },
-    { id: id("chat.route.turn.stop"), method: "POST", path: `${api}/conversations/:id/turns/:turnId/stop`, op: "chat.turn.stop" },
+    { id: "chat.route.conversations.create", method: "POST", path: `${api}/:ns/conversations`, op: "chat.conversations.create" },
+    { id: "chat.route.conversations.list", method: "GET", path: `${api}/:ns/conversations`, op: "chat.conversations.list" },
+    { id: "chat.route.conversations.get", method: "GET", path: `${api}/:ns/conversations/:id`, op: "chat.conversations.get" },
+    { id: "chat.route.conversations.delete", method: "DELETE", path: `${api}/:ns/conversations/:id`, op: "chat.conversations.delete" },
+    { id: "chat.route.turns.list", method: "GET", path: `${api}/:ns/conversations/:id/turns`, op: "chat.turns.list" },
+    { id: "chat.route.turn.stop", method: "POST", path: `${api}/:ns/conversations/:id/turns/:turnId/stop`, op: "chat.turn.stop" },
   ];
   return [
     // /me is ALWAYS open: it answers "who am I / is auth required?" so the
     // SPA can render its own sign-in instead of bouncing off a raw 401.
-    route({ id: id("chat.route.me"), method: "GET", path: `${api}/me`, op: "chat.me" }),
+    route({ id: "chat.route.me", method: "GET", path: `${api}/me`, op: "chat.me" }),
     ...specs.map((s) => route(s, opts.requireAuth)),
   ];
 }
@@ -106,7 +109,7 @@ export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
 /** POST {mount}/api/blobs — raw bytes in (streamed), blob id out. Pure wiring. */
 export function blobUploadWorkflow(opts: ResolvedChatOptions): Workflow {
   return {
-    id: wid(opts.slug, "chat.route.blobs"),
+    id: "chat.route.blobs",
     name: `Chat · POST ${opts.mount}/api/blobs`,
     source: "code",
     nodes: [
@@ -139,22 +142,6 @@ export function blobUploadWorkflow(opts: ResolvedChatOptions): Workflow {
 /** The tool name the guardrail node resolves, and this workflow declares. */
 export const GUARDRAIL_TOOL_NAME = "professional_conduct";
 
-/** Namespace a workflow id by the instance slug: `chat.spa` → `chat.sales.spa`.
- *  Slug "" leaves it canonical, so the single-instance ids never change. */
-function wid(slug: string, base: string): string {
-  return slug ? base.replace(/^chat\./, `chat.${slug}.`) : base;
-}
-
-/** A " (slug)" suffix for workflow display names — empty for the default one. */
-function tag(slug: string): string {
-  return slug ? ` (${slug})` : "";
-}
-
-/** This instance's guardrail tool name, namespaced so instances don't collide. */
-function guardrailTool(slug: string): string {
-  return slug ? `${GUARDRAIL_TOOL_NAME}_${slug}` : GUARDRAIL_TOOL_NAME;
-}
-
 /**
  * The professional-conduct guardrail: a `boundary.tool` workflow (marked
  * `guardrail: true` so it's NOT offered to the model as a callable tool) that
@@ -165,8 +152,8 @@ function guardrailTool(slug: string): string {
  */
 export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
   return {
-    id: wid(opts.slug, "chat.guardrail.professional"),
-    name: `Chat · guardrail · professional conduct${tag(opts.slug)}`,
+    id: "chat.guardrail.professional",
+    name: "Chat · guardrail · professional conduct",
     description:
       "Input guardrail: a small model decides whether the user's message raises a subject not permitted in a " +
       "professional environment. Returns { tripwire, info }. Wired into the turn pipeline when CHAT_GUARDRAIL is on.",
@@ -176,7 +163,7 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
         id: "in",
         op: "boundary.tool",
         config: {
-          name: guardrailTool(opts.slug),
+          name: GUARDRAIL_TOOL_NAME,
           description: "Classify whether a message is appropriate for a professional environment.",
           guardrail: true,
           params: {
@@ -241,15 +228,20 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
   };
 }
 
-/** The flagship: the user-visible agent pipeline behind every chat turn. */
-export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
-  const guard = opts.guardrail.enabled;
+/** The flagship: the user-visible agent pipeline behind every chat turn. The
+ *  generic form serves every namespace via a `:ns` segment; pass a `pin` to mint
+ *  a per-namespace fork whose hardwired `:ns` path out-ranks the generic route
+ *  (most-specific-wins) — pipeline selection by forking alone, no extra config. */
+export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPin): Workflow {
+  const guard = opts.guardrail.enabled && !pin; // forks opt out of the shared guardrail tool
+  const agent = pin?.agent ?? opts.agent;
+  const seg = pin ? pin.namespace : ":ns";
   return {
-    id: wid(opts.slug, "chat.turn.pipeline"),
-    name: `Chat · turn pipeline${tag(opts.slug)}`,
+    id: pin ? `chat.turn.pipeline.${pin.namespace}` : "chat.turn.pipeline",
+    name: pin ? `Chat · turn pipeline (${pin.namespace})` : "Chat · turn pipeline",
     description:
       "POST a message → lease the conversation → run the agent with its tools → stream turn events out (SSE) " +
-      "while the sink persists them. Fork me to customize the agent.",
+      "while the sink persists them. Fork me (hardwire the :ns segment) to give one namespace its own agent.",
     source: "code",
     nodes: [
       {
@@ -257,7 +249,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         op: "boundary.http.request",
         config: {
           method: "POST",
-          path: `${opts.mount}/api/conversations/:id/turns`,
+          path: `${opts.mount}/api/${seg}/conversations/:id/turns`,
           ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}),
         },
         ui: { x: 40, y: 200, pair: "ok" },
@@ -281,9 +273,9 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         id: "agent",
         op: "agents.agent",
         config: {
-          name: opts.agent.name,
-          instructions: opts.agent.instructions,
-          ...(opts.agent.model ? { model: opts.agent.model } : {}),
+          name: agent.name,
+          instructions: agent.instructions,
+          ...(agent.model ? { model: agent.model } : {}),
         },
         comment: "THE agent. Edit instructions/model here; wire guardrails/handoffs in.",
         ui: { x: 1080, y: 40 },
@@ -293,7 +285,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
             {
               id: "guard",
               op: "agents.guardrail",
-              config: { tool: guardrailTool(opts.slug), direction: "input" as const },
+              config: { tool: GUARDRAIL_TOOL_NAME, direction: "input" as const },
               comment: "Professional-conduct input guardrail (CHAT_GUARDRAIL=off to drop this).",
               ui: { x: 1080, y: 300 },
             },
@@ -369,8 +361,8 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
 /** HITL: approve/deny an interrupted turn → the SAME turn resumes streaming. */
 export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
   return {
-    id: wid(opts.slug, "chat.approval.pipeline"),
-    name: `Chat · approval pipeline${tag(opts.slug)}`,
+    id: "chat.approval.pipeline",
+    name: "Chat · approval pipeline",
     source: "code",
     nodes: [
       {
@@ -378,7 +370,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         op: "boundary.http.request",
         config: {
           method: "POST",
-          path: `${opts.mount}/api/conversations/:id/turns/:turnId/approve`,
+          path: `${opts.mount}/api/:ns/conversations/:id/turns/:turnId/approve`,
           ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}),
         },
       },
@@ -434,19 +426,21 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
   };
 }
 
-/** The SPA: `boundary.http.app` (where) → `chat.app` (what, branded) → serve. */
-export function spaWorkflow(opts: ResolvedChatOptions): Workflow {
-  // Only set brand keys that are present, so the canonical app stays config-free.
-  const brand: Record<string, string> = {};
-  if (opts.brand.accent) brand.accent = opts.brand.accent;
-  if (opts.brand.title) brand.title = opts.brand.title;
+/** The SPA: `boundary.http.app` (where) → `chat.app` (what, branded) → serve.
+ *  One per instance; the chat.app node carries the namespace + the backend api
+ *  root, which the host injects as window.__APP__ for the bundle to read. */
+export function spaWorkflow(inst: ResolvedInstance): Workflow {
+  const cfg: Record<string, string> = { api: inst.api, namespace: inst.namespace };
+  if (inst.brand.accent) cfg.accent = inst.brand.accent;
+  if (inst.brand.title) cfg.title = inst.brand.title;
+  const suffix = inst.namespace === "default" ? "" : `.${inst.namespace}`;
   return {
-    id: wid(opts.slug, "chat.spa"),
-    name: `Chat · SPA${tag(opts.slug)}`,
+    id: `chat.spa${suffix}`,
+    name: `Chat · SPA${suffix ? ` (${inst.namespace})` : ""}`,
     source: "code",
     nodes: [
-      { id: "mount", op: "boundary.http.app", config: { mount: opts.mount }, ui: { x: 60, y: 60, pair: "serve" } },
-      { id: "chat", op: "chat.app", config: brand, ui: { x: 340, y: 60 } },
+      { id: "mount", op: "boundary.http.app", config: { mount: inst.mount }, ui: { x: 60, y: 60, pair: "serve" } },
+      { id: "chat", op: "chat.app", config: cfg, ui: { x: 340, y: 60 } },
       { id: "serve", op: "boundary.http.app.serve", ui: { x: 620, y: 60, pair: "mount" } },
     ],
     edges: [

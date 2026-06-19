@@ -31,10 +31,10 @@ await chat.ready?.(engine);
 const host = createHttpHost(engine, { defaultPort: port });
 const { close } = await host.start();
 
-const create = await fetch(`http://localhost:${port}/chat/api/conversations`, { method: "POST", body: "{}" });
+const create = await fetch(`http://localhost:${port}/chat/api/default/conversations`, { method: "POST", body: "{}" });
 const cookie = (create.headers.get("set-cookie") ?? "").split(";")[0];
 const { id } = await create.json();
-const res = await fetch(`http://localhost:${port}/chat/api/conversations/${id}/turns`, {
+const res = await fetch(`http://localhost:${port}/chat/api/default/conversations/${id}/turns`, {
   method: "POST",
   headers: { "content-type": "application/json", cookie },
   body: JSON.stringify({ content: [{ type: "text", text: "hi" }] }),

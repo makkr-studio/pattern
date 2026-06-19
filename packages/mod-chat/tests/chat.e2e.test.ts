@@ -102,7 +102,7 @@ function sseEvents(text: string): TurnEvent[] {
 }
 
 async function createConversation(base: string): Promise<{ id: string; cookie: string }> {
-  const res = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}" });
+  const res = await fetch(`${base}/chat/api/default/conversations`, { method: "POST", body: "{}" });
   expect(res.status).toBe(201);
   const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;
   expect(cookie).toContain("chat_device=");
@@ -117,7 +117,7 @@ describe("chat over HTTP (scripted model)", () => {
     ]);
     const { id, cookie } = await createConversation(base);
 
-    const res = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ content: [{ type: "text", text: "salut" }] }),
@@ -137,12 +137,12 @@ describe("chat over HTTP (scripted model)", () => {
     expect(turns[0]!.events.at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
 
     // Replay endpoint (refresh recovery).
-    const replay = await fetch(`${base}/chat/api/conversations/${id}/turns`, { headers: { cookie } });
+    const replay = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, { headers: { cookie } });
     const replayBody = (await replay.json()) as { turns: Array<{ events: TurnEvent[]; status: string }> };
     expect(replayBody.turns[0]!.status).toBe("complete");
 
     // History landed on the conversation; the title took the first message.
-    const conv = await fetch(`${base}/chat/api/conversations/${id}`, { headers: { cookie } });
+    const conv = await fetch(`${base}/chat/api/default/conversations/${id}`, { headers: { cookie } });
     const convBody = (await conv.json()) as { title: string; historyLength: number };
     expect(convBody.title).toBe("salut");
     expect(convBody.historyLength).toBeGreaterThanOrEqual(2);
@@ -157,7 +157,7 @@ describe("chat over HTTP (scripted model)", () => {
       { kind: "text", text: "Sunny in Paris!" },
     ]);
     const { id, cookie } = await createConversation(base);
-    const res = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ content: [{ type: "text", text: "weather?" }] }),
@@ -177,7 +177,7 @@ describe("chat over HTTP (scripted model)", () => {
 
     const turnId = crypto.randomUUID();
     // First turn hangs at the model — keep the connection open.
-    const first = fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const first = fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ turnId, content: [{ type: "text", text: "hang please" }] }),
@@ -190,7 +190,7 @@ describe("chat over HTTP (scripted model)", () => {
       await new Promise((r) => setTimeout(r, 20));
     }
 
-    const conflict = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const conflict = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ content: [{ type: "text", text: "me too" }] }),
@@ -201,7 +201,7 @@ describe("chat over HTTP (scripted model)", () => {
     expect(conflictBody.activeTurnId).toBe(turnId);
 
     // Stop → the run aborts, the sink records the cancelled terminal state.
-    const stop = await fetch(`${base}/chat/api/conversations/${id}/turns/${turnId}/stop`, {
+    const stop = await fetch(`${base}/chat/api/default/conversations/${id}/turns/${turnId}/stop`, {
       method: "POST",
       headers: { cookie },
     });
@@ -227,12 +227,12 @@ describe("chat over HTTP (scripted model)", () => {
   it("scoping: another device cannot see the conversation", async () => {
     const { base } = await boot([]);
     const { id, cookie } = await createConversation(base);
-    const mine = await fetch(`${base}/chat/api/conversations`, { headers: { cookie } });
+    const mine = await fetch(`${base}/chat/api/default/conversations`, { headers: { cookie } });
     expect(((await mine.json()) as { conversations: unknown[] }).conversations).toHaveLength(1);
 
-    const stranger = await fetch(`${base}/chat/api/conversations/${id}`);
+    const stranger = await fetch(`${base}/chat/api/default/conversations/${id}`);
     expect(stranger.status).toBe(404);
-    const others = await fetch(`${base}/chat/api/conversations`, {
+    const others = await fetch(`${base}/chat/api/default/conversations`, {
       headers: { cookie: "chat_device=someone-else" },
     });
     expect(((await others.json()) as { conversations: unknown[] }).conversations).toHaveLength(0);
@@ -248,7 +248,7 @@ describe("chat over HTTP (scripted model)", () => {
     );
     const { id, cookie } = await createConversation(base);
 
-    const res = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ content: [{ type: "text", text: "weather in nice" }] }),
@@ -267,7 +267,7 @@ describe("chat over HTTP (scripted model)", () => {
     expect(turn.stateToken).toBeTruthy();
 
     // Approve → the resume pipeline streams the rest of the SAME turn.
-    const approve = await fetch(`${base}/chat/api/conversations/${id}/turns/${turnId}/approve`, {
+    const approve = await fetch(`${base}/chat/api/default/conversations/${id}/turns/${turnId}/approve`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ interruptionId: approval.interruption.id, approved: true }),
@@ -291,7 +291,7 @@ describe("chat over HTTP (scripted model)", () => {
   it("model failure becomes an error TURN, not an HTTP failure", async () => {
     const { base, stores } = await boot([{ kind: "throw", message: "billing hard cap reached" }]);
     const { id, cookie } = await createConversation(base);
-    const res = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ content: [{ type: "text", text: "hello" }] }),
@@ -327,7 +327,7 @@ describe("admin Chats surface", () => {
     const { base, engine, stores } = await boot([{ kind: "text", text: "hello there" }]);
     const { id, cookie } = await createConversation(base);
     await (
-      await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+      await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ content: [{ type: "text", text: "salut" }] }),
@@ -407,7 +407,7 @@ describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
     expect(body.login.requestPath).toBe("/auth/magic-link/request");
 
     // Guests can create conversations (today's behaviour, unchanged).
-    const res = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}" });
+    const res = await fetch(`${base}/chat/api/default/conversations`, { method: "POST", body: "{}" });
     expect(res.status).toBe(201);
   });
 
@@ -422,9 +422,9 @@ describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
     expect(anonMe).toMatchObject({ user: null, authRequired: true });
 
     // Anonymous is rejected before the graph runs.
-    const denied = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}" });
+    const denied = await fetch(`${base}/chat/api/default/conversations`, { method: "POST", body: "{}" });
     expect(denied.status).toBe(401);
-    const deniedList = await fetch(`${base}/chat/api/conversations`);
+    const deniedList = await fetch(`${base}/chat/api/default/conversations`);
     expect(deniedList.status).toBe(401);
 
     // A signed-in user passes, /me knows them, and a full turn works.
@@ -434,10 +434,10 @@ describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
     };
     expect(userMe.user).toMatchObject({ id: "benoit", name: "benoit" });
 
-    const created = await fetch(`${base}/chat/api/conversations`, { method: "POST", body: "{}", headers: auth });
+    const created = await fetch(`${base}/chat/api/default/conversations`, { method: "POST", body: "{}", headers: auth });
     expect(created.status).toBe(201);
     const { id } = (await created.json()) as { id: string };
-    const turn = await fetch(`${base}/chat/api/conversations/${id}/turns`, {
+    const turn = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
       method: "POST",
       headers: { "content-type": "application/json", ...auth },
       body: JSON.stringify({ content: [{ type: "text", text: "salut" }] }),
@@ -449,7 +449,7 @@ describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
   it("CHAT_REQUIRE_AUTH can demand scopes", async () => {
     const { base } = await boot([], { env: { CHAT_REQUIRE_AUTH: "member" }, headerAuth: true });
     // The header provider issues no scopes → denied even when authenticated.
-    const denied = await fetch(`${base}/chat/api/conversations`, {
+    const denied = await fetch(`${base}/chat/api/default/conversations`, {
       method: "POST",
       body: "{}",
       headers: { "x-user": "benoit" },

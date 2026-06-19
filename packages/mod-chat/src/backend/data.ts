@@ -21,9 +21,19 @@ export interface ConversationDoc {
   title: string;
   ownerId: string | null;
   deviceId: string | null;
+  /** Logical instance partition (decoupled from the mount). Legacy/absent reads
+   *  as "default", so one shared backend can serve many branded SPAs whose
+   *  conversation lists stay separate. */
+  namespace?: string;
   history: unknown[];
   createdAt: number;
   updatedAt: number;
+}
+
+/** A conversation's namespace, defaulting to "default" for legacy/unset docs. */
+export const DEFAULT_NS = "default";
+export function nsOf(doc: { namespace?: string }): string {
+  return doc.namespace ?? DEFAULT_NS;
 }
 
 export type TurnStatus = "running" | "complete" | "error" | "interrupted" | "cancelled";
