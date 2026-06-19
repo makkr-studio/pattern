@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-sample — the mod-admin-spec **M10** proof.
+ * @pattern/mod-sample — the admin internals **M10** proof.
  *
  * Installing this mod extends the admin with **zero admin-core changes**:
  *  - a pure op (`sample.greetings.list`) fronted by its own dedicated route,
@@ -8,7 +8,7 @@
  *    `boundary.http.app` mount at `/ext`.
  *
  * If the admin renders all of this without being touched, the extension surface
- * (mod-admin-spec §6) works.
+ * (admin internals §6) works.
  */
 
 import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern/core";

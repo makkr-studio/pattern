@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the control plane (mod-admin-spec §4, §9).
+ * @pattern/mod-admin — the control plane (admin internals §4, §9).
  *
  * Owns workflow lifecycle on top of the engine + store:
  *   draft → save version → activate (route-conflict checked) → registerWorkflowAsync

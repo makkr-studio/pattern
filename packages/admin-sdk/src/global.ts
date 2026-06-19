@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — the Tier-2 runtime global (mod-admin-spec §6, §12).
+ * @pattern/admin-sdk — the Tier-2 runtime global (admin internals §6, §12).
  *
  * The admin SPA exposes its shared dependencies on `globalThis.__PATTERN_ADMIN__`
  * so Tier-2 ESM remotes don't bundle their own React or re-implement the visual
@@ -19,7 +19,7 @@ import type { AdminClient } from "./client.js";
 /** An opaque React function component (the SDK stays React-free). */
 export type UiComponent = (props: Record<string, unknown>) => unknown;
 
-/** The glass UI kit shared with Tier-2 pages (mod-admin-spec §12). */
+/** The glass UI kit shared with Tier-2 pages (admin internals §12). */
 export interface PatternAdminUi {
   GlassPanel: UiComponent;
   GlowCard: UiComponent;

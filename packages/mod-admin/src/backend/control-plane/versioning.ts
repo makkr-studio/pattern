@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — versioning helpers (mod-admin-spec §5).
+ * @pattern/mod-admin — versioning helpers (admin internals §5).
  *
  * Content-addressed snapshots (a stable hash over the doc, ignoring data-only
  * `ui`) and a structural JSON diff between any two versions: nodes/edges/config

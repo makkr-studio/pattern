@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — engine introspection (mod-admin-spec §10, §13).
+ * @pattern/mod-admin — engine introspection (admin internals §10, §13).
  *
  * Pure helpers that turn the live engine into the data the admin renders: the
  * op/node browser, the catalog (merging code + stored workflows), the mod view,

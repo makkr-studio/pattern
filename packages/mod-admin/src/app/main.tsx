@@ -68,7 +68,7 @@ const router = createBrowserRouter(
 
 // Shared deps for Tier-2 ESM remotes (so mod bundles don't double-load React/SDK),
 // plus the glass UI kit so mod pages match the admin's visual language
-// (mod-admin-spec §6/§12 — typed in @pattern/admin-sdk as `PatternAdminGlobal`).
+// (admin internals §6/§12 — typed in @pattern/admin-sdk as `PatternAdminGlobal`).
 (globalThis as Record<string, unknown>).__PATTERN_ADMIN__ = {
   React,
   api,

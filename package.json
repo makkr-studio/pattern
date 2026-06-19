@@ -14,14 +14,10 @@
     "test:watch": "vitest",
     "typecheck": "pnpm -r --filter \"./packages/**\" run typecheck",
     "clean": "pnpm -r exec rm -rf dist tsconfig.tsbuildinfo",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish",
     "local:publish": "node scripts/verdaccio-publish.mjs",
     "local:test-create": "node scripts/verdaccio-test-create.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.27.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }

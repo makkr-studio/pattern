@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — control-plane contracts (mod-admin-spec §9).
+ * @pattern/mod-admin — control-plane contracts (admin internals §9).
  *
  * These are the data shapes the admin's backend speaks in. The `ControlPlane`
  * and `WorkflowStore` are internal *services* (registered on the engine), not an

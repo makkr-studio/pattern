@@ -70,5 +70,5 @@ GET  /admin/*                        boundary.http.app (SPA, served by the host)
   the slug's stable id; otherwise stored-but-unregistered. Route conflicts on
   activation return `{ ok: false, conflicts }` (the UI offers cancel/swap).
 
-See [`mod-admin-spec.md`](../../mod-admin-spec.md) for the full design and
-[`docs/admin-prereqs.md`](../../docs/admin-prereqs.md) for the engine seams it builds on.
+See the [admin internals](docs/internals.md) for the full design and the engine
+seams it builds on (served at `/docs/admin` once the docs mod is installed).

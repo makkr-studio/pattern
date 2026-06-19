@@ -42,7 +42,7 @@ function useData(ref: DataRef, args?: Record<string, unknown>) {
 }
 
 /**
- * Renders a Tier-1 declarative page (mod-admin-spec §6) from a `view` manifest.
+ * Renders a Tier-1 declarative page (admin internals §6) from a `view` manifest.
  * Data sources are ops/workflows, so a declarative page is wiring over the
  * self-reflecting API — not a new bespoke surface.
  */

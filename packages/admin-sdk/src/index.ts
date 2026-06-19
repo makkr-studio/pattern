@@ -1,6 +1,6 @@
 /**
  * @pattern/admin-sdk — the stable surface admin UIs and mods import
- * (mod-admin-spec §6, §12).
+ * (admin internals §6, §12).
  *
  * This release ships the **framework-agnostic core**: the wire protocol types,
  * a typed API client over the workflow-backed endpoints (incl. the SSE run

@@ -5,8 +5,8 @@ order: 2
 
 # Concepts
 
-A tour of the model. The authoritative design is the engine spec (`pattern-engine-spec.md` in the repo);
-this is the working mental model with pointers into the code.
+A tour of the model. This is the working mental model with pointers into the code;
+for the design rationale and internals see [Architecture](architecture.md).
 
 ## Vocabulary
 

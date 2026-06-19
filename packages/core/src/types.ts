@@ -9,7 +9,7 @@
  * the other way around.
  *
  * Spec references appear as “§n” throughout, pointing at sections of
- * `pattern-engine-spec.md`.
+ * the architecture guide.
  */
 
 import { z } from "zod";

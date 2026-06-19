@@ -18,7 +18,7 @@ const { ports } = await start();                // derives routes from workflows
 ```
 
 `loadProject` installs mods, loads workflow `.json` files, and returns a ready
-HTTP host. See [projects & mods](../../docs/projects-and-mods.md).
+HTTP host. See [projects & mods](../mod-docs/docs/guides/projects-and-mods.md).
 
 ## Hosts
 

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — filesystem-backed workflow store (mod-admin-spec §3, §9).
+ * @pattern/mod-admin — filesystem-backed workflow store (admin internals §3, §9).
  *
  * Storage layout (under `prefix`, default "workflows"):
  *

@@ -6,7 +6,7 @@
  * Engine, type contracts, registries, validation, the scheduler, streams,
  * observability, and the base op catalog.
  *
- * See `pattern-engine-spec.md` for the full design.
+ * See the architecture guide for the full design.
  */
 
 export { z } from "zod";

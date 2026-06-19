@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — extension surface helpers (mod-admin-spec §6, §12).
+ * @pattern/admin-sdk — extension surface helpers (admin internals §6, §12).
  *
  * Framework-agnostic pieces of the adoption lever: build the nav from the
  * aggregated menu manifest (categories from the union of `MenuEntry.category`,
