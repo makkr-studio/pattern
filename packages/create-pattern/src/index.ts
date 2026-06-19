@@ -293,6 +293,15 @@ interface Flags {
   vaultKey?: boolean;
   /** Print the manifest for the resolved selection and write nothing. */
   dryRun: boolean;
+  /** What to scaffold: an app (default) or a publishable mod. undefined = ask. */
+  kind?: "app" | "mod";
+  /** Mod pieces (tri-state like auth/docs). */
+  modOps?: boolean;
+  modWorkflows?: boolean;
+  /** Mod admin page tier. undefined = ask / default tier1. */
+  modAdmin?: "none" | "tier1" | "tier2";
+  /** npm scope for a mod, e.g. "@acme" → @acme/mod-<name>. */
+  modScope?: string;
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -314,9 +323,18 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (a === "--dry-run" || a === "--dry") flags.dryRun = true;
+    else if (a === "--kind") flags.kind = argv[++i] as "app" | "mod";
+    else if (a === "--ops") flags.modOps = true;
+    else if (a === "--no-ops") flags.modOps = false;
+    else if (a === "--workflows") flags.modWorkflows = true;
+    else if (a === "--no-workflows") flags.modWorkflows = false;
+    else if (a === "--admin") flags.modAdmin = argv[++i] as "none" | "tier1" | "tier2";
+    else if (a === "--scope") flags.modScope = argv[++i];
     else if (!a.startsWith("-") && !flags.name) flags.name = a;
   }
   if (flags.modpack && LEGACY_IDS[flags.modpack]) flags.modpack = LEGACY_IDS[flags.modpack];
+  // A modpack implies an app (the app ladder); never ask kind then.
+  if (flags.modpack) flags.kind = "app";
   return flags;
 }
 
@@ -387,6 +405,20 @@ function resolveDims(pack: Modpack, flags: Flags): { auth: boolean; docs: boolea
 /** --dry-run: print exactly what WOULD be wired & generated, write nothing. */
 function previewManifest(flags: Flags): void {
   banner();
+  if ((flags.kind ?? "app") === "mod") {
+    const name = flags.name ?? "my-mod";
+    const pieces = resolveModPieces(flags);
+    const pkgName = modPkgName(name, flags.modScope ?? "");
+    console.log(`  ${pc.bold("Mod")} ${pc.dim(pkgName)}\n`);
+    console.log(
+      modCard(pkgName, pieces)
+        .split("\n")
+        .map((l) => "  " + l)
+        .join("\n"),
+    );
+    console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
+    return;
+  }
   const pack = packOrThrow(flags.modpack ?? "studio");
   const { auth, docs, examples, vaultKey } = resolveDims(pack, flags);
   console.log(
@@ -426,7 +458,7 @@ function listPacks(): void {
   console.log(`  ${pc.dim("examples are included by default — pass --no-examples for a clean scaffold.")}\n`);
 }
 
-async function copyTemplate(packId: string, targetDir: string, name: string): Promise<void> {
+async function copyTemplate(packId: string, targetDir: string, vars: Record<string, string>): Promise<void> {
   const src = join(TEMPLATES_DIR, packId);
   await cp(src, targetDir, { recursive: true });
   // _gitignore → .gitignore (npm strips .gitignore from published packages).
@@ -437,8 +469,8 @@ async function copyTemplate(packId: string, targetDir: string, name: string): Pr
   if (existsSync(join(targetDir, "_env.example"))) {
     await rename(join(targetDir, "_env.example"), join(targetDir, ".env.example"));
   }
-  // Replace {{name}} placeholders in text files.
-  await replacePlaceholders(targetDir, { name });
+  // Replace {{name}} / {{pkgName}} / … placeholders in text files.
+  await replacePlaceholders(targetDir, vars);
 }
 
 async function replacePlaceholders(dir: string, vars: Record<string, string>): Promise<void> {
@@ -724,6 +756,19 @@ async function runInteractive(flags: Flags): Promise<void> {
     }))!;
   if (p.isCancel(name)) return cancel();
 
+  // What are you creating? An app (the modpack ladder) or a publishable mod.
+  const kind =
+    flags.kind ??
+    (await p.select({
+      message: "What are you creating?",
+      options: [
+        { value: "app", label: "An app", hint: "a runnable Pattern project (engine / server / studio / chat)" },
+        { value: "mod", label: "A mod", hint: "a publishable npm package that exports defineMod(...)" },
+      ],
+    }));
+  if (p.isCancel(kind)) return cancel();
+  if (kind === "mod") return runInteractiveMod(flags, String(name));
+
   if (!flags.modpack) {
     p.note(
       [
@@ -849,6 +894,9 @@ async function runInteractive(flags: Flags): Promise<void> {
 }
 
 async function runHeadless(flags: Flags): Promise<void> {
+  // Headless defaults to an app (every existing CI script is preserved); a mod
+  // is scaffolded headlessly only with an explicit --kind mod.
+  if ((flags.kind ?? "app") === "mod") return runHeadlessMod(flags);
   const name = flags.name ?? "my-pattern-app";
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
@@ -887,7 +935,7 @@ async function scaffold(opts: {
 
   const spin = process.stdout.isTTY ? p.spinner() : undefined;
   spin?.start(`Unpacking the ${opts.pack} modpack`);
-  await copyTemplate(opts.pack, targetDir, opts.name);
+  await copyTemplate(opts.pack, targetDir, { name: opts.name });
   // Strip examples BEFORE auth (so auth's /whoami route survives the strip).
   if (!opts.examples) await applyNoExamples(targetDir, opts.pack, opts.name);
   if (opts.auth) await applyAuth(targetDir, opts.pack);
@@ -904,6 +952,267 @@ async function scaffold(opts: {
     if (res.status !== 0) spin?.stop(pc.yellow("install skipped/failed — run it manually"));
     else spin?.stop("Dependencies installed");
   }
+}
+
+// ── Mod scaffolding (--kind mod) ─────────────────────────────────────────────
+// A third-party mod is a publishable package exporting defineMod(...). The
+// questionnaire toggles which pieces it ships; buildModIndex assembles
+// src/index.ts to match, and assembleMod drops the files the selection omits.
+
+type AdminTier = "none" | "tier1" | "tier2";
+interface ModPieces {
+  ops: boolean;
+  workflows: boolean;
+  admin: AdminTier;
+  docs: boolean;
+}
+
+function resolveModPieces(flags: Flags): ModPieces {
+  const ops = flags.modOps ?? true;
+  return {
+    ops,
+    // Routes and the admin page front the op — they need it.
+    workflows: ops ? (flags.modWorkflows ?? true) : false,
+    admin: ops ? (flags.modAdmin ?? "tier1") : "none",
+    docs: flags.docs ?? true,
+  };
+}
+
+/** Bare, url/op-safe stem (drops a leading "mod-"). */
+function modStem(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/^mod-/, "")
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "mod"
+  );
+}
+function modPkgName(name: string, scope: string): string {
+  const stem = modStem(name);
+  const s = scope.trim();
+  if (!s) return `mod-${stem}`;
+  const at = s.startsWith("@") ? s : `@${s}`;
+  return `${at}/mod-${stem}`;
+}
+function modOpPrefix(name: string): string {
+  return modStem(name).replace(/[^a-z0-9]+/g, "") || "mod";
+}
+function modTitle(name: string): string {
+  const t = modStem(name)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((s) => s[0]!.toUpperCase() + s.slice(1))
+    .join("");
+  return /^[A-Za-z]/.test(t) ? t : `Mod${t}`;
+}
+
+function modCard(pkgName: string, pieces: ModPieces): string {
+  const yes = (b: boolean) => (b ? pc.green("✓") : pc.dim("·"));
+  const adminLabel =
+    pieces.admin === "none" ? pc.dim("none") : pc.cyan(pieces.admin === "tier2" ? "Tier 2 (React page)" : "Tier 1 (table)");
+  return [
+    `${pc.dim("a publishable mod —")} ${pc.magenta(pkgName)}`,
+    "",
+    pc.bold("contributes"),
+    `  ${yes(pieces.ops)} an op            ${pc.dim("src/ops.ts")}`,
+    `  ${yes(pieces.workflows)} HTTP route(s)    ${pc.dim("src/routes.ts")}`,
+    `  ${pieces.admin === "none" ? pc.dim("·") : pc.green("✓")} admin page       ${adminLabel}`,
+    `  ${yes(pieces.docs)} docs chapter     ${pc.dim("docs/ → /docs")}`,
+    "",
+    `${pc.green("✦")} AGENTS.md — the mod-authoring contract your coding agent reads`,
+  ].join("\n");
+}
+
+/** Assemble src/index.ts from the chosen pieces (the single source of truth). */
+function buildModIndex(pieces: ModPieces, vars: { pkgName: string; name: string; title: string }): string {
+  const imp: string[] = [];
+  if (pieces.docs) {
+    imp.push(`import { existsSync } from "node:fs";`);
+    imp.push(`import { fileURLToPath } from "node:url";`);
+  }
+  imp.push(`import { defineMod } from "@pattern/core";`);
+  if (pieces.docs) imp.push(`import { localFs, provideFilesystem } from "@pattern/runtime-node";`);
+  if (pieces.ops) imp.push(`import { itemsList } from "./ops.js";`);
+  const routes: string[] = [];
+  if (pieces.ops && pieces.workflows) routes.push("itemsRoute");
+  if (pieces.ops && pieces.admin !== "none") routes.push("itemsAdminRoute");
+  if (routes.length) imp.push(`import { ${routes.join(", ")} } from "./routes.js";`);
+  if (pieces.admin === "tier1") imp.push(`import { frontendTier1 } from "./frontend.js";`);
+  if (pieces.admin === "tier2") {
+    imp.push(`import { frontendTier2 } from "./frontend.js";`);
+    imp.push(`import { appMount, provideAssets } from "./app.js";`);
+  }
+
+  const fsName = `${vars.name}-docs`;
+  const fields: string[] = [`  name: ${JSON.stringify(vars.pkgName)},`];
+  if (pieces.ops) fields.push(`  ops: [itemsList],`);
+  const wf = [...routes];
+  if (pieces.admin === "tier2") wf.push("appMount");
+  if (wf.length) fields.push(`  workflows: [${wf.join(", ")}],`);
+  if (pieces.admin === "tier1") fields.push(`  frontend: frontendTier1,`);
+  if (pieces.admin === "tier2") fields.push(`  frontend: frontendTier2,`);
+  if (pieces.docs) fields.push(`  docs: { filesystem: ${JSON.stringify(fsName)}, title: ${JSON.stringify(vars.title)}, order: 50 },`);
+
+  const setup: string[] = [];
+  if (pieces.admin === "tier2") setup.push(`    provideAssets(engine);`);
+  if (pieces.docs) {
+    setup.push(`    try {`);
+    setup.push(`      const dir = fileURLToPath(new URL("../docs", import.meta.url));`);
+    setup.push(`      if (existsSync(dir)) provideFilesystem(engine, ${JSON.stringify(fsName)}, localFs(dir));`);
+    setup.push(`    } catch {`);
+    setup.push(`      /* packaged without docs — skip */`);
+    setup.push(`    }`);
+  }
+  if (setup.length) fields.push(`  setup: (engine) => {\n${setup.join("\n")}\n  },`);
+
+  return (
+    `/**\n` +
+    ` * ${vars.pkgName} — a Pattern mod.\n` +
+    ` *\n` +
+    ` * defineMod bundles everything this package contributes. Install it by adding\n` +
+    ` * "${vars.pkgName}" to a project's pattern.config.json \`mods\`.\n` +
+    ` */\n` +
+    imp.join("\n") +
+    `\n\nexport default defineMod({\n` +
+    fields.join("\n") +
+    `\n});\n`
+  );
+}
+
+async function assembleMod(
+  targetDir: string,
+  pieces: ModPieces,
+  vars: { pkgName: string; name: string; opPrefix: string; title: string },
+): Promise<void> {
+  const src = (f: string) => join(targetDir, "src", f);
+  await writeFile(src("index.ts"), buildModIndex(pieces, vars));
+  // Drop the files the selection omits (buildModIndex never imports them).
+  if (!pieces.ops) await rm(src("ops.ts"), { force: true });
+  const routesNeeded = pieces.ops && (pieces.workflows || pieces.admin !== "none");
+  if (!routesNeeded) await rm(src("routes.ts"), { force: true });
+  if (pieces.admin === "none") await rm(src("frontend.ts"), { force: true });
+  if (pieces.admin !== "tier2") await rm(src("app.ts"), { force: true });
+  // Docs: rename the op-prose stub to the real op type, or drop the chapter.
+  if (pieces.docs) {
+    const opDoc = join(targetDir, "docs", "ops", "op.md");
+    if (existsSync(opDoc) && pieces.ops) await rename(opDoc, join(targetDir, "docs", "ops", `${vars.opPrefix}.items.list.md`));
+    else if (existsSync(opDoc)) await rm(opDoc, { force: true });
+  } else {
+    await rm(join(targetDir, "docs"), { recursive: true, force: true });
+  }
+}
+
+function modNext(name: string, pkgName: string, opPrefix: string, pieces: ModPieces, installed: boolean, installLine: string): string[] {
+  return [
+    `${pc.dim("$")} cd ${name}`,
+    installed ? "" : installLine,
+    `${pc.dim("$")} npm run build   ${pc.dim("— tsc → dist/")}`,
+    `${pc.dim("$")} npm test        ${pc.dim("— the vitest smoke test")}`,
+    "",
+    `${pc.cyan("→")} try it in a host: ${pc.bold("npx create-pattern host-test --modpack studio")},`,
+    `  then add ${pc.bold(`"${pkgName}": "file:../${name}"`)} + list ${pc.bold(pkgName)} in its pattern.config.json mods`,
+    `${pc.cyan("→")} verify: ${pc.bold(`npx pattern ops ${opPrefix}`)}${pieces.admin !== "none" ? `, then ${pc.bold("/admin")} → Extensions` : ""}${pieces.docs ? `, ${pc.bold("/docs")}` : ""}`,
+    `${pc.green("✦")} ${pc.bold("AGENTS.md")} is the contract sheet — point your coding agent at it.`,
+  ].filter((l) => l !== "");
+}
+
+async function scaffoldMod(opts: {
+  name: string;
+  pkgName: string;
+  opPrefix: string;
+  title: string;
+  pieces: ModPieces;
+  pm: Pm;
+  install: boolean;
+  git: boolean;
+}): Promise<void> {
+  const targetDir = resolve(process.cwd(), opts.name);
+  if (existsSync(targetDir) && (await readdir(targetDir)).length > 0) {
+    throw new Error(`directory "${opts.name}" already exists and is not empty`);
+  }
+  const spin = process.stdout.isTTY ? p.spinner() : undefined;
+  spin?.start("Unpacking the mod template");
+  await copyTemplate("mod", targetDir, { name: opts.name, pkgName: opts.pkgName, opPrefix: opts.opPrefix, Title: opts.title });
+  await assembleMod(targetDir, opts.pieces, opts);
+  spin?.stop(`Mod scaffolded (${opts.pieces.admin === "none" ? "ops" : opts.pieces.admin}${opts.pieces.docs ? " + docs" : ""})`);
+  if (opts.git) spawnSync("git", ["init", "-q"], { cwd: targetDir });
+  if (opts.install) {
+    spin?.start(`Installing with ${opts.pm}`);
+    const res = spawnSync(opts.pm, ["install"], { cwd: targetDir, stdio: spin ? "ignore" : "inherit" });
+    if (res.status !== 0) spin?.stop(pc.yellow("install skipped/failed — run it manually"));
+    else spin?.stop("Dependencies installed");
+  }
+}
+
+async function runInteractiveMod(flags: Flags, name: string): Promise<void> {
+  const scope = flags.modScope ?? (await p.text({ message: "npm scope? (blank = unscoped)", placeholder: "@acme", defaultValue: "" }));
+  if (p.isCancel(scope)) return cancel();
+  const pkgName = modPkgName(name, String(scope));
+  const opPrefix = modOpPrefix(name);
+  const title = modTitle(name);
+
+  let ops = flags.modOps;
+  if (ops === undefined) {
+    const a = await p.confirm({ message: `Contribute ops? ${pc.dim("an example op in src/ops.ts")}`, initialValue: true });
+    if (p.isCancel(a)) return cancel();
+    ops = a;
+  }
+
+  let workflows = false;
+  if (ops) {
+    if (flags.modWorkflows !== undefined) workflows = flags.modWorkflows;
+    else {
+      const a = await p.confirm({ message: `Contribute HTTP routes? ${pc.dim("an example route fronting the op")}`, initialValue: true });
+      if (p.isCancel(a)) return cancel();
+      workflows = a;
+    }
+  }
+
+  let admin: AdminTier = "none";
+  if (ops) {
+    if (flags.modAdmin) admin = flags.modAdmin;
+    else {
+      const a = await p.select({
+        message: "Add a custom admin page?",
+        options: [
+          { value: "tier1", label: "Tier 1 — declarative table", hint: "no build step" },
+          { value: "tier2", label: "Tier 2 — custom React page", hint: "the admin's React + UI + motion + lucide" },
+          { value: "none", label: "None", hint: "ops + routes only" },
+        ],
+      });
+      if (p.isCancel(a)) return cancel();
+      admin = a as AdminTier;
+    }
+  }
+
+  let docs = flags.docs;
+  if (docs === undefined) {
+    const a = await p.confirm({ message: `Ship a docs chapter? ${pc.dim("docs/ at /docs, with per-op prose")}`, initialValue: true });
+    if (p.isCancel(a)) return cancel();
+    docs = a;
+  }
+
+  const pieces: ModPieces = { ops: !!ops, workflows, admin, docs: !!docs };
+  p.note(modCard(pkgName, pieces), `${title} mod`);
+
+  const pm = flags.pm ?? (await p.select({ message: "Package manager", initialValue: detectPm(), options: PMS.map((m) => ({ value: m, label: m })) }))!;
+  if (p.isCancel(pm)) return cancel();
+  const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
+
+  await scaffoldMod({ name, pkgName, opPrefix, title, pieces, pm: pm as Pm, install, git: flags.git });
+  p.note(modNext(name, pkgName, opPrefix, pieces, install, `${pc.dim("$")} ${pm} install`).join("\n"), "Next steps");
+  p.outro(pc.green("Done — happy building! ✦"));
+}
+
+async function runHeadlessMod(flags: Flags): Promise<void> {
+  const name = flags.name ?? "my-mod";
+  const pm = flags.pm ?? detectPm();
+  const pieces = resolveModPieces(flags);
+  const pkgName = modPkgName(name, flags.modScope ?? "");
+  console.log(`create-pattern: scaffolding mod "${pkgName}" (${pm}, admin: ${pieces.admin}${pieces.docs ? ", docs" : ""})`);
+  await scaffoldMod({ name, pkgName, opPrefix: modOpPrefix(name), title: modTitle(name), pieces, pm, install: flags.install, git: flags.git });
+  console.log(`Done. Next: cd ${name} && npm run build && npm test`);
 }
 
 function cancel(): void {

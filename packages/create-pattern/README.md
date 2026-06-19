@@ -14,9 +14,24 @@ case. Interactive by default — banner → modpack → auth/docs/examples toggl
 next steps. Degrades gracefully in non-TTY/CI: fully flag-driven, no prompts,
 no animation.
 
-## Modpacks
+## App or mod?
 
-Pick by **how much you want running** — the four sit on one ladder:
+The first question is **what you're creating**:
+
+- **An app** — a runnable Pattern project (the modpack ladder below). The default.
+- **A mod** — a publishable npm package that exports `defineMod(...)` and extends
+  any Pattern engine with ops, routes, an admin page, and a docs chapter.
+
+For a mod, a short questionnaire picks the pieces (ops, HTTP routes, an admin page
+— Tier-1 declarative or Tier-2 custom React, and a docs chapter); the scaffold is
+publishable as-is. A Tier-2 admin page is pre-wired against the admin's own stack
+(React + Tailwind + motion.dev + lucide, read off the shared `__PATTERN_ADMIN__`
+global — no bundler). Headless: `create-pattern my-mod --kind mod` (defaults to
+ops + routes + a Tier-1 page + docs).
+
+## Modpacks (apps)
+
+Pick by **how much you want running** — the five sit on one ladder:
 
 | Modpack | id | Adds over the previous rung | It's really… |
 |---------|----|-----------------------------|--------------|
@@ -51,7 +66,10 @@ agent needs to add ops, routes, workflows, and admin pages without guessing
 ## Flags (headless)
 
 ```
-create-pattern <name> [--modpack <id>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
+create-pattern <name> [--kind app|mod] [--modpack <id>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
+
+# mod (--kind mod):
+create-pattern <name> --kind mod [--scope @acme] [--ops|--no-ops] [--workflows|--no-workflows] [--admin none|tier1|tier2] [--docs|--no-docs]
 ```
 
 `--template`/`-t` remains as an alias (legacy ids `hello-workflow`/`http-api`

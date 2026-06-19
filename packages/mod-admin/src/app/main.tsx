@@ -34,6 +34,8 @@ import {
 } from "./components/ui";
 import { FormFromSchema } from "./components/FormFromSchema";
 import { Markdown } from "./components/Markdown";
+import { motion } from "motion/react";
+import * as lucide from "lucide-react";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 2000, retry: 1 } },
@@ -87,6 +89,10 @@ const router = createBrowserRouter(
     FormFromSchema,
     Markdown,
   },
+  // The admin's animation + icon libraries, shared so Tier-2 mod pages use the
+  // same stack (motion.dev + lucide) without bundling their own.
+  motion,
+  lucide,
 };
 
 createRoot(document.getElementById("root")!).render(

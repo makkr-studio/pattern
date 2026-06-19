@@ -1,0 +1,37 @@
+{
+  "name": "{{pkgName}}",
+  "version": "0.1.0",
+  "description": "A Pattern mod.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@pattern/core": "^0.2.0",
+    "@pattern/runtime-node": "^0.2.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@pattern/core": "^0.2.0",
+    "@pattern/runtime-node": "^0.2.0",
+    "zod": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
