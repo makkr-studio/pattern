@@ -314,4 +314,38 @@ export const template: OpDefinition = defineOp({
   },
 });
 
-export const streamOps: OpDefinition[] = [split, merge, accumulate, emit, map, filter, pluck, template];
+/**
+ * `core.stream.each` / `core.stream.collect` bracket a **per-chunk region**: the
+ * value ops wired between them on the canvas run ONCE PER CHUNK, inline, in the
+ * SAME run (extra spans, no sub-run / no new Runs entry). The scheduler detects
+ * the pair and drives the region (see `analyzeStreamRegions` + `runRegion`), so
+ * these `execute`s are never reached in a valid workflow — they're markers.
+ */
+const REGION_MARKER = (which: "each" | "collect") => (): never => {
+  throw new Error(
+    `core.stream.${which} is a per-chunk region marker handled by the scheduler — ` +
+      `it must be paired (each ↔ collect) with only value ops between them`,
+  );
+};
+
+export const each: OpDefinition = defineOp({
+  type: "core.stream.each",
+  title: "core.stream.each",
+  description:
+    "Open a per-chunk region. The value ops wired between this and core.stream.collect run once per chunk, inline in the same run (no sub-run). Outputs the current `item` and its `index`.",
+  inputs: { in: stream() },
+  outputs: { item: value(), index: value(z.number()) },
+  execute: REGION_MARKER("each"),
+});
+
+export const collect: OpDefinition = defineOp({
+  type: "core.stream.collect",
+  title: "core.stream.collect",
+  description:
+    "Close a per-chunk region: take each chunk's processed `value` and re-emit them as a stream. Pairs with core.stream.each.",
+  inputs: { value: required() },
+  outputs: { out: stream() },
+  execute: REGION_MARKER("collect"),
+});
+
+export const streamOps: OpDefinition[] = [split, merge, accumulate, emit, map, filter, pluck, template, each, collect];

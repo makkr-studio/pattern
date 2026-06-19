@@ -16,7 +16,11 @@ const PAGE_SIZE = 25;
 const FETCH_WINDOW = 500;
 
 function nodeOf(span: SpanData): string {
-  return String(span.attributes["pattern.node.id"] ?? span.name);
+  const id = String(span.attributes["pattern.node.id"] ?? span.name);
+  // A per-chunk stream region runs a member once per chunk → many spans for one
+  // node id; the iteration seq keeps the waterfall rows legible.
+  const seq = span.attributes["pattern.iteration.seq"];
+  return seq == null ? id : `${id} #${String(seq)}`;
 }
 
 /** One side of a node's sampled I/O: a labeled row per port. */

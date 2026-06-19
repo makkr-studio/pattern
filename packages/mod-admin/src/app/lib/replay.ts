@@ -51,6 +51,39 @@ export function stateAt(span: SpanData, now: number): ReplayState {
   return span.status === "error" ? "error" : "ok";
 }
 
+/** The span of a node most relevant at `now`: the one active at `now`, else the
+ *  latest that has started by then (for per-chunk I/O peeks). */
+export function spanAt(spans: SpanData[] | undefined, now: number): SpanData | undefined {
+  if (!spans?.length) return undefined;
+  let chosen: SpanData | undefined;
+  for (const s of spans) {
+    if (now >= startedAt(s) && now < s.endTime) return s;
+    if (now >= startedAt(s)) chosen = s;
+  }
+  return chosen ?? spans[0];
+}
+
+/**
+ * Reduce a node's state over ALL its spans — a per-chunk stream region runs a
+ * member once per chunk, so one node id has N spans. The node is "running" if
+ * *any* span straddles `now` (that's what makes the region pulse per chunk);
+ * otherwise the strongest ended state (error > ok > skipped), else pending.
+ */
+export function nodeStateAt(spans: SpanData[], now: number): ReplayState {
+  let ended = false;
+  let state: ReplayState = "pending";
+  for (const s of spans) {
+    if (now < startedAt(s)) continue; // not started yet
+    if (now < s.endTime) return "running"; // any active span ⇒ running (pulse)
+    ended = true;
+    const st: ReplayState = s.events?.some((e) => e.name === "skipped") ? "skipped" : s.status === "error" ? "error" : "ok";
+    if (st === "error") state = "error";
+    else if (st === "ok" && state !== "error") state = "ok";
+    else if (st === "skipped" && state === "pending") state = "skipped";
+  }
+  return ended ? state : "pending";
+}
+
 /** Flatten node spans into one time-sorted event log (offsets from `t0`). */
 export function buildReplayEvents(nodeSpans: SpanData[], t0: number): ReplayEvent[] {
   const out: ReplayEvent[] = [];
