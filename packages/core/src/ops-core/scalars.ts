@@ -177,4 +177,23 @@ export const castOps: OpDefinition[] = [
   }),
 ];
 
-export const scalarOps: OpDefinition[] = [...mathOps, ...cmpOps, ...boolOps, ...castOps];
+/** Value-level conditionals — pure, no control branch / sub-run, so they're
+ *  legal inside a per-chunk stream region (the no-branch way to filter/choose). */
+const valueOps: OpDefinition[] = [
+  pureOp({
+    type: "core.value.keep",
+    description:
+      "Pass `value` through when `when` is true, else `undefined`. Inside a core.stream.each region that DROPS the chunk (collect ignores undefined) — the no-branch way to skip/filter. Inputs { value, when }.",
+    inputs: { value: value(), when: required(bool) },
+    compute: ({ value: v, when }) => (when ? v : undefined),
+  }),
+  pureOp({
+    type: "core.value.select",
+    description:
+      "Value-level ternary: `cond ? then : else` (else is `undefined` when unwired, so it filters too). No control branch or sub-run — usable inside a stream region. Inputs { cond, then, else }.",
+    inputs: { cond: required(bool), then: value(), else: value() },
+    compute: ({ cond, then, else: els }) => (cond ? then : els),
+  }),
+];
+
+export const scalarOps: OpDefinition[] = [...mathOps, ...cmpOps, ...boolOps, ...castOps, ...valueOps];

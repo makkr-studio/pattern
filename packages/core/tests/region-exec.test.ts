@@ -109,4 +109,35 @@ describe("per-chunk stream region execution", () => {
     expect(out).toEqual([11, 12]);
     expect(runs).toHaveLength(1);
   });
+
+  it("skips a chunk by predicate with core.value.keep (no branch op)", async () => {
+    const w: Workflow = {
+      id: "skip",
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["items"] } },
+        { id: "emit", op: "core.stream.emit" },
+        { id: "two", op: "core.const.number", config: { value: 2 } },
+        { id: "each", op: "core.stream.each" },
+        { id: "gt", op: "core.cmp.gt" }, // item > 2 ?
+        { id: "keep", op: "core.value.keep" }, // keep item only when gt
+        { id: "collect", op: "core.stream.collect" },
+        { id: "acc", op: "core.stream.accumulate", config: { mode: "array" } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "items" }, to: { node: "emit", port: "in" } },
+        { from: { node: "emit", port: "out" }, to: { node: "each", port: "in" } },
+        { from: { node: "each", port: "item" }, to: { node: "gt", port: "a" } },
+        { from: { node: "two", port: "out" }, to: { node: "gt", port: "b" } }, // capture
+        { from: { node: "gt", port: "out" }, to: { node: "keep", port: "when" } },
+        { from: { node: "each", port: "item" }, to: { node: "keep", port: "value" } },
+        { from: { node: "keep", port: "out" }, to: { node: "collect", port: "value" } },
+        { from: { node: "collect", port: "out" }, to: { node: "acc", port: "in" } },
+        { from: { node: "acc", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    };
+    const { out, runs } = await run(w, [1, 2, 3, 4]);
+    expect(out).toEqual([3, 4]); // 1 and 2 skipped (kept value was undefined ⇒ dropped)
+    expect(runs).toHaveLength(1); // still one run, no branch/sub-run
+  });
 });
