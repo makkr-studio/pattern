@@ -29,6 +29,7 @@ import {
   resolvePorts,
 } from "./graph.js";
 import { schemasCompatible } from "./schema-compat.js";
+import { analyzeStreamRegions } from "./streams/region.js";
 import { CONTROL_IN, CONTROL_OUT, WorkflowSchema, type Workflow } from "./types.js";
 
 export interface ValidateResult {
@@ -335,6 +336,14 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
           severity: "warning",
         });
       }
+    }
+  }
+
+  // Per-chunk stream regions (core.stream.each ↔ collect): the members must be
+  // plain value ops, the pair well-formed, no value escaping (§12).
+  if (workflow) {
+    for (const ri of analyzeStreamRegions(workflow, ops).issues) {
+      issues.push({ nodeId: ri.nodeId, message: ri.message, code: "stream_region" });
     }
   }
 

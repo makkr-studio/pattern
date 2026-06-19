@@ -13,7 +13,8 @@ import { Pause, Play, SkipBack, SkipForward } from "../components/icon";
 import {
   buildReplayEvents,
   nodeIdOf,
-  stateAt,
+  nodeStateAt,
+  spanAt,
   stepBack as stepBackTo,
   stepForward as stepForwardTo,
   type ReplayEvent,
@@ -61,7 +62,15 @@ export function ReplayPage() {
 
   // Timeline bounds from node spans.
   const nodeSpans = useMemo(() => (run?.spans ?? []).filter((s) => nodeIdOf(s)), [run]);
-  const spanByNode = useMemo(() => new Map(nodeSpans.map((s) => [nodeIdOf(s)!, s])), [nodeSpans]);
+  // One node id can have MANY spans (a per-chunk region runs a member per chunk).
+  const spansByNode = useMemo(() => {
+    const m = new Map<string, SpanData[]>();
+    for (const s of nodeSpans) {
+      const id = nodeIdOf(s)!;
+      (m.get(id) ?? m.set(id, []).get(id)!).push(s);
+    }
+    return m;
+  }, [nodeSpans]);
   const t0 = useMemo(() => (nodeSpans.length ? Math.min(...nodeSpans.map((s) => s.startTime)) : 0), [nodeSpans]);
   const t1 = useMemo(() => (nodeSpans.length ? Math.max(...nodeSpans.map((s) => s.endTime)) : 0), [nodeSpans]);
   const total = Math.max(0, t1 - t0);
@@ -140,8 +149,8 @@ export function ReplayPage() {
   // nodes perpetually "unmeasured" (= hidden), blanking the canvas during play.
   const stateSig = useMemo(() => {
     const now = t0 + t;
-    return nodeSpans.map((s) => `${nodeIdOf(s)}:${stateAt(s, now)}`).join("|");
-  }, [nodeSpans, t, t0]);
+    return [...spansByNode.entries()].map(([id, spans]) => `${id}:${nodeStateAt(spans, now)}`).join("|");
+  }, [spansByNode, t, t0]);
 
   // Decorate the static flow with per-node replay state + edge illumination.
   const decorated = useMemo(() => {
@@ -175,7 +184,7 @@ export function ReplayPage() {
   // Edge hover — the value (or current token) that crossed this edge.
   const [hover, setHover] = useState<{ x: number; y: number; edge: RFEdge } | null>(null);
   const ioOf = (node: string, port: string): unknown => {
-    const io = spanByNode.get(node)?.io?.outputs?.[port];
+    const io = spanAt(spansByNode.get(node), t0 + t)?.io?.outputs?.[port];
     return io?.kind === "value" ? io.preview : undefined;
   };
 
@@ -343,7 +352,7 @@ export function ReplayPage() {
         </div>
       </GlassPanel>
 
-      {hover && <EdgeHoverCard hover={hover} spanByNode={spanByNode} chunks={chunks} t={t} />}
+      {hover && <EdgeHoverCard hover={hover} spansByNode={spansByNode} t0={t0} chunks={chunks} t={t} />}
     </div>
   );
 }
@@ -351,12 +360,14 @@ export function ReplayPage() {
 /** Floating peek of the value/token that crossed the hovered edge. */
 function EdgeHoverCard({
   hover,
-  spanByNode,
+  spansByNode,
+  t0,
   chunks,
   t,
 }: {
   hover: { x: number; y: number; edge: RFEdge };
-  spanByNode: Map<string, SpanData>;
+  spansByNode: Map<string, SpanData[]>;
+  t0: number;
   chunks: ReplayEvent[];
   t: number;
 }) {
@@ -364,7 +375,7 @@ function EdgeHoverCard({
   const node = edge.source;
   const port = edge.sourceHandle ?? "";
   const kind = (edge.data as { kind?: string } | undefined)?.kind;
-  const span = spanByNode.get(node);
+  const span = spanAt(spansByNode.get(node), t0 + t);
 
   let body: React.ReactNode;
   if (kind === "control") {
