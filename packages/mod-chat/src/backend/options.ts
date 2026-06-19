@@ -3,6 +3,21 @@
 export interface ChatModOptions {
   /** Where the chat app mounts (UI + API under here). Default "/chat". */
   mount?: string;
+  /**
+   * Short instance id. Namespaces THIS instance's workflow ids (and its
+   * guardrail tool) so several instances can be hosted side by side without
+   * colliding. Default "" — the canonical, unprefixed ids (single-instance).
+   */
+  slug?: string;
+  /** Per-instance brand the SPA reads from window.__APP__ (accent + title). */
+  brand?: { accent?: string; title?: string };
+  /**
+   * Host the SAME chat app multiple times, each with its own mount, brand and
+   * agent — "the same instance, many purposes". Each entry is a ChatModOptions
+   * layered over the top-level defaults; give each a distinct `mount` + `slug`.
+   * When set, the top-level mount/brand/agent serve only as defaults.
+   */
+  instances?: ChatModOptions[];
   /** SPA assets dir override (defaults to the bundled dist-app). */
   assets?: string;
   /**
@@ -52,6 +67,8 @@ export interface ChatModOptions {
 
 export interface ResolvedChatOptions {
   mount: string;
+  slug: string;
+  brand: { accent?: string; title?: string };
   assets?: string;
   agent: { name: string; instructions: string; model?: string };
   turnPipeline: boolean;
@@ -80,9 +97,23 @@ function envEnabled(): boolean {
   return !(raw && /^(false|0|off|no)$/i.test(raw.trim()));
 }
 
+/**
+ * Resolve to a LIST of instances: `options.instances` (each layered over the
+ * top-level defaults) when present, else a single instance from the top-level
+ * options. The single, no-instances case keeps slug "" → unprefixed ids, so it
+ * is byte-compatible with the pre-multi-instance mod.
+ */
+export function resolveInstances(options: ChatModOptions = {}): ResolvedChatOptions[] {
+  const { instances, ...base } = options;
+  if (instances?.length) return instances.map((inst) => resolveOptions({ ...base, ...inst }));
+  return [resolveOptions(base)];
+}
+
 export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOptions {
   return {
     mount: (options.mount ?? "/chat").replace(/\/$/, "") || "/chat",
+    slug: (options.slug ?? "").trim(),
+    brand: { accent: options.brand?.accent, title: options.brand?.title },
     assets: options.assets,
     agent: {
       name: options.agent?.name ?? "assistant",
