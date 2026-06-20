@@ -7,6 +7,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { fuzzyFilter } from "../lib/fuzzy";
+import { pageHref } from "../lib/api";
+import { useDocs } from "./Shell";
 
 interface PageEntry {
   chapter: string;
@@ -58,6 +60,8 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { manifest } = useDocs();
+  const primarySlug = manifest.chapters[0]?.slug;
 
   useEffect(() => {
     void fetchCorpus().then(setCorpus).catch(() => setCorpus({ pages: [], ops: [] }));
@@ -70,7 +74,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
       id: `${p.chapter}/${p.file}`,
       label: p.title,
       hint: p.chapter,
-      to: `/${p.chapter}/${p.file.replace(/\.md$/, "")}`.replace(/\/index$/, ""),
+      to: pageHref(primarySlug, p.chapter, p.file),
       text: `${p.title} ${p.headings.join(" ")} ${p.chapter}`,
     }));
     const opItems: Item[] = corpus.ops.map((o) => ({
@@ -81,7 +85,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
       text: `${o.type} ${o.description}`,
     }));
     return fuzzyFilter([...pageItems, ...opItems], q, (i) => i.text).slice(0, 12);
-  }, [corpus, q]);
+  }, [corpus, q, primarySlug]);
 
   useEffect(() => setActive(0), [q]);
 
