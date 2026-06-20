@@ -1,0 +1,77 @@
+name: Publish
+
+# How releases work
+#
+# npm versions are immutable (you cannot republish the same version), but npm
+# "dist-tags" are mutable pointers to a version (like a branch pointing at a
+# commit). This workflow uses two of them:
+#
+#   * push to main  -> publishes a unique prerelease version (e.g.
+#     0.2.0-main.<sha>) and moves the "main" dist-tag to it. So
+#     `npm install @pattern/core@main` always installs the latest commit on
+#     main. The "latest" tag is untouched, so normal installs stay on the
+#     stable release.
+#
+#   * push a semver git tag v1.2.3  -> publishes 1.2.3 and moves the "latest"
+#     dist-tag to it. That is the real release; create the tag from GitHub
+#     (Releases -> Draft a new release -> tag "v1.2.3") or with
+#     `git tag v1.2.3 && git push origin v1.2.3`.
+#
+# Requires a repo secret NPM_TOKEN (an npm automation token with publish rights
+# to the @pattern scope). Until it is set, the publish step skips cleanly.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Resolve version and dist-tag
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            base=$(node -p "require('./package.json').version")
+            echo "version=${base}-main.$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+            echo "tag=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set versions
+        run: node scripts/set-all-versions.mjs "${{ steps.ver.outputs.version }}"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN is not set; skipping publish (configure it in repo Settings -> Secrets)."
+            exit 0
+          fi
+          echo "Publishing ${{ steps.ver.outputs.version }} under dist-tag '${{ steps.ver.outputs.tag }}'"
+          pnpm -r publish --no-git-checks --access public --tag "${{ steps.ver.outputs.tag }}"
