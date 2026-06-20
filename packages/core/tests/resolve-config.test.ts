@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern-js/core";
 
 /** HTTP route whose `port` config is fed by a `core.env` node (a config port). */
 function httpWithEnvPort(): Workflow {

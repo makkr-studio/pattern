@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — keyed in-process mutex.
+ * @pattern-js/mod-identity — keyed in-process mutex.
  *
  * Serializes read-modify-write cycles per key (session id, user id) so a
  * single instance doesn't burn CAS retries against itself. Same promise-chain

@@ -30,7 +30,7 @@ import {
   type OpDefinition,
   type PortSpec,
   type Workflow,
-} from "@pattern/core";
+} from "@pattern-js/core";
 import { loadMods } from "../mods.js";
 import { loadWorkflowDir, loadDotEnv } from "../project.js";
 import { runCli } from "../cli.js";
@@ -197,7 +197,7 @@ async function cmdRun(rest: string[]): Promise<void> {
     doc = engine.workflows.get(target);
     if (!doc) {
       console.error(pc.red(`no workflow file "${target}", and no registered workflow with id "${target}".`));
-      console.error(pc.dim("  Admin-authored workflows load from .pattern — make sure @pattern/mod-admin is in your mods."));
+      console.error(pc.dim("  Admin-authored workflows load from .pattern — make sure @pattern-js/mod-admin is in your mods."));
       console.error(pc.dim("  `pattern ops` and the admin's Workflows list show what's available."));
       process.exit(1);
     }

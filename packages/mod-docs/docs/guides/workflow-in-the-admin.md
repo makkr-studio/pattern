@@ -5,7 +5,7 @@ order: 8
 
 # Author a workflow in the admin
 
-The admin (`@pattern/mod-admin`, in the `studio` pack and up) is a visual editor
+The admin (`@pattern-js/mod-admin`, in the `studio` pack and up) is a visual editor
 for the same JSON workflows you can write by hand — but with a live op palette,
 typed connection assist, validation, one-click deploy, and run replay. This is
 the fastest way to build and watch a workflow.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Engine, REDACTED, type SpanData, type Workflow } from "@pattern/core";
+import { Engine, REDACTED, type SpanData, type Workflow } from "@pattern-js/core";
 import { vaultMod } from "../src/mod.js";
 import { VAULT_SERVICE } from "../src/well-known.js";
 import { makeVaultCrypto } from "../src/crypto.js";

@@ -8,7 +8,7 @@
  * name instead of a relative path.
  */
 
-/** @type {import("@pattern/core").PatternMod} */
+/** @type {import("@pattern-js/core").PatternMod} */
 export default {
   name: "uppercase-mod",
   ops: [

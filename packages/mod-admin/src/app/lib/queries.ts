@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { RunListFilter, WorkflowDoc } from "@pattern/admin-sdk";
+import type { RunListFilter, WorkflowDoc } from "@pattern-js/admin-sdk";
 import { api } from "./api";
 
 /** Server-state hooks over the admin endpoints. Pages never fetch by hand. */

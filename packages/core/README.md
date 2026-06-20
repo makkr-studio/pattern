@@ -1,15 +1,15 @@
-# @pattern/core
+# @pattern-js/core
 
 The runtime-neutral [Pattern](../../README.md) execution engine. Plain TypeScript
 over Web standards (Web Streams, `AbortController`, `fetch`, `crypto.subtle`).
 One dependency: **Zod**.
 
 ```bash
-npm install @pattern/core
+npm install @pattern-js/core
 ```
 
 ```ts
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern-js/core";
 
 const engine = new Engine();              // base op catalog auto-registered
 engine.registerWorkflow(wf);              // validates with human-readable errors
@@ -25,7 +25,7 @@ const result = await engine.run(wf, { input: { /* trigger ports */ } });
 - **Boundaries** — contracts + payload schemas (HTTP, WS, CLI, manual, schedule, hook, event).
 - **Hooks & events**, **auth** (Principal + provider chain), **observability** (OTLP-shaped spans), **transport** (in-process; pluggable).
 
-Subpath exports: `@pattern/core` (everything), `@pattern/core/ops`, `@pattern/core/boundaries`.
+Subpath exports: `@pattern-js/core` (everything), `@pattern-js/core/ops`, `@pattern-js/core/boundaries`.
 
 ## Key APIs
 

@@ -1,13 +1,13 @@
 /**
- * @pattern/mod-agents-openai — the provider mod. Requires @pattern/mod-agents
+ * @pattern-js/mod-agents-openai — the provider mod. Requires @pattern-js/mod-agents
  * (the contracts + registry); list both in pattern.config.json.
  */
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
-import { defineMod, type Engine, type PatternMod } from "@pattern/core";
-import { AGENTS_SERVICE } from "@pattern/mod-agents";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
+import { AGENTS_SERVICE } from "@pattern-js/mod-agents";
 import { openaiAgentOps } from "./ops.js";
 
 
@@ -23,14 +23,14 @@ function packagedDocs(engine: Engine): void {
 
 export function agentsOpenAIMod(): PatternMod {
   return defineMod({
-    name: "@pattern/mod-agents-openai",
+    name: "@pattern-js/mod-agents-openai",
     docs: { filesystem: "agents-openai-docs", title: "Agents · OpenAI", order: 51 },
     ops: openaiAgentOps,
     ready: (engine: Engine) => {
       packagedDocs(engine);
       if (!engine.service(AGENTS_SERVICE)) {
         throw new Error(
-          '@pattern/mod-agents-openai needs @pattern/mod-agents — add "@pattern/mod-agents" to your pattern.config.json mods',
+          '@pattern-js/mod-agents-openai needs @pattern-js/mod-agents — add "@pattern-js/mod-agents" to your pattern.config.json mods',
         );
       }
     },

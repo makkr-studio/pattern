@@ -1,12 +1,12 @@
 /**
- * @pattern/runtime-node — schedule host (§7, §12).
+ * @pattern-js/runtime-node — schedule host (§7, §12).
  *
  * Fires `boundary.schedule` triggers on an interval or a 5-field cron. Results
  * are discarded or traced. Cron is evaluated once per minute against the local
  * clock (no external dependency).
  */
 
-import type { Engine, Workflow } from "@pattern/core";
+import type { Engine, Workflow } from "@pattern-js/core";
 
 interface ScheduledTimer {
   stop: () => void;

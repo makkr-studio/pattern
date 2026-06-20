@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — CSRF guard (§9).
+ * @pattern-js/mod-identity — CSRF guard (§9).
  *
  * Lives INSIDE the session auth provider: a cross-site state-changing request
  * simply does not authenticate, so a protected write 401s — no token dance,

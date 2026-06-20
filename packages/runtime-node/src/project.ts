@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — project loader.
+ * @pattern-js/runtime-node — project loader.
  *
  * A Pattern app is configured declaratively (`pattern.config.json`): which mods
  * to load and where the workflow JSON files live. `loadProject` builds an engine,
@@ -15,7 +15,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Engine, TRACE_STORE, type TraceStore, type Workflow } from "@pattern/core";
+import { Engine, TRACE_STORE, type TraceStore, type Workflow } from "@pattern-js/core";
 import { loadMods } from "./mods.js";
 import { createTraceStore } from "./trace/index.js";
 import { HttpHost } from "./http.js";
@@ -38,7 +38,7 @@ export interface PatternConfig {
    * to keep everything inline — an `offload` flag then degrades to a no-op.
    *
    * Exclude heavy / host-only mods from the worker set via the `{ mods }` form
-   * — e.g. drop `@pattern/mod-admin` so the admin's control-plane setup doesn't
+   * — e.g. drop `@pattern-js/mod-admin` so the admin's control-plane setup doesn't
    * run in every worker (workers execute domain ops, not the admin).
    */
   workers?: number | { size?: number; mods?: string[] };

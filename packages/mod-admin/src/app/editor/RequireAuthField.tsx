@@ -121,7 +121,7 @@ export function RequireAuthField({ value, onChange }: { value: unknown; onChange
       {unenforced && (
         <div className="rounded-lg border border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--color-neon-amber)]">
           ⚠ No auth provider installed — this requirement is <b>declared but not enforced</b>. The route
-          serves public until you add a provider (e.g. <span className="font-mono">@pattern/mod-identity</span>);
+          serves public until you add a provider (e.g. <span className="font-mono">@pattern-js/mod-identity</span>);
           the same declaration then starts enforcing, no edit needed.
         </div>
       )}

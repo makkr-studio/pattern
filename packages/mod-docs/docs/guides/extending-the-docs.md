@@ -5,7 +5,7 @@ order: 16
 
 # Extending these docs
 
-This documentation is itself a mod (`@pattern/mod-docs`) — and **any mod can
+This documentation is itself a mod (`@pattern-js/mod-docs`) — and **any mod can
 contribute a chapter**, first-party or third-party. Install a mod, its docs
 appear in the sidebar; uninstall it, they're gone. Content ships *inside* the
 npm package, so what you read always matches the version you run.
@@ -30,7 +30,7 @@ app mod makes for its SPA assets):
 ```ts
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
 
 setup(engine) {
   const dir = fileURLToPath(new URL("../../docs", import.meta.url));

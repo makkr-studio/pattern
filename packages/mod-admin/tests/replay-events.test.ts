@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { SpanData } from "@pattern/admin-sdk";
+import type { SpanData } from "@pattern-js/admin-sdk";
 import { buildReplayEvents, stateAt, stepBack, stepForward } from "../src/app/lib/replay.js";
 
 /**

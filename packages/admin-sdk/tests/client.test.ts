@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
-import { createHttpHost, memoryFs } from "@pattern/runtime-node";
-import { adminMod } from "@pattern/mod-admin";
-import { createAdminClient, buildNav, CommandRegistry, type MenuEntry } from "@pattern/admin-sdk";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { createHttpHost, memoryFs } from "@pattern-js/runtime-node";
+import { adminMod } from "@pattern-js/mod-admin";
+import { createAdminClient, buildNav, CommandRegistry, type MenuEntry } from "@pattern-js/admin-sdk";
 
 let closer: (() => Promise<void>) | undefined;
 afterEach(async () => {
@@ -50,7 +50,7 @@ describe("AdminClient against the live backend", () => {
     expect(opGet?.boundary).toBe("outgate");
 
     const mods = await api.mods();
-    expect(mods.some((m) => m.name === "@pattern/mod-admin")).toBe(true);
+    expect(mods.some((m) => m.name === "@pattern-js/mod-admin")).toBe(true);
 
     const templates = await api.templates();
     expect(templates.length).toBeGreaterThan(0);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { OpInfo, PortInfo } from "@pattern/admin-sdk";
+import type { OpInfo, PortInfo } from "@pattern-js/admin-sdk";
 import { useOps } from "../lib/queries";
 import { Badge, GlassPanel, GlowCard, JsonView, PageHeader, Spinner } from "../components/ui";
 import { categoryStyle } from "../lib/categories";

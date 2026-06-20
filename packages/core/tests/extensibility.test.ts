@@ -8,7 +8,7 @@ import {
   CollectingTraceSink,
   HookRecursionError,
   type Workflow,
-} from "@pattern/core";
+} from "@pattern-js/core";
 
 /** A test op that appends its `label` to `payload.order` and returns the payload. */
 const tagOp = defineOp({

@@ -5,14 +5,14 @@ order: 90
 
 # Sample — anatomy of a mod
 
-`@pattern/mod-sample` is the in-repo example third-party mod: read it to learn
+`@pattern-js/mod-sample` is the in-repo example third-party mod: read it to learn
 the mod contract end to end. It extends the admin with a **Tier-1 declarative
 page**, a **⌘K command**, and a **Tier-2 ESM remote** — and **zero admin-core
 changes**. If the admin renders all of it without being touched, the extension
 surface works. The whole thing is one file: `src/index.ts`.
 
 ```jsonc
-{ "mods": ["@pattern/mod-sample"] }
+{ "mods": ["@pattern-js/mod-sample"] }
 ```
 
 ## The mod shape — `defineMod`
@@ -22,7 +22,7 @@ every field is optional except `name`:
 
 ```ts
 export default defineMod({
-  name: "@pattern/mod-sample",
+  name: "@pattern-js/mod-sample",
   docs: { filesystem: "sample-docs", title: "Sample", order: 90 },
   ops: [greetingsList, crunch],          // OpDefinition[] — the nodes it adds
   workflows: [appMount, replayShowcase, greetingsRoute],  // Workflow[]

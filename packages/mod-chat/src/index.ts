@@ -1,4 +1,4 @@
-/** @pattern/mod-chat — public surface. */
+/** @pattern-js/mod-chat — public surface. */
 
 export { chatMod, CHAT_ASSETS_FS } from "./backend/mod.js";
 export { default } from "./backend/mod.js";

@@ -1,7 +1,7 @@
 {
   "$schema": "pattern/config/v1",
   "mods": [
-    "@pattern/mod-admin",
+    "@pattern-js/mod-admin",
     "./mods/quotes.mjs"
   ],
   "workflows": "./workflows"

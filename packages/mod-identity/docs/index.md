@@ -1,20 +1,20 @@
 # Identity
 
-`@pattern/mod-identity` is the identity kernel: users, revocable cookie
+`@pattern-js/mod-identity` is the identity kernel: users, revocable cookie
 sessions, roles→scopes, a single-use token system, the login page, and the
 admin's Access screens (Users / Invite / Sessions). Login *methods* are
-separate mods that plug into it — `@pattern/mod-auth-magic-link` is the
+separate mods that plug into it — `@pattern-js/mod-auth-magic-link` is the
 reference.
 
 ```jsonc
-{ "mods": ["@pattern/mod-identity", "@pattern/mod-auth-magic-link"] }
+{ "mods": ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link"] }
 ```
 
 ## When to use it
 
 Install it the moment you want **users, sessions, or roles** — a login page,
 who-is-this-request, gated routes. It is opt-in: a project without it behaves
-exactly as before. But installing it alongside `@pattern/mod-admin` **flips the
+exactly as before. But installing it alongside `@pattern-js/mod-admin` **flips the
 admin to secure-by-default** — `/admin` (API + SPA) starts requiring the
 `admin` scope, and a logged-out browser is 302'd to the login page. Pass
 `adminMod({ auth: false })` to keep the admin open anyway. If you only need a
@@ -30,7 +30,7 @@ request, and sessions store no scopes of their own. The default map is
 
 ```js
 // mods/identity.mjs — a local wrapper mod
-import { identityMod } from "@pattern/mod-identity";
+import { identityMod } from "@pattern-js/mod-identity";
 export default identityMod({
   roles: { admin: ["admin"], editor: ["edit", "read"], viewer: ["read"] },
 });
@@ -128,12 +128,12 @@ page (the mod option only seeds it).
 
 ## Minimal config
 
-Defaults work from the bare `"@pattern/mod-identity"` config entry. To
+Defaults work from the bare `"@pattern-js/mod-identity"` config entry. To
 customize, export a local wrapper mod:
 
 ```js
 // mods/identity.mjs
-import { identityMod } from "@pattern/mod-identity";
+import { identityMod } from "@pattern-js/mod-identity";
 export default identityMod({
   signup: "open",                          // default "invite"
   roles: { admin: ["admin"], editor: ["edit", "read"] },

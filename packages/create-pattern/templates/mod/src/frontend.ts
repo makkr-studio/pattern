@@ -1,4 +1,4 @@
-import type { FrontendContribution } from "@pattern/core";
+import type { FrontendContribution } from "@pattern-js/core";
 
 /**
  * The admin contribution — a menu entry, a ⌘K command, and a page, all bound to

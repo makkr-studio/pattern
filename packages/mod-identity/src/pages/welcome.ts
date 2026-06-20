@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the post-login landing of last resort.
+ * @pattern-js/mod-identity — the post-login landing of last resort.
  *
  * Logins redirect to `next` → the app's advertised home (AUTH_HOME_URL — the
  * admin registers its mount) → here. Exists so a headless app's first login

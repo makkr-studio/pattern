@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-auth-magic-link — email magic-link login (§9).
+ * @pattern-js/mod-auth-magic-link — email magic-link login (§9).
  *
  * The reference identity-provider mod, deliberately small enough to read in
  * one sitting: it proves the SPI. The split of labor —
@@ -19,8 +19,8 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
-import { defineMod, value, z, type Engine, type OpDefinition, type PatternMod, type Workflow } from "@pattern/core";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { defineMod, value, z, type Engine, type OpDefinition, type PatternMod, type Workflow } from "@pattern-js/core";
 import {
   deliverToken,
   identityService,
@@ -29,7 +29,7 @@ import {
   renderSentPage,
   safeNextPath,
   type IdentityService,
-} from "@pattern/mod-identity";
+} from "@pattern-js/mod-identity";
 
 /* ── the op ────────────────────────────────────────────────────────────── */
 
@@ -136,7 +136,7 @@ function packagedDocs(engine: Engine): void {
 export function magicLinkMod(options: MagicLinkOptions = {}): PatternMod {
   const mount = (options.mount ?? "/auth").replace(/\/$/, "") || "/auth";
   return defineMod({
-    name: "@pattern/mod-auth-magic-link",
+    name: "@pattern-js/mod-auth-magic-link",
     docs: { filesystem: "magic-link-docs", title: "Magic-link login", order: 41 },
     ops: [requestOp],
     workflows: [requestRoute(mount)],
@@ -147,7 +147,7 @@ export function magicLinkMod(options: MagicLinkOptions = {}): PatternMod {
       const svc = engine.service<IdentityService>(IDENTITY_SERVICE);
       if (!svc) {
         console.error(
-          "[pattern] @pattern/mod-auth-magic-link: identity service not found — add @pattern/mod-identity to your mods.",
+          "[pattern] @pattern-js/mod-auth-magic-link: identity service not found — add @pattern-js/mod-identity to your mods.",
         );
         return;
       }

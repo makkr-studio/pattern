@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — the admin Data browser's dedicated routes.
+ * @pattern-js/mod-store — the admin Data browser's dedicated routes.
  *
  * One purposeful route per thing the browser exposes — no generic op invoker.
  * Each is a normal workflow (request → extract → store.admin.* op → status →
@@ -10,7 +10,7 @@
  * `RouteRef` carries); the workflows mount them under `${API}`.
  */
 
-import { fromParams, httpEndpoint, type Workflow } from "@pattern/core";
+import { fromParams, httpEndpoint, type Workflow } from "@pattern-js/core";
 
 /** The admin API mount the browser's client targets. */
 const API = "/admin/api";

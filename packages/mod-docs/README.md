@@ -1,4 +1,4 @@
-# @pattern/mod-docs
+# @pattern-js/mod-docs
 
 Self-reflecting documentation for Pattern apps. A markdown-first docs app at
 `/docs` — the admin's visual language, tuned for reading — where **every
@@ -8,7 +8,7 @@ read always matches the version you run.
 
 ```jsonc
 // pattern.config.json
-{ "mods": ["@pattern/mod-docs"] }
+{ "mods": ["@pattern-js/mod-docs"] }
 ```
 
 ## What you get

@@ -1,7 +1,7 @@
 import { useMetrics } from "../lib/queries";
 import { GlassPanel, PageHeader, Spinner, Table, type Column } from "../components/ui";
 import { ms } from "../lib/format";
-import type { LatencyStats } from "@pattern/admin-sdk";
+import type { LatencyStats } from "@pattern-js/admin-sdk";
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (

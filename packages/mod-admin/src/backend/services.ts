@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — backend service wiring (admin internals §3).
+ * @pattern-js/mod-admin — backend service wiring (admin internals §3).
  *
  * The admin registers three in-process services on the engine; its ops reach
  * them via `ctx.services.<name>`. Bundled access through `adminServices(ctx)`
@@ -8,7 +8,7 @@
  * use the default in-process transport.
  */
 
-import type { Engine, OpContext, TraceStore } from "@pattern/core";
+import type { Engine, OpContext, TraceStore } from "@pattern-js/core";
 import type { ControlPlane } from "./control-plane/types.js";
 import { ADMIN_CONTROL_PLANE } from "./control-plane/types.js";
 

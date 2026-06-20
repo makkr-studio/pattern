@@ -23,13 +23,13 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@pattern/core": "^0.2.0",
-    "@pattern/runtime-node": "^0.2.0",
+    "@pattern-js/core": "^0.2.0",
+    "@pattern-js/runtime-node": "^0.2.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@pattern/core": "^0.2.0",
-    "@pattern/runtime-node": "^0.2.0",
+    "@pattern-js/core": "^0.2.0",
+    "@pattern-js/runtime-node": "^0.2.0",
     "zod": "^4.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

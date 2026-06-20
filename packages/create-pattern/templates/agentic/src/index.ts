@@ -12,7 +12,7 @@
  * OPENAI_API_KEY in the environment (a .env next to pattern.config.json is
  * loaded on boot) → a vault secret NAMED OPENAI_API_KEY (admin → Secrets).
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { start } = await loadProject();
 const { ports } = await start();

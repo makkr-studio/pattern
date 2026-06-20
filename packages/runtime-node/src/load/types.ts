@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — load-testing scenario schema (`pattern load`).
+ * @pattern-js/runtime-node — load-testing scenario schema (`pattern load`).
  *
  * A scenario is DATA (like everything in Pattern): versioned, diffable,
  * committable. v1 fires HTTP requests at a workflow app under an OPEN-LOOP
@@ -10,7 +10,7 @@
  * the report says *where* the pressure is, not just that there is some.
  */
 
-import { z } from "@pattern/core";
+import { z } from "@pattern-js/core";
 
 /** One request shape the generator can fire (chosen by weight). */
 export const LoadRequestSchema = z.object({

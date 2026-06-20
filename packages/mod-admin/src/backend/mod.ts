@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the mod (admin internals §1, §3, §16).
+ * @pattern-js/mod-admin — the mod (admin internals §1, §3, §16).
  *
  * `engine.use()`-able brick that adds the authorable, self-reflecting control
  * surface: it contributes the `admin.*` ops, the endpoint workflows that expose
@@ -15,7 +15,7 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AUTH_HOME_URL, defineMod, TRACE_STORE, type Engine, type PatternMod, type TraceStore, type Workflow } from "@pattern/core";
+import { AUTH_HOME_URL, defineMod, TRACE_STORE, type Engine, type PatternMod, type TraceStore, type Workflow } from "@pattern-js/core";
 import {
   localFs,
   memoryFs,
@@ -23,7 +23,7 @@ import {
   provideFilesystem,
   MemoryTraceStore,
   type Filesystem,
-} from "@pattern/runtime-node";
+} from "@pattern-js/runtime-node";
 import { DefaultControlPlane } from "./control-plane/control-plane.js";
 import { FlystorageWorkflowStore } from "./control-plane/store.js";
 import { adminOps } from "./ops/index.js";
@@ -151,7 +151,7 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
   let controlPlane: DefaultControlPlane | undefined;
 
   return defineMod({
-    name: "@pattern/mod-admin",
+    name: "@pattern-js/mod-admin",
     docs: { filesystem: "admin-docs", title: "Admin", order: 20 },
     ops: adminOps,
     workflows: [...endpointWorkflows(requirement), spa],

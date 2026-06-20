@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — filesystem-backed workflow store (admin internals §3, §9).
+ * @pattern-js/mod-admin — filesystem-backed workflow store (admin internals §3, §9).
  *
  * Storage layout (under `prefix`, default "workflows"):
  *
@@ -12,8 +12,8 @@
  * later behind `WorkflowStore`.
  */
 
-import type { Filesystem } from "@pattern/runtime-node";
-import type { Principal, Workflow } from "@pattern/core";
+import type { Filesystem } from "@pattern-js/runtime-node";
+import type { Principal, Workflow } from "@pattern-js/core";
 import { contentHash } from "./versioning.js";
 import type {
   AuditEntry,

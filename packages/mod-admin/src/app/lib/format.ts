@@ -1,4 +1,4 @@
-import type { PortInfo } from "@pattern/admin-sdk";
+import type { PortInfo } from "@pattern-js/admin-sdk";
 
 /** Human duration from (possibly fractional) milliseconds — the clock is
  *  high-res (sub-ms), so a fast node reads in µs instead of collapsing to 0. */

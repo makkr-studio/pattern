@@ -17,7 +17,7 @@ import {
   type Node as RFNode,
   type OnBeforeDelete,
 } from "@xyflow/react";
-import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern/admin-sdk";
+import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern-js/admin-sdk";
 import { hasErrors, isWarning, issueSummary } from "../lib/issues";
 import { api } from "../lib/api";
 import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";

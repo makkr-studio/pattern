@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — the well-known service seam.
+ * @pattern-js/mod-store — the well-known service seam.
  *
  * Other mods (chat, agents…) reach the stores through
  * `engine.service(STORE_SERVICE)` / `ctx.services[STORE_SERVICE]` and this
@@ -8,7 +8,7 @@
  * then regardless of listing order).
  */
 
-import type { OpContext } from "@pattern/core";
+import type { OpContext } from "@pattern-js/core";
 import type { PatternStores } from "./store/types.js";
 
 export const STORE_SERVICE = "storeService";
@@ -18,7 +18,7 @@ export function storeService(ctx: OpContext): PatternStores {
   const svc = ctx.services[STORE_SERVICE] as PatternStores | undefined;
   if (!svc) {
     throw new Error(
-      'store ops need @pattern/mod-store installed — add "@pattern/mod-store" to your pattern.config.json mods',
+      'store ops need @pattern-js/mod-store installed — add "@pattern-js/mod-store" to your pattern.config.json mods',
     );
   }
   return svc;

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { Engine, IDENTITY_SERVICE, type Workflow } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
-import { identityMod, type IdentityService } from "@pattern/mod-identity";
+import { Engine, IDENTITY_SERVICE, type Workflow } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
+import { identityMod, type IdentityService } from "@pattern-js/mod-identity";
 import { magicLinkMod } from "../src/index.js";
 
 let closer: (() => Promise<void>) | undefined;
@@ -40,7 +40,7 @@ const requestLink = (base: string, body: Record<string, string>) =>
 const printedLink = (logSpy: ReturnType<typeof vi.spyOn>): string | undefined =>
   /(https?:\/\/\S*\/auth\/token\?t=\S+)/.exec(logSpy.mock.calls.map((c) => String(c[0])).join("\n"))?.[1];
 
-describe("@pattern/mod-auth-magic-link", () => {
+describe("@pattern-js/mod-auth-magic-link", () => {
   it("registers its login method in either config order", async () => {
     const a = await boot(4881);
     expect(a.service.loginMethods().map((m) => m.id)).toContain("magic-link");

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — node:sqlite store driver.
+ * @pattern-js/mod-identity — node:sqlite store driver.
  *
  * Hand-written SQL, no ORM (decided): the schema is five boring tables and the
  * security-critical statements should read as literal SQL. CAS is a single
@@ -308,7 +308,7 @@ export async function sqliteIdentityStores(filePath: string): Promise<IdentitySt
   }
   if (!DatabaseSync) {
     throw new Error(
-      "node:sqlite is not available in this Node build — @pattern/mod-identity needs Node ≥22.5 " +
+      "node:sqlite is not available in this Node build — @pattern-js/mod-identity needs Node ≥22.5 " +
         "(≥24 recommended). For tests, use memoryIdentityStores().",
     );
   }

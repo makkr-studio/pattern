@@ -1,6 +1,6 @@
 # Admin
 
-`@pattern/mod-admin` is the self-reflecting control surface at `/admin`: a
+`@pattern-js/mod-admin` is the self-reflecting control surface at `/admin`: a
 visual editor for the very workflows it is built from. Every admin API route is
 itself a Pattern workflow assembled from the same primitives you author with, so
 the admin's own control plane shows up in its own catalog and is editable inside
@@ -30,10 +30,10 @@ is served through the app boundary alongside the rest of your app.
 ## Extension surface
 
 Other mods extend the admin through a small, stable, declarative surface — no
-admin-core changes. The worked reference is [`@pattern/mod-sample`](/docs/sample),
+admin-core changes. The worked reference is [`@pattern-js/mod-sample`](/docs/sample),
 the in-repo example mod: a Tier-1 page **and** a ⌘K command **and** a Tier-2
 remote, all from one `defineMod`. Everything below lives under a mod's
-`frontend` contribution (`FrontendContribution` in `@pattern/core`), except the
+`frontend` contribution (`FrontendContribution` in `@pattern-js/core`), except the
 data sources, which are ordinary workflows (`httpEndpoint`).
 
 **Tier 1 — declarative pages (no build).** A page is *data*, rendered by the
@@ -66,12 +66,12 @@ built ESM bundle whose default export is a component; the admin `import()`s it
 at runtime (add a mod → its page appears, no admin rebuild). The bundle reads
 shared deps — React, the typed API client, the glass UI kit — off the
 `window.__PATTERN_ADMIN__` global (typed as `PatternAdminGlobal` in
-`@pattern/admin-sdk`) so nothing is double-loaded. A `pages` entry points at it
+`@pattern-js/admin-sdk`) so nothing is double-loaded. A `pages` entry points at it
 by URL (`remote: "/ext/…"`); the mod serves that bundle itself with the app
 trio (`boundary.http.app` → `core.app.static` → `boundary.http.app.serve`).
 Sample's `/x/studio` page is exactly this.
 
-`@pattern/admin-sdk` is the stable surface for both tiers: the typed API
+`@pattern-js/admin-sdk` is the stable surface for both tiers: the typed API
 client, theme tokens, the glass UI kit (`GlassPanel`, `NeonButton`, `Table`,
 `FormFromSchema`, `JsonView`, `Markdown`, …), and menu/page/command helpers.
 

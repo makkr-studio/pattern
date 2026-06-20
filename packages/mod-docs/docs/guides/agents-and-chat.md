@@ -10,11 +10,11 @@ and its guardrails are **workflow nodes you can see**:
 
 | mod | what it brings |
 | --- | --- |
-| `@pattern/mod-store` | Generic persistence: JSON document collections with declared indexes, a blob store, TTL'd CAS **leases**. SQLite (`./.pattern-data/store.db`) or memory; admin Data browser. |
-| `@pattern/mod-vault` | Encrypted secrets (AES-256-GCM, master key from `PATTERN_VAULT_KEY`). `vault.read` emits values that are **masked out of run samples**. Write-only Secrets admin page. |
-| `@pattern/mod-agents` | The neutral contracts: agent/toolset/guardrail **descriptors** (plain JSON on edges), the **turn event protocol**, the `boundary.tool` pair, the live tool registry. No SDK dependency. |
-| `@pattern/mod-agents-openai` | The OpenAI Agents SDK provider: `agents.agent`, `agents.run` (streaming, always), `agents.run.resume` (HITL), `agents.mcp.server`, `agents.history.compact`, `agents.realtime.key`. |
-| `@pattern/mod-chat` | The product chat app at `/chat` — streaming transcript with the **strand**, tool buds, image input, approvals, Stop — whose turn pipeline IS a workflow. |
+| `@pattern-js/mod-store` | Generic persistence: JSON document collections with declared indexes, a blob store, TTL'd CAS **leases**. SQLite (`./.pattern-data/store.db`) or memory; admin Data browser. |
+| `@pattern-js/mod-vault` | Encrypted secrets (AES-256-GCM, master key from `PATTERN_VAULT_KEY`). `vault.read` emits values that are **masked out of run samples**. Write-only Secrets admin page. |
+| `@pattern-js/mod-agents` | The neutral contracts: agent/toolset/guardrail **descriptors** (plain JSON on edges), the **turn event protocol**, the `boundary.tool` pair, the live tool registry. No SDK dependency. |
+| `@pattern-js/mod-agents-openai` | The OpenAI Agents SDK provider: `agents.agent`, `agents.run` (streaming, always), `agents.run.resume` (HITL), `agents.mcp.server`, `agents.history.compact`, `agents.realtime.key`. |
+| `@pattern-js/mod-chat` | The product chat app at `/chat` — streaming transcript with the **strand**, tool buds, image input, approvals, Stop — whose turn pipeline IS a workflow. |
 
 Fastest start: `npm create pattern@latest -- --modpack agent-chat`.
 

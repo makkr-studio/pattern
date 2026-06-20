@@ -10,7 +10,7 @@
  * or store one on the admin's Secrets page (System → Secrets) and wire a
  * `vault.read` node into the pipeline's `apiKey` input.
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { start } = await loadProject();
 const { ports } = await start();

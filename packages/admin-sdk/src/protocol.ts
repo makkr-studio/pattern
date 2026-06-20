@@ -1,15 +1,15 @@
 /**
- * @pattern/admin-sdk — wire protocol (admin internals §9, §10).
+ * @pattern-js/admin-sdk — wire protocol (admin internals §9, §10).
  *
  * The data shapes the admin API speaks over HTTP. These mirror the `admin.*` op
  * I/O; the SDK owns them as the *client-facing contract* (the backend produces
  * structurally-compatible values). Kept dependency-light so any UI can import
- * them; richer engine types come from `@pattern/core`.
+ * them; richer engine types come from `@pattern-js/core`.
  */
 
-import type { PortKind, MenuEntry, CommandDef, DeclarativeView, SettingsSection } from "@pattern/core";
+import type { PortKind, MenuEntry, CommandDef, DeclarativeView, SettingsSection } from "@pattern-js/core";
 
-export type { MenuEntry, CommandDef, DeclarativeView, SettingsField, SettingsSection } from "@pattern/core";
+export type { MenuEntry, CommandDef, DeclarativeView, SettingsField, SettingsSection } from "@pattern-js/core";
 
 /** One node's config-resolved ports (admin.doc.ports). */
 export interface NodePorts {
@@ -91,7 +91,7 @@ export interface WorkflowMeta {
   audit: AuditEntry[];
 }
 
-/** A workflow document (kept loose here; `@pattern/core`'s `Workflow` is exact). */
+/** A workflow document (kept loose here; `@pattern-js/core`'s `Workflow` is exact). */
 export interface WorkflowDoc {
   id: string;
   name?: string;

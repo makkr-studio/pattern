@@ -1,4 +1,4 @@
-/** @pattern/mod-vault — options & defaults. */
+/** @pattern-js/mod-vault — options & defaults. */
 
 export interface VaultOptions {
   /** SQLite path, or "memory". Default "./.pattern-data/vault.db". */

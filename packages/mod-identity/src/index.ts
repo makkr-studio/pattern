@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — public surface.
+ * @pattern-js/mod-identity — public surface.
  *
  * `identityMod(options)` is the brick; everything else is the toolbox for
  * provider mods (magic-link, oidc…) and apps that script identity directly.

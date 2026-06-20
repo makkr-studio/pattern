@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — versioning helpers (admin internals §5).
+ * @pattern-js/mod-admin — versioning helpers (admin internals §5).
  *
  * Content-addressed snapshots (a stable hash over the doc, ignoring data-only
  * `ui`) and a structural JSON diff between any two versions: nodes/edges/config
@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Edge, Workflow, WorkflowNode } from "@pattern/core";
+import type { Edge, Workflow, WorkflowNode } from "@pattern-js/core";
 
 /** Deterministic JSON with sorted object keys (so hashes/diffs are stable). */
 export function stableStringify(value: unknown): string {

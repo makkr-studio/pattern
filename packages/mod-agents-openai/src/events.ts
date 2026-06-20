@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents-openai — SDK stream → turn-event protocol.
+ * @pattern-js/mod-agents-openai — SDK stream → turn-event protocol.
  *
  * One mapping, three consumers (SSE response, store sink, future voice
  * surface). The contract that matters: the produced stream ALWAYS ends with
@@ -8,7 +8,7 @@
  */
 
 import type { RunItemStreamEvent, RunStreamEvent, StreamedRunResult } from "@openai/agents";
-import type { TurnEvent, TurnStopReason } from "@pattern/mod-agents";
+import type { TurnEvent, TurnStopReason } from "@pattern-js/mod-agents";
 
 interface Ids {
   turnId: string;

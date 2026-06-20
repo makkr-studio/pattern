@@ -8,7 +8,7 @@ name: Publish
 #
 #   * push to main  -> publishes a unique prerelease version (e.g.
 #     0.2.0-main.<sha>) and moves the "main" dist-tag to it. So
-#     `npm install @pattern/core@main` always installs the latest commit on
+#     `npm install @pattern-js/core@main` always installs the latest commit on
 #     main. The "latest" tag is untouched, so normal installs stay on the
 #     stable release.
 #
@@ -18,7 +18,7 @@ name: Publish
 #     `git tag v1.2.3 && git push origin v1.2.3`.
 #
 # Requires a repo secret NPM_TOKEN (an npm automation token with publish rights
-# to the @pattern scope). Until it is set, the publish step skips cleanly.
+# to the @pattern-js scope). Until it is set, the publish step skips cleanly.
 
 on:
   push:

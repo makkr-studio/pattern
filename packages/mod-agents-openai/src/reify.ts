@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents-openai — descriptor → SDK reification.
+ * @pattern-js/mod-agents-openai — descriptor → SDK reification.
  *
  * Descriptors are plain JSON on edges; SDK objects exist only inside an
  * executing node. Reification wires each origin to its execution path:
@@ -16,14 +16,14 @@
  */
 
 import { Agent, tool, type InputGuardrail, type MCPServer, type OutputGuardrail, type Tool } from "@openai/agents";
-import type { OpContext } from "@pattern/core";
+import type { OpContext } from "@pattern-js/core";
 import {
   agentsService,
   type AgentDescriptor,
   type GuardrailDescriptor,
   type ToolRef,
   type ToolsetDescriptor,
-} from "@pattern/mod-agents";
+} from "@pattern-js/mod-agents";
 import { mcpServerFor } from "./pool.js";
 
 /**

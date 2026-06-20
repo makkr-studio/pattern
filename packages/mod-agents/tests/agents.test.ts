@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Engine, TriggerInputError, type Workflow } from "@pattern/core";
+import { Engine, TriggerInputError, type Workflow } from "@pattern-js/core";
 import { agentsMod } from "../src/mod.js";
 import { AGENTS_SERVICE, type AgentsService } from "../src/well-known.js";
 import { toolsetSchema, turnEventSchema, type ToolsetDescriptor } from "../src/types.js";

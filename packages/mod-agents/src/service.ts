@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents — the registry implementation.
+ * @pattern-js/mod-agents — the registry implementation.
  *
  * Workflow tools are DISCOVERED, never registered by hand: the service scans
  * the engine's workflow registry for `boundary.tool` triggers and keeps the
@@ -7,7 +7,7 @@
  * deploy a tool workflow from the admin and the next agent run sees it.
  */
 
-import type { Engine, Workflow } from "@pattern/core";
+import type { Engine, Workflow } from "@pattern-js/core";
 import type {
   AgentsService,
   OpToolRegistration,

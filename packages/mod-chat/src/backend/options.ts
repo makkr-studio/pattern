@@ -1,4 +1,4 @@
-/** @pattern/mod-chat — options & defaults. */
+/** @pattern-js/mod-chat — options & defaults. */
 
 /** Brand the SPA reads from window.__APP__. */
 export interface ChatBrand {

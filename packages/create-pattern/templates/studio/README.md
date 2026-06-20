@@ -1,7 +1,7 @@
 # {{name}}
 
 A [Pattern](https://github.com/) project with the **studio** modpack: the
-workflow engine plus `@pattern/mod-admin` — a visual control plane that edits,
+workflow engine plus `@pattern-js/mod-admin` — a visual control plane that edits,
 versions, runs, and observes the very workflows serving your traffic.
 
 ```bash

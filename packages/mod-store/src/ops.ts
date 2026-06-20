@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — the `store.*` op catalog.
+ * @pattern-js/mod-store — the `store.*` op catalog.
  *
  * Document/blob/lease access as visible canvas nodes. Conflicts are VALUES
  * (`ok:false` + context), never thrown — workflows branch on them. The
@@ -7,7 +7,7 @@
  * scope check) and `privileged`-tagged — their routes carry the admin gate.
  */
 
-import { value, required, stream, z, type OpContext, type OpDefinition } from "@pattern/core";
+import { value, required, stream, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { storeService } from "./well-known.js";
 
 const recordSchema = z.record(z.string(), z.unknown());

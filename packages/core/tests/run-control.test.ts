@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern-js/core";
 
 /** Two sequential delays — long enough to reach in and poke the run. */
 const slow: Workflow = {

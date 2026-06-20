@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — public surface.
+ * @pattern-js/mod-store — public surface.
  *
  * `storeMod(options)` is the brick; the contracts + STORE_SERVICE are the
  * seam other mods (chat, agents…) build on.

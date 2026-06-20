@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-chat — the admin Conversations surface's dedicated routes.
+ * @pattern-js/mod-chat — the admin Conversations surface's dedicated routes.
  *
  * One purposeful route per screen and action — no generic op invoker. Each is a
  * normal workflow (request → extract → chat.admin.* op → status → response)
@@ -8,7 +8,7 @@
  * workflows and the manifest can't drift.
  */
 
-import { fromParams, httpEndpoint, type Workflow } from "@pattern/core";
+import { fromParams, httpEndpoint, type Workflow } from "@pattern-js/core";
 
 const API = "/admin/api";
 

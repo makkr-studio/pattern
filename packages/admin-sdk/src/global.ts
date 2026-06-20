@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — the Tier-2 runtime global (admin internals §6, §12).
+ * @pattern-js/admin-sdk — the Tier-2 runtime global (admin internals §6, §12).
  *
  * The admin SPA exposes its shared dependencies on `globalThis.__PATTERN_ADMIN__`
  * so Tier-2 ESM remotes don't bundle their own React or re-implement the visual

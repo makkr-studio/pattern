@@ -1,4 +1,4 @@
-/** @pattern/mod-docs — options & defaults. */
+/** @pattern-js/mod-docs — options & defaults. */
 
 export interface DocsModOptions {
   /** Where the docs app mounts (UI + API under here). Default "/docs". */

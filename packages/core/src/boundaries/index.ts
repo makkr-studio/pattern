@@ -4,7 +4,7 @@
  * Boundaries connect the graph to the outside world. The op **contracts and
  * payload schemas live here in core**; the **host** that binds an external
  * source to a trigger and writes the out-gate result is the runtime adapter
- * (`@pattern/runtime-node`). This keeps core runtime-neutral and serves
+ * (`@pattern-js/runtime-node`). This keeps core runtime-neutral and serves
  * distribution.
  *
  * Triggers have no graph inputs — their outputs are seeded from the external

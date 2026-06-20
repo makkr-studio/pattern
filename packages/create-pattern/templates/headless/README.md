@@ -51,5 +51,5 @@ npx pattern graph workflows/hello.json
 ```
 
 Working with a coding agent? `AGENTS.md` carries the route and op-authoring
-contracts. Want a visual control plane later? Add `@pattern/mod-admin` to the
+contracts. Want a visual control plane later? Add `@pattern-js/mod-admin` to the
 config — the admin appears at `/admin`.

@@ -25,11 +25,11 @@ exact mechanics, the cited source files are the source of truth.
    main loop via a `node:worker_threads` pool, so one run can't block the host and
    runs can be distributed. Individual ops are *not* independently isolated — the
    unit of parallelism is the whole workflow.
-4. **Runtime-neutral core, thin Node adapter.** `@pattern/core` is plain
+4. **Runtime-neutral core, thin Node adapter.** `@pattern-js/core` is plain
    TypeScript over Web-standard APIs only (Web Streams, `AbortController`,
    `fetch`/`Request`/`Response`, `crypto.subtle`) — no platform code. The narrow
    runtime surface (HTTP/WS server, worker spawning, sqlite, the filesystem) lives
-   behind `@pattern/runtime-node`. Keeping the core neutral means platform code has
+   behind `@pattern-js/runtime-node`. Keeping the core neutral means platform code has
    exactly one home, and an alternate adapter is an isolated drop-in, not a fork.
 
 ### Execution model
@@ -105,7 +105,7 @@ writes. Out-gates are where an in-process stream becomes an external wire format
 
 The boundary **contracts and payload schemas live in core**
 (`core/src/boundaries/`); the **hosts** that bind an external source to a trigger
-and write the out-gate result live in `@pattern/runtime-node` (HTTP, WebSocket,
+and write the out-gate result live in `@pattern-js/runtime-node` (HTTP, WebSocket,
 CLI, schedule). Boundary configuration is **declarative**: an HTTP route's method,
 path, port, CORS, and body/query JSON-Schema all live in the
 `boundary.http.request` node's config, and the host derives its route table by
@@ -137,14 +137,14 @@ anonymous returns the boundary's unauthorized form (HTTP 401, CLI nonzero exit)
 without executing the graph. Auth *flows* are ordinary workflows (an OAuth callback
 is an HTTP trigger + provider ops). **User storage is a mod concern** — core defines
 only `Principal` and `AuthProvider`, which is what keeps every auth paradigm open
-(see [`@pattern/mod-identity`](/docs/identity)).
+(see [`@pattern-js/mod-identity`](/docs/identity)).
 
 ## Observability
 
 One trace per run, one span per node — OTLP-*shaped* but zero-dependency (core
 ships its own span types, not the OpenTelemetry SDK). The engine **emits** to a
 subscribable `TraceSink` and stores nothing itself; subscribe with
-`engine.onTrace(sink)`. `@pattern/runtime-node` ships sinks that persist when you
+`engine.onTrace(sink)`. `@pattern-js/runtime-node` ships sinks that persist when you
 want it — JSONL and a SQLite `TraceStore` — so the admin's run inspector and replay
 have durable history, while the core stays emit-don't-persist. Opt-in span I/O
 sampling (capped, secret-masked) powers the run-replay data peeks.
@@ -167,22 +167,22 @@ hold from day one:
 
 ## Package map
 
-The bulk lives in `@pattern/core`; everything else is a thin adapter or an optional
+The bulk lives in `@pattern-js/core`; everything else is a thin adapter or an optional
 mod you `engine.use()`.
 
 | Package | Role |
 |---------|------|
-| `@pattern/core` | Runtime-neutral engine: types, validation, scheduler, streams, the base op catalog, boundaries, hooks/events, auth, observability. One dependency: Zod. |
-| `@pattern/runtime-node` | The Node adapter: HTTP/WS/CLI/schedule hosts, the worker pool, the filesystem, trace sinks, `loadProject`, the `pattern` CLI. |
-| `@pattern/admin-sdk` | The stable extension surface mod UIs import (typed client, UI kit, menu/page/command helpers). |
-| `@pattern/mod-admin` | The self-reflecting control surface at `/admin` — see its [internals](/docs/admin). |
-| `@pattern/mod-docs` | These docs: a served handbook + the generated op reference + `/docs/llms.txt`. |
-| `@pattern/mod-identity`, `@pattern/mod-auth-magic-link` | Identity kernel + a reference login method. |
-| `@pattern/mod-store`, `@pattern/mod-vault` | Persistence (documents/blobs/leases) + encrypted secrets. |
-| `@pattern/mod-agents`, `@pattern/mod-agents-openai` | Neutral agent contracts + an OpenAI provider. |
-| `@pattern/mod-chat` | The chat application. |
-| `@pattern/mod-sample` | The anatomy-of-a-mod reference (ops + routes + a Tier-1 *and* Tier-2 admin page). |
-| `@pattern/create-pattern` | The scaffolder CLI (`npm create pattern`). |
+| `@pattern-js/core` | Runtime-neutral engine: types, validation, scheduler, streams, the base op catalog, boundaries, hooks/events, auth, observability. One dependency: Zod. |
+| `@pattern-js/runtime-node` | The Node adapter: HTTP/WS/CLI/schedule hosts, the worker pool, the filesystem, trace sinks, `loadProject`, the `pattern` CLI. |
+| `@pattern-js/admin-sdk` | The stable extension surface mod UIs import (typed client, UI kit, menu/page/command helpers). |
+| `@pattern-js/mod-admin` | The self-reflecting control surface at `/admin` — see its [internals](/docs/admin). |
+| `@pattern-js/mod-docs` | These docs: a served handbook + the generated op reference + `/docs/llms.txt`. |
+| `@pattern-js/mod-identity`, `@pattern-js/mod-auth-magic-link` | Identity kernel + a reference login method. |
+| `@pattern-js/mod-store`, `@pattern-js/mod-vault` | Persistence (documents/blobs/leases) + encrypted secrets. |
+| `@pattern-js/mod-agents`, `@pattern-js/mod-agents-openai` | Neutral agent contracts + an OpenAI provider. |
+| `@pattern-js/mod-chat` | The chat application. |
+| `@pattern-js/mod-sample` | The anatomy-of-a-mod reference (ops + routes + a Tier-1 *and* Tier-2 admin page). |
+| `@pattern-js/create-pattern` | The scaffolder CLI (`npm create pattern`). |
 
 ## Decisions of record
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { Engine, IDENTITY_SERVICE, type Workflow } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
+import { Engine, IDENTITY_SERVICE, type Workflow } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
 import { identityMod } from "../src/mod.js";
 import type { IdentityService } from "../src/service.js";
 

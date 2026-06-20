@@ -48,7 +48,7 @@ my-app/
 `src/index.ts` is deliberately tiny:
 
 ```ts
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { start } = await loadProject();   // reads pattern.config.json
 await start();                           // opens a server per declared port

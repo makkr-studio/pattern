@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ReactFlow, Background, Controls, ReactFlowProvider, type Edge as RFEdge } from "@xyflow/react";
-import type { SpanData } from "@pattern/admin-sdk";
+import type { SpanData } from "@pattern-js/admin-sdk";
 import { useOps, useRun, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap, type ReplayState } from "../editor/graph";
 import { OpNode } from "../editor/OpNode";

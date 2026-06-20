@@ -3,10 +3,10 @@
  * plus a couple of sample workflows so the catalog/editor/runs have content.
  * Run after `pnpm build:backend && pnpm build:app`:  node scripts/serve-dev.mjs
  */
-import { Engine } from "@pattern/core";
-import { createHttpHost, memoryFs } from "@pattern/runtime-node";
-import { adminMod } from "@pattern/mod-admin";
-import sampleMod from "@pattern/mod-sample";
+import { Engine } from "@pattern-js/core";
+import { createHttpHost, memoryFs } from "@pattern-js/runtime-node";
+import { adminMod } from "@pattern-js/mod-admin";
+import sampleMod from "@pattern-js/mod-sample";
 import { fileURLToPath } from "node:url";
 
 const distApp = fileURLToPath(new URL("../dist-app", import.meta.url));

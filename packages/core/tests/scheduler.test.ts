@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern-js/core";
 
 /** Build + run a workflow on a fresh engine, returning the first out-gate result. */
 async function run(wf: Workflow, input: Record<string, unknown> = {}, params?: Record<string, unknown>) {

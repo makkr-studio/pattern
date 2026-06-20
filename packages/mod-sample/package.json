@@ -1,5 +1,5 @@
 {
-  "name": "@pattern/mod-sample",
+  "name": "@pattern-js/mod-sample",
   "version": "0.2.0",
   "description": "A throwaway sample mod that extends the admin (Tier-1 page + ⌘K command + Tier-2 ESM remote) with zero admin-core changes — the admin internals M10 proof.",
   "type": "module",
@@ -22,8 +22,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pattern/core": "workspace:*",
-    "@pattern/runtime-node": "workspace:*",
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {

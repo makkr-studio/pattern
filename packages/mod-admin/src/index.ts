@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — an authorable, self-reflecting control surface for a
+ * @pattern-js/mod-admin — an authorable, self-reflecting control surface for a
  * Pattern engine (admin internals).
  *
  * The admin is a **mod**: a brick you `engine.use()` (install with
@@ -46,8 +46,8 @@ export {
   MemoryTraceStore as MemoryTraceSink, // deprecated alias
   type MemoryTraceStoreOptions,
   type MemoryTraceStoreOptions as MemoryTraceSinkOptions, // deprecated alias
-} from "@pattern/runtime-node";
-export type { MetricsSummary, LatencyStats, RunDetail, RunSummary, TraceStore } from "@pattern/core";
+} from "@pattern-js/runtime-node";
+export type { MetricsSummary, LatencyStats, RunDetail, RunSummary, TraceStore } from "@pattern-js/core";
 
 // Ops, endpoints, introspection, services (admin internals §10, §11, §3)
 export { adminOps } from "./backend/ops/index.js";

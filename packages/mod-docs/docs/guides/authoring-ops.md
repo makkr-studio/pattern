@@ -20,7 +20,7 @@ Most ops await some value inputs, compute, and return one value. `pureOp`
 captures that shape:
 
 ```ts
-import { pureOp, required, z } from "@pattern/core";
+import { pureOp, required, z } from "@pattern-js/core";
 
 export const slugify = pureOp({
   type: "app.slugify",
@@ -42,7 +42,7 @@ For streaming, control, multiple outputs, or sub-workflow invocation, author
 against `OpDefinition` with `defineOp`:
 
 ```ts
-import { defineOp, stream, value, z } from "@pattern/core";
+import { defineOp, stream, value, z } from "@pattern-js/core";
 
 export const lines = defineOp({
   type: "app.lines",
@@ -143,7 +143,7 @@ const mapped = "value" in res ? res.value : undefined;
 A mod contributes ops, auth providers, hooks, and workflows behind one object:
 
 ```ts
-import type { PatternMod } from "@pattern/core";
+import type { PatternMod } from "@pattern-js/core";
 
 const mod: PatternMod = {
   name: "my-mod",

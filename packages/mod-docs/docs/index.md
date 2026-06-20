@@ -23,7 +23,7 @@ Four defining properties:
 1. **Workflows are data, not code.** Just op references + config; the engine never evals anything.
 2. **Ops carry the code.** Each node is an instance of an op — typed input/output ports + an `execute`.
 3. **The workflow is the unit of isolation.** A whole run can execute off the host loop via a worker pool.
-4. **Runtime-neutral core, Node adapter.** Core is plain TypeScript over Web standards; all platform code lives in `@pattern/runtime-node`.
+4. **Runtime-neutral core, Node adapter.** Core is plain TypeScript over Web standards; all platform code lives in `@pattern-js/runtime-node`.
 
 ## The central idea: three edge kinds
 
@@ -43,7 +43,7 @@ pulse named control-outs instead. Crossing value↔stream is explicit:
 ## Hello, Pattern
 
 ```ts
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern-js/core";
 
 const greeting: Workflow = {
   id: "greeting",

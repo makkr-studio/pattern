@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, defineOp, stream, value, z, type Workflow } from "@pattern/core";
+import { Engine, defineOp, stream, value, z, type Workflow } from "@pattern-js/core";
 
 async function run(engine: Engine, wf: Workflow, input: Record<string, unknown> = {}) {
   engine.registerWorkflow(wf);

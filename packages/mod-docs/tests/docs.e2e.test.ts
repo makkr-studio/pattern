@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Engine, type PatternMod } from "@pattern/core";
+import { Engine, type PatternMod } from "@pattern-js/core";
 
 // Boots a host without an auth provider → the host warns that requireAuth routes
 // (the docs auth gate) aren't enforced. Not under test here; silence it.
 beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
-import { createHttpHost, memoryFs, provideFilesystem } from "@pattern/runtime-node";
+import { createHttpHost, memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
 import { docsMod } from "../src/index.js";
 
 /**
@@ -84,7 +84,7 @@ describe("docs contribution seam (3rd-party e2e)", () => {
     };
 
     // The handbook (mod-docs's own chapter, via the same seam) opens the book.
-    expect(manifest.chapters[0]).toMatchObject({ mod: "@pattern/mod-docs", title: "Pattern", slug: "docs" });
+    expect(manifest.chapters[0]).toMatchObject({ mod: "@pattern-js/mod-docs", title: "Pattern", slug: "docs" });
     expect(manifest.adminMount).toBe("/admin");
 
     const fake = manifest.chapters.find((c) => c.mod === "@acme/mod-fake")!;
@@ -186,7 +186,7 @@ describe("llms.txt + search index (agent-readable docs)", () => {
     const text = await res.text();
 
     // Chapters in order: the handbook before the fake mod's chapter.
-    const handbookAt = text.indexOf("# Chapter: Pattern (@pattern/mod-docs)");
+    const handbookAt = text.indexOf("# Chapter: Pattern (@pattern-js/mod-docs)");
     const fakeAt = text.indexOf("# Chapter: Fake Mod (@acme/mod-fake)");
     expect(handbookAt).toBeGreaterThan(-1);
     expect(fakeAt).toBeGreaterThan(handbookAt);

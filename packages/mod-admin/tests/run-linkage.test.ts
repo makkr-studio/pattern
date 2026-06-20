@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
+import { Engine, type Workflow } from "@pattern-js/core";
 import { MemoryTraceSink } from "../src/index.js";
 
 /**

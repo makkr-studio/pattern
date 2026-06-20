@@ -8,7 +8,7 @@
  *   VERDACCIO_REGISTRY=http://localhost:4873 node scripts/verdaccio-publish.mjs
  *
  * Notes
- * - Versions are kept in lockstep across @pattern/core, @pattern/runtime-node,
+ * - Versions are kept in lockstep across @pattern-js/core, @pattern-js/runtime-node,
  *   and create-pattern, bumped within 0.1.x so the templates' `^0.1.0` deps
  *   resolve to the freshly-published version.
  * - `runtime-node`'s `workspace:*` dep on core is converted to the real version

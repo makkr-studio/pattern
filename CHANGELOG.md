@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to the Pattern framework. The packages release together; a
-version here applies across `@pattern/*` and `create-pattern` unless noted.
+version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
 ## 0.2.0 — Docs, DX & Agent Experience
 
@@ -9,7 +9,7 @@ A documentation, developer-experience, and agent-experience pass ahead of the
 public release.
 
 - **One documentation home.** The handbook, op reference, and every mod's chapter
-  now live in `@pattern/mod-docs` (served at `/docs`, shipped as markdown in each
+  now live in `@pattern-js/mod-docs` (served at `/docs`, shipped as markdown in each
   package). The original root `docs/` folder and the `pattern-engine-spec.md` /
   `mod-admin-spec.md` design specs were retired — their durable content moved into
   the docs mod as the **Architecture** and **Admin internals** chapters.
@@ -36,7 +36,7 @@ public release.
 The initial implementation of the engine, the Node adapter, the admin, and the
 mod ecosystem, released as a lockstep `0.1.x` series.
 
-### Engine & runtime (`@pattern/core`, `@pattern/runtime-node`)
+### Engine & runtime (`@pattern-js/core`, `@pattern-js/runtime-node`)
 
 - Runtime-neutral engine: typed ports/ops/workflows with Zod; load-time validation
   with human-readable, located errors; the scheduler (value barriers, control
@@ -58,7 +58,7 @@ mod ecosystem, released as a lockstep `0.1.x` series.
   /`redactConfig` masking, opt-in trace I/O sampling, and the serving-apps
   multi-instance / namespace routing.
 
-### Admin (`@pattern/mod-admin`, `@pattern/admin-sdk`)
+### Admin (`@pattern-js/mod-admin`, `@pattern-js/admin-sdk`)
 
 - A self-reflecting control surface where every endpoint is a workflow: control
   plane + filesystem-backed workflow store, content-addressed versioning with one
@@ -68,22 +68,22 @@ mod ecosystem, released as a lockstep `0.1.x` series.
   op browser, graph editor (connection assist, problems panel, save→version→deploy),
   runs with span waterfall / I/O peek / live SSE tail / on-canvas replay, versions
   + diff, system map, metrics.
-- `@pattern/admin-sdk`: the typed client over the workflow-backed endpoints (incl.
+- `@pattern-js/admin-sdk`: the typed client over the workflow-backed endpoints (incl.
   the SSE tail), the extension helpers, and the Tier-1 declarative / Tier-2 ESM
-  remote page surface — proven by `@pattern/mod-sample` extending the admin with
+  remote page surface — proven by `@pattern-js/mod-sample` extending the admin with
   zero admin-core changes.
 
 ### Mods
 
-- `@pattern/mod-identity` + `@pattern/mod-auth-magic-link` — users, revocable
+- `@pattern-js/mod-identity` + `@pattern-js/mod-auth-magic-link` — users, revocable
   sessions, roles→scopes, a single-use token kernel, bootstrap-on-first-boot, and
   email magic-link login.
-- `@pattern/mod-store` + `@pattern/mod-vault` — document collections with declared
+- `@pattern-js/mod-store` + `@pattern-js/mod-vault` — document collections with declared
   indexes, a blob store, CAS leases; and encrypted-at-rest secrets masked out of
   run samples.
-- `@pattern/mod-agents` + `@pattern/mod-agents-openai` — the neutral agent
+- `@pattern-js/mod-agents` + `@pattern-js/mod-agents-openai` — the neutral agent
   contracts and turn protocol, tools-as-workflows, MCP servers, and the OpenAI
   provider with streaming, HITL approvals, and history compaction.
-- `@pattern/mod-chat` — a complete chat application with a streaming transcript,
+- `@pattern-js/mod-chat` — a complete chat application with a streaming transcript,
   HITL approvals, image input, refresh-recovery, and a forkable turn pipeline.
-- `@pattern/mod-docs` — the self-reflecting documentation host.
+- `@pattern-js/mod-docs` — the self-reflecting documentation host.

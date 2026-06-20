@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { OpInfo, RunResult, WorkflowDoc } from "@pattern/admin-sdk";
+import type { OpInfo, RunResult, WorkflowDoc } from "@pattern-js/admin-sdk";
 import { api } from "../lib/api";
 import { Badge, Dot, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
 import { JsonCode } from "../components/JsonCode";

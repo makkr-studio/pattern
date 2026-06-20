@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OpContext } from "@pattern/core";
+import type { OpContext } from "@pattern-js/core";
 import { resolveApiKey } from "../src/ops.js";
 
 function ctxWith(env: Record<string, string | undefined>, services: Record<string, unknown> = {}): OpContext {

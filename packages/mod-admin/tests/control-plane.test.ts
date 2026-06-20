@@ -3,14 +3,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
-import { memoryFs } from "@pattern/runtime-node";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { memoryFs } from "@pattern-js/runtime-node";
 import {
   DefaultControlPlane,
   FlystorageWorkflowStore,
   diffWorkflows,
   contentHash,
-} from "@pattern/mod-admin";
+} from "@pattern-js/mod-admin";
 
 function httpWorkflow(id: string, path: string, body = "ok"): Workflow {
   return {

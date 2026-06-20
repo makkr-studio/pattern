@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type AuthProvider, type Principal } from "@pattern/core";
+import { Engine, type AuthProvider, type Principal } from "@pattern-js/core";
 
 const headerProvider: AuthProvider = {
   name: "header",

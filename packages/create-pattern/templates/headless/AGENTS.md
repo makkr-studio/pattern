@@ -116,7 +116,7 @@ named filesystem in a mod's `setup`, then declare the app trio:
 
 ```js
 // in a mod's setup(engine):
-import { provideFilesystem, localFs } from "@pattern/runtime-node";
+import { provideFilesystem, localFs } from "@pattern-js/runtime-node";
 provideFilesystem(engine, "my-app", localFs("./app/dist"));
 ```
 
@@ -134,7 +134,7 @@ The host resolves the app **once at registration**, so a rebuilt SPA needs a
 restart — in dev, run the frontend's own dev server (Vite) for HMR and proxy
 `/api` + `/auth` to the backend (`changeOrigin: false`, so magic-link callbacks
 resolve to the dev origin). `app/dist` must exist at boot, so build it first.
-(`@pattern/mod-admin` is the living example of this same trio — it just
+(`@pattern-js/mod-admin` is the living example of this same trio — it just
 registers imperatively because it ships as a package; an app author declares the
 workflow file instead.)
 
@@ -145,7 +145,7 @@ Ops live in **mods**. This project has an app-local mod at
 `pattern.config.json` → `mods`). Minimal contract (plain ESM, no build step):
 
 ```js
-/** @type {import("@pattern/core").PatternMod} */
+/** @type {import("@pattern-js/core").PatternMod} */
 export default {
   name: "my-mod",
   ops: [
@@ -167,7 +167,7 @@ input), `ctx.config` (validated config object), `ctx.signal` (AbortSignal —
 respect it in loops/timers). Return `{ portName: value }`. For streams, return
 a `ReadableStream` on a `{ kind: "stream" }` port.
 
-TypeScript mods can use the typed helpers from `@pattern/core`
+TypeScript mods can use the typed helpers from `@pattern-js/core`
 (`pureOp`, `defineOp`, `required`, `value`, `stream`, `z`) — same shape,
 Zod-typed ports and config.
 
@@ -176,7 +176,7 @@ workflow and `npx pattern validate` it.
 
 ## Recipe: protect routes (identity)
 
-`npm i @pattern/mod-identity @pattern/mod-auth-magic-link`, list both in
+`npm i @pattern-js/mod-identity @pattern-js/mod-auth-magic-link`, list both in
 `pattern.config.json` mods. Then on any route trigger:
 `"config": { …, "requireAuth": true }` (or `{ "scopes": ["admin"] }`).
 First boot prints a one-time bootstrap link; **bootstrap is a two-step
@@ -206,5 +206,5 @@ src/index.ts          # loadProject() → start()
 3. One-off run without HTTP: `engine.run("<id>", { trigger: "<nodeId>", input: {...} })`.
 
 Want a visual editor, versioned deploys, and run traces on top of this exact
-project? Add `@pattern/mod-admin` to `pattern.config.json` mods (and
+project? Add `@pattern-js/mod-admin` to `pattern.config.json` mods (and
 `package.json`) — the admin appears at `/admin`.

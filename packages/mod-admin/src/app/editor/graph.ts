@@ -1,5 +1,5 @@
 import type { Edge as RFEdge, Node as RFNode } from "@xyflow/react";
-import type { OpInfo, PortInfo, WorkflowDoc } from "@pattern/admin-sdk";
+import type { OpInfo, PortInfo, WorkflowDoc } from "@pattern-js/admin-sdk";
 
 export type OpMap = Map<string, OpInfo>;
 

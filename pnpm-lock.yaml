@@ -17,17 +17,17 @@ importers:
 
   packages/admin-sdk:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
       react:
         specifier: '>=19'
         version: 19.2.7
     devDependencies:
-      '@pattern/mod-admin':
+      '@pattern-js/mod-admin':
         specifier: workspace:*
         version: link:../mod-admin
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       typescript:
@@ -62,20 +62,20 @@ importers:
 
   packages/mod-admin:
     dependencies:
-      '@pattern/admin-sdk':
+      '@pattern-js/admin-sdk':
         specifier: workspace:*
         version: link:../admin-sdk
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
         specifier: ^4.0.0
         version: 4.4.3
     devDependencies:
-      '@pattern/mod-sample':
+      '@pattern-js/mod-sample':
         specifier: workspace:*
         version: link:../mod-sample
       '@tailwindcss/vite':
@@ -141,10 +141,10 @@ importers:
 
   packages/mod-agents:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -163,13 +163,13 @@ importers:
       '@openai/agents':
         specifier: ^0.11.0
         version: 0.11.6(ws@8.21.0)(zod@4.4.3)
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/mod-agents':
+      '@pattern-js/mod-agents':
         specifier: workspace:*
         version: link:../mod-agents
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
     devDependencies:
@@ -182,13 +182,13 @@ importers:
 
   packages/mod-auth-magic-link:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/mod-identity':
+      '@pattern-js/mod-identity':
         specifier: workspace:*
         version: link:../mod-identity
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -204,16 +204,16 @@ importers:
 
   packages/mod-chat:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/mod-agents':
+      '@pattern-js/mod-agents':
         specifier: workspace:*
         version: link:../mod-agents
-      '@pattern/mod-store':
+      '@pattern-js/mod-store':
         specifier: workspace:*
         version: link:../mod-store
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -253,10 +253,10 @@ importers:
 
   packages/mod-docs:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -308,10 +308,10 @@ importers:
 
   packages/mod-identity:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -327,10 +327,10 @@ importers:
 
   packages/mod-sample:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -343,10 +343,10 @@ importers:
 
   packages/mod-store:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -362,10 +362,10 @@ importers:
 
   packages/mod-vault:
     dependencies:
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
-      '@pattern/runtime-node':
+      '@pattern-js/runtime-node':
         specifier: workspace:*
         version: link:../runtime-node
       zod:
@@ -390,7 +390,7 @@ importers:
       '@flystorage/local-fs':
         specifier: ^1.2.0
         version: 1.2.0
-      '@pattern/core':
+      '@pattern-js/core':
         specifier: workspace:*
         version: link:../core
       ws:

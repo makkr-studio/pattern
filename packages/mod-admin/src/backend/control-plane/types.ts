@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — control-plane contracts (admin internals §9).
+ * @pattern-js/mod-admin — control-plane contracts (admin internals §9).
  *
  * These are the data shapes the admin's backend speaks in. The `ControlPlane`
  * and `WorkflowStore` are internal *services* (registered on the engine), not an
@@ -8,7 +8,7 @@
  * later without touching the ops.
  */
 
-import type { Principal, Workflow, WorkflowSource } from "@pattern/core";
+import type { Principal, Workflow, WorkflowSource } from "@pattern-js/core";
 
 /** A workflow document, as authored/stored. Re-exported alias for spec parity. */
 export type WorkflowDoc = Workflow;

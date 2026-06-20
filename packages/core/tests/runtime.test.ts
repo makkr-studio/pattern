@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, defineOp, required, value, z, type Workflow } from "@pattern/core";
+import { Engine, defineOp, required, value, z, type Workflow } from "@pattern-js/core";
 
 /** Hook listener that appends `label` to payload.order. */
 function tagListener(id: string, label: string): Workflow {

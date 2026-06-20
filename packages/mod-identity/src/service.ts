@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the identity service (§9).
+ * @pattern-js/mod-identity — the identity service (§9).
  *
  * Registered on the engine under core's `IDENTITY_SERVICE` key; consumed by
  * this mod's ops, by provider mods (magic-link, oidc…) and by the admin's
@@ -12,7 +12,7 @@
  * map applies on the next request — sessions store no scopes.
  */
 
-import type { ConnectionRegistry } from "@pattern/core";
+import type { ConnectionRegistry } from "@pattern-js/core";
 import type { ResolvedIdentityOptions } from "./options.js";
 import type { IdentityStores, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
 import { UniqueViolationError } from "./store/types.js";

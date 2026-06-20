@@ -50,6 +50,6 @@ in the admin. The agent, its tools, and its guardrails are graph nodes.
 
 - **Tune the agent**, **add a guardrail**, **require sign-in**, or **fork the
   turn pipeline** — `AGENTS.md` has the recipes (your coding agent reads it too).
-- **The handbook** at `/docs` (add `@pattern/mod-docs` if you didn't): the
+- **The handbook** at `/docs` (add `@pattern-js/mod-docs` if you didn't): the
   *Agents & chat* chapter and the *Chat* chapter (customizing, multiple
   branded instances) go deeper.

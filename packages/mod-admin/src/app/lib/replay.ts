@@ -1,4 +1,4 @@
-import type { SpanData } from "@pattern/admin-sdk";
+import type { SpanData } from "@pattern-js/admin-sdk";
 import type { ReplayState } from "../editor/graph";
 
 /**

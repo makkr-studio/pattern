@@ -1,5 +1,5 @@
-import { memoryFs, provideFilesystem } from "@pattern/runtime-node";
-import type { Engine, Workflow } from "@pattern/core";
+import { memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
+import type { Engine, Workflow } from "@pattern-js/core";
 
 /**
  * The Tier-2 custom page — an ESM remote the admin loads at runtime.

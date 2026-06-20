@@ -1,4 +1,4 @@
-/** @pattern/mod-docs — public surface. */
+/** @pattern-js/mod-docs — public surface. */
 
 export { docsMod } from "./backend/mod.js";
 export { default } from "./backend/mod.js";

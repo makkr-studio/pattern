@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-vault — the mod.
+ * @pattern-js/mod-vault — the mod.
  *
  * `setup` opens the store, builds the service with the engine's
  * `registerSecretValue` wired in (every decrypted value joins the sample-mask
@@ -9,8 +9,8 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
-import { defineMod, type Engine, type PatternMod } from "@pattern/core";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
 import { resolveOptions, type VaultOptions } from "./options.js";
 import { DefaultVaultService } from "./service.js";
 import { vaultOps } from "./ops.js";
@@ -34,7 +34,7 @@ export function vaultMod(options: VaultOptions = {}): PatternMod {
   const opts = resolveOptions(options);
 
   return defineMod({
-    name: "@pattern/mod-vault",
+    name: "@pattern-js/mod-vault",
     docs: { filesystem: "vault-docs", title: "Vault", order: 31 },
     ops: vaultOps,
     // The Secrets screen's dedicated routes — one purposeful endpoint per

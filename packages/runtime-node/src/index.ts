@@ -1,10 +1,10 @@
 /**
- * @pattern/runtime-node — the Node runtime adapter for Pattern.
+ * @pattern-js/runtime-node — the Node runtime adapter for Pattern.
  *
  * Thin by design: it binds external sources (HTTP, WebSocket, CLI, schedule) to
  * boundary triggers, provides a worker-thread pool transport for isolation, a
  * socket-bound connection registry, and optional persistence sinks. All
- * platform code lives here so `@pattern/core` stays runtime-neutral (§4, §7).
+ * platform code lives here so `@pattern-js/core` stays runtime-neutral (§4, §7).
  */
 
 export { HttpHost, createHttpHost, type HttpHostOptions } from "./http.js";
@@ -63,5 +63,5 @@ export {
   type OpStat,
 } from "./load/index.js";
 
-// Re-export the Engine for convenience so apps can `import { Engine } from "@pattern/runtime-node"`.
-export { Engine, createEngine } from "@pattern/core";
+// Re-export the Engine for convenience so apps can `import { Engine } from "@pattern-js/runtime-node"`.
+export { Engine, createEngine } from "@pattern-js/core";

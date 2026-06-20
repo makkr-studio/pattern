@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents-openai — MCP server pool.
+ * @pattern-js/mod-agents-openai — MCP server pool.
  *
  * MCP connections are LONG-LIVED (handshake + tool discovery are expensive);
  * runs are short. The pool keys servers by their descriptor (a stable JSON
@@ -8,7 +8,7 @@
  */
 
 import { MCPServerStdio, MCPServerStreamableHttp, type MCPServer } from "@openai/agents";
-import type { ToolRef } from "@pattern/mod-agents";
+import type { ToolRef } from "@pattern-js/mod-agents";
 
 type McpRef = Extract<ToolRef, { origin: "mcp" }>;
 

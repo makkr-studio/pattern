@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SettingsSection as ModSection } from "@pattern/admin-sdk";
+import type { SettingsSection as ModSection } from "@pattern-js/admin-sdk";
 import { api } from "../lib/api";
 import { useManifest } from "../lib/queries";
 import { useTheme, type ThemeMode } from "../lib/theme";

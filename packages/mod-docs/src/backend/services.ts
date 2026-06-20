@@ -1,4 +1,4 @@
-/** @pattern/mod-docs — well-known names. */
+/** @pattern-js/mod-docs — well-known names. */
 
 /** The built docs SPA (dist-app), served by `boundary.http.app`. */
 export const DOCS_ASSETS_FS = "docs-assets";

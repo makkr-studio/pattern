@@ -1,7 +1,7 @@
 /**
- * @pattern/mod-docs — shapes shared between the backend and the SPA.
+ * @pattern-js/mod-docs — shapes shared between the backend and the SPA.
  *
- * `DocsNavItem` mirrors @pattern/core's contract (re-declared here so the app
+ * `DocsNavItem` mirrors @pattern-js/core's contract (re-declared here so the app
  * bundle never imports core). Phase B adds the introspection shapes
  * (OpInfo/PortInfo/ModInfo) used by the generated reference.
  */

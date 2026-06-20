@@ -73,23 +73,23 @@ interface Modpack {
 }
 
 /** What the auth toggle adds (pack card lines + config wiring). */
-const AUTH_MODS = ["@pattern/mod-identity", "@pattern/mod-auth-magic-link"];
+const AUTH_MODS = ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link"];
 
 /** What the docs toggle adds: self-reflecting documentation at /docs. */
-const DOCS_MOD = "@pattern/mod-docs";
+const DOCS_MOD = "@pattern-js/mod-docs";
 
 /** One-line technical role per mod — shown beside each in the manifest card. */
 const MOD_ROLES: Record<string, string> = {
-  "@pattern/mod-admin": "visual editor, run traces, /admin control plane",
-  "@pattern/mod-agents": "agent ops: agent · run · tools · guardrail",
-  "@pattern/mod-agents-openai": "OpenAI provider for the agent ops",
-  "@pattern/mod-agents(-openai)": "agent ops (agent · run · tools) on OpenAI",
-  "@pattern/mod-store": "durable state (sqlite): conversations, blobs, leases",
-  "@pattern/mod-vault": "encrypted secrets — holds OPENAI_API_KEY",
-  "@pattern/mod-chat": "the /chat product; its turn pipeline is a workflow",
-  "@pattern/mod-identity": "users, sessions, roles → scopes",
-  "@pattern/mod-auth-magic-link": "magic-link login (console fallback in dev)",
-  "@pattern/mod-docs": "/docs: handbook + a live op reference",
+  "@pattern-js/mod-admin": "visual editor, run traces, /admin control plane",
+  "@pattern-js/mod-agents": "agent ops: agent · run · tools · guardrail",
+  "@pattern-js/mod-agents-openai": "OpenAI provider for the agent ops",
+  "@pattern-js/mod-agents(-openai)": "agent ops (agent · run · tools) on OpenAI",
+  "@pattern-js/mod-store": "durable state (sqlite): conversations, blobs, leases",
+  "@pattern-js/mod-vault": "encrypted secrets — holds OPENAI_API_KEY",
+  "@pattern-js/mod-chat": "the /chat product; its turn pipeline is a workflow",
+  "@pattern-js/mod-identity": "users, sessions, roles → scopes",
+  "@pattern-js/mod-auth-magic-link": "magic-link login (console fallback in dev)",
+  "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
 };
@@ -158,7 +158,7 @@ const MODPACKS: Modpack[] = [
     label: "Studio",
     hint: "a visual workspace at /admin — build, version, run & trace workflows in the browser (recommended)",
     tagline: "the engine + mod-admin — a visual editor, run traces & a versioned workflow store at /admin",
-    mods: ["@pattern/mod-admin", "./mods/quotes.mjs (app-local)"],
+    mods: ["@pattern-js/mod-admin", "./mods/quotes.mjs (app-local)"],
     exampleSummary: "3 editable example workflows + an app-local mod (ops + an admin page)",
     serves: () => ["/admin"],
     env: [],
@@ -192,10 +192,10 @@ const MODPACKS: Modpack[] = [
     hint: "build agentic workflows in the editor — agent/run/tools ops + vault + store; no chat UI",
     tagline: "Studio + the agent stack — build agentic workflows (agent · run · tools) in the editor",
     mods: [
-      "@pattern/mod-agents(-openai)",
-      "@pattern/mod-store",
-      "@pattern/mod-vault",
-      "@pattern/mod-admin",
+      "@pattern-js/mod-agents(-openai)",
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
+      "@pattern-js/mod-admin",
     ],
     exampleSummary: "an agentic workflow (POST /ask → agent + tool) + a get_time tool",
     serves: (ex) => (ex ? ["/admin", "/ask"] : ["/admin"]),
@@ -230,11 +230,11 @@ const MODPACKS: Modpack[] = [
     hint: "a chat product at /chat — tools, guardrails, HITL — the turn pipeline is an agentic workflow",
     tagline: "Studio + Agents + mod-chat — the /chat product whose turn pipeline is an agentic workflow",
     mods: [
-      "@pattern/mod-chat",
-      "@pattern/mod-agents(-openai)",
-      "@pattern/mod-store",
-      "@pattern/mod-vault",
-      "@pattern/mod-admin",
+      "@pattern-js/mod-chat",
+      "@pattern-js/mod-agents(-openai)",
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
+      "@pattern-js/mod-admin",
     ],
     exampleSummary: "two example chat tools (get_time, get_weather)",
     serves: () => ["/chat", "/admin"],
@@ -620,7 +620,7 @@ const BLANK_INDEX = `/**
  * \`pattern.config.json\`) and \`loadProject\` hands back a ready \`engine\`. See
  * AGENTS.md for the shape, and \`npx pattern ops\` for every op you can wire.
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { engine } = await loadProject();
 void engine;
@@ -639,7 +639,7 @@ const HEADLESS_INDEX = `/**
  * route/trigger; \`start()\` derives them and opens a server per declared port.
  * Drop a \`.json\` in \`workflows/\` (see AGENTS.md); \`npm run dev\` reloads it.
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { start } = await loadProject();
 const { ports } = await start();
@@ -654,12 +654,12 @@ console.log(
 const STUDIO_INDEX = `/**
  * __NAME__ — a Pattern engine wearing its admin.
  *
- * \`@pattern/mod-admin\` gives you the visual control plane at /admin (editor,
+ * \`@pattern-js/mod-admin\` gives you the visual control plane at /admin (editor,
  * runs, observability). Author workflows there — they're versioned into
  * \`./.pattern\` (commit it: it's your deployable workflow store). Add app-local
  * ops or an admin page with a mod in \`mods/\` (see AGENTS.md).
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { start } = await loadProject();
 
@@ -1031,8 +1031,8 @@ function buildModIndex(pieces: ModPieces, vars: { pkgName: string; name: string;
     imp.push(`import { existsSync } from "node:fs";`);
     imp.push(`import { fileURLToPath } from "node:url";`);
   }
-  imp.push(`import { defineMod } from "@pattern/core";`);
-  if (pieces.docs) imp.push(`import { localFs, provideFilesystem } from "@pattern/runtime-node";`);
+  imp.push(`import { defineMod } from "@pattern-js/core";`);
+  if (pieces.docs) imp.push(`import { localFs, provideFilesystem } from "@pattern-js/runtime-node";`);
   if (pieces.ops) imp.push(`import { itemsList } from "./ops.js";`);
   const routes: string[] = [];
   if (pieces.ops && pieces.workflows) routes.push("itemsRoute");

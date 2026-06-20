@@ -1,11 +1,11 @@
-import { httpEndpoint, type Workflow } from "@pattern/core";
+import { httpEndpoint, type Workflow } from "@pattern-js/core";
 
 /**
  * Routes are workflows that front a pure op — the op stays HTTP-free.
  * `httpEndpoint` emits the canonical shape (request → op → response); `io.out`
  * names the op output that becomes the body. For input routes, map a request
  * part with `io: { in: { portName: fromParams() }, out: "..." }` (also
- * `fromQuery` / `fromBody`, importable from `@pattern/core`).
+ * `fromQuery` / `fromBody`, importable from `@pattern-js/core`).
  */
 
 /** Public API route — `GET /api/{{name}}/items`. Works without the admin. */

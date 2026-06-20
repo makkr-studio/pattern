@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-vault — ops.
+ * @pattern-js/mod-vault — ops.
  *
  * `vault.read` is the canvas node: name in config, decrypted value out
  * (registered into the engine's sample mask before it flows anywhere). The
@@ -8,7 +8,7 @@
  * list/status never return secret material.
  */
 
-import { secret, value, z, type OpContext, type OpDefinition } from "@pattern/core";
+import { secret, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { vaultService } from "./well-known.js";
 
 const recordSchema = z.record(z.string(), z.unknown());

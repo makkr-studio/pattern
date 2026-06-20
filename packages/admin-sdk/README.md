@@ -1,6 +1,6 @@
-# @pattern/admin-sdk
+# @pattern-js/admin-sdk
 
-The stable surface admin UIs and mods import to extend [`@pattern/mod-admin`](../mod-admin)
+The stable surface admin UIs and mods import to extend [`@pattern-js/mod-admin`](../mod-admin)
 (see the [admin internals](../mod-admin/docs/internals.md) §6, §12) — the adoption lever.
 
 > **This release ships the framework-agnostic core**: the wire-protocol types, a
@@ -12,7 +12,7 @@ The stable surface admin UIs and mods import to extend [`@pattern/mod-admin`](..
 ## Typed client
 
 ```ts
-import { createAdminClient } from "@pattern/admin-sdk";
+import { createAdminClient } from "@pattern-js/admin-sdk";
 
 const api = createAdminClient({ baseUrl: "/admin" }); // uses global fetch
 
@@ -38,7 +38,7 @@ Inject `fetch` and `headers` for non-browser hosts / auth. Errors throw
 ## Extension helpers
 
 ```ts
-import { buildNav, MenuRegistry, CommandRegistry, defineDeclarativePage } from "@pattern/admin-sdk";
+import { buildNav, MenuRegistry, CommandRegistry, defineDeclarativePage } from "@pattern-js/admin-sdk";
 
 const nav = buildNav(menuEntries); // → ordered NavSection[] (category union, order then label)
 
@@ -50,4 +50,4 @@ const page = defineDeclarativePage("/x/metrics", { kind: "table", source: "mymod
 ```
 
 Menu/page/command **types** (`MenuEntry`, `PageDef`, `DeclarativeView`, `CommandDef`)
-come from `@pattern/core` (the `PatternMod.frontend` contract), re-exported here.
+come from `@pattern-js/core` (the `PatternMod.frontend` contract), re-exported here.

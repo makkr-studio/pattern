@@ -1,12 +1,12 @@
 /**
- * @pattern/mod-identity — admin screens (Tier-1 declarative, zero build).
+ * @pattern-js/mod-identity — admin screens (Tier-1 declarative, zero build).
  *
  * Users / Invite / Sessions under an "Access" category. Every view and action
  * names its own dedicated route (see `./admin-routes.ts`) — there is no generic
  * op invoker; the routes are admin-scope-gated and the ops re-check scopes too.
  */
 
-import type { FrontendContribution } from "@pattern/core";
+import type { FrontendContribution } from "@pattern-js/core";
 import { PATHS } from "./admin-routes.js";
 
 export function identityFrontend(): FrontendContribution {

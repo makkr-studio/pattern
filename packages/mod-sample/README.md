@@ -1,4 +1,4 @@
-# @pattern/mod-sample
+# @pattern-js/mod-sample
 
 The in-repo example mod for [Pattern](../../README.md) — read it to learn the mod
 contract end to end. It extends the admin with a **Tier-1 declarative page**, a
@@ -21,12 +21,12 @@ boot), a declarative `frontend` block (data, not React), `docs`, and a
 To see it live in a dev project, add it as a string in `pattern.config.json`:
 
 ```jsonc
-{ "mods": ["@pattern/mod-sample"] }
+{ "mods": ["@pattern-js/mod-sample"] }
 ```
 
 It mounts a Tier-2 bundle under `/ext` and adds an "Examples → Greetings" admin
 page reading a purposeful `/admin/api/sample/greetings` route.
 
 Full documentation: the **Sample — anatomy of a mod** chapter at `/docs` (served
-by `@pattern/mod-docs`), or [the source](docs/index.md). To build your own, see
+by `@pattern-js/mod-docs`), or [the source](docs/index.md). To build your own, see
 [Create a third-party mod](../mod-docs/docs/guides/creating-a-mod.md).

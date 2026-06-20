@@ -1,13 +1,13 @@
-# @pattern/mod-agents-openai
+# @pattern-js/mod-agents-openai
 
 The OpenAI provider for [Pattern](../../README.md)'s agents layer — it reifies
-the neutral `@pattern/mod-agents` descriptors with the `@openai/agents` SDK:
+the neutral `@pattern-js/mod-agents` descriptors with the `@openai/agents` SDK:
 streaming runs, tools (workflow / MCP / op), guardrails, handoffs, history
 compaction, and human-in-the-loop approvals. `agents.agent` builds a plain-JSON
 descriptor; `agents.run` reifies and runs it.
 
 ```bash
-npm install @pattern/mod-agents-openai
+npm install @pattern-js/mod-agents-openai
 ```
 
 ## When to use
@@ -22,9 +22,9 @@ plain model-call op is lighter.
 
 ## Prerequisites
 
-- **`@pattern/mod-agents`** — required; the mod throws on startup without it.
+- **`@pattern-js/mod-agents`** — required; the mod throws on startup without it.
 - An `OPENAI_API_KEY` — resolved from a wired `apiKey` input, the environment
-  (`loadProject` auto-loads a `.env`), or a `@pattern/mod-vault` secret *named*
+  (`loadProject` auto-loads a `.env`), or a `@pattern-js/mod-vault` secret *named*
   `OPENAI_API_KEY`. Missing key is a loud pre-flight failure.
 
 ## Config
@@ -32,11 +32,11 @@ plain model-call op is lighter.
 The provider needs the contracts — add both as strings in `pattern.config.json`:
 
 ```jsonc
-{ "mods": ["@pattern/mod-agents", "@pattern/mod-agents-openai"] }
+{ "mods": ["@pattern-js/mod-agents", "@pattern-js/mod-agents-openai"] }
 ```
 
 For options, export a local wrapper mod that calls the `agentsOpenAIMod({...})`
 factory.
 
 Full documentation: the **Agents (OpenAI provider)** chapter at `/docs` (served
-by `@pattern/mod-docs`), or [the source](docs/index.md).
+by `@pattern-js/mod-docs`), or [the source](docs/index.md).

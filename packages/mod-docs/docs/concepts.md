@@ -84,7 +84,7 @@ dormant.
 
 The boundary **contracts** live in core (`core/src/boundaries/`);
 the **hosts** that bind them (HTTP, WebSocket, CLI, schedule) live in
-`@pattern/runtime-node`. This keeps core
+`@pattern-js/runtime-node`. This keeps core
 runtime-neutral and serves distribution.
 
 Boundary configuration is **declarative** — e.g. an HTTP route's method, path,
@@ -112,7 +112,7 @@ form a registry chain; triggers may declare `requireAuth`, enforced by the host
 
 One trace per run, one span per node, OTLP-*shaped* but zero-dependency. The
 engine **emits** to a subscribable `TraceSink` and stores nothing. Subscribe with
-`engine.onTrace(sink)`; `@pattern/runtime-node` ships JSONL and SQLite sinks.
+`engine.onTrace(sink)`; `@pattern-js/runtime-node` ships JSONL and SQLite sinks.
 
 ## Distribution (invariant, not a v1 feature)
 

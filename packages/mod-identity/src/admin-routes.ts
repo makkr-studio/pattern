@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the admin screens' dedicated routes.
+ * @pattern-js/mod-identity — the admin screens' dedicated routes.
  *
  * One purposeful route per screen and action (Users / Sessions / Invite /
  * Settings, plus whoami) — no generic op invoker. Each is a normal workflow
@@ -10,7 +10,7 @@
  * single-sourced here so the workflows and the manifest can't drift.
  */
 
-import { fromBody, fromParams, httpEndpoint, type Workflow } from "@pattern/core";
+import { fromBody, fromParams, httpEndpoint, type Workflow } from "@pattern-js/core";
 
 const API = "/admin/api";
 

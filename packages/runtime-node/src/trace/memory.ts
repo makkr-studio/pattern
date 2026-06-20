@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — in-memory trace store (§10).
+ * @pattern-js/runtime-node — in-memory trace store (§10).
  *
  * A bounded ring buffer of recent runs (+ their node spans) plus rolling
  * aggregates: windowed run/error counters and a per-workflow latency histogram.
@@ -23,7 +23,7 @@ import {
   type SpanData,
   type TraceStore,
   type TraceStoreConfig,
-} from "@pattern/core";
+} from "@pattern-js/core";
 
 interface InProgress {
   summary: RunSummary;

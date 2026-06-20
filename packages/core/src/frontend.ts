@@ -3,7 +3,7 @@
  *
  * A mod may contribute UI to a frontend host (the admin) declaratively. These
  * types are the *data* shape of that contribution; they are deliberately
- * **React-free** so `@pattern/core` keeps zero UI dependencies. `@pattern/admin-sdk`
+ * **React-free** so `@pattern-js/core` keeps zero UI dependencies. `@pattern-js/admin-sdk`
  * re-types the Tier-2 `element` loader with the concrete `React.ComponentType`.
  *
  * The admin host aggregates `frontend` across all installed mods: menu entries
@@ -35,7 +35,7 @@ export interface MenuEntry {
  * A reference to a dedicated route workflow — the *only* way a declarative
  * surface reaches data or runs an action. There is no generic "run any op"
  * endpoint: every exposure is its own purposeful, named route (see
- * `httpEndpoint` in `@pattern/core`). The `path` is relative to the admin API
+ * `httpEndpoint` in `@pattern-js/core`). The `path` is relative to the admin API
  * (e.g. "/store/collections/:collection/docs"); `:tokens` are filled from the
  * page's route params or a row's mapped `args`, and any leftover args become the
  * query string (GET/DELETE) or JSON body (POST/PUT).
@@ -147,7 +147,7 @@ export type DeclarativeView =
  * A page contributed by a mod. Tier 1 carries a declarative `view` (or a
  * stacked list of `views` for detail-style pages); Tier 2 carries an
  * `element` — a loader for a built ESM module whose default export is a
- * component (typed concretely in `@pattern/admin-sdk`).
+ * component (typed concretely in `@pattern-js/admin-sdk`).
  *
  * Paths may carry `:params` (`/x/identity/users/:userId`): the host matches
  * them like routes and passes the extracted params as args to every view's

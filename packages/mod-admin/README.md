@@ -1,4 +1,4 @@
-# @pattern/mod-admin
+# @pattern-js/mod-admin
 
 An authorable, self-reflecting **control surface** for a Pattern engine — workflow
 authoring, live deploy, run inspection, versioning, and a catalog of everything
@@ -13,9 +13,9 @@ position.
 ## Install
 
 ```ts
-import { Engine } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
-import { adminMod } from "@pattern/mod-admin";
+import { Engine } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
+import { adminMod } from "@pattern-js/mod-admin";
 
 const engine = new Engine();
 // useAsync so the mod's async setup (services + bootstrap) completes first.

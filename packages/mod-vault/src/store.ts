@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-vault — secret rows (sqlite + memory drivers, one table).
+ * @pattern-js/mod-vault — secret rows (sqlite + memory drivers, one table).
  *
  * Rows hold ciphertext + iv only; names and dates are the listable surface.
  * Writes are last-wins upserts (rotation = write the same name again).
@@ -103,7 +103,7 @@ export async function sqliteVaultStore(filePath: string): Promise<VaultStore> {
   }
   if (!DatabaseSync) {
     throw new Error(
-      "node:sqlite is not available in this Node build — @pattern/mod-vault needs Node ≥22.5. " +
+      "node:sqlite is not available in this Node build — @pattern-js/mod-vault needs Node ≥22.5. " +
         "For tests, use memoryVaultStore().",
     );
   }

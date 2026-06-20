@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — storage layer (admin-spec P1/§3), backed by **flystorage**.
+ * @pattern-js/runtime-node — storage layer (admin-spec P1/§3), backed by **flystorage**.
  *
  * `boundary.http.app` serves static assets and the admin's `WorkflowStore`
  * persists workflow JSON — both over flystorage's `FileStorage`, the universal
@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 import { FileStorage } from "@flystorage/file-storage";
 import { LocalStorageAdapter } from "@flystorage/local-fs";
 import { InMemoryStorageAdapter } from "@flystorage/in-memory";
-import type { Engine } from "@pattern/core";
+import type { Engine } from "@pattern-js/core";
 
 export { FileStorage } from "@flystorage/file-storage";
 export type { StatEntry, FileInfo } from "@flystorage/file-storage";

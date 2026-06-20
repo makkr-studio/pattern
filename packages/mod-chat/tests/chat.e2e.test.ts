@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // These boot a host without an auth provider, so the host correctly warns that
 // chat's admin routes aren't enforced — not what we're testing here; silence it.
 beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
-import { Engine, resolvePorts, type Workflow } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
-import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
-import { agentsMod, AGENTS_SERVICE, type AgentsService, type TurnEvent } from "@pattern/mod-agents";
-import { agentsOpenAIMod, MODEL_PROVIDER_SERVICE } from "@pattern/mod-agents-openai";
+import { Engine, resolvePorts, type Workflow } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
+import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
+import { agentsMod, AGENTS_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
+import { agentsOpenAIMod, MODEL_PROVIDER_SERVICE } from "@pattern-js/mod-agents-openai";
 import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
 import { scriptedProvider, type ScriptedTurn } from "../../mod-agents-openai/tests/scripted-model.js";
 

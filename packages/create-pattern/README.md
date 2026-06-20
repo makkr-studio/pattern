@@ -37,18 +37,18 @@ Pick by **how much you want running** — the five sit on one ladder:
 |---------|----|-----------------------------|--------------|
 | **Engine only** | `blank` | — | a program, no server — run a workflow from code and watch it print |
 | **Headless server** | `headless` | the HTTP/WS/CLI host | a running server, no UI — serve workflows as endpoints |
-| **Studio** | `studio` | `@pattern/mod-admin` | a visual workspace at `/admin` — build, version, run & trace workflows |
+| **Studio** | `studio` | `@pattern-js/mod-admin` | a visual workspace at `/admin` — build, version, run & trace workflows |
 | **Studio + Agents** | `agentic` | the agent stack (agents + store + vault) | build **agentic workflows** (`agents.agent` → `agents.run`, tools as workflows) in the editor — no chat UI |
-| **Studio + Agentic Chat** | `agent-chat` | `@pattern/mod-chat` | a chat product at `/chat` — tools, guardrails, HITL; its turn pipeline is an agentic workflow |
+| **Studio + Agentic Chat** | `agent-chat` | `@pattern-js/mod-chat` | a chat product at `/chat` — tools, guardrails, HITL; its turn pipeline is an agentic workflow |
 
 Run `create-pattern --list` for the ladder, or `--dry-run` to print the exact
 manifest (mods + roles, generated files, endpoints, env) for any selection
 without writing anything.
 
 **Auth & docs are dimensions, not packs**: where the pack serves HTTP, prompts
-offer the identity brick (`@pattern/mod-identity` +
-`@pattern/mod-auth-magic-link`) and the self-documenting `/docs` site
-(`@pattern/mod-docs`). First boot prints a one-time link; the first account
+offer the identity brick (`@pattern-js/mod-identity` +
+`@pattern-js/mod-auth-magic-link`) and the self-documenting `/docs` site
+(`@pattern-js/mod-docs`). First boot prints a one-time link; the first account
 becomes admin; sign-in links print to the console until you wire real delivery.
 `headless` with auth also gets a protected `GET /whoami` route demoing
 `requireAuth` + the trigger's `user` port.

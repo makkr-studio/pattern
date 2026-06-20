@@ -7,8 +7,8 @@
  */
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineMod } from "@pattern/core";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
+import { defineMod } from "@pattern-js/core";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
 import { itemsList } from "./ops.js";
 import { itemsRoute, itemsAdminRoute } from "./routes.js";
 import { frontendTier1 } from "./frontend.js";

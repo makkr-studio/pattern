@@ -1,12 +1,12 @@
 /**
- * @pattern/mod-agents — the mod. Registers the boundary.tool pair, the
+ * @pattern-js/mod-agents — the mod. Registers the boundary.tool pair, the
  * neutral toolset/guardrail ops, and the live tool registry (AGENTS_SERVICE).
  */
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
-import { defineMod, type Engine, type PatternMod } from "@pattern/core";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
 import { agentBoundaryOps } from "./boundaries.js";
 import { agentsOps } from "./ops.js";
 import { AgentsRegistry } from "./service.js";
@@ -25,7 +25,7 @@ function packagedDocs(engine: Engine): void {
 
 export function agentsMod(): PatternMod {
   return defineMod({
-    name: "@pattern/mod-agents",
+    name: "@pattern-js/mod-agents",
     docs: { filesystem: "agents-docs", title: "Agents", order: 50 },
     ops: [...agentBoundaryOps, ...agentsOps],
     setup: (engine: Engine) => {

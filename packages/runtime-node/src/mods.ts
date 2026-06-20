@@ -1,11 +1,11 @@
 /**
- * @pattern/runtime-node — mod loading (§13, §16/14).
+ * @pattern-js/runtime-node — mod loading (§13, §16/14).
  *
  * Loads "mods" (plugins) and installs them into an engine. A mod is any module
  * that exports a `PatternMod` (default export, or named `mod`). Three sources,
  * all the same mechanism:
  *
- *  - **1st-party** mods in this monorepo (`@pattern/mod-*`) — a bare specifier.
+ *  - **1st-party** mods in this monorepo (`@pattern-js/mod-*`) — a bare specifier.
  *  - **3rd-party** mods published to npm — a bare specifier (an npm dependency).
  *  - **app-local** mods — a relative path (`./mods/foo.ts`), resolved against a
  *    base dir (the app root / config location).
@@ -16,7 +16,7 @@
 
 import { pathToFileURL } from "node:url";
 import { resolve, isAbsolute } from "node:path";
-import type { Engine, PatternMod } from "@pattern/core";
+import type { Engine, PatternMod } from "@pattern-js/core";
 
 export interface LoadModsOptions {
   /** Base dir for resolving relative (app-local) mod specifiers. Default cwd. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FlightRecorder, summarize, type RequestSample } from "@pattern/runtime-node";
-import type { SpanData } from "@pattern/core";
+import { FlightRecorder, summarize, type RequestSample } from "@pattern-js/runtime-node";
+import type { SpanData } from "@pattern-js/core";
 
 /** A finished node span for the recorder. */
 function span(op: string, ms: number, status: "ok" | "error" = "ok"): SpanData {

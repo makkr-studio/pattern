@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { RunSummary, SpanData, SpanIoSample } from "@pattern/admin-sdk";
+import type { RunSummary, SpanData, SpanIoSample } from "@pattern-js/admin-sdk";
 import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
 import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";

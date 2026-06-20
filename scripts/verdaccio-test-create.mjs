@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Test `create-pattern` end-to-end against a local Verdaccio registry: scaffold a
- * project, install its deps (pulling the freshly-published @pattern/* packages),
+ * project, install its deps (pulling the freshly-published @pattern-js/* packages),
  * and optionally run it.
  *
  *   node scripts/verdaccio-test-create.mjs                       # blank modpack, install + run

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the admin's own frontend contribution (admin internals §6).
+ * @pattern-js/mod-admin — the admin's own frontend contribution (admin internals §6).
  *
  * The admin builds its nav from the *same* `FrontendContribution` surface mods
  * use (dogfooding = proof the surface is sufficient). The declarative pages here
@@ -7,7 +7,7 @@
  * `assets` points at the registered filesystem the SPA is served from.
  */
 
-import type { FrontendContribution } from "@pattern/core";
+import type { FrontendContribution } from "@pattern-js/core";
 
 const ASSETS_FS = "admin-assets";
 

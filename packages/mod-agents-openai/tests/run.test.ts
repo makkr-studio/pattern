@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Engine, type TraceSink, type Workflow } from "@pattern/core";
-import { agentsMod, type TurnEvent } from "@pattern/mod-agents";
+import { Engine, type TraceSink, type Workflow } from "@pattern-js/core";
+import { agentsMod, type TurnEvent } from "@pattern-js/mod-agents";
 import { agentsOpenAIMod } from "../src/mod.js";
 import { MODEL_PROVIDER_SERVICE } from "../src/well-known.js";
 import { scriptedProvider, type ScriptedTurn } from "./scripted-model.js";

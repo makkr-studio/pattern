@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type RunHandle, type RunRequest, type RunTransport, type Workflow } from "@pattern/core";
+import { Engine, type RunHandle, type RunRequest, type RunTransport, type Workflow } from "@pattern-js/core";
 
 /**
  * Per-run transport routing: a workflow flagged `offload` dispatches to the

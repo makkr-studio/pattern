@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — WebSocket host (§7, §9).
+ * @pattern-js/runtime-node — WebSocket host (§7, §9).
  *
  * Node has no built-in WS *server*, so this host uses `ws` on the HTTP upgrade
  * (an adapter-level dependency; core stays clean). It fires a run **per inbound
@@ -28,7 +28,7 @@ import {
   type Principal,
   type RunResult,
   type Workflow,
-} from "@pattern/core";
+} from "@pattern-js/core";
 import { NodeConnectionRegistry } from "./ws-registry.js";
 
 export interface WsBinding {

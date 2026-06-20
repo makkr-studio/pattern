@@ -4,7 +4,7 @@
  * A mod ships its documentation as markdown files INSIDE its npm package —
  * version-locked to the code by construction — registers that folder as a
  * named filesystem in `setup` (the same move as SPA assets), and points at it
- * here. A docs host (`@pattern/mod-docs`) aggregates contributions across all
+ * here. A docs host (`@pattern-js/mod-docs`) aggregates contributions across all
  * installed mods: install a mod, its chapter appears.
  *
  * Like `FrontendContribution`, this is pure DATA — serializable over HTTP,

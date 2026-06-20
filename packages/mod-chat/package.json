@@ -1,5 +1,5 @@
 {
-  "name": "@pattern/mod-chat",
+  "name": "@pattern-js/mod-chat",
   "version": "0.2.0",
   "description": "A complete chat application for Pattern agents: transcript-style SPA (the strand shows tool calls live), conversations + turn event log in mod-store (refresh mid-turn recovers), lease-guarded turns with Stop, image input, HITL approvals — the turn pipeline is a workflow you can fork and rewire.",
   "type": "module",
@@ -25,11 +25,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pattern/core": "workspace:*",
-    "@pattern/mod-agents": "workspace:*",
-    "@pattern/mod-store": "workspace:*",
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/mod-agents": "workspace:*",
+    "@pattern-js/mod-store": "workspace:*",
     "zod": "^4.0.0",
-    "@pattern/runtime-node": "workspace:*"
+    "@pattern-js/runtime-node": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

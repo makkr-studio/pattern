@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — the typed API client (admin internals §12).
+ * @pattern-js/admin-sdk — the typed API client (admin internals §12).
  *
  * A thin, framework-agnostic client over the admin's workflow-backed endpoints.
  * The admin UI's `useApi()` wraps an instance of this; mods get the same surface.

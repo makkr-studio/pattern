@@ -2,7 +2,7 @@
 
 You are working in a **Pattern** project: a workflow engine where logic lives in
 **workflows** (JSON graphs of typed ops) and code lives in **ops** (plain
-functions contributed by mods). This project also runs `@pattern/mod-admin` — a
+functions contributed by mods). This project also runs `@pattern-js/mod-admin` — a
 visual control plane at `/admin` that edits, versions, runs, and observes those
 workflows. Your job is usually one of: add an op, add a route/workflow, or
 extend the admin. Recipes for each are below.
@@ -98,7 +98,7 @@ data, tag it `sensitivity: "privileged"` and the validator warns when a route
 forgets the gate. Decompose inputs to the field with `core.object.get`, but wire
 the op's single domain output straight to the response body (`core.object.build`
 only for genuine projections). Declare each input schema in **one** place. The
-bundled docs (`@pattern/mod-docs` →
+bundled docs (`@pattern-js/mod-docs` →
 `/docs` → *Designing your API*) is the full version.
 
 ## Heavy workflows: Offload to a worker pool
@@ -112,7 +112,7 @@ instead. Tag a compute-bound op `cpuHeavy: true` and the editor nudges toward
 Offload. Enable the pool in `pattern.config.json`: `"workers": 2` (number =
 size, or `{ "size", "mods" }`); with none configured, `offload` is a no-op.
 Offloaded runs use the worker's own services, can't reach live WebSocket
-sockets, and aren't pausable. (`@pattern/mod-docs` → *Projects & mods* →
+sockets, and aren't pausable. (`@pattern-js/mod-docs` → *Projects & mods* →
 *Execution model* is the full version.)
 
 ## Recipe: serve your own frontend
@@ -133,7 +133,7 @@ extend it or add a sibling file (then list it in `pattern.config.json` →
 `mods`). Minimal contract (plain ESM, no build step):
 
 ```js
-/** @type {import("@pattern/core").PatternMod} */
+/** @type {import("@pattern-js/core").PatternMod} */
 export default {
   name: "my-mod",
   ops: [
@@ -155,7 +155,7 @@ input), `ctx.config` (validated config object), `ctx.signal` (AbortSignal —
 respect it in loops/timers). Return `{ portName: value }`. For streams, return
 a `ReadableStream` on a `{ kind: "stream" }` port.
 
-TypeScript mods can use the typed helpers from `@pattern/core`
+TypeScript mods can use the typed helpers from `@pattern-js/core`
 (`pureOp`, `defineOp`, `required`, `value`, `stream`, `z`) — same shape,
 Zod-typed ports and config.
 
@@ -209,10 +209,10 @@ query (GET) or JSON body (POST). `mods/quotes.mjs` is a complete worked example.
 Add the identity mods to `pattern.config.json`:
 
 ```jsonc
-{ "mods": ["@pattern/mod-identity", "@pattern/mod-auth-magic-link", "@pattern/mod-admin", "./mods/quotes.mjs"] }
+{ "mods": ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link", "@pattern-js/mod-admin", "./mods/quotes.mjs"] }
 ```
 
-(`npm i @pattern/mod-identity @pattern/mod-auth-magic-link` first.) What you get:
+(`npm i @pattern-js/mod-identity @pattern-js/mod-auth-magic-link` first.) What you get:
 
 - **First boot** prints a one-time `/auth/bootstrap?t=…` link → first user
   becomes admin. Bootstrap is a **two-step** flow (the GET renders a form, the

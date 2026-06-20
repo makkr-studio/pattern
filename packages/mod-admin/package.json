@@ -1,5 +1,5 @@
 {
-  "name": "@pattern/mod-admin",
+  "name": "@pattern-js/mod-admin",
   "version": "0.2.0",
   "description": "Pattern admin mod — authorable, self-reflecting control surface (control plane, workflow store, run inspection).",
   "type": "module",
@@ -34,9 +34,9 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@pattern/core": "workspace:*",
-    "@pattern/runtime-node": "workspace:*",
-    "@pattern/admin-sdk": "workspace:*",
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
+    "@pattern-js/admin-sdk": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {
@@ -60,6 +60,6 @@
     "@testing-library/react": "^16.1.0",
     "@testing-library/dom": "^10.4.0",
     "happy-dom": "^15.11.0",
-    "@pattern/mod-sample": "workspace:*"
+    "@pattern-js/mod-sample": "workspace:*"
   }
 }

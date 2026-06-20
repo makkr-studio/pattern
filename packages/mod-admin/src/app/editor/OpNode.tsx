@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Handle, Position, useNodeConnections, useUpdateNodeInternals, type NodeProps, type Node } from "@xyflow/react";
 import { MessageSquare, Settings2 } from "lucide-react";
-import type { PortInfo } from "@pattern/admin-sdk";
+import type { PortInfo } from "@pattern-js/admin-sdk";
 import { CONTROL_IN, CONTROL_OUT, type OpNodeData } from "./graph";
 import { usePortHandlers } from "./hover";
 import { portFill, portTypeLabel } from "../lib/format";

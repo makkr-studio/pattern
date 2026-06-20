@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFlow, FRAME_TYPE, makeFrameNode, PORTAL_TYPE, tidyLayout, toDoc } from "../src/app/editor/graph";
 import { contentHash, diffWorkflows } from "../src/backend/control-plane/versioning";
-import type { WorkflowDoc } from "@pattern/admin-sdk";
+import type { WorkflowDoc } from "@pattern-js/admin-sdk";
 
 /**
  * Frames are PURE ANNOTATION: they round-trip through the canvas untouched,

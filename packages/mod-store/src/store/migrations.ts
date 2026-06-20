@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — schema migrations.
+ * @pattern-js/mod-store — schema migrations.
  *
  * Same shape as mod-identity's: hand-written SQL, versioned by array
  * position, applied transactionally past the recorded version. Append-only.

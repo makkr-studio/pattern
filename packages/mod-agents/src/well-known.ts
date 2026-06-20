@@ -1,12 +1,12 @@
 /**
- * @pattern/mod-agents — the well-known service seam.
+ * @pattern-js/mod-agents — the well-known service seam.
  *
  * Provider mods (mod-agents-openai…) and consumers (mod-chat) meet here:
  * the tool registry lives on AGENTS_SERVICE; nobody imports a provider mod
  * to find tools.
  */
 
-import type { OpContext } from "@pattern/core";
+import type { OpContext } from "@pattern-js/core";
 import type { ToolRef } from "./types.js";
 
 export const AGENTS_SERVICE = "agentsService";
@@ -56,7 +56,7 @@ export function agentsService(ctx: OpContext): AgentsService {
   const svc = ctx.services[AGENTS_SERVICE] as AgentsService | undefined;
   if (!svc) {
     throw new Error(
-      'agent ops need @pattern/mod-agents installed — add "@pattern/mod-agents" to your pattern.config.json mods',
+      'agent ops need @pattern-js/mod-agents installed — add "@pattern-js/mod-agents" to your pattern.config.json mods',
     );
   }
   return svc;

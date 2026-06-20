@@ -1,17 +1,17 @@
-# @pattern/runtime-node
+# @pattern-js/runtime-node
 
 The Node runtime adapter for [Pattern](../../README.md). Thin by design — it binds
 external sources to boundary triggers and provides isolation. All platform code
-lives here so `@pattern/core` stays runtime-neutral.
+lives here so `@pattern-js/core` stays runtime-neutral.
 
 ```bash
-npm install @pattern/core @pattern/runtime-node
+npm install @pattern-js/core @pattern-js/runtime-node
 ```
 
 ## Project loader (recommended)
 
 ```ts
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { engine, start } = await loadProject();  // reads pattern.config.json
 const { ports } = await start();                // derives routes from workflows
@@ -27,8 +27,8 @@ Routing is **declarative**: the HTTP host derives routes from the
 body+query JSON-Schema all in config). No programmatic route table.
 
 ```ts
-import { Engine } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
+import { Engine } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
 
 const engine = new Engine();
 engine.registerWorkflow(api);                 // route declared inside the workflow
@@ -50,7 +50,7 @@ drop-in for the in-process transport. Streamed out-gate results are reconstructe
 on the host; cancellation crosses the seam.
 
 ```ts
-import { WorkerPoolTransport } from "@pattern/runtime-node";
+import { WorkerPoolTransport } from "@pattern-js/runtime-node";
 const engine = new Engine({ transport: new WorkerPoolTransport({ size: 4 }) });
 ```
 

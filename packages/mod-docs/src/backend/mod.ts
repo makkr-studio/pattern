@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-docs — the mod.
+ * @pattern-js/mod-docs — the mod.
  *
  * Registers TWO filesystems in `setup`:
  *  - `docs-assets`  — the built SPA (dist-app), served at the mount
@@ -10,8 +10,8 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineMod, type Engine, type PatternMod } from "@pattern/core";
-import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern/runtime-node";
+import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
+import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern-js/runtime-node";
 import { resolveOptions, type DocsModOptions } from "./options.js";
 import { DocsContent } from "./content.js";
 import { makeDocsOps } from "./ops.js";
@@ -52,7 +52,7 @@ export function docsMod(options: DocsModOptions = {}): PatternMod {
   const content = new DocsContent(() => engineRef, opts);
 
   return defineMod({
-    name: "@pattern/mod-docs",
+    name: "@pattern-js/mod-docs",
     ops: makeDocsOps(() => engineRef, content, opts),
     workflows: [spaWorkflow(opts.mount), ...docsRouteWorkflows(opts)],
     // The handbook chapter — contributed via the public seam, order 0 so the
