@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — connection registry bound to live WebSocket sockets (§7).
+ * @pattern-js/runtime-node — connection registry bound to live WebSocket sockets (§7).
  *
  * Implements core's `ConnectionRegistry` interface. Connections are host-local
  * (like a socket), so this registry is the one place that knows about sockets;
@@ -9,7 +9,7 @@
  */
 
 import type { WebSocket } from "ws";
-import type { ConnectionRef, ConnectionRegistry, Principal } from "@pattern/core";
+import type { ConnectionRef, ConnectionRegistry, Principal } from "@pattern-js/core";
 
 const idOf = (c: ConnectionRef | string): string => (typeof c === "string" ? c : c.id);
 

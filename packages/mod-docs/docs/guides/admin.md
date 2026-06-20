@@ -5,7 +5,7 @@ order: 13
 
 # The admin
 
-`@pattern/mod-admin` is the authorable, self-reflecting **control surface**:
+`@pattern-js/mod-admin` is the authorable, self-reflecting **control surface**:
 workflow authoring on a visual canvas, live deploy, run inspection with
 per-node waterfalls, versioning with diffs, and a catalog of everything in the
 system. It is a **mod** — a brick you add to the config, with no privileged
@@ -13,7 +13,7 @@ position.
 
 ```jsonc
 // pattern.config.json
-{ "mods": ["@pattern/mod-admin"] }
+{ "mods": ["@pattern-js/mod-admin"] }
 ```
 
 The UI lives at `/admin`, the workflow-backed API under `/admin/api/*`.
@@ -74,8 +74,8 @@ setup. Whether it's *enforced* depends on an auth provider:
 - **No provider** → the requirement can't be enforced (nobody can authenticate),
   so the admin serves **advisory-open** and the host **warns loudly on every
   boot**. Good for local work; never silently exposed.
-- **Add `@pattern/mod-identity`** (+ a login method like
-  `@pattern/mod-auth-magic-link`) → the *same* declaration is now enforced, the
+- **Add `@pattern-js/mod-identity`** (+ a login method like
+  `@pattern-js/mod-auth-magic-link`) → the *same* declaration is now enforced, the
   first boot prints a one-time bootstrap link that creates the first admin, and a
   logged-out browser is redirected to `/auth/login`. **You reconfigure nothing**
   — the admin's routes are code-derived each boot; adding the mod and restarting

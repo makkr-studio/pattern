@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, collectIssues, formatGraph, type PatternMod, type Workflow } from "@pattern/core";
+import { Engine, collectIssues, formatGraph, type PatternMod, type Workflow } from "@pattern-js/core";
 
 function issues(wf: unknown) {
   const engine = new Engine();

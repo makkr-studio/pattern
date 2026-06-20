@@ -14,7 +14,7 @@ page, or the docs. The contracts are below.
    (vitest). The test installs the mod into a bare engine.
 3. **`type` ids and the package `name` are public contracts** — namespace ops
    `{{opPrefix}}.*` so they never collide with another mod.
-4. **Standalone package.** `@pattern/core` / `@pattern/runtime-node` / `zod` are
+4. **Standalone package.** `@pattern-js/core` / `@pattern-js/runtime-node` / `zod` are
    **peer** deps (the host provides them). Don't add them as regular deps and
    don't bundle your own copy.
 
@@ -66,7 +66,7 @@ httpEndpoint({
 
 ## The admin page (`src/frontend.ts`, `src/app.ts`)
 
-A `frontend` contribution adds UI to `@pattern/mod-admin` with **no admin
+A `frontend` contribution adds UI to `@pattern-js/mod-admin` with **no admin
 changes**. Two tiers, each bound to a dedicated route:
 
 - **Tier 1** — a declarative `view` (table/form/chart/json/markdown/detail). No

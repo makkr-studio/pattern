@@ -1,4 +1,4 @@
-/** @pattern/mod-agents-openai — public surface. SDK types stay internal. */
+/** @pattern-js/mod-agents-openai — public surface. SDK types stay internal. */
 
 export { agentsOpenAIMod } from "./mod.js";
 export { default } from "./mod.js";

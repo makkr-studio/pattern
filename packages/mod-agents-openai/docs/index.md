@@ -1,6 +1,6 @@
 # Agents (OpenAI provider)
 
-`@pattern/mod-agents-openai` reifies the neutral agent descriptors with the
+`@pattern-js/mod-agents-openai` reifies the neutral agent descriptors with the
 `@openai/agents` SDK: streaming runs, tools (workflow / MCP / op), guardrails,
 handoffs, history compaction, human-in-the-loop approvals, and realtime key
 minting (the voice round's foundation). `agents.agent` builds a plain-JSON
@@ -8,14 +8,14 @@ descriptor (no SDK work); `agents.run` reifies and runs it.
 
 ## When to use
 
-Install this alongside `@pattern/mod-agents` (the contracts + registry —
+Install this alongside `@pattern-js/mod-agents` (the contracts + registry —
 required; the mod throws on startup without it) whenever your provider is
 OpenAI, or anything `ModelProvider`-compatible. It owns the `agents.*` run
 ops; the neutral mod owns the `boundary.tool` pair and toolset ops.
 
 ```jsonc
 // pattern.config.json — provider needs the contracts
-{ "mods": ["@pattern/mod-agents", "@pattern/mod-agents-openai"] }
+{ "mods": ["@pattern-js/mod-agents", "@pattern-js/mod-agents-openai"] }
 ```
 
 **When not:** if you only need a one-shot completion with no tools, no agent
@@ -51,7 +51,7 @@ History is **explicit**: pull it from a store node, pass it into `history`,
 push the updated `history` output back. Agents and conversations are
 different things — keeping items opaque lets the provider use its native
 format losslessly. Input can be a plain string, a parts array
-(`{ text | image_ref }` — image blobs resolve through `@pattern/mod-store`
+(`{ text | image_ref }` — image blobs resolve through `@pattern-js/mod-store`
 into data URLs, so vision works local-first), or pre-shaped provider items.
 
 ## HITL approvals & resume
@@ -90,11 +90,11 @@ blank args are trimmed so they can't `ENOENT`. See the MCP servers guide.
 
 ## Integration
 
-- **`@pattern/mod-agents`** — required; this mod meets it at the
+- **`@pattern-js/mod-agents`** — required; this mod meets it at the
   `AGENTS_SERVICE` seam (tool registry, turn-abort, op tools).
-- **`@pattern/mod-store`** — image parts resolve blob ids through its blob
+- **`@pattern-js/mod-store`** — image parts resolve blob ids through its blob
   service (duck-typed, no hard dependency).
-- **`@pattern/mod-vault`** — the `OPENAI_API_KEY` secret source.
+- **`@pattern-js/mod-vault`** — the `OPENAI_API_KEY` secret source.
 - **`MODEL_PROVIDER_SERVICE`** — a test/swap seam: provide a scripted
   `ModelProvider` and the whole stack runs without an API key (the agent-chat
   demo does this; you could also swap in any compatible backend).

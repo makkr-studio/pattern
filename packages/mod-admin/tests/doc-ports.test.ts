@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine } from "@pattern/core";
+import { Engine } from "@pattern-js/core";
 import { docPorts } from "../src/backend/introspect.js";
 
 /** The editor's dynamic-port source: ports resolved per node CONFIG. */

@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — trace persistence (§10).
+ * @pattern-js/runtime-node — trace persistence (§10).
  *
  * Core emits OTLP-shaped spans and stores nothing. These adapters give that
  * telemetry a home behind core's `TraceStore`: an in-memory ring buffer, a
@@ -10,7 +10,7 @@
  */
 
 import { appendFileSync } from "node:fs";
-import type { SpanData, TraceSink, TraceStore } from "@pattern/core";
+import type { SpanData, TraceSink, TraceStore } from "@pattern-js/core";
 
 export { MemoryTraceStore, type MemoryTraceStoreOptions } from "./memory.js";
 export { SqliteTraceStore, openSqliteTraceStore, type SqliteTraceStoreOptions } from "./sqlite.js";

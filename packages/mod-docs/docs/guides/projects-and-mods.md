@@ -32,7 +32,7 @@ my-app/
 
 ```ts
 // src/index.ts
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { engine, start } = await loadProject();   // reads pattern.config.json
 const { ports } = await start();                 // opens a server per declared port
@@ -183,15 +183,15 @@ Configure the pool in `pattern.config.json` with **`workers`**:
 
 ```jsonc
 {
-  "mods": ["@pattern/mod-sample", "@pattern/mod-admin"],
+  "mods": ["@pattern-js/mod-sample", "@pattern-js/mod-admin"],
   "workers": 2,                                  // pool size; off-loop runs land here
-  // or: "workers": { "size": 2, "mods": ["@pattern/mod-sample"] }
+  // or: "workers": { "size": 2, "mods": ["@pattern-js/mod-sample"] }
 }
 ```
 
 `workers` as a number is the pool size; the object form also picks which mods
 each worker loads (default: the project's `mods`). Exclude host-only mods (e.g.
-`@pattern/mod-admin`) from the worker set via the `{ mods }` form — workers run
+`@pattern-js/mod-admin`) from the worker set via the `{ mods }` form — workers run
 domain ops, not the control plane. **With no `workers` configured, an `offload`
 flag degrades to a graceful no-op** (the run stays inline).
 
@@ -210,7 +210,7 @@ ops, workflows, auth providers, and hooks (bringing a frontend app is a planned
 field):
 
 ```ts
-import { defineMod } from "@pattern/core";
+import { defineMod } from "@pattern-js/core";
 
 export default defineMod({
   name: "uppercase-mod",
@@ -231,7 +231,7 @@ Three sources, one mechanism (`engine.useAsync(mod)` under the hood):
 
 | Source | How |
 |--------|-----|
-| **1st-party** (this monorepo) | published as `@pattern/mod-*`; list the package name |
+| **1st-party** (this monorepo) | published as `@pattern-js/mod-*`; list the package name |
 | **3rd-party** (npm) | install the dependency; list the package name |
 | **app-local** | a file in your app; list a relative path (`./mods/foo.mjs`) |
 

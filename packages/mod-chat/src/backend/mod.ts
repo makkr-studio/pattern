@@ -1,8 +1,8 @@
 /**
- * @pattern/mod-chat — the mod.
+ * @pattern-js/mod-chat — the mod.
  *
- * Needs @pattern/mod-store (conversations, blobs, leases) and an agents
- * provider (@pattern/mod-agents + @pattern/mod-agents-openai) installed
+ * Needs @pattern-js/mod-store (conversations, blobs, leases) and an agents
+ * provider (@pattern-js/mod-agents + @pattern-js/mod-agents-openai) installed
  * alongside. `setup` registers the SPA assets filesystem; `ready` ensures
  * the chat collections (mod-store's setup has run by then, whatever the
  * listing order).
@@ -10,9 +10,9 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { boundaries, defineMod, value, z, type Engine, type OpDefinition, type PatternMod } from "@pattern/core";
-import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern/runtime-node";
-import { STORE_SERVICE, type PatternStores } from "@pattern/mod-store";
+import { boundaries, defineMod, value, z, type Engine, type OpDefinition, type PatternMod } from "@pattern-js/core";
+import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern-js/runtime-node";
+import { STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
 import { resolveInstances, resolveOptions, type ChatModOptions } from "./options.js";
 import { chatOps } from "./ops.js";
 import { chatAdminOps, chatFrontend } from "./admin.js";
@@ -137,7 +137,7 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
   ];
 
   return defineMod({
-    name: "@pattern/mod-chat",
+    name: "@pattern-js/mod-chat",
     docs: { filesystem: "chat-docs", title: "Chat", order: 52 },
     ops,
     workflows,
@@ -151,7 +151,7 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
     ready: async (engine: Engine) => {
       const svc = engine.service<PatternStores>(STORE_SERVICE);
       if (!svc) {
-        throw new Error('@pattern/mod-chat needs @pattern/mod-store — add it to your pattern.config.json mods');
+        throw new Error('@pattern-js/mod-chat needs @pattern-js/mod-store — add it to your pattern.config.json mods');
       }
       await ensureChatCollections(svc);
     },

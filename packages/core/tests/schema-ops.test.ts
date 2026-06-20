@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, TriggerInputError, type Workflow } from "@pattern/core";
+import { Engine, TriggerInputError, type Workflow } from "@pattern-js/core";
 
 describe("core.schema.* — schemas as values (§12)", () => {
   it("core.schema.validate checks a value against a configured schema", async () => {

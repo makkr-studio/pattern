@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";
-import { loadProject, loadWorkflowDir } from "@pattern/runtime-node";
+import { loadProject, loadWorkflowDir } from "@pattern-js/runtime-node";
 
 const fixture = (p: string) => fileURLToPath(new URL(`./fixtures/project/${p}`, import.meta.url));
 

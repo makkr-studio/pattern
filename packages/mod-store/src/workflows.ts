@@ -1,12 +1,12 @@
 /**
- * @pattern/mod-store — shipped workflows.
+ * @pattern-js/mod-store — shipped workflows.
  *
  * One route: GET /store/blobs/:id streams a blob with its stored mime type
  * (chunked). Ids are unguessable UUIDs; gate the route via the mod's
  * `blobRoute.requireAuth` option when that's not enough.
  */
 
-import type { Workflow } from "@pattern/core";
+import type { Workflow } from "@pattern-js/core";
 
 export function blobServeWorkflow(requireAuth?: unknown): Workflow {
   return {

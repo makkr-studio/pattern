@@ -1,9 +1,9 @@
 # Agents (contracts)
 
-`@pattern/mod-agents` is the **neutral** agents layer — plain-JSON
+`@pattern-js/mod-agents` is the **neutral** agents layer — plain-JSON
 descriptors and the turn event protocol, with no SDK dependency. Provider
-mods (like `@pattern/mod-agents-openai`) reify the descriptors into running
-agents; apps (like `@pattern/mod-chat`) consume the events. Neither has to
+mods (like `@pattern-js/mod-agents-openai`) reify the descriptors into running
+agents; apps (like `@pattern-js/mod-chat`) consume the events. Neither has to
 know about the other.
 
 ## When to use
@@ -11,9 +11,9 @@ know about the other.
 Install this whenever you want agents in your app — but you never install it
 *alone*. It contributes the `boundary.tool` pair, the toolset/guardrail ops,
 and the live tool registry (`AGENTS_SERVICE`); it does **not** run an agent.
-Pair it with a provider (`@pattern/mod-agents-openai`) for `agents.agent` /
-`agents.run`, and usually with `@pattern/mod-store` (history + blobs) and
-`@pattern/mod-vault` (the API key).
+Pair it with a provider (`@pattern-js/mod-agents-openai`) for `agents.agent` /
+`agents.run`, and usually with `@pattern-js/mod-store` (history + blobs) and
+`@pattern-js/mod-vault` (the API key).
 
 **When not:** if all you need is a single model call with no tools, no agent
 loop, and no streaming turn events, a provider op straight from the canvas is
@@ -22,7 +22,7 @@ there are tools, handoffs, guardrails, or a live transcript.
 
 ```jsonc
 // pattern.config.json — the contracts always ship with a provider
-{ "mods": ["@pattern/mod-agents", "@pattern/mod-agents-openai"] }
+{ "mods": ["@pattern-js/mod-agents", "@pattern-js/mod-agents-openai"] }
 ```
 
 ## Tools are workflows
@@ -85,13 +85,13 @@ descriptors into SDK instances only at execute time.
 
 ## Integration
 
-- **Provider** (`@pattern/mod-agents-openai`) — meets this mod at the
+- **Provider** (`@pattern-js/mod-agents-openai`) — meets this mod at the
   `AGENTS_SERVICE` service seam: it asks the registry for tools, nobody
   imports a provider to find them. Reifies descriptors → SDK; emits the turn
   events.
-- **`@pattern/mod-store`** — history is opaque provider items pulled from a
+- **`@pattern-js/mod-store`** — history is opaque provider items pulled from a
   store and pushed back; image-part tools resolve blob ids through it.
-- **`@pattern/mod-chat`** — the product surface; its `chat.turn.pipeline`
+- **`@pattern-js/mod-chat`** — the product surface; its `chat.turn.pipeline`
   wires `agents.tools.workflows` → `agents.agent` → `agents.run` and persists
   the event stream.
 
@@ -119,4 +119,4 @@ run → stream the response. The canvas version, end to end:
 ```
 
 For the full agentic app (history, persistence, approvals, Stop), use
-`@pattern/mod-chat` — its turn pipeline is this shape, hardened.
+`@pattern-js/mod-chat` — its turn pipeline is this shape, hardened.

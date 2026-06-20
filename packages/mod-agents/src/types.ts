@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents — the neutral contracts.
+ * @pattern-js/mod-agents — the neutral contracts.
  *
  * Two families of shapes, both PLAIN JSON (structured-cloneable: they flow on
  * edges and may cross worker boundaries — provider SDK objects never do; a
@@ -15,7 +15,7 @@
  * parts into string messages is the painful version.
  */
 
-import { z } from "@pattern/core";
+import { z } from "@pattern-js/core";
 
 /* ── message parts ─────────────────────────────────────────────────────── */
 

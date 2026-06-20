@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { WebSocket } from "ws";
-import { Engine, type Workflow } from "@pattern/core";
-import { WsHost, NodeConnectionRegistry } from "@pattern/runtime-node";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { WsHost, NodeConnectionRegistry } from "@pattern-js/runtime-node";
 
 let server: Server | undefined;
 afterEach(() => {

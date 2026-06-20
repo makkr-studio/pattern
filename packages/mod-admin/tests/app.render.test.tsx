@@ -45,7 +45,7 @@ function seeded(): QueryClient {
     { type: "core.math.add", title: "add", category: "math", inputs: [{ name: "a", kind: "value" }, { name: "b", kind: "value" }], outputs: [{ name: "out", kind: "value" }], controlOut: [], usedBy: 2, reusable: true },
     { type: "admin.workflow.list", title: "admin.workflow.list", category: "admin", inputs: [], outputs: [{ name: "out", kind: "value" }], controlOut: [], usedBy: 1, reusable: false },
   ]);
-  qc.setQueryData(["mods"], [{ name: "@pattern/mod-admin", ops: ["admin.workflow.list"], workflows: ["admin.api.ops.list"], frontend: { menu: 5, pages: 0, commands: 2 } }]);
+  qc.setQueryData(["mods"], [{ name: "@pattern-js/mod-admin", ops: ["admin.workflow.list"], workflows: ["admin.api.ops.list"], frontend: { menu: 5, pages: 0, commands: 2 } }]);
   qc.setQueryData(["system"], { routes: [{ method: "GET", path: "/hello/:name", workflow: "greeting", conflict: false }], apps: [], schedules: [], hooks: [], events: [], ws: [], ports: [3000] });
   qc.setQueryData(["metrics"], { window: { label: "since boot", sinceBoot: true }, runs: 12, errors: 1, errorRate: 0.08, inFlight: 0, runsPerMin: 3.2, perWorkflow: [{ workflowId: "greeting", count: 10, errors: 1, p50: 2, p95: 8, p99: 12, maxMs: 20 }] });
   qc.setQueryData(["runs", { limit: 500 }], [
@@ -93,7 +93,7 @@ describe("SPA pages render", () => {
 
   it("Mods page renders contributions", () => {
     mount(<ModsPage />);
-    expect(screen.getByText("@pattern/mod-admin")).toBeTruthy();
+    expect(screen.getByText("@pattern-js/mod-admin")).toBeTruthy();
   });
 
   it("Runs list renders a run", () => {

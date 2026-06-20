@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — endpoint workflows (admin internals §11).
+ * @pattern-js/mod-admin — endpoint workflows (admin internals §11).
  *
  * The admin API *is* a set of Pattern workflows, and each one is a worked
  * example of the idiom: the op is a PURE domain function with discrete, named
@@ -12,7 +12,7 @@
  * these, so the admin's own backend stays visible + editable inside the admin.
  */
 
-import { z, type Workflow } from "@pattern/core";
+import { z, type Workflow } from "@pattern-js/core";
 import { adminOpRoutes, type InSpec } from "../ops/index.js";
 
 export interface EndpointSpec {

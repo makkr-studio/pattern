@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-docs — chapter aggregation over the engine's docs seam.
+ * @pattern-js/mod-docs — chapter aggregation over the engine's docs seam.
  *
  * Every installed mod with a `docs` contribution becomes a CHAPTER: content is
  * markdown in the mod's registered filesystem (shipped inside its npm package
@@ -12,8 +12,8 @@
  * keeps it live for docs-writing sessions.
  */
 
-import type { DocsContribution, DocsNavItem, Engine } from "@pattern/core";
-import { filesystems, type Filesystem } from "@pattern/runtime-node";
+import type { DocsContribution, DocsNavItem, Engine } from "@pattern-js/core";
+import { filesystems, type Filesystem } from "@pattern-js/runtime-node";
 import type { ResolvedDocsOptions } from "./options.js";
 
 export interface DocsChapter {
@@ -53,7 +53,7 @@ function prettifyName(file: string): string {
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
 
-/** "@pattern/mod-chat" → "chat"; "my-docs-mod" → "my-docs-mod". */
+/** "@pattern-js/mod-chat" → "chat"; "my-docs-mod" → "my-docs-mod". */
 export function slugOf(modName: string): string {
   const short = modName.split("/").pop()!.replace(/^mod-/, "");
   return short.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "mod";
@@ -289,7 +289,7 @@ export class DocsContent {
       const own = chapters.find((c) => c.mod === owningMod);
       if (own) candidates.push(own);
     }
-    const host = chapters.find((c) => c.mod === "@pattern/mod-docs");
+    const host = chapters.find((c) => c.mod === "@pattern-js/mod-docs");
     if (host && !candidates.includes(host)) candidates.push(host);
     for (const chapter of candidates) {
       const fs = this.fs(chapter.filesystem);

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-vault — AES-256-GCM via Web Crypto.
+ * @pattern-js/mod-vault — AES-256-GCM via Web Crypto.
  *
  * Master key: 32 random bytes, base64, from the PATTERN_VAULT_KEY env var
  * (generate with `openssl rand -base64 32`). Fresh 96-bit IV per encryption —

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents — the boundary.tool pair.
+ * @pattern-js/mod-agents — the boundary.tool pair.
  *
  * A tool is a WORKFLOW that starts with `boundary.tool` (name, description,
  * params as JSON Schema — the SchemaBuilder UI in the editor) and ends with
@@ -23,7 +23,7 @@ import {
   z,
   type OpDefinition,
   type Ports,
-} from "@pattern/core";
+} from "@pattern-js/core";
 
 const jsonSchema = z.record(z.string(), z.unknown());
 

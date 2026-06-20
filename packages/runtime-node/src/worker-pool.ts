@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — worker-thread pool transport (§4, §8).
+ * @pattern-js/runtime-node — worker-thread pool transport (§4, §8).
  *
  * A `RunTransport` that dispatches each run to a `node:worker_threads` worker,
  * so a run executes off the host event loop (the workflow is the unit of
@@ -16,7 +16,7 @@
 
 import { Worker } from "node:worker_threads";
 import { availableParallelism } from "node:os";
-import type { RunHandle, RunRequest, RunResult, RunTransport, TraceEvent } from "@pattern/core";
+import type { RunHandle, RunRequest, RunResult, RunTransport, TraceEvent } from "@pattern-js/core";
 
 const WORKER_URL = new URL("./worker/entry.js", import.meta.url);
 

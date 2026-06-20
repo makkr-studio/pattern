@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — HTTP host (§6, §7).
+ * @pattern-js/runtime-node — HTTP host (§6, §7).
  *
  * Routing is **declarative**: the host derives its routes from the
  * `boundary.http.request` nodes of the workflows registered on the engine. Each
@@ -27,7 +27,7 @@ import {
   type RunResult,
   type Workflow,
   type z,
-} from "@pattern/core";
+} from "@pattern-js/core";
 import { filesystems, type Filesystem } from "./filesystem.js";
 
 export interface HttpHostOptions {
@@ -262,7 +262,7 @@ export class HttpHost {
     console.warn(
       `\n[pattern] ⚠ ${gated} route(s) declare requireAuth but NO auth provider is installed —\n` +
         `[pattern]   they are NOT enforced and serve UNAUTHENTICATED (anyone who can reach the\n` +
-        `[pattern]   port has access). Add an auth provider (e.g. @pattern/mod-identity) to enforce\n` +
+        `[pattern]   port has access). Add an auth provider (e.g. @pattern-js/mod-identity) to enforce\n` +
         `[pattern]   them. Routes without requireAuth are unaffected.\n`,
     );
   }

@@ -11,7 +11,7 @@
  * sub-runs, streams, and fan-out that a 1:1 join would mangle.
  */
 
-import type { SpanData, TraceSink } from "@pattern/core";
+import type { SpanData, TraceSink } from "@pattern-js/core";
 import type { FlightRecording, OpStat } from "./types.js";
 
 /** A node span's op type, or null for the run-root span (no op — skip it so

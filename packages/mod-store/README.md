@@ -1,4 +1,4 @@
-# @pattern/mod-store
+# @pattern-js/mod-store
 
 The persistence brick for [Pattern](../../README.md): **document collections**
 with declared-index queries, a **blob store** for bytes (images, files), and
@@ -6,7 +6,7 @@ with declared-index queries, a **blob store** for bytes (images, files), and
 different persistence layer is an adapter, not a rewrite.
 
 ```bash
-npm install @pattern/mod-store
+npm install @pattern-js/mod-store
 ```
 
 ## When to use / when not
@@ -25,13 +25,13 @@ per-run scratch, just pass it along edges.
 The bare-string install gets sensible defaults (SQLite under `./.pattern-data/`):
 
 ```jsonc
-{ "mods": ["@pattern/mod-store"] }
+{ "mods": ["@pattern-js/mod-store"] }
 ```
 
 For custom paths or an in-memory store (tests), export a local wrapper mod:
 
 ```ts
-import { storeMod } from "@pattern/mod-store";
+import { storeMod } from "@pattern-js/mod-store";
 
 export default storeMod({
   storage: "./.pattern-data/store.db", // or "memory"
@@ -46,4 +46,4 @@ Reach it on the canvas with `store.get` / `store.put` / `store.patch` /
 the `storeService`. The `.pattern-data/` paths are gitignored.
 
 Full documentation: the **Store** chapter at `/docs` (served by
-`@pattern/mod-docs`), or [the source](docs/index.md).
+`@pattern-js/mod-docs`), or [the source](docs/index.md).

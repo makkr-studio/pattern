@@ -1,5 +1,5 @@
 /**
- * Engine prerequisites for `@pattern/mod-admin` (admin-spec §2): P2/P3/P4, T1/T2/T3.
+ * Engine prerequisites for `@pattern-js/mod-admin` (admin-spec §2): P2/P3/P4, T1/T2/T3.
  * P1 (boundary.http.app) and the runtime-node side are covered in runtime-node.
  */
 
@@ -18,7 +18,7 @@ import {
   type PatternMod,
   type SpanData,
   type Workflow,
-} from "@pattern/core";
+} from "@pattern-js/core";
 
 // ── T3: document fields ──
 

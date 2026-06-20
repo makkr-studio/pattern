@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — node:sqlite driver (+ filesystem blob bytes).
+ * @pattern-js/mod-store — node:sqlite driver (+ filesystem blob bytes).
  *
  * Hand-written SQL, no ORM. CAS is a single conditional UPDATE checked via
  * `changes === 1` (atomic in SQLite; ports verbatim to Postgres). Index rows
@@ -404,7 +404,7 @@ export async function sqlitePatternStores(
   }
   if (!DatabaseSync) {
     throw new Error(
-      "node:sqlite is not available in this Node build — @pattern/mod-store needs Node ≥22.5 " +
+      "node:sqlite is not available in this Node build — @pattern-js/mod-store needs Node ≥22.5 " +
         "(≥24 recommended). For tests, use memoryPatternStores().",
     );
   }

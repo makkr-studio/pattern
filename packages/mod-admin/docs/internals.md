@@ -5,7 +5,7 @@ order: 80
 
 # Admin internals
 
-How `@pattern/mod-admin` and `@pattern/admin-sdk` are built — the design of record
+How `@pattern-js/mod-admin` and `@pattern-js/admin-sdk` are built — the design of record
 for the self-reflecting control surface. The section numbers (§1–§18) are stable
 anchors that the source comments reference. For the day-to-day "how do I extend the
 admin," start with the [Admin overview](index.md).
@@ -116,19 +116,19 @@ self-reflection holds — a declarative page is wiring, not a new API.
 built ESM bundle exposing a default-exported component; the admin `import()`s it at
 runtime (add a mod → its page appears, no admin rebuild). The bundle reads shared
 deps (React, the typed API client, the UI kit) off the `__PATTERN_ADMIN__` global so
-they aren't double-loaded; `@pattern/admin-sdk` types that global as
-`PatternAdminGlobal`. See [`@pattern/mod-sample`](/docs/sample) for the working proof
+they aren't double-loaded; `@pattern-js/admin-sdk` types that global as
+`PatternAdminGlobal`. See [`@pattern-js/mod-sample`](/docs/sample) for the working proof
 — a Tier-1 page **and** a ⌘K command **and** a Tier-2 remote with zero admin-core
 changes.
 
-**`@pattern/admin-sdk`** is the stable surface: the typed API client, theme tokens, a
+**`@pattern-js/admin-sdk`** is the stable surface: the typed API client, theme tokens, a
 glass UI kit (`GlassPanel`, `NeonButton`, `Table`, `FormFromSchema`, `JsonView`,
 `Markdown`, …), and menu/page/command helpers. The admin's own pages use this exact
 surface — dogfooding is the proof it's sufficient.
 
 ## 7. Stack
 
-Frontend/dev deps live only in `mod-admin`/`admin-sdk`, never in `@pattern/core`;
+Frontend/dev deps live only in `mod-admin`/`admin-sdk`, never in `@pattern-js/core`;
 `admin-sdk` keeps React a **peer** dep. React 19 · Vite · Tailwind v4 (`@theme`
 tokens) · Motion.dev · `@xyflow/react` 12 (the authoring canvas) · Zustand (canvas
 state + undo) · TanStack Query (server state) · React Router · a custom
@@ -136,7 +136,7 @@ state + undo) · TanStack Query (server state) · React Router · a custom
 
 ## 8. Packages & layout
 
-`@pattern/admin-sdk` (the extension surface; peerDep React) and `@pattern/mod-admin`
+`@pattern-js/admin-sdk` (the extension surface; peerDep React) and `@pattern-js/mod-admin`
 (backend `control-plane/`, `trace/`, `ops/`, `workflows/`, `services.ts`, `mod.ts`;
 frontend `app/` with `shell/`, `pages/`, `editor/`, `theme/`; built SPA → `dist-app/`
 served by `boundary.http.app`).

@@ -8,7 +8,7 @@
  * Edit `workflows/greeting.json` (no rebuild needed with `npm run dev`) — change
  * the template, or wire in more ops (`core.string.*`, `core.math.*`, `core.flow.*`).
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { engine } = await loadProject();
 

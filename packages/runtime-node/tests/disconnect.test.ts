@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import http from "node:http";
-import { Engine, defineOp, stream, z, type Workflow } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
+import { Engine, defineOp, stream, z, type Workflow } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
 
 /**
  * A run is independent of the client connection by DEFAULT — a chat turn or a

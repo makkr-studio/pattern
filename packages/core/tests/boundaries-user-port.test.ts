@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boundaries, principalToUser, resolvePorts, type Principal } from "@pattern/core";
+import { boundaries, principalToUser, resolvePorts, type Principal } from "@pattern-js/core";
 
 const { httpRequest, wsMessage, wsOpen, wsClose, manual } = boundaries;
 
@@ -28,7 +28,7 @@ describe("trigger `user` output port (§9)", () => {
   });
 
   it("engine.run seeds an unprovided user port from the run principal", async () => {
-    const { Engine } = await import("@pattern/core");
+    const { Engine } = await import("@pattern-js/core");
     const engine = new Engine();
     engine.registerWorkflow({
       id: "whoami-flow",
@@ -60,13 +60,13 @@ describe("trigger `user` output port (§9)", () => {
     const principal: Principal = {
       kind: "user",
       id: "u1",
-      provider: "@pattern/mod-identity",
+      provider: "@pattern-js/mod-identity",
       scopes: ["admin"],
       claims: { sessionId: "s1", email: "a@b.c", name: "Ada", roles: ["admin"] },
     };
     expect(principalToUser(principal)).toEqual({
       id: "u1",
-      provider: "@pattern/mod-identity",
+      provider: "@pattern-js/mod-identity",
       email: "a@b.c",
       name: "Ada",
       scopes: ["admin"],

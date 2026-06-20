@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — store contracts.
+ * @pattern-js/mod-store — store contracts.
  *
  * Three facilities behind driver interfaces (sqlite built-in, in-memory for
  * tests; Postgres/S3 later are drivers, not redesigns):

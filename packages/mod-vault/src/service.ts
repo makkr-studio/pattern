@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-vault — the service other mods consume (VAULT_SERVICE).
+ * @pattern-js/mod-vault — the service other mods consume (VAULT_SERVICE).
  *
  * `read` decrypts AND registers the plaintext into the engine's sample-mask
  * pool (via the callback the mod wires in setup) — a vault value can never

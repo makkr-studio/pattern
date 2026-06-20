@@ -6,8 +6,8 @@
  * Seeding happens only when the workflow store (`./.pattern`) is empty: your
  * edits always win. Factory reset: stop the app, delete `./.pattern`, restart.
  */
-import type { Engine, Workflow } from "@pattern/core";
-import { ADMIN_CONTROL_PLANE, type ControlPlane } from "@pattern/mod-admin";
+import type { Engine, Workflow } from "@pattern-js/core";
+import { ADMIN_CONTROL_PLANE, type ControlPlane } from "@pattern-js/mod-admin";
 
 const hello: Workflow = {
   id: "hello",

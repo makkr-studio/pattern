@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — the mod.
+ * @pattern-js/mod-store — the mod.
  *
  * `setup` opens the stores (sqlite at ./.pattern-data/store.db by default),
  * provides STORE_SERVICE, and registers the lease auto-release TraceSink:
@@ -10,8 +10,8 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
-import { defineMod, type Engine, type PatternMod } from "@pattern/core";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
 import { resolveOptions, type StoreOptions } from "./options.js";
 import { storeOps } from "./ops.js";
 import { storeFrontend } from "./frontend.js";
@@ -38,7 +38,7 @@ export function storeMod(options: StoreOptions = {}): PatternMod {
   let stores: PatternStores | undefined;
 
   return defineMod({
-    name: "@pattern/mod-store",
+    name: "@pattern-js/mod-store",
     docs: { filesystem: "store-docs", title: "Store", order: 30 },
     ops: storeOps,
     workflows: [

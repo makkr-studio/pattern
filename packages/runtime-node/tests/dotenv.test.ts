@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 let closer: (() => Promise<void>) | undefined;
 const setKeys: string[] = [];

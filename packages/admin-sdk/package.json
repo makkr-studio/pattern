@@ -1,5 +1,5 @@
 {
-  "name": "@pattern/admin-sdk",
+  "name": "@pattern-js/admin-sdk",
   "version": "0.2.0",
   "description": "Pattern admin SDK — the stable extension surface for admin UIs and mods (typed API client, menu/command helpers, shared protocol types).",
   "type": "module",
@@ -28,7 +28,7 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@pattern/core": "workspace:*"
+    "@pattern-js/core": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=19"
@@ -39,8 +39,8 @@
     }
   },
   "devDependencies": {
-    "@pattern/mod-admin": "workspace:*",
-    "@pattern/runtime-node": "workspace:*",
+    "@pattern-js/mod-admin": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
     "typescript": "^5.6.0"
   }
 }

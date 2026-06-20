@@ -1,12 +1,12 @@
 /**
- * @pattern/mod-agents — neutral ops (toolset plumbing + guardrail refs).
+ * @pattern-js/mod-agents — neutral ops (toolset plumbing + guardrail refs).
  *
  * Provider-independent nodes: pick workflow tools into a toolset, merge
  * toolsets from several sources, wrap a tool workflow as a guardrail
  * descriptor. The agent/run ops live in provider mods.
  */
 
-import { value, z, type OpDefinition } from "@pattern/core";
+import { value, z, type OpDefinition } from "@pattern-js/core";
 import { agentsService, workflowToolRef } from "./well-known.js";
 import { toolsetSchema, type GuardrailDescriptor, type ToolsetDescriptor } from "./types.js";
 

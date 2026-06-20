@@ -1,4 +1,4 @@
-import { value, z, type OpDefinition } from "@pattern/core";
+import { value, z, type OpDefinition } from "@pattern-js/core";
 
 /**
  * The example op — replace it with your mod's real logic.

@@ -1,6 +1,6 @@
 # Chat
 
-`@pattern/mod-chat` is a complete, hosted chat application — a transcript-style
+`@pattern-js/mod-chat` is a complete, hosted chat application — a transcript-style
 SPA over a lease-guarded, event-sourced turn pipeline.
 
 ## When to use it
@@ -12,7 +12,7 @@ sign-in / guests, HITL approvals, and an admin "Conversations" surface — all
 wired. Brand it, point it at an agent, host it many times.
 
 **When not to:** if you only need the agent machinery (an agent loop, tools,
-streaming) inside your own UI or endpoint, drop down to `@pattern/mod-agents`
+streaming) inside your own UI or endpoint, drop down to `@pattern-js/mod-agents`
 and wire `agents.agent` / `agents.run` yourself — this mod is the whole app on
 top of that, and you'd be fighting its SPA, routes, and turn bookkeeping. It is
 not a building block to compose into another surface.
@@ -21,20 +21,20 @@ not a building block to compose into another surface.
 
 Install alongside, in your `pattern.config.json` mods:
 
-- `@pattern/mod-store` — conversations, turn docs, blobs, and the per-turn
+- `@pattern-js/mod-store` — conversations, turn docs, blobs, and the per-turn
   lease all live here. `ready` throws without it.
-- An agents provider — `@pattern/mod-agents` (the agent ops the pipeline runs)
-  plus a model backend like `@pattern/mod-agents-openai`. The shipped pipeline's
+- An agents provider — `@pattern-js/mod-agents` (the agent ops the pipeline runs)
+  plus a model backend like `@pattern-js/mod-agents-openai`. The shipped pipeline's
   `agents.run` needs `OPENAI_API_KEY` (or wire `vault.read` → its `apiKey`).
 
-Optional but assumed by the defaults: `@pattern/mod-identity` +
-`@pattern/mod-auth-magic-link` (for the sign-in card the SPA renders) — without
+Optional but assumed by the defaults: `@pattern-js/mod-identity` +
+`@pattern-js/mod-auth-magic-link` (for the sign-in card the SPA renders) — without
 them, everyone is a guest, which is fine.
 
 ## Minimal config
 
 ```ts
-import { chatMod } from "@pattern/mod-chat";
+import { chatMod } from "@pattern-js/mod-chat";
 
 chatMod() // an assistant at /chat, guests allowed, the default agent
 ```
@@ -53,7 +53,7 @@ sensible default (see [Customizing](./guides/customizing.md)).
 The mod registers ONE shared backend (the `chat.*` ops, the CRUD + turn-pipeline
 routes, the admin screens) and one or more branded SPA instances. Its routes
 mount under `mount` (default `/chat`); the SPA's `apiBase` points at
-`{mount}/api`. Auth and sign-in interoperate with `@pattern/mod-identity`'s
+`{mount}/api`. Auth and sign-in interoperate with `@pattern-js/mod-identity`'s
 `user` port and magic-link mod — `requireAuth` defaults to
 `{ env: "CHAT_REQUIRE_AUTH" }`, so the host reads the switch per request.
 

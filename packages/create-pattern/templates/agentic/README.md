@@ -58,5 +58,5 @@ agents.tools.workflows (toolset) → agents.agent → agents.run → boundary.ht
   into `workflows/`; the agent discovers it automatically.
 - **Add a guardrail**, **stream the run** over SSE, or run it from the editor —
   `AGENTS.md` has the recipes (your coding agent reads it too).
-- **The handbook** at `/docs` (add `@pattern/mod-docs` if you didn't): the
+- **The handbook** at `/docs` (add `@pattern-js/mod-docs` if you didn't): the
   *Agents & chat* and *Designing your API* guides go deeper.

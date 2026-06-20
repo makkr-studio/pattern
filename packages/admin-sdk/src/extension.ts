@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — extension surface helpers (admin internals §6, §12).
+ * @pattern-js/admin-sdk — extension surface helpers (admin internals §6, §12).
  *
  * Framework-agnostic pieces of the adoption lever: build the nav from the
  * aggregated menu manifest (categories from the union of `MenuEntry.category`,
@@ -8,9 +8,9 @@
  * the SPA.
  */
 
-import type { CommandDef, MenuEntry, PageDef, DeclarativeView } from "@pattern/core";
+import type { CommandDef, MenuEntry, PageDef, DeclarativeView } from "@pattern-js/core";
 
-export type { CommandDef, MenuEntry, PageDef, DeclarativeView, RouteRef } from "@pattern/core";
+export type { CommandDef, MenuEntry, PageDef, DeclarativeView, RouteRef } from "@pattern-js/core";
 
 export interface NavItem extends MenuEntry {}
 

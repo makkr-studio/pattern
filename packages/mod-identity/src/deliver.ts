@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — token delivery (§ delivery hook).
+ * @pattern-js/mod-identity — token delivery (§ delivery hook).
  *
  * Delivery is a hook chain, not a hardcoded channel: `identity.deliverToken`
  * is invoked with `{ email, url, purpose, delivered: false }` and any
@@ -9,7 +9,7 @@
  * login, and the same primitive bootstrap uses.
  */
 
-import type { OpContext } from "@pattern/core";
+import type { OpContext } from "@pattern-js/core";
 
 export const DELIVER_TOKEN_HOOK = "identity.deliverToken";
 

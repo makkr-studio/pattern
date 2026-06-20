@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-store — options & defaults. Bare-string installs get sensible
+ * @pattern-js/mod-store — options & defaults. Bare-string installs get sensible
  * defaults; custom setups use a local wrapper mod exporting `storeMod({...})`.
  */
 

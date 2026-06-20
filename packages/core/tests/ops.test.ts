@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, resolvePorts, type Workflow } from "@pattern/core";
+import { Engine, resolvePorts, type Workflow } from "@pattern-js/core";
 
 /**
  * Run a single op with the given config + value inputs, returning its outputs.

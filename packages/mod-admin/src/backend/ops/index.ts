@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the `admin.*` op catalog (admin internals §10).
+ * @pattern-js/mod-admin — the `admin.*` op catalog (admin internals §10).
  *
  * Each op reaches the control plane / trace sink / engine via `ctx.services`
  * (in-process, P5) and returns value data. They are ordinary `OpDefinition`s, so
@@ -19,7 +19,7 @@ import {
   type OpDefinition,
   type Ports,
   type Workflow,
-} from "@pattern/core";
+} from "@pattern-js/core";
 import { adminServices, ASSETS_FS } from "../services.js";
 import { processStats, workerBench } from "../system-stats.js";
 import { catalog, docPorts, explain, modList, opGet, opList, portsCompatible, safeNodeConfigs, systemMap } from "../introspect.js";

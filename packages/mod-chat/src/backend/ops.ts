@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-chat — the `chat.*` op catalog.
+ * @pattern-js/mod-chat — the `chat.*` op catalog.
  *
  * Two families:
  *  - **http ops** (conversations CRUD, turns list, stop) — identity-style:
@@ -23,9 +23,9 @@ import {
   type Engine,
   type OpContext,
   type OpDefinition,
-} from "@pattern/core";
-import { AGENTS_SERVICE, messagePartSchema, turnEventSchema, type AgentsService, type TurnEvent } from "@pattern/mod-agents";
-import type { DocumentRow, PatternStores } from "@pattern/mod-store";
+} from "@pattern-js/core";
+import { AGENTS_SERVICE, messagePartSchema, turnEventSchema, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
+import type { DocumentRow, PatternStores } from "@pattern-js/mod-store";
 import {
   CONVERSATIONS,
   DEFAULT_NS,

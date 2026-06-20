@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-chat — the shipped workflows.
+ * @pattern-js/mod-chat — the shipped workflows.
  *
  * CRUD routes are thin `http.request → chat.* → http.response` wirings. The
  * interesting two are PIPELINES with the agent in the visible middle:
@@ -16,7 +16,7 @@
  * more toolsets — it's just a workflow.
  */
 
-import type { Workflow } from "@pattern/core";
+import type { Workflow } from "@pattern-js/core";
 import { chatOpRoutes, type ChatInSpec } from "./ops.js";
 import { DEVICE_COOKIE } from "./data.js";
 import type { ResolvedChatOptions, ResolvedInstance, ResolvedPin } from "./options.js";

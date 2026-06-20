@@ -1,5 +1,5 @@
 /**
- * @pattern/core — the runtime-neutral Pattern execution engine.
+ * @pattern-js/core — the runtime-neutral Pattern execution engine.
  *
  * A workflow is a JSON document describing a directed graph of typed ops the
  * engine runs to completion per invocation. This is the public surface: the
@@ -37,7 +37,7 @@ export type {
   SettingsSection,
 } from "./frontend.js";
 
-// Docs contribution contract (docs host: @pattern/mod-docs)
+// Docs contribution contract (docs host: @pattern-js/mod-docs)
 export type { DocsContribution, DocsNavItem } from "./docs.js";
 
 // Terminal graph rendering (for `pattern graph`)
@@ -166,7 +166,7 @@ export {
   boundaryOps,
 } from "./ops-core/index.js";
 
-// Boundary op contracts (also available via the "@pattern/core/boundaries" subpath)
+// Boundary op contracts (also available via the "@pattern-js/core/boundaries" subpath)
 export * as boundaries from "./boundaries/index.js";
 // The domain-outcome helper for boundary.http.status (collision-proof 4xx).
 export { httpOutcome } from "./boundaries/index.js";

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
-import { createHttpHost, memoryFs, provideFilesystem } from "@pattern/runtime-node";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { createHttpHost, memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
 
 let closer: (() => Promise<void>) | undefined;
 afterEach(async () => {

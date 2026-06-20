@@ -1,11 +1,11 @@
 {
   "$schema": "pattern/config/v1",
   "mods": [
-    "@pattern/mod-store",
-    "@pattern/mod-vault",
-    "@pattern/mod-agents",
-    "@pattern/mod-agents-openai",
-    "@pattern/mod-admin"
+    "@pattern-js/mod-store",
+    "@pattern-js/mod-vault",
+    "@pattern-js/mod-agents",
+    "@pattern-js/mod-agents-openai",
+    "@pattern-js/mod-admin"
   ],
   "workflows": "./workflows"
 }

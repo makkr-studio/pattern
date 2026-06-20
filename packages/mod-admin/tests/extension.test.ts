@@ -5,11 +5,11 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine } from "@pattern/core";
-import { createHttpHost, memoryFs } from "@pattern/runtime-node";
-import { adminMod } from "@pattern/mod-admin";
-import sampleMod from "@pattern/mod-sample";
-import { createAdminClient } from "@pattern/admin-sdk";
+import { Engine } from "@pattern-js/core";
+import { createHttpHost, memoryFs } from "@pattern-js/runtime-node";
+import { adminMod } from "@pattern-js/mod-admin";
+import sampleMod from "@pattern-js/mod-sample";
+import { createAdminClient } from "@pattern-js/admin-sdk";
 
 let closer: (() => Promise<void>) | undefined;
 afterEach(async () => {
@@ -61,7 +61,7 @@ describe("M10 — sample mod extends the admin with zero core changes", () => {
   it("lists the sample mod in the catalog of mods", async () => {
     const { api } = await start();
     const mods = await api.mods();
-    const sample = mods.find((m) => m.name === "@pattern/mod-sample");
+    const sample = mods.find((m) => m.name === "@pattern-js/mod-sample");
     expect(sample?.ops).toContain("sample.greetings.list");
     expect(sample?.frontend?.pages).toBe(2);
   });

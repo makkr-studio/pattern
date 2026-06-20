@@ -1,4 +1,4 @@
-# @pattern/mod-vault
+# @pattern-js/mod-vault
 
 Encrypted-at-rest secrets for [Pattern](../../README.md) — an AES-256-GCM vault
 that keeps secrets out of your observability: any value read from the vault is
@@ -6,7 +6,7 @@ registered with the engine's sample mask, so it can never appear in sampled run
 I/O.
 
 ```bash
-npm install @pattern/mod-vault
+npm install @pattern-js/mod-vault
 ```
 
 ## When to use / when not
@@ -27,13 +27,13 @@ Defaults are fine for most setups; the one thing you must supply is the master
 key.
 
 ```jsonc
-{ "mods": ["@pattern/mod-vault"] }
+{ "mods": ["@pattern-js/mod-vault"] }
 ```
 
 To move the database or pass the key explicitly, export a local wrapper mod:
 
 ```ts
-import { vaultMod } from "@pattern/mod-vault";
+import { vaultMod } from "@pattern-js/mod-vault";
 
 export default vaultMod({
   storage: "./.pattern-data/vault.db",      // or "memory"
@@ -54,8 +54,8 @@ The **same key forever** decrypts the vault. Without it the vault loads *locked*
 unrecoverable, so back it up where you keep other root secrets.
 
 Read secrets in a workflow with `vault.read`; write them on the admin's **System →
-Secrets** page. The headline pairing is `@pattern/mod-agents`, which falls back to
+Secrets** page. The headline pairing is `@pattern-js/mod-agents`, which falls back to
 a vault secret named `OPENAI_API_KEY` with no node wired at all.
 
 Full documentation: the **Vault** chapter at `/docs` (served by
-`@pattern/mod-docs`), or [the source](docs/index.md).
+`@pattern-js/mod-docs`), or [the source](docs/index.md).

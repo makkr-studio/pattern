@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { Engine, type SpanData, type Workflow } from "@pattern/core";
-import { WorkerPoolTransport } from "@pattern/runtime-node";
+import { Engine, type SpanData, type Workflow } from "@pattern-js/core";
+import { WorkerPoolTransport } from "@pattern-js/runtime-node";
 
 /**
  * An offloaded run executes in a worker's own engine, so its trace would

@@ -1,8 +1,8 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { Engine, collectStream, type Workflow } from "@pattern/core";
-import { WorkerPoolTransport } from "@pattern/runtime-node";
+import { Engine, collectStream, type Workflow } from "@pattern-js/core";
+import { WorkerPoolTransport } from "@pattern-js/runtime-node";
 
-// The worker loads the BUILT entry (dist/worker/entry.js) and resolves @pattern/core
+// The worker loads the BUILT entry (dist/worker/entry.js) and resolves @pattern-js/core
 // from node_modules, so both packages must be built before running these tests.
 const transport = new WorkerPoolTransport({ size: 1 });
 const engine = new Engine({ transport });

@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { Engine } from "@pattern/core";
+import { Engine } from "@pattern-js/core";
 import mod from "../src/index.js";
 
 /**

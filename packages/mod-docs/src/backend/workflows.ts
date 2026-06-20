@@ -1,11 +1,11 @@
 /**
- * @pattern/mod-docs — the shipped workflows: thin `http.request → docs.* →
+ * @pattern-js/mod-docs — the shipped workflows: thin `http.request → docs.* →
  * http.response` routes + the SPA app trio. `GET /docs/api/me` is always
  * open; everything else follows `requireAuth` (default: the
  * DOCS_REQUIRE_AUTH env switch — docs are public until you say otherwise).
  */
 
-import type { Workflow } from "@pattern/core";
+import type { Workflow } from "@pattern-js/core";
 import { docsOpRoutes, type DocsInSpec } from "./ops.js";
 import type { ResolvedDocsOptions } from "./options.js";
 

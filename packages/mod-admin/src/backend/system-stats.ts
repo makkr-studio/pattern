@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — process/host observability (the "Process" page).
+ * @pattern-js/mod-admin — process/host observability (the "Process" page).
  *
  * `processStats()` snapshots the host (os), the Node process (memory, CPU%),
  * the event loop (delay histogram + utilization — the "how busy is the loop"
@@ -13,13 +13,13 @@
  * pool they parallelize and the loop stays responsive. Numbers tell the story.
  *
  * Node-specific by design (node:os / node:perf_hooks) — the admin's host IS
- * the node runtime; mod-admin already depends on @pattern/runtime-node.
+ * the node runtime; mod-admin already depends on @pattern-js/runtime-node.
  */
 
 import os from "node:os";
 import { monitorEventLoopDelay, performance, type IntervalHistogram } from "node:perf_hooks";
-import { Engine, type Workflow } from "@pattern/core";
-import { WorkerPoolTransport } from "@pattern/runtime-node";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { WorkerPoolTransport } from "@pattern-js/runtime-node";
 
 const toMs = (ns: number): number => Math.round(ns / 1e4) / 100;
 const toMb = (b: number): number => Math.round((b / 1048576) * 10) / 10;

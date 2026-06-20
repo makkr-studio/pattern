@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the mod (§9).
+ * @pattern-js/mod-identity — the mod (§9).
  *
  * `setup` opens the stores (sqlite at `./.pattern-data/identity.db` by
  * default — gitignored, never `.pattern/`), builds the service and registers
@@ -15,8 +15,8 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { localFs, provideFilesystem } from "@pattern/runtime-node";
-import { AUTH_LOGIN_URL, IDENTITY_SERVICE, defineMod, z, type Engine, type PatternMod } from "@pattern/core";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { AUTH_LOGIN_URL, IDENTITY_SERVICE, defineMod, z, type Engine, type PatternMod } from "@pattern-js/core";
 import { resolveOptions, type IdentityOptions } from "./options.js";
 import { DefaultIdentityService } from "./service.js";
 import { sessionAuthProvider } from "./auth-provider.js";
@@ -48,7 +48,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
   let service: DefaultIdentityService | undefined;
 
   return defineMod({
-    name: "@pattern/mod-identity",
+    name: "@pattern-js/mod-identity",
     docs: { filesystem: "identity-docs", title: "Identity", order: 40 },
     ops: identityOps,
     // Auth-page routes + the admin Access screens' dedicated routes (one

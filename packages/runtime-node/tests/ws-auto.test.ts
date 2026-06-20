@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { WebSocket } from "ws";
-import { type Workflow } from "@pattern/core";
-import { loadProject } from "@pattern/runtime-node";
+import { type Workflow } from "@pattern-js/core";
+import { loadProject } from "@pattern-js/runtime-node";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

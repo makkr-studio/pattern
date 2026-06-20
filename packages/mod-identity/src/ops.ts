@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the `identity.*` op catalog.
+ * @pattern-js/mod-identity — the `identity.*` op catalog.
  *
  * Two authoring shapes:
  *  - **json ops** (single `out`) — whoami + the admin-screen surface
@@ -16,7 +16,7 @@
  * customizable part (the `identity.deliverToken` hook).
  */
 
-import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern/core";
+import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { identityService } from "./service-key.js";
 import type { IdentityService } from "./service.js";
 import { deliverToken } from "./deliver.js";

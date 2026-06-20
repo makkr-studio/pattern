@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — durable trace store on Node's `node:sqlite` (§10).
+ * @pattern-js/runtime-node — durable trace store on Node's `node:sqlite` (§10).
  *
  * The same `TraceStore` surface as the in-memory one, persisted to a SQLite file
  * so runs survive restarts and any process writing the file (host, CLI) shows up
@@ -23,7 +23,7 @@ import {
   type SpanData,
   type TraceStore,
   type TraceStoreConfig,
-} from "@pattern/core";
+} from "@pattern-js/core";
 
 /** Minimal slice of node:sqlite's DatabaseSync this module needs. */
 interface SqlDatabase {

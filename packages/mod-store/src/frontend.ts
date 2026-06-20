@@ -1,12 +1,12 @@
 /**
- * @pattern/mod-store — admin Data browser (Tier-1 declarative, zero build).
+ * @pattern-js/mod-store — admin Data browser (Tier-1 declarative, zero build).
  *
  * Collections → documents → one document (full JSON), plus Blobs. Every view
  * and action names its own dedicated route (see `./admin-routes.ts`) — there is
  * no generic op invoker; the renderer just wires over purposeful endpoints.
  */
 
-import type { FrontendContribution } from "@pattern/core";
+import type { FrontendContribution } from "@pattern-js/core";
 import { PATHS } from "./admin-routes.js";
 
 export function storeFrontend(): FrontendContribution {

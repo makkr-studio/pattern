@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-docs — the `docs.*` op catalog.
+ * @pattern-js/mod-docs — the `docs.*` op catalog.
  *
  * Pure domain ops: discrete inputs (the query fields they read, the reader's
  * `user`), a single named output, and a domain outcome (`httpOutcome("not_found")`
@@ -18,7 +18,7 @@ import {
   type Engine,
   type OpContext,
   type OpDefinition,
-} from "@pattern/core";
+} from "@pattern-js/core";
 import type { DocsContent } from "./content.js";
 import { modList, opGet, opListTrimmed } from "./introspect.js";
 import type { ResolvedDocsOptions } from "./options.js";

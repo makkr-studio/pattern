@@ -1,5 +1,5 @@
 /**
- * @pattern/admin-sdk — the stable surface admin UIs and mods import
+ * @pattern-js/admin-sdk — the stable surface admin UIs and mods import
  * (admin internals §6, §12).
  *
  * This release ships the **framework-agnostic core**: the wire protocol types,

@@ -83,13 +83,13 @@ workflows. Add a file, get a route.
 
 ## What you get
 
-**A visual control plane.** `@pattern/mod-admin` is the editor above, plus live
+**A visual control plane.** `@pattern-js/mod-admin` is the editor above, plus live
 deploy with route-conflict checks, run inspection with per-node waterfalls and
 replay over the graph, versioning with diffs and one-click rollback, and a
 catalog of every op, mod, and workflow in your system. It is a mod itself, built
 from the same primitives you author with, so its own API shows up in its catalog.
 
-**Documentation that stays current.** `@pattern/mod-docs` serves a handbook plus
+**Documentation that stays current.** `@pattern-js/mod-docs` serves a handbook plus
 an op reference generated from your live installation, so the signatures are
 always in sync with what is running. A `/docs/llms.txt` endpoint hands the whole
 thing to a coding agent as one file.
@@ -117,14 +117,14 @@ Everything beyond the engine is an optional mod you `engine.use()`.
 
 | Package | Role |
 |---|---|
-| [`@pattern/core`](packages/core) | the runtime-neutral engine: types, validation, scheduler, streams, the base op catalog, boundaries, hooks, auth, observability |
-| [`@pattern/runtime-node`](packages/runtime-node) | the Node adapter: HTTP / WebSocket / CLI / schedule hosts, a worker pool, trace stores, the `pattern` CLI |
-| [`@pattern/mod-admin`](packages/mod-admin) · [`@pattern/admin-sdk`](packages/admin-sdk) | the visual control plane and its extension surface |
-| [`@pattern/mod-docs`](packages/mod-docs) | the served handbook and the generated op reference |
-| [`@pattern/mod-identity`](packages/mod-identity) · [`@pattern/mod-auth-magic-link`](packages/mod-auth-magic-link) | users, sessions, roles, magic-link login |
-| [`@pattern/mod-store`](packages/mod-store) · [`@pattern/mod-vault`](packages/mod-vault) | document / blob / lease persistence and encrypted secrets |
-| [`@pattern/mod-agents`](packages/mod-agents) · [`@pattern/mod-agents-openai`](packages/mod-agents-openai) | the neutral agent contracts and an OpenAI provider |
-| [`@pattern/mod-chat`](packages/mod-chat) | a complete chat application |
+| [`@pattern-js/core`](packages/core) | the runtime-neutral engine: types, validation, scheduler, streams, the base op catalog, boundaries, hooks, auth, observability |
+| [`@pattern-js/runtime-node`](packages/runtime-node) | the Node adapter: HTTP / WebSocket / CLI / schedule hosts, a worker pool, trace stores, the `pattern` CLI |
+| [`@pattern-js/mod-admin`](packages/mod-admin) · [`@pattern-js/admin-sdk`](packages/admin-sdk) | the visual control plane and its extension surface |
+| [`@pattern-js/mod-docs`](packages/mod-docs) | the served handbook and the generated op reference |
+| [`@pattern-js/mod-identity`](packages/mod-identity) · [`@pattern-js/mod-auth-magic-link`](packages/mod-auth-magic-link) | users, sessions, roles, magic-link login |
+| [`@pattern-js/mod-store`](packages/mod-store) · [`@pattern-js/mod-vault`](packages/mod-vault) | document / blob / lease persistence and encrypted secrets |
+| [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-agents-openai`](packages/mod-agents-openai) | the neutral agent contracts and an OpenAI provider |
+| [`@pattern-js/mod-chat`](packages/mod-chat) | a complete chat application |
 | [`create-pattern`](packages/create-pattern) | the scaffolder (`npm create pattern`) |
 
 Building your own? `npm create pattern -- --kind mod` scaffolds a publishable mod
@@ -133,7 +133,7 @@ with an example op, a route, an admin page, a docs chapter, and a test.
 ## Docs
 
 The full handbook is served at `/docs`, and ships as markdown inside
-[`@pattern/mod-docs`](packages/mod-docs/docs).
+[`@pattern-js/mod-docs`](packages/mod-docs/docs).
 
 - [Getting started](packages/mod-docs/docs/getting-started.md)
 - [Concepts](packages/mod-docs/docs/concepts.md) and [Architecture](packages/mod-docs/docs/architecture.md)

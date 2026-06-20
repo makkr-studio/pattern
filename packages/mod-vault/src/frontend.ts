@@ -1,11 +1,11 @@
 /**
- * @pattern/mod-vault — admin Secrets screen (Tier-1 declarative).
+ * @pattern-js/mod-vault — admin Secrets screen (Tier-1 declarative).
  *
  * A write-only surface: the table lists names and dates, the form encrypts
  * and forgets. Rotation = write the same name again.
  */
 
-import type { FrontendContribution } from "@pattern/core";
+import type { FrontendContribution } from "@pattern-js/core";
 import { PATHS } from "./admin-routes.js";
 
 export function vaultFrontend(): FrontendContribution {

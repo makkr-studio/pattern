@@ -1,4 +1,4 @@
-/** @pattern/mod-vault — public surface. */
+/** @pattern-js/mod-vault — public surface. */
 
 export { vaultMod } from "./mod.js";
 export { default } from "./mod.js";

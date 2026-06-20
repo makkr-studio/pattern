@@ -1,5 +1,5 @@
 {
-  "name": "@pattern/mod-identity",
+  "name": "@pattern-js/mod-identity",
   "version": "0.2.0",
   "description": "Users, sessions, roles and pluggable login methods for Pattern — the optional identity brick. Opaque revocable cookie sessions (CAS-backed, sqlite or in-memory), a single-use token kernel (login/invite/bootstrap), a login page, and admin screens.",
   "type": "module",
@@ -22,12 +22,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pattern/core": "workspace:*",
+    "@pattern-js/core": "workspace:*",
     "zod": "^4.0.0",
-    "@pattern/runtime-node": "workspace:*"
+    "@pattern-js/runtime-node": "workspace:*"
   },
   "devDependencies": {
-    "@pattern/runtime-node": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
   },

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents-openai — provider-local service keys.
+ * @pattern-js/mod-agents-openai — provider-local service keys.
  *
  * MODEL_PROVIDER_SERVICE: an engine service that, when present, overrides the
  * OpenAI model provider for every agents.run — the seam tests use to script
@@ -10,7 +10,7 @@
 export const MODEL_PROVIDER_SERVICE = "agents.openai.modelProvider";
 
 /**
- * Duck-typed view of @pattern/mod-store's service — looked up by its
+ * Duck-typed view of @pattern-js/mod-store's service — looked up by its
  * well-known key so this package never imports mod-store (image parts carry
  * blob ids; resolving them needs the blob store when present).
  */

@@ -17,7 +17,7 @@
  * config schemas, Tier-2 React pages).
  */
 
-import { httpEndpoint } from "@pattern/core";
+import { httpEndpoint } from "@pattern-js/core";
 
 const QUOTES = [
   { id: "knuth", author: "Donald Knuth", text: "Premature optimization is the root of all evil." },
@@ -33,7 +33,7 @@ const QUOTES = [
 const LIST_ROUTE = "/quotes";
 const RANDOM_ROUTE = "/quotes/random";
 
-/** @type {import("@pattern/core").PatternMod} */
+/** @type {import("@pattern-js/core").PatternMod} */
 export default {
   name: "quotes-mod",
   ops: [

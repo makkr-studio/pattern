@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the bootstrap (first-admin) page.
+ * @pattern-js/mod-identity — the bootstrap (first-admin) page.
  *
  * Reached via the one-time URL printed to the console on first boot. One
  * email field; submitting consumes the bootstrap token and creates the

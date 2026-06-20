@@ -75,7 +75,7 @@ export interface PatternMod {
   /**
    * A documentation chapter: markdown shipped inside the mod's package,
    * registered as a named filesystem in `setup`, referenced here. Aggregated
-   * by a docs host (@pattern/mod-docs) via `engine.docs()`. Carried as data;
+   * by a docs host (@pattern-js/mod-docs) via `engine.docs()`. Carried as data;
    * ignored by the engine itself.
    */
   docs?: DocsContribution;
@@ -534,7 +534,7 @@ export class Engine {
 
   /**
    * The `docs` contributions of every installed mod, in load order. A docs
-   * host (@pattern/mod-docs) builds its chapters from this — content itself
+   * host (@pattern-js/mod-docs) builds its chapters from this — content itself
    * stays in each mod's registered filesystem.
    */
   docs(): Array<{ mod: string; docs: DocsContribution }> {

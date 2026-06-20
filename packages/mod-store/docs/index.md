@@ -1,12 +1,12 @@
 # Store
 
-`@pattern/mod-store` is the persistence brick: **document collections** with
+`@pattern-js/mod-store` is the persistence brick: **document collections** with
 declared-index queries, a **blob store** for bytes (images, files), and
 **leases** for cooperative concurrency. SQLite locally, behind drivers — a
 different persistence layer is an adapter, not a rewrite.
 
 ```jsonc
-{ "mods": ["@pattern/mod-store"] }
+{ "mods": ["@pattern-js/mod-store"] }
 ```
 
 ## When to use / when not
@@ -30,7 +30,7 @@ The bare-string install gets sensible defaults (SQLite under
 local wrapper mod calling the factory:
 
 ```ts
-import { storeMod } from "@pattern/mod-store";
+import { storeMod } from "@pattern-js/mod-store";
 
 export default storeMod({
   storage: "./.pattern-data/store.db", // or "memory"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, interpolateValue, resolveWorkflowEnv, EnvConfigError, type Workflow } from "@pattern/core";
+import { Engine, interpolateValue, resolveWorkflowEnv, EnvConfigError, type Workflow } from "@pattern-js/core";
 
 describe("env interpolation — object form", () => {
   const env = { PORT: "8080", FLAG: "true", RATIO: "1.5", LIST: '["a","b"]' };

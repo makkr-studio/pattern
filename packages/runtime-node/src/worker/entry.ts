@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — worker-thread run entry (§4, §8).
+ * @pattern-js/runtime-node — worker-thread run entry (§4, §8).
  *
  * Runs one workflow per `run` message on its own thread, fully isolated from the
  * host event loop. Value out-gate results are structured-cloned back; stream
@@ -14,7 +14,7 @@
  */
 
 import { parentPort, workerData } from "node:worker_threads";
-import { Engine, type RunResult } from "@pattern/core";
+import { Engine, type RunResult } from "@pattern-js/core";
 import { loadMods } from "../mods.js";
 
 const port = parentPort!;

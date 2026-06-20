@@ -69,7 +69,7 @@ Create an app-local mod (plain ESM, no build step), e.g. `mods/my-mod.mjs`,
 and list it in `pattern.config.json` → `"mods": ["./mods/my-mod.mjs"]`:
 
 ```js
-/** @type {import("@pattern/core").PatternMod} */
+/** @type {import("@pattern-js/core").PatternMod} */
 export default {
   name: "my-mod",
   ops: [
@@ -88,7 +88,7 @@ export default {
 
 `execute` receives `ctx`: `await ctx.input.value("name")` per value input,
 `ctx.config`, `ctx.signal` (AbortSignal). Return `{ portName: value }`.
-TypeScript mods can use typed helpers from `@pattern/core` (`pureOp`,
+TypeScript mods can use typed helpers from `@pattern-js/core` (`pureOp`,
 `defineOp`, `required`, `value`, `stream`, `z`).
 
 **Verify:** `npx pattern ops app.` must list your op.
@@ -99,9 +99,9 @@ TypeScript mods can use typed helpers from `@pattern/core` (`pureOp`,
   route — method/path/port/validation — lives in its config), call
   `await start()` from `loadProject()`, and the server opens. No route table.
   Building a REST API or serving a frontend? One workflow per action, keep ops
-  HTTP-free — add `@pattern/mod-docs` for the *Designing your API* and *Create
+  HTTP-free — add `@pattern-js/mod-docs` for the *Designing your API* and *Create
   an app* guides at `/docs`.
-- **Visual admin**: add `@pattern/mod-admin` to `pattern.config.json` mods and
+- **Visual admin**: add `@pattern-js/mod-admin` to `pattern.config.json` mods and
   `package.json` — a full control plane (editor, versions, runs, traces)
   appears at `/admin`.
 

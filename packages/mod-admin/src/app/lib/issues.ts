@@ -1,4 +1,4 @@
-import type { ValidationIssue } from "@pattern/admin-sdk";
+import type { ValidationIssue } from "@pattern-js/admin-sdk";
 
 /**
  * Validation issues come in two severities. **Errors** block (save/deploy/fork

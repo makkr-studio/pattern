@@ -1,12 +1,12 @@
 # Vault
 
-`@pattern/mod-vault` stores secrets **encrypted at rest** (AES-256-GCM) and
+`@pattern-js/mod-vault` stores secrets **encrypted at rest** (AES-256-GCM) and
 keeps them out of your observability: any value read from the vault is
 registered with the engine's sample mask, so it can never appear in sampled
 run I/O.
 
 ```jsonc
-{ "mods": ["@pattern/mod-vault"] }
+{ "mods": ["@pattern-js/mod-vault"] }
 ```
 
 ## When to use / when not — vault vs. plain env vars
@@ -32,7 +32,7 @@ key (below). To move the database or pass the key explicitly, export a wrapper
 mod calling the factory:
 
 ```ts
-import { vaultMod } from "@pattern/mod-vault";
+import { vaultMod } from "@pattern-js/mod-vault";
 
 export default vaultMod({
   storage: "./.pattern-data/vault.db",   // or "memory"

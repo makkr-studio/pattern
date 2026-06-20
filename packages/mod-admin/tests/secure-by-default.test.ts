@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { Engine, IDENTITY_SERVICE, collectIssues, type PatternMod, type Workflow } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
-import { identityMod, type IdentityService } from "@pattern/mod-identity";
+import { Engine, IDENTITY_SERVICE, collectIssues, type PatternMod, type Workflow } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
+import { identityMod, type IdentityService } from "@pattern-js/mod-identity";
 import { adminMod } from "../src/index.js";
 
 let closer: (() => Promise<void>) | undefined;

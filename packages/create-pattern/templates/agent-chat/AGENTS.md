@@ -76,7 +76,7 @@ Set `"needsApproval": true` on the trigger config to gate it behind a human
 Approve/Deny in the chat (HITL).
 
 Adding your own REST routes or a custom frontend alongside the chat? The
-bundled docs (`@pattern/mod-docs` → `/docs`) cover the discipline: *Designing
+bundled docs (`@pattern-js/mod-docs` → `/docs`) cover the discipline: *Designing
 your API* (one workflow per action, ops stay HTTP-free, decompose inputs / keep
 outputs whole) and *Create an app* (serving a built SPA via the app trio).
 
@@ -107,7 +107,7 @@ just edit the `chat.guardrail.professional` workflow in the admin.
 ### Require sign-in to chat
 
 By default guests chat anonymously (device-scoped conversations). To gate it:
-add `"@pattern/mod-identity"` and `"@pattern/mod-auth-magic-link"` to the
+add `"@pattern-js/mod-identity"` and `"@pattern-js/mod-auth-magic-link"` to the
 mods in `pattern.config.json`, then set `CHAT_REQUIRE_AUTH=true` in `.env`
 (or a comma-separated scope list, e.g. `CHAT_REQUIRE_AUTH=member`). Anonymous
 visitors now get the chat's sign-in card (email → magic link — printed to the

@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — store contracts.
+ * @pattern-js/mod-identity — store contracts.
  *
  * Three small stores behind interfaces so the persistence layer is swappable
  * (sqlite ships built-in, in-memory for tests, Postgres later as a driver).

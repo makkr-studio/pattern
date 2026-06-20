@@ -8,8 +8,8 @@
     "start": "node src/index.ts"
   },
   "dependencies": {
-    "@pattern/core": "^0.2.0",
-    "@pattern/runtime-node": "^0.2.0"
+    "@pattern-js/core": "^0.2.0",
+    "@pattern-js/runtime-node": "^0.2.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

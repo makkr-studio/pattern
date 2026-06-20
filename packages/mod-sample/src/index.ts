@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-sample — the admin internals **M10** proof.
+ * @pattern-js/mod-sample — the admin internals **M10** proof.
  *
  * Installing this mod extends the admin with **zero admin-core changes**:
  *  - a pure op (`sample.greetings.list`) fronted by its own dedicated route,
@@ -13,8 +13,8 @@
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern/core";
-import { localFs, memoryFs, provideFilesystem } from "@pattern/runtime-node";
+import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern-js/core";
+import { localFs, memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
 
 /** Where the greetings data source is exposed (relative to the admin API mount). */
 const GREETINGS_ROUTE = "/sample/greetings";
@@ -114,7 +114,7 @@ export default function SampleStudio() {
     null,
     h(PageHeader, {
       title: "Sample Studio",
-      subtitle: "A Tier-2 ESM remote shipped by @pattern/mod-sample — admin core untouched.",
+      subtitle: "A Tier-2 ESM remote shipped by @pattern-js/mod-sample — admin core untouched.",
       actions: h(Badge, { hue: 280 }, "tier 2"),
     }),
     h(
@@ -145,7 +145,7 @@ const appMount: Workflow = {
 };
 
 export default defineMod({
-  name: "@pattern/mod-sample",
+  name: "@pattern-js/mod-sample",
   docs: { filesystem: "sample-docs", title: "Sample", order: 90 },
   ops: [greetingsList, crunch],
   workflows: [appMount, replayShowcase, greetingsRoute],

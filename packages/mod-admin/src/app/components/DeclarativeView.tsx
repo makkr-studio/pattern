@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactFlow, Background, Controls, ReactFlowProvider } from "@xyflow/react";
-import type { DeclarativeView as View, RouteRef } from "@pattern/admin-sdk";
+import type { DeclarativeView as View, RouteRef } from "@pattern-js/admin-sdk";
 import { api } from "../lib/api";
 import { useOps, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap } from "../editor/graph";

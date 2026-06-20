@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — endpoint workflows.
+ * @pattern-js/mod-identity — endpoint workflows.
  *
  * The auth surface IS a set of Pattern workflows (same self-reflection as the
  * admin API): each route is `http.request → identity.<op> → http.response`.
@@ -9,7 +9,7 @@
  * (admin-stamped invoke), not routes.
  */
 
-import type { Workflow } from "@pattern/core";
+import type { Workflow } from "@pattern-js/core";
 import { authOpRoutes } from "./ops.js";
 
 interface EndpointSpec {

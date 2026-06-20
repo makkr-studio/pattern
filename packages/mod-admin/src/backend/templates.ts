@@ -1,11 +1,11 @@
 /**
- * @pattern/mod-admin — built-in workflow templates (admin internals §15.6).
+ * @pattern-js/mod-admin — built-in workflow templates (admin internals §15.6).
  *
  * "New from template" clones one of these JSON docs into the editor. Mods
  * contribute more via their frontend/ops; these are the starting set.
  */
 
-import type { Workflow } from "@pattern/core";
+import type { Workflow } from "@pattern-js/core";
 
 export interface Template {
   id: string;

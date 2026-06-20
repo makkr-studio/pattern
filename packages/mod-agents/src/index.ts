@@ -1,4 +1,4 @@
-/** @pattern/mod-agents — public surface (the neutral agent contracts). */
+/** @pattern-js/mod-agents — public surface (the neutral agent contracts). */
 
 export { agentsMod } from "./mod.js";
 export { default } from "./mod.js";

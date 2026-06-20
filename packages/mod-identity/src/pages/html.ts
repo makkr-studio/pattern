@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — hand-written HTML pages.
+ * @pattern-js/mod-identity — hand-written HTML pages.
  *
  * No build step, no React: auth pages are tiny, must work before anything
  * else does, and follow the admin placeholder's dark-glass aesthetic so the

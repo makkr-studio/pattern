@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
-import { buildNav, type MenuEntry } from "@pattern/admin-sdk";
+import { buildNav, type MenuEntry } from "@pattern-js/admin-sdk";
 import { useManifest } from "../lib/queries";
 import { useTheme } from "../lib/theme";
 import { sfx } from "../lib/sfx";

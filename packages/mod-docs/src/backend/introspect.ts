@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-docs — engine introspection for the GENERATED reference.
+ * @pattern-js/mod-docs — engine introspection for the GENERATED reference.
  *
  * A focused copy of mod-admin/src/backend/introspect.ts (opList/opGet/modList)
  * — copied, not imported, so the docs host never depends on the admin. Pure
@@ -13,7 +13,7 @@ import {
   z,
   type Engine,
   type OpDefinition,
-} from "@pattern/core";
+} from "@pattern-js/core";
 import type { ModInfo, OpInfo, PortInfo } from "../shared/types.js";
 
 /** Derive a display category from an op type id. */

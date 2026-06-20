@@ -5,9 +5,9 @@ order: 14
 
 # Identity: users, sessions, roles & login methods
 
-`@pattern/mod-identity` is the optional identity brick: users, revocable
+`@pattern-js/mod-identity` is the optional identity brick: users, revocable
 cookie sessions, roles→scopes, a single-use token kernel, a login page, and
-admin screens. `@pattern/mod-auth-magic-link` is the reference login method.
+admin screens. `@pattern-js/mod-auth-magic-link` is the reference login method.
 Everything below is opt-in — a project without these mods behaves exactly as
 before.
 
@@ -16,7 +16,7 @@ before.
 ```jsonc
 // pattern.config.json
 {
-  "mods": ["@pattern/mod-identity", "@pattern/mod-auth-magic-link", "@pattern/mod-admin"]
+  "mods": ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link", "@pattern-js/mod-admin"]
 }
 ```
 
@@ -133,12 +133,12 @@ any way you like.
 
 ## Options
 
-Defaults work from a bare `"@pattern/mod-identity"` entry. To customize, use
+Defaults work from a bare `"@pattern-js/mod-identity"` entry. To customize, use
 a local wrapper mod:
 
 ```js
 // mods/identity.mjs
-import { identityMod } from "@pattern/mod-identity";
+import { identityMod } from "@pattern-js/mod-identity";
 export default identityMod({
   signup: "open",                       // default "invite"
   roles: { admin: ["admin"], ops: ["deploy"] },

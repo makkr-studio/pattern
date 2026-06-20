@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the session AuthProvider (§9).
+ * @pattern-js/mod-identity — the session AuthProvider (§9).
  *
  * The bridge from cookie to principal, run by the engine's provider chain on
  * every authenticated surface (HTTP routes, app mounts, WS upgrades — they
@@ -10,12 +10,12 @@
  * not authenticate, so protected writes 401 without any token machinery.
  */
 
-import type { AuthProvider, Principal } from "@pattern/core";
+import type { AuthProvider, Principal } from "@pattern-js/core";
 import type { IdentityService } from "./service.js";
 import { parseCookies } from "./cookies.js";
 import { isCrossSiteWrite, isStateChanging, methodOf } from "./csrf.js";
 
-export const SESSION_PROVIDER_NAME = "@pattern/mod-identity/session";
+export const SESSION_PROVIDER_NAME = "@pattern-js/mod-identity/session";
 
 export function sessionAuthProvider(svc: () => IdentityService | undefined): AuthProvider {
   return {

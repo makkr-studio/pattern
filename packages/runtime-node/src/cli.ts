@@ -1,5 +1,5 @@
 /**
- * @pattern/runtime-node — CLI host (§6, §7).
+ * @pattern-js/runtime-node — CLI host (§6, §7).
  *
  * Binds a process invocation to a `boundary.cli` trigger and writes the
  * `boundary.cli.exit` out-gate result to stdout/stderr + exit code. CLI is
@@ -7,7 +7,7 @@
  */
 
 import { Readable } from "node:stream";
-import type { Engine, RunResult, Workflow } from "@pattern/core";
+import type { Engine, RunResult, Workflow } from "@pattern-js/core";
 
 export interface CliHostOptions {
   /** Argument vector (defaults to process.argv.slice(2)). */

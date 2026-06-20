@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents-openai — run input shaping.
+ * @pattern-js/mod-agents-openai — run input shaping.
  *
  * `agents.run` accepts a plain string, a PARTS array ({text | image_ref}),
  * or pre-shaped provider items. Image refs resolve through mod-store's blob
@@ -8,14 +8,14 @@
  */
 
 import type { AgentInputItem } from "@openai/agents";
-import type { OpContext } from "@pattern/core";
-import { messagePartSchema, type MessagePart } from "@pattern/mod-agents";
+import type { OpContext } from "@pattern-js/core";
+import { messagePartSchema, type MessagePart } from "@pattern-js/mod-agents";
 import { STORE_SERVICE_KEY, type BlobStoreLike } from "./well-known.js";
 
 async function blobToDataUrl(blobId: string, ctx: OpContext): Promise<string> {
   const store = ctx.services[STORE_SERVICE_KEY] as BlobStoreLike | undefined;
   if (!store) {
-    throw new Error("agents: image parts need @pattern/mod-store installed (blob ids resolve through it)");
+    throw new Error("agents: image parts need @pattern-js/mod-store installed (blob ids resolve through it)");
   }
   const hit = await store.blobs.get(blobId);
   if (!hit) throw new Error(`agents: no blob "${blobId}" for image part`);

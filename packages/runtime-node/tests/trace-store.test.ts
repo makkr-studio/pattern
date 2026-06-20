@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine, type SpanData, type TraceStore, type Workflow } from "@pattern/core";
-import { MemoryTraceStore, createTraceStore, openSqliteTraceStore } from "@pattern/runtime-node";
+import { Engine, type SpanData, type TraceStore, type Workflow } from "@pattern-js/core";
+import { MemoryTraceStore, createTraceStore, openSqliteTraceStore } from "@pattern-js/runtime-node";
 
 /**
  * The durable trace store: a SQLite backend that mirrors the in-memory one
@@ -118,7 +118,7 @@ describe("trace store", () => {
   });
 
   it("records a CLI (boundary.cli) run into the store — the cross-process path", async () => {
-    const { runCli } = await import("@pattern/runtime-node");
+    const { runCli } = await import("@pattern-js/runtime-node");
     const engine = new Engine();
     const store = await openSqliteTraceStore(":memory:");
     cleanup.push(() => void store.close());

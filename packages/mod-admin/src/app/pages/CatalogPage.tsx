@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Template, WorkflowMeta } from "@pattern/admin-sdk";
+import type { Template, WorkflowMeta } from "@pattern-js/admin-sdk";
 import { useDeleteWorkflow, useMods, useSetEnabled, useTemplates, useWorkflows } from "../lib/queries";
 import { Badge, Dot, EmptyState, Modal, NeonButton, PageHeader, Spinner, Table, type Column } from "../components/ui";
 import { History, Icon, Plus, Search, Trash2 } from "../components/icon";
@@ -15,7 +15,7 @@ const LOCAL = "(local)";
 /** Persisted mod filter: the EXCLUDED mods (new mods default to visible).
  *  First visit: the admin's own plumbing is hidden — your workflows first. */
 const EXCLUDED_MODS_KEY = "pattern.admin.catalog.excludedMods";
-const DEFAULT_EXCLUDED = ["@pattern/mod-admin"];
+const DEFAULT_EXCLUDED = ["@pattern-js/mod-admin"];
 
 function readExcludedMods(): Set<string> {
   try {

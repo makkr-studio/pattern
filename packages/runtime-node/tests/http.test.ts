@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, defineOp, httpOutcome, stream, value, z, iterableToStream, type Workflow } from "@pattern/core";
-import { createHttpHost } from "@pattern/runtime-node";
+import { Engine, defineOp, httpOutcome, stream, value, z, iterableToStream, type Workflow } from "@pattern-js/core";
+import { createHttpHost } from "@pattern-js/runtime-node";
 
 /** An op that emits a fixed token stream — stands in for an agent. */
 const tokensOp = defineOp({

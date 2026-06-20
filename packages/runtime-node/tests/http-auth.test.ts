@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { AUTH_LOGIN_URL, Engine, type AuthProvider, type Workflow } from "@pattern/core";
-import { createHttpHost, memoryFs, provideFilesystem } from "@pattern/runtime-node";
+import { AUTH_LOGIN_URL, Engine, type AuthProvider, type Workflow } from "@pattern-js/core";
+import { createHttpHost, memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
 
 /** Token-header auth provider: `x-token: <user>` → user principal. */
 const tokenProvider: AuthProvider = {

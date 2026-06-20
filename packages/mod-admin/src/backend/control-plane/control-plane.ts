@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-admin — the control plane (admin internals §4, §9).
+ * @pattern-js/mod-admin — the control plane (admin internals §4, §9).
  *
  * Owns workflow lifecycle on top of the engine + store:
  *   draft → save version → activate (route-conflict checked) → registerWorkflowAsync
@@ -11,7 +11,7 @@
  * at boot and are read-only here.
  */
 
-import type { Engine, Principal } from "@pattern/core";
+import type { Engine, Principal } from "@pattern-js/core";
 import { extractRoute } from "./store.js";
 import type {
   ControlPlane,

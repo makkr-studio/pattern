@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-chat — data model (mod-store collections).
+ * @pattern-js/mod-chat — data model (mod-store collections).
  *
  * - `chat.conversations` — one doc per conversation: owner scoping
  *   (user id, or an anonymous device cookie), title, and the provider-shaped
@@ -9,10 +9,10 @@
  *   here; every turn reaches a terminal status, always.
  */
 
-import type { OpContext } from "@pattern/core";
-import type { TurnEvent } from "@pattern/mod-agents";
-import { STORE_SERVICE } from "@pattern/mod-store";
-import type { DocumentRow, PatternStores } from "@pattern/mod-store";
+import type { OpContext } from "@pattern-js/core";
+import type { TurnEvent } from "@pattern-js/mod-agents";
+import { STORE_SERVICE } from "@pattern-js/mod-store";
+import type { DocumentRow, PatternStores } from "@pattern-js/mod-store";
 
 export const CONVERSATIONS = "chat.conversations";
 export const TURNS = "chat.turns";
@@ -56,7 +56,7 @@ export interface TurnDoc {
 export function stores(ctx: OpContext): PatternStores {
   const svc = ctx.services[STORE_SERVICE] as PatternStores | undefined;
   if (!svc) {
-    throw new Error('mod-chat needs @pattern/mod-store — add "@pattern/mod-store" to your mods');
+    throw new Error('mod-chat needs @pattern-js/mod-store — add "@pattern-js/mod-store" to your mods');
   }
   return svc;
 }

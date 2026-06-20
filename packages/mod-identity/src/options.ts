@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — options & defaults.
+ * @pattern-js/mod-identity — options & defaults.
  *
  * Sensible defaults so `pattern.config.json` can list the mod as a bare
  * string; custom setups use a local wrapper mod exporting `identityMod({...})`

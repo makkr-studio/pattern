@@ -9,7 +9,7 @@ A **mod** is an npm package that extends a Pattern engine: it can contribute ops
 workflows (incl. HTTP routes), an admin page, auth providers, hooks, and a docs
 chapter — all behind one `defineMod(...)` object. Install it, add it to
 `pattern.config.json`, and its capabilities appear in the catalog. This guide
-builds one end to end. The in-repo [`@pattern/mod-sample`](/docs/sample) is the
+builds one end to end. The in-repo [`@pattern-js/mod-sample`](/docs/sample) is the
 canonical reference; read it alongside.
 
 ## Scaffold it
@@ -32,7 +32,7 @@ bring-your-own-stack and wire it yourself.
 ## The mod object
 
 ```ts
-import { defineMod } from "@pattern/core";
+import { defineMod } from "@pattern-js/core";
 import { greet } from "./ops.js";
 import { greetRoute } from "./routes.js";
 
@@ -54,7 +54,7 @@ export default defineMod({
 Ops are plain functions over Web standards (see [Authoring ops](authoring-ops.md)):
 
 ```ts
-import { pureOp, required, z } from "@pattern/core";
+import { pureOp, required, z } from "@pattern-js/core";
 
 export const greet = pureOp({
   type: "acme.greet",
@@ -72,7 +72,7 @@ Front an op with an HTTP route using `httpEndpoint` (a workflow builder) so the 
 stays pure and HTTP-free:
 
 ```ts
-import { httpEndpoint } from "@pattern/core";
+import { httpEndpoint } from "@pattern-js/core";
 
 export const greetRoute = httpEndpoint({
   id: "acme.route.greet",
@@ -88,7 +88,7 @@ export const greetRoute = httpEndpoint({
 Contribute a page via the mod's `frontend` block — **Tier 1** (declarative, no
 build) renders a table/form/chart over one of your ops; **Tier 2** ships a built
 React bundle the admin loads at runtime. See
-[Admin → extension surface](/docs/admin) and `@pattern/mod-sample` for both.
+[Admin → extension surface](/docs/admin) and `@pattern-js/mod-sample` for both.
 
 ## Ship a docs chapter
 

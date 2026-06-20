@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — cookie plumbing.
+ * @pattern-js/mod-identity — cookie plumbing.
  *
  * One cookie, handled by hand: HttpOnly always, SameSite=Lax (Strict would
  * drop the cookie on the magic-link's top-level GET redirect back into the

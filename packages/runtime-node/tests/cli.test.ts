@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
-import { runCli } from "@pattern/runtime-node";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { runCli } from "@pattern-js/runtime-node";
 
 /**
  * `runCli` writes a `boundary.cli.exit` payload to stdout. A *streamed* result

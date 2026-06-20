@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-vault — the Secrets screen's dedicated routes.
+ * @pattern-js/mod-vault — the Secrets screen's dedicated routes.
  *
  * One purposeful route per thing the screen exposes (list / write / delete) —
  * no generic op invoker. Each is a normal workflow (request → extract →
@@ -8,7 +8,7 @@
  * Paths are single-sourced here so the workflows and the manifest can't drift.
  */
 
-import { fromBody, fromParams, httpEndpoint, type Workflow } from "@pattern/core";
+import { fromBody, fromParams, httpEndpoint, type Workflow } from "@pattern-js/core";
 
 const API = "/admin/api";
 

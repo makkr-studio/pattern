@@ -49,7 +49,7 @@ Drop that into `workflows/` and your app is live at `/`. The trigger says where,
 register in a mod's `setup` — not a filesystem path:
 
 ```ts
-import { provideFilesystem, localFs } from "@pattern/runtime-node";
+import { provideFilesystem, localFs } from "@pattern-js/runtime-node";
 
 export default {
   name: "my-app",
@@ -61,7 +61,7 @@ export default {
 
 The **mount** is declared in the workflow; the **filesystem** is registered in
 code; `filesystem: "my-app"` ties them together. (App *authors* declare the trio
-as a workflow file; *mods* that ship endpoints — like `@pattern/mod-admin` —
+as a workflow file; *mods* that ship endpoints — like `@pattern-js/mod-admin` —
 register theirs imperatively in `setup`. Same trio, two registration styles; as an
 app author, prefer the file.)
 
@@ -104,7 +104,7 @@ Keep the SPA dumb about internals: it calls routes, the workflows do the work.
 
 A powerful pattern: serve the **same** SPA bundle many times with different
 parameters — different brand, different data namespace — all on one backend, no
-per-copy endpoint duplication. `@pattern/mod-chat` ships exactly this (sales and
+per-copy endpoint duplication. `@pattern-js/mod-chat` ships exactly this (sales and
 support desks over one chat backend). Two ingredients make it work:
 
 **1. A mount-portable bundle + bootstrap injection.** Build the SPA with relative

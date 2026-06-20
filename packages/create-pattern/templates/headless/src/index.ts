@@ -14,7 +14,7 @@
  * server reloads and the route is live. (Workflows can equally come from a DB at
  * runtime via `engine.registerWorkflow` / `updateWorkflow` / `unregisterWorkflow`.)
  */
-import { loadProject } from "@pattern/runtime-node";
+import { loadProject } from "@pattern-js/runtime-node";
 
 const { start } = await loadProject();
 const { ports } = await start();

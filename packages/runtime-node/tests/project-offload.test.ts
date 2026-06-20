@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";
 import { threadId as hostThreadId } from "node:worker_threads";
-import { loadProject } from "@pattern/runtime-node";
-import type { Workflow } from "@pattern/core";
+import { loadProject } from "@pattern-js/runtime-node";
+import type { Workflow } from "@pattern-js/core";
 
 // `app.whereami` reports its thread. Inline runs share the host thread (whatever
 // id that is — vitest runs the test in its own worker, so it's not 0); offloaded
 // runs land on a different (pool) thread. We compare against the host thread,
 // not 0, so the assertion holds whether or not vitest pools the test file.
 
-// The worker loads the BUILT entry (dist/worker/entry.js) + resolves @pattern/core
+// The worker loads the BUILT entry (dist/worker/entry.js) + resolves @pattern-js/core
 // and the fixture mod from disk, so both packages must be built before running.
 const modPath = fileURLToPath(new URL("./fixtures/project/mods/whereami.mjs", import.meta.url));
 

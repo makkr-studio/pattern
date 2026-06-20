@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — schema migrations.
+ * @pattern-js/mod-identity — schema migrations.
  *
  * Hand-written SQL, versioned by position in the array; `runMigrations`
  * applies anything past the recorded version inside a transaction. No

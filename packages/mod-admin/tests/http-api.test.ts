@@ -4,9 +4,9 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
-import { createHttpHost, memoryFs } from "@pattern/runtime-node";
-import { adminMod } from "@pattern/mod-admin";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { createHttpHost, memoryFs } from "@pattern-js/runtime-node";
+import { adminMod } from "@pattern-js/mod-admin";
 
 let closer: (() => Promise<void>) | undefined;
 afterEach(async () => {
@@ -58,7 +58,7 @@ describe("M3 — admin endpoints respond over HTTP", () => {
     expect(catalog.some((m: { slug: string; source: string }) => m.slug === "admin.api.ops.list" && m.source === "code")).toBe(true);
 
     const mods = await (await fetch(api("/mods"))).json();
-    expect(mods.some((m: { name: string }) => m.name === "@pattern/mod-admin")).toBe(true);
+    expect(mods.some((m: { name: string }) => m.name === "@pattern-js/mod-admin")).toBe(true);
 
     const templates = await (await fetch(api("/templates"))).json();
     expect(templates.length).toBeGreaterThan(0);

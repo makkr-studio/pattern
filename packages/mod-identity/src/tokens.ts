@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — secret helpers.
+ * @pattern-js/mod-identity — secret helpers.
  *
  * Secrets are 256-bit random, base64url on the wire, sha256 at rest. Lookup
  * is by hash (an exact index hit), so no constant-time comparison is needed —

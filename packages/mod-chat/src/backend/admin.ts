@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-chat — the admin "Chats" surface.
+ * @pattern-js/mod-chat — the admin "Chats" surface.
  *
  * Guests were invisible: conversations lived as raw docs in the Data browser,
  * `deviceId` strings and all. This page makes every conversation — user-owned
@@ -10,8 +10,8 @@
  * routes carry the admin gate.
  */
 
-import { value, z, type FrontendContribution, type OpContext, type OpDefinition } from "@pattern/core";
-import type { DocumentRow } from "@pattern/mod-store";
+import { value, z, type FrontendContribution, type OpContext, type OpDefinition } from "@pattern-js/core";
+import type { DocumentRow } from "@pattern-js/mod-store";
 import { CONVERSATIONS, TURNS, stores, type ConversationDoc, type TurnDoc } from "./data.js";
 import { PATHS } from "./admin-routes.js";
 

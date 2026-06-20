@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-agents-openai — the `agents.*` provider ops.
+ * @pattern-js/mod-agents-openai — the `agents.*` provider ops.
  *
  * `agents.agent` builds DESCRIPTORS (plain JSON, no SDK work); `agents.run`
  * reifies + runs them — always streaming internally, emitting the neutral
@@ -13,7 +13,7 @@
  */
 
 import { Agent, OpenAIProvider, RunState, Runner, type AgentInputItem } from "@openai/agents";
-import { required, stream, value, z, type OpContext, type OpDefinition } from "@pattern/core";
+import { required, stream, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import {
   agentSchema,
   agentsService,
@@ -24,7 +24,7 @@ import {
   type AgentDescriptor,
   type GuardrailDescriptor,
   type ToolsetDescriptor,
-} from "@pattern/mod-agents";
+} from "@pattern-js/mod-agents";
 import { reifyAgent } from "./reify.js";
 import { pumpTurn, type TurnOutcome } from "./events.js";
 import { toInputItems } from "./input.js";

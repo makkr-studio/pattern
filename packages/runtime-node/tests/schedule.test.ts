@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Engine, type Workflow } from "@pattern/core";
-import { createScheduleHost } from "@pattern/runtime-node";
+import { Engine, type Workflow } from "@pattern-js/core";
+import { createScheduleHost } from "@pattern-js/runtime-node";
 
 let host: ReturnType<typeof createScheduleHost> | undefined;
 afterEach(() => {

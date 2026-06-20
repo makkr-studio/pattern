@@ -1,5 +1,5 @@
 /**
- * @pattern/mod-identity — the login page.
+ * @pattern-js/mod-identity — the login page.
  *
  * Rendered from the login-method registry, so it grows a section per
  * provider mod (magic-link form, OIDC buttons, …) with zero page changes.
@@ -19,7 +19,7 @@ export function renderLoginPage(opts: {
 
   const sections = opts.methods.length
     ? opts.methods.map((m) => renderMethod(m, next)).join("\n")
-    : `<p>No login methods are installed. Add one (e.g. <code>@pattern/mod-auth-magic-link</code>) to your mods.</p>`;
+    : `<p>No login methods are installed. Add one (e.g. <code>@pattern-js/mod-auth-magic-link</code>) to your mods.</p>`;
 
   const notice = opts.notice ? `<p>${escapeHtml(opts.notice)}</p>` : "";
 
