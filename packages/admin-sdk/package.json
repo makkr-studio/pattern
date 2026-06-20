@@ -42,5 +42,13 @@
     "@pattern-js/mod-admin": "workspace:*",
     "@pattern-js/runtime-node": "workspace:*",
     "typescript": "^5.6.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/admin-sdk"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Benoit Beaumatin <benoit.beaumatin@gmail.com>"
 }
