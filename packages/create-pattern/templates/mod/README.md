@@ -1,6 +1,6 @@
 # {{pkgName}}
 
-A [Pattern](https://github.com/) mod — a publishable npm package that extends a
+A [Pattern](https://github.com/makkr-studio/pattern) mod — a publishable npm package that extends a
 Pattern engine with ops, workflows, an admin page, and a docs chapter.
 
 ## Develop

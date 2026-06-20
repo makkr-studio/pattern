@@ -1,6 +1,6 @@
 # {{name}}
 
-A headless HTTP backend built from declarative [Pattern](https://github.com/)
+A headless HTTP backend built from declarative [Pattern](https://github.com/makkr-studio/pattern)
 workflows — the **headless** modpack: routes as data, an app-local mod, no UI.
 
 ```bash

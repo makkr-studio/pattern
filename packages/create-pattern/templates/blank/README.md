@@ -1,6 +1,6 @@
 # {{name}}
 
-A minimal [Pattern](https://github.com/) project — the **blank** modpack: just
+A minimal [Pattern](https://github.com/makkr-studio/pattern) project — the **blank** modpack: just
 the engine, one workflow, zero ceremony.
 
 ```bash

@@ -20,5 +20,12 @@
   "devDependencies": {
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Benoit Beaumatin <benoit.beaumatin@gmail.com>"
 }

@@ -61,5 +61,13 @@
     "@testing-library/dom": "^10.4.0",
     "happy-dom": "^15.11.0",
     "@pattern-js/mod-sample": "workspace:*"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/mod-admin"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Benoit Beaumatin <benoit.beaumatin@gmail.com>"
 }

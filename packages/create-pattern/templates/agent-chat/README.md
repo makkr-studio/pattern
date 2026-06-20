@@ -1,6 +1,6 @@
 # {{name}}
 
-An AI-agent chat on [Pattern](https://github.com/pattern) — the agent, its
+An AI-agent chat on [Pattern](https://github.com/makkr-studio/pattern) — the agent, its
 tools and its guardrails are workflow nodes you can see and rewire.
 
 ```sh

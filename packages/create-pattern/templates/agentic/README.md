@@ -1,6 +1,6 @@
 # {{name}}
 
-Build **agentic workflows** on [Pattern](https://github.com/pattern): graphs
+Build **agentic workflows** on [Pattern](https://github.com/makkr-studio/pattern): graphs
 that wire an agent (`agents.agent`) into a runner (`agents.run`), with tools
 that are themselves workflows. No chat UI — you build and run them in the
 visual editor, and every tool call is a traced sub-run.

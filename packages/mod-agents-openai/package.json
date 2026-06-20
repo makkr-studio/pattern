@@ -33,5 +33,13 @@
   },
   "engines": {
     "node": ">=22.5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/mod-agents-openai"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Benoit Beaumatin <benoit.beaumatin@gmail.com>"
 }

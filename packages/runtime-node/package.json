@@ -48,5 +48,13 @@
     "@types/ws": "^8.5.12",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/runtime-node"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Benoit Beaumatin <benoit.beaumatin@gmail.com>"
 }
