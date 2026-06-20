@@ -5,7 +5,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, type Chapter, type Page } from "../lib/api";
+import { api, pageHref, type Chapter, type Page } from "../lib/api";
 import { headingsOf, Markdown } from "../lib/md";
 import { useDocs } from "../shell/Shell";
 import { WorkflowEmbed } from "../components/WorkflowEmbed";
@@ -35,10 +35,20 @@ const InternalLink = ({ to, children }: { to: string; children: React.ReactNode 
 export function DocPage() {
   const { manifest } = useDocs();
   const params = useParams();
-  const slug = params.chapter!;
+  const seg0 = params.chapter!;
   const splat = params["*"] ?? "";
-  const chapter: Chapter | undefined = manifest.chapters.find((c) => c.slug === slug);
-  const file = splat ? `${splat}.md` : (chapter?.index ?? "index.md");
+  const primarySlug = manifest.chapters[0]?.slug;
+
+  // A first segment that names a chapter selects it; otherwise the whole path is
+  // a page in the primary chapter (the handbook is rooted at the mount, so
+  // /docs/getting-started resolves to its getting-started page).
+  const named = manifest.chapters.find((c) => c.slug === seg0);
+  const chapter: Chapter | undefined = named ?? manifest.chapters[0];
+  const file = named
+    ? splat
+      ? `${splat}.md`
+      : (named.index ?? "index.md")
+    : `${[seg0, splat].filter(Boolean).join("/")}.md`;
 
   const [page, setPage] = useState<Page | null>(null);
   const [missing, setMissing] = useState(false);
@@ -47,14 +57,18 @@ export function DocPage() {
     setPage(null);
     setMissing(false);
     let live = true;
+    if (!chapter) {
+      setMissing(true);
+      return;
+    }
     api
-      .page(slug, file)
+      .page(chapter.slug, file)
       .then((p) => live && setPage(p))
       .catch(() => live && setMissing(true));
     return () => {
       live = false;
     };
-  }, [slug, file]);
+  }, [chapter, file]);
 
   // Scroll to top (or the hash anchor) when the page changes.
   useEffect(() => {
@@ -76,7 +90,7 @@ export function DocPage() {
     return { prev: at > 0 ? seq[at - 1]! : null, next: at >= 0 && at < seq.length - 1 ? seq[at + 1]! : null };
   }, [chapter, file]);
 
-  const routeOf = (f: string) => (f === chapter?.index ? `/${slug}` : `/${slug}/${f.replace(/\.md$/, "")}`);
+  const routeOf = (f: string) => pageHref(primarySlug, chapter!.slug, f, chapter!.index);
 
   if (!chapter || missing) {
     return (
@@ -100,8 +114,8 @@ export function DocPage() {
           resolveLink={(href) => {
             const [path, frag] = href.split("#");
             if (path && /\.md$/.test(path) && !/^[a-z]+:/.test(path) && !path.startsWith("/")) {
-              const target = resolveRelative(file, path).replace(/\.md$/, "");
-              return { href: `/${slug}/${target}${frag ? `#${frag}` : ""}`, internal: true };
+              const target = resolveRelative(file, path);
+              return { href: `${pageHref(primarySlug, chapter!.slug, target, chapter!.index)}${frag ? `#${frag}` : ""}`, internal: true };
             }
             return { href };
           }}
@@ -115,7 +129,7 @@ export function DocPage() {
           ) : (
             <span />
           )}
-          <a href={api.rawUrl(slug, file)} className="text-[11.5px] text-muted hover:text-[var(--fg)]" target="_blank" rel="noreferrer">
+          <a href={api.rawUrl(chapter!.slug, file)} className="text-[11.5px] text-muted hover:text-[var(--fg)]" target="_blank" rel="noreferrer">
             view raw .md
           </a>
           {next ? (

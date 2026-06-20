@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { BookOpen, Menu, Monitor, Moon, Search, Sun, X } from "lucide-react";
-import { api, type Manifest, type Me } from "../lib/api";
+import { api, pageHref, type Manifest, type Me } from "../lib/api";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import type { DocsNavItem } from "../../shared/types";
 import { SignIn } from "../components/SignIn";
@@ -28,15 +28,23 @@ const THEME_ICON: Record<ThemeMode, React.ReactNode> = {
   auto: <Monitor size={15} />,
 };
 
-function routeOf(slug: string, file: string): string {
-  return `/${slug}/${file.replace(/\.md$/, "")}`;
-}
-
-function NavLeaf({ slug, item, depth }: { slug: string; item: DocsNavItem; depth: number }) {
+function NavLeaf({
+  primarySlug,
+  slug,
+  index,
+  item,
+  depth,
+}: {
+  primarySlug: string | undefined;
+  slug: string;
+  index: string;
+  item: DocsNavItem;
+  depth: number;
+}) {
   return (
     <>
       <NavLink
-        to={routeOf(slug, item.file)}
+        to={pageHref(primarySlug, slug, item.file, index)}
         className={({ isActive }) =>
           `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
             isActive ? "nav-active" : "text-muted hover:text-[var(--fg)]"
@@ -46,7 +54,9 @@ function NavLeaf({ slug, item, depth }: { slug: string; item: DocsNavItem; depth
       >
         {item.label}
       </NavLink>
-      {item.items?.map((child) => <NavLeaf key={child.file} slug={slug} item={child} depth={depth + 1} />)}
+      {item.items?.map((child) => (
+        <NavLeaf key={child.file} primarySlug={primarySlug} slug={slug} index={index} item={child} depth={depth + 1} />
+      ))}
     </>
   );
 }
@@ -76,44 +86,49 @@ function Sidebar({ manifest, onNavigate }: { manifest: Manifest; onNavigate: () 
           ))}
         </div>
       </div>
-      {manifest.chapters.map((chapter) => {
-        // Only the active chapter expands. On the home page that's the
-        // handbook (the first chapter, whose overview IS the home page) —
-        // not every chapter at once.
-        const firstSlug = manifest.chapters[0]?.slug;
-        const open =
-          location.pathname === "/"
-            ? chapter.slug === firstSlug
-            : location.pathname.startsWith(`/${chapter.slug}`);
-        return (
-          <div key={chapter.slug}>
-            <NavLink
-              to={chapter.slug === manifest.chapters[0]?.slug ? "/" : routeOf(chapter.slug, chapter.index)}
-              className="block rounded-md px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wider text-muted hover:text-[var(--fg)]"
-            >
-              {chapter.title}
-            </NavLink>
-            {open && (
-              <div className="mt-1 flex flex-col gap-0.5">
-                <NavLink
-                  to={chapter.slug === manifest.chapters[0]?.slug ? "/" : routeOf(chapter.slug, chapter.index)}
-                  end
-                  className={({ isActive }) =>
-                    `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
-                      isActive ? "nav-active" : "text-muted hover:text-[var(--fg)]"
-                    }`
-                  }
-                >
-                  Overview
-                </NavLink>
-                {chapter.nav.map((item) => (
-                  <NavLeaf key={item.file} slug={chapter.slug} item={item} depth={0} />
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {(() => {
+        // The primary (first) chapter — the handbook — is rooted at the mount,
+        // so its pages have no slug segment. Resolve which chapter is "active"
+        // (and therefore expanded) from the first path segment: a known chapter
+        // slug picks that chapter; /ops and /mods pick none; anything else
+        // (incl. "/") falls to the handbook.
+        const primarySlug = manifest.chapters[0]?.slug;
+        const firstSeg = location.pathname.split("/")[1] ?? "";
+        const namedChapter = manifest.chapters.find((c) => c.slug === firstSeg);
+        const activeSlug = namedChapter ? namedChapter.slug : ["ops", "mods"].includes(firstSeg) ? null : primarySlug;
+        return manifest.chapters.map((chapter) => {
+          const open = chapter.slug === activeSlug;
+          const overviewTo = pageHref(primarySlug, chapter.slug, chapter.index, chapter.index);
+          return (
+            <div key={chapter.slug}>
+              <NavLink
+                to={overviewTo}
+                className="block rounded-md px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wider text-muted hover:text-[var(--fg)]"
+              >
+                {chapter.title}
+              </NavLink>
+              {open && (
+                <div className="mt-1 flex flex-col gap-0.5">
+                  <NavLink
+                    to={overviewTo}
+                    end
+                    className={({ isActive }) =>
+                      `block rounded-md px-2.5 py-1 text-[13px] transition-colors ${
+                        isActive ? "nav-active" : "text-muted hover:text-[var(--fg)]"
+                      }`
+                    }
+                  >
+                    Overview
+                  </NavLink>
+                  {chapter.nav.map((item) => (
+                    <NavLeaf key={item.file} primarySlug={primarySlug} slug={chapter.slug} index={chapter.index} item={item} depth={0} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        });
+      })()}
     </nav>
   );
 }

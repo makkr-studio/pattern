@@ -3,6 +3,14 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.2.1
+
+- **Docs handbook rooted at the mount.** The primary chapter (the handbook) now
+  serves its pages directly under `/docs` (e.g. `/docs/getting-started`) instead
+  of the doubled `/docs/docs/...`, so the intuitive URLs resolve. Other mods'
+  chapters keep their slug prefix.
+- LICENSE copyright set to Makkr Studio.
+
 ## 0.2.0 — Docs, DX & Agent Experience
 
 A documentation, developer-experience, and agent-experience pass ahead of the

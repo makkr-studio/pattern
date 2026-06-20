@@ -52,6 +52,19 @@ export const api = {
   mods: async (): Promise<ModInfo[]> => (await json<{ mods: ModInfo[] }>(await fetch(`${API}/mods`))).mods,
 };
 
+/**
+ * The in-app route for a chapter page. The PRIMARY chapter (the first one — the
+ * handbook) is rooted at the mount, so its pages drop the slug prefix:
+ * `/getting-started`, not `/docs/getting-started`. Every other chapter keeps its
+ * slug. A chapter's index/overview file maps to the chapter root.
+ */
+export function pageHref(primarySlug: string | undefined, slug: string, file: string, index = "index.md"): string {
+  const root = slug === primarySlug;
+  if (file === index || file === "index.md") return root ? "/" : `/${slug}`;
+  const f = file.replace(/\.md$/, "");
+  return root ? `/${f}` : `/${slug}/${f}`;
+}
+
 /** Module-cached op catalog (the embeds' OpMap; one fetch per page load). */
 let opsPromise: Promise<OpInfo[]> | null = null;
 export function fetchOps(): Promise<OpInfo[]> {
