@@ -29,8 +29,8 @@ export function EditsItself() {
           <h2 className="text-3xl font-semibold tracking-tight">Pattern is built from Pattern</h2>
           <p className="mt-4 text-muted">
             The admin, the docs, and the op reference are mods built from the same ops and workflows you use. The editor you
-            just played with is the real one. Every endpoint in the admin, including the one that lists your workflows, is
-            itself a workflow you can open and read.
+            just played with takes its components directly from it. Every endpoint in the admin, including the one that lists
+            your workflows, is itself a workflow you can open and read.
           </p>
         </div>
         <motion.div

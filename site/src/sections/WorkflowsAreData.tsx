@@ -50,7 +50,7 @@ export function WorkflowsAreData() {
       id="data"
       eyebrow="The idea"
       title="A workflow is just data"
-      subtitle="A graph of typed operations wired by their ports. The very same thing, as the JSON document the engine runs."
+      subtitle="A graph of typed operations wired by their ports. It is also the exact JSON document the engine runs."
     >
       <div ref={ref} className="flex flex-col items-center gap-8">
         {/* The graph, assembling */}
@@ -113,6 +113,11 @@ export function WorkflowsAreData() {
         >
           <JsonView value={level1Doc} className="max-h-[460px] p-3" />
         </motion.div>
+
+        <p className="max-w-xl text-center text-sm text-muted">
+          Edit it in the visual editor or by hand, import and export it, and commit it into your project as a mutable draft
+          or a frozen, immutable version.
+        </p>
       </div>
     </SectionShell>
   );
