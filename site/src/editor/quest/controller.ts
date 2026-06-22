@@ -71,6 +71,11 @@ export function useQuest(level: QuestLevel) {
     sfx.play("run");
   }, []);
 
+  const flagInvalid = useCallback((message: string) => {
+    setHint(message);
+    sfx.play("invalid");
+  }, []);
+
   return {
     level,
     placed,
@@ -83,6 +88,7 @@ export function useQuest(level: QuestLevel) {
     atRunStep: step?.kind === "run",
     tryPlace,
     tryWire,
+    flagInvalid,
     run,
     finishRun,
     replayRun,

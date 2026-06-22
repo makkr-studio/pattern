@@ -138,6 +138,11 @@ body {
   border-color: var(--hairline);
 }
 
+/* Prose wraps prettily — no single-word last lines (widows). */
+p {
+  text-wrap: pretty;
+}
+
 /* Scrollbars that don't break the aesthetic. */
 * {
   scrollbar-width: thin;

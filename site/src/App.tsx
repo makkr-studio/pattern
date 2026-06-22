@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { SiteHeader } from "./components/SiteHeader";
 import { Hero } from "./sections/Hero";
 import { WorkflowsAreData } from "./sections/WorkflowsAreData";
+import { OpsSection } from "./sections/OpsSection";
 import { EdgeKindsToy } from "./sections/EdgeKindsToy";
 import { MiniEditorSection } from "./sections/MiniEditorSection";
 import { DxAxSection } from "./sections/DxAxSection";
@@ -26,6 +27,7 @@ export function App() {
       <main>
         <Hero spin={spin} />
         <WorkflowsAreData />
+        <OpsSection />
         <EdgeKindsToy />
         <MiniEditorSection />
         <DxAxSection />
