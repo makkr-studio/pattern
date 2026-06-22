@@ -70,9 +70,10 @@ export function Terminal({ command = "npm create pattern@latest", className = ""
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="px-4 py-3 font-mono text-sm">
-        <span className="text-[var(--color-neon-lime)]">$</span> {typed}
-        <span className="ml-0.5 inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-[var(--color-neon-cyan)] align-middle" />
+      <pre className="flex items-center px-4 py-3 font-mono text-sm leading-none">
+        <span className="text-[var(--color-neon-lime)]">$</span>
+        <span className="ml-2 whitespace-pre">{typed}</span>
+        <span className="ml-0.5 inline-block h-[15px] w-[7px] animate-pulse rounded-[1px] bg-[var(--color-neon-cyan)]" />
       </pre>
     </div>
   );

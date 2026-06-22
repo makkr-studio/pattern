@@ -6,7 +6,8 @@
  *
  * The AudioContext is created lazily on the first play (which always happens
  * inside a user gesture), satisfying autoplay policies. On the site, sound is
- * MUTED BY DEFAULT — only an explicit "on" in localStorage enables it.
+ * ON BY DEFAULT — it starts playing from the visitor's first interaction; an
+ * explicit "off" in localStorage mutes it.
  */
 
 const STORE_KEY = "pattern.site.sfx";
@@ -129,10 +130,10 @@ const SOUNDS: Record<SfxName, Tone[]> = {
 };
 
 export const sfx = {
-  /** Muted by default: only an explicit "on" enables sound. */
+  /** On by default: only an explicit "off" mutes. */
   muted(): boolean {
     try {
-      return localStorage.getItem(STORE_KEY) !== "on";
+      return localStorage.getItem(STORE_KEY) === "off";
     } catch {
       return true;
     }

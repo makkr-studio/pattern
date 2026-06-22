@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "motion/react";
-import { Check, Code2, Maximize2, MousePointerClick, Play, Plus, RotateCcw, Sparkles, X } from "lucide-react";
+import { Check, Code2, Hand, Maximize2, Play, Plus, RotateCcw, Sparkles, X } from "lucide-react";
 import { JsonView, NeonButton } from "../components/ui";
 import { categoryOfType, categoryStyle, humanizeOp } from "../lib/categories";
 import { EditorCanvas } from "./EditorCanvas";
@@ -58,12 +59,39 @@ function EditorLevel({ level, fullscreen }: { level: QuestLevel; fullscreen: boo
   const [input, setInput] = useState(level.input.initial);
   const run = useFakeRun(level.goal, runKey, quest.finishRun);
 
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
+
   const startRun = () => {
     setShowJson(false);
     quest.run();
     setRunKey((k) => k + 1);
   };
 
+  // Drag a node from the palette onto the canvas to place it (a quick click also
+  // places it, as a fallback). Dropping off-canvas is explained.
+  const startPlaceDrag = (e: React.PointerEvent) => {
+    if (quest.step?.kind !== "place" || quest.status !== "building") return;
+    const node = quest.step.placeNode;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    setGhost({ x: sx, y: sy });
+    const move = (ev: PointerEvent) => setGhost({ x: ev.clientX, y: ev.clientY });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      setGhost(null);
+      if (!node) return;
+      const moved = Math.hypot(ev.clientX - sx, ev.clientY - sy);
+      const r = canvasRef.current?.getBoundingClientRect();
+      const overCanvas = !!r && ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+      if (overCanvas || moved < 6) quest.tryPlace(node);
+      else quest.flagInvalid("Drop the op onto the canvas.");
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  };
+
+  const ghostNode = ghost && quest.step?.kind === "place" ? level.goal.nodes.find((n) => n.id === quest.step!.placeNode) : null;
   const canvasH = fullscreen ? "h-[calc(100vh-180px)]" : "h-[440px]";
 
   return (
@@ -76,7 +104,7 @@ function EditorLevel({ level, fullscreen }: { level: QuestLevel; fullscreen: boo
           {quest.status === "done" ? (
             <OutGate quest={quest} run={run} input={input} setInput={setInput} onReplay={() => setRunKey((k) => k + 1)} />
           ) : (
-            <Palette quest={quest} onRun={startRun} />
+            <Palette quest={quest} onRun={startRun} onStartPlaceDrag={startPlaceDrag} />
           )}
           <button
             type="button"
@@ -89,7 +117,7 @@ function EditorLevel({ level, fullscreen }: { level: QuestLevel; fullscreen: boo
       </div>
 
       {/* Canvas / JSON */}
-      <div className={`relative min-w-0 flex-1 ${canvasH}`}>
+      <div ref={canvasRef} className={`relative min-w-0 flex-1 ${canvasH}`}>
         <div
           className="absolute inset-0"
           style={{
@@ -101,6 +129,24 @@ function EditorLevel({ level, fullscreen }: { level: QuestLevel; fullscreen: boo
           {showJson ? <JsonView value={level.doc} className="max-h-full w-full max-w-lg p-3" /> : <EditorCanvas quest={quest} run={run} />}
         </div>
       </div>
+
+      {/* The node being dragged from the palette */}
+      {ghost &&
+        ghostNode &&
+        createPortal(
+          <div
+            className="glass-strong pointer-events-none fixed z-[60] flex items-center gap-2 rounded-xl px-3 py-2 text-sm shadow-lg"
+            style={{ left: ghost.x + 12, top: ghost.y + 12 }}
+          >
+            {(() => {
+              const cat = categoryStyle(categoryOfType(ghostNode.op));
+              const Icon = cat.Icon;
+              return <Icon size={15} style={{ color: cat.color }} />;
+            })()}
+            {ghostNode.title ?? humanizeOp(ghostNode.op)}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -145,7 +191,7 @@ function Coach({ quest }: { quest: Quest }) {
   );
 }
 
-function Palette({ quest, onRun }: { quest: Quest; onRun: () => void }) {
+function Palette({ quest, onRun, onStartPlaceDrag }: { quest: Quest; onRun: () => void; onStartPlaceDrag: (e: React.PointerEvent) => void }) {
   const step = quest.step;
   if (!step) return null;
 
@@ -160,8 +206,8 @@ function Palette({ quest, onRun }: { quest: Quest; onRun: () => void }) {
   if (step.kind === "wire") {
     return (
       <div className="rounded-xl border border-dashed p-3 text-center text-[12px] text-muted" style={{ borderColor: "var(--color-neon-cyan)" }}>
-        <MousePointerClick size={15} className="mx-auto mb-1 text-[var(--color-neon-cyan)]" />
-        Click the glowing node to connect it.
+        <Hand size={15} className="mx-auto mb-1 text-[var(--color-neon-cyan)]" />
+        Drag from the glowing output port to the glowing input port.
       </div>
     );
   }
@@ -176,9 +222,9 @@ function Palette({ quest, onRun }: { quest: Quest; onRun: () => void }) {
       <div className="mb-1.5 text-[11px] uppercase tracking-wider text-muted">Palette</div>
       <button
         type="button"
-        onClick={() => quest.tryPlace(node.id)}
-        className="flex w-full items-center gap-2.5 rounded-xl border p-3 text-left transition-transform hover:scale-[1.02]"
-        style={{ borderColor: cat.border, background: cat.soft, animation: "pulse 1.8s ease-in-out infinite" }}
+        onPointerDown={onStartPlaceDrag}
+        className="flex w-full touch-none items-center gap-2.5 rounded-xl border p-3 text-left transition-transform hover:scale-[1.02] active:scale-[0.99]"
+        style={{ borderColor: cat.border, background: cat.soft, animation: "pulse 1.8s ease-in-out infinite", cursor: "grab" }}
       >
         <Icon size={17} style={{ color: cat.color }} />
         <div className="min-w-0">
@@ -187,6 +233,7 @@ function Palette({ quest, onRun }: { quest: Quest; onRun: () => void }) {
         </div>
         <Plus size={15} className="ml-auto text-muted" />
       </button>
+      <p className="mt-1.5 text-center text-[11px] text-muted">Drag it onto the canvas</p>
     </div>
   );
 }
