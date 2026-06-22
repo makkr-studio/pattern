@@ -20,7 +20,8 @@ interface WireDrag {
 
 type Positions = Record<string, { x: number; y: number }>;
 
-const HIT = 17;
+const HIT = 26; // generous drop radius (canvas units) onto an input port
+const GRAB = 28; // generous output-port grab handle
 
 /**
  * The interactive graph. Drag a node from the palette onto the canvas to place
@@ -199,10 +200,10 @@ export function EditorCanvas({ quest, run }: { quest: Quest; run: RunState }) {
                   title={`${port.name} (${port.kind})`}
                   style={{
                     position: "absolute",
-                    left: p.x + a.x - B.minX - 11,
-                    top: p.y + a.y - B.minY - 11,
-                    width: 22,
-                    height: 22,
+                    left: p.x + a.x - B.minX - GRAB / 2,
+                    top: p.y + a.y - B.minY - GRAB / 2,
+                    width: GRAB,
+                    height: GRAB,
                     borderRadius: "50%",
                     cursor: "crosshair",
                     touchAction: "none",
