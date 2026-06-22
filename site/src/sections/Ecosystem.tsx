@@ -27,7 +27,7 @@ export function Ecosystem() {
       id="ecosystem"
       eyebrow="The ecosystem"
       title="Batteries, in mods"
-      subtitle="A mod is a package that extends an engine with ops, routes, an admin page, and a docs chapter. Add the ones you want."
+      subtitle="A mod is a package that gives an engine new capabilities: ops, workflows, routes, an admin page, a docs chapter, even a full frontend app you can brand. Add the ones you want, or write your own."
     >
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {MODS.map((m, i) => (
