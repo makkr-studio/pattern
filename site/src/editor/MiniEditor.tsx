@@ -131,9 +131,17 @@ function EditorLevel({ level, fullscreen }: { level: QuestLevel; fullscreen: boo
       {askRun && (
         <Modal open title="Run the workflow" onClose={() => setAskRun(false)}>
           <p className="mb-3 text-sm text-muted">Give it an input. The result depends on what you pass in.</p>
-          <label className="mb-1 block text-[11px] uppercase tracking-wider text-muted">{level.input.label}</label>
+          <label htmlFor="pattern-run-input" className="mb-1 block text-xs text-muted">
+            {level.input.label}
+          </label>
           <input
+            id="pattern-run-input"
+            name="pattern-run-input"
             autoFocus
+            autoComplete="off"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            spellCheck={false}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && doRun()}
@@ -304,8 +312,14 @@ function OutGate({
       <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--color-neon-lime)]">
         <Check size={14} /> {result.label}
       </div>
-      <label className="mb-1 block text-[11px] text-muted">{quest.level.input.label}</label>
+      <label htmlFor="pattern-outgate-input" className="mb-1 block text-[11px] text-muted">{quest.level.input.label}</label>
       <input
+        id="pattern-outgate-input"
+        name="pattern-outgate-input"
+        autoComplete="off"
+        data-1p-ignore="true"
+        data-lpignore="true"
+        spellCheck={false}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         placeholder={quest.level.input.placeholder}

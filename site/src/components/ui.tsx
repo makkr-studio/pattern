@@ -139,7 +139,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-xl" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-[40px]" onClick={onClose}>
       <motion.div
         ref={panelRef}
         role="dialog"
