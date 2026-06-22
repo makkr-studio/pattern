@@ -22,17 +22,21 @@ export function miniNodeHeight(spec: MiniNodeSpec): number {
   return HEADER + rows * HANDLE_GAP + 12;
 }
 
-/** The (x,y) anchor of a port relative to the node origin — for the static SVG
- *  layer (hero / scroll-morph) to draw bezier wires between nodes. */
+// The port dots are inset from the node's left/right edge (the dot sits ~13px
+// in). Anchors point at the dot center so wires connect to the dots and the
+// editor's hit targets line up with what you actually see and grab.
+const DOT_INSET = 13;
+
+/** The (x,y) anchor of a port (its dot center) relative to the node origin. */
 export function portAnchor(spec: MiniNodeSpec, port: string, dir: "in" | "out"): { x: number; y: number } {
   if (dir === "in") {
     const left = [...(spec.configInputs ?? []), ...spec.inputs];
     const i = Math.max(0, left.findIndex((p) => p.name === port));
-    return { x: 0, y: HEADER + 8 + i * HANDLE_GAP + 6 };
+    return { x: DOT_INSET, y: HEADER + 8 + i * HANDLE_GAP + 6 };
   }
   const right = [...spec.outputs.map((p) => p.name), ...(spec.controlOuts ?? [])];
   const i = Math.max(0, right.indexOf(port));
-  return { x: NODE_W, y: HEADER + 8 + i * HANDLE_GAP + 6 };
+  return { x: NODE_W - DOT_INSET, y: HEADER + 8 + i * HANDLE_GAP + 6 };
 }
 
 /** The node outline as ONE SVG path with run-tab notches built into the frame. */
