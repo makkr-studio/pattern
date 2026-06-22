@@ -8,7 +8,7 @@ const level1: QuestLevel = {
   goal: level1Graph,
   doc: level1Doc,
   stages: ["Trigger", "Transform", "Respond", "Run"],
-  input: { label: "name", placeholder: "world", initial: "world" },
+  input: { label: ":name (the path parameter in /hello/:name)", placeholder: "world", initial: "world" },
   result: (input) => ({ label: "200 OK", value: { message: `Hello, ${input || "world"}!` } }),
   steps: [
     { id: "s1", stage: 0, kind: "place", placeNode: "in", narration: "Every workflow starts with a trigger. Add the HTTP request that opens the route." },
