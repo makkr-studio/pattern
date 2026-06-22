@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { hashHue } from "../lib/format";
 import { highlight } from "./JsonCode";
@@ -120,14 +121,17 @@ export function JsonView({ value, className = "" }: { value: unknown; className?
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  // Ref the latest onClose so the effect below never re-runs on a parent
+  // re-render (which would otherwise steal focus from inputs on every keystroke).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     sfx.play("open");
     restoreRef.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -135,17 +139,22 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
       window.removeEventListener("keydown", onKey);
       restoreRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-[40px]" onClick={onClose}>
+  // Portal to <body> so the fixed overlay is relative to the viewport (escaping
+  // any ancestor backdrop-filter/transform), and its blur covers the whole page.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-4"
+      style={{ backdropFilter: "blur(56px) saturate(1.2)", WebkitBackdropFilter: "blur(56px) saturate(1.2)" }}
+      onClick={onClose}
+    >
       <motion.div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.97, y: 6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
@@ -159,6 +168,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
         </div>
         {children}
       </motion.div>
-    </div>
+    </div>,
+    document.body,
   );
 }
