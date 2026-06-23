@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v6
 
@@ -53,10 +54,10 @@ jobs:
             echo "branch=staging" >> "$GITHUB_OUTPUT"
           fi
 
+      # Call Wrangler directly via `pnpm dlx` (isolated temp env) rather than
+      # cloudflare/wrangler-action, whose auto-installer runs `pnpm add wrangler`
+      # and fails on a pnpm workspace root (ERR_PNPM_ADDING_TO_ROOT). Wrangler
+      # reads CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID from the env above.
       - name: Deploy to Cloudflare Pages
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy site/dist --project-name=pattern-site --branch=${{ steps.target.outputs.branch }}
+        run: pnpm dlx wrangler@4 pages deploy site/dist --project-name=pattern-site --branch=${{ steps.target.outputs.branch }}
