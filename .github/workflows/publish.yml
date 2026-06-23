@@ -17,8 +17,12 @@ name: Publish
 #     (Releases -> Draft a new release -> tag "v1.2.3") or with
 #     `git tag v1.2.3 && git push origin v1.2.3`.
 #
-# Requires a repo secret NPM_TOKEN (an npm automation token with publish rights
-# to the @pattern-js scope). Until it is set, the publish step skips cleanly.
+# Requires a repo secret NPM_TOKEN with publish rights to EVERY package: the
+# @pattern-js scope AND the unscoped `create-pattern` initializer. Unscoped
+# packages are not covered by scope permissions; their maintainers are tracked
+# per-package, so the token's user must be an owner of `create-pattern` and the
+# token's package allowlist must include it. Until NPM_TOKEN is set, the publish
+# step skips cleanly.
 
 on:
   push:
@@ -33,13 +37,13 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.15.9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
