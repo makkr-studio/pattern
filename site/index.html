@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Pattern — build apps by connecting the dots</title>
+    <meta
+      name="description"
+      content="Pattern is a workflow engine and framework. Build APIs, agents, and apps as typed graphs of operations, with a visual editor, streaming, and live reload."
+    />
+    <!-- No-flash theme: apply the resolved theme before the bundle loads. -->
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem("pattern-site-theme") || "auto";
+          var dark = m === "dark" || (m === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
