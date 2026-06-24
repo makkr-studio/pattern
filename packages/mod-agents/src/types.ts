@@ -39,6 +39,61 @@ export type MessagePart = z.infer<typeof messagePartSchema>;
 export const historySchema = z.array(z.unknown());
 export type History = unknown[];
 
+/* ── model reference ───────────────────────────────────────────────────── */
+
+/**
+ * A provider-neutral reference to a model. Plain JSON, structured-cloneable, it
+ * flows on a value port into every capability op and into an agent. The CAPABILITY
+ * layer (mod-ai) turns it into a concrete SDK model; the neutral layer only ever
+ * passes it around. Routing is first-class: `direct` (a native provider package +
+ * a provider key) or `gateway` (the Vercel AI Gateway, one key, `provider/model` ids).
+ */
+export const modelRefSchema = z.object({
+  kind: z.literal("model"),
+  routing: z.enum(["direct", "gateway"]),
+  modality: z
+    .enum(["language", "embedding", "image", "speech", "transcription", "video"])
+    .default("language"),
+  /** direct: provider package id ("openai"); gateway: the provider half of "provider/model". */
+  provider: z.string(),
+  /** direct: bare model id ("gpt-5"); gateway: the full "provider/model" string. */
+  modelId: z.string(),
+  /** Vault secret NAME to resolve the key (defaults per routing/provider in mod-ai). */
+  credential: z.string().optional(),
+  /** Pass-through provider options (temperature, reasoning, dimensions, voice…). */
+  providerOptions: z.record(z.string(), z.unknown()).optional(),
+});
+export type ModelRef = z.infer<typeof modelRefSchema>;
+
+/** Token accounting common to every generation, when the provider reports it. */
+export const usageSchema = z
+  .object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    totalTokens: z.number(),
+  })
+  .partial();
+export type Usage = z.infer<typeof usageSchema>;
+
+/**
+ * A provider-neutral chat message (parts-based content, reusing messagePartSchema).
+ * The agent loop owns history losslessly in this shape; mod-ai maps it to/from the
+ * AI SDK's message format. `tool` messages carry the call linkage; an `assistant`
+ * message may carry the tool calls it requested.
+ */
+export const neutralMessageSchema = z.object({
+  role: z.enum(["system", "user", "assistant", "tool"]),
+  content: z.union([z.string(), z.array(messagePartSchema)]),
+  /** tool result messages: which call this answers. */
+  toolCallId: z.string().optional(),
+  toolName: z.string().optional(),
+  /** assistant messages: the tool calls requested this step. */
+  toolCalls: z
+    .array(z.object({ callId: z.string(), toolName: z.string(), args: z.unknown() }))
+    .optional(),
+});
+export type NeutralMessage = z.infer<typeof neutralMessageSchema>;
+
 /* ── descriptors ───────────────────────────────────────────────────────── */
 
 export const toolRefSchema = z.discriminatedUnion("origin", [
