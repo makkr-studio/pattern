@@ -1,0 +1,156 @@
+/** @pattern-js/mod-ai — image / speech / transcription / video ops (bytes → MediaRef). */
+
+import { required, stream, value, z, type OpDefinition } from "@pattern-js/core";
+import { modelRefSchema } from "@pattern-js/mod-agents";
+import { generateImage, generateSpeech, generateVideo, transcribe } from "../sdk.js";
+import { genProgressSchema, mediaRefSchema, segmentSchema, type GenProgress, type MediaRef } from "../types.js";
+import { maybe, mediaBytes, providerService, putMedia } from "./shared.js";
+
+/** Emit start → (await the work) → done. A thin progress channel for long jobs. */
+function progressStream(work: Promise<unknown>): ReadableStream<GenProgress> {
+  return new ReadableStream<GenProgress>({
+    async start(controller) {
+      controller.enqueue({ phase: "start" });
+      try {
+        await work;
+      } finally {
+        controller.enqueue({ phase: "done" });
+        controller.close();
+      }
+    },
+  });
+}
+
+export const imageGenerate: OpDefinition = {
+  type: "ai.image.generate",
+  title: "ai.image.generate",
+  description: "Generate image(s) from a prompt. Bytes land in the blob store; outputs are MediaRefs. Progress streams start/done.",
+  config: z.object({
+    n: z.number().int().positive().default(1),
+    size: z.string().optional(),
+    aspectRatio: z.string().optional(),
+    seed: z.number().int().optional(),
+  }),
+  inputs: { model: required(modelRefSchema), prompt: required(z.string()) },
+  outputs: {
+    image: value(mediaRefSchema),
+    images: value(z.array(mediaRefSchema)),
+    progress: stream(genProgressSchema),
+  },
+  execute: async (ctx) => {
+    const [modelRef, prompt] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("prompt")]);
+    const model = await providerService(ctx).imageModel(modelRefSchema.parse(modelRef), ctx);
+    const cfg = ctx.config as { n: number; size?: string; aspectRatio?: string; seed?: number };
+    const refs = (async () => {
+      const r = await generateImage({
+        model,
+        prompt,
+        n: cfg.n,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        size: cfg.size as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        aspectRatio: cfg.aspectRatio as any,
+        seed: cfg.seed,
+        abortSignal: ctx.signal,
+      });
+      return Promise.all(r.images.map((img) => putMedia(ctx, img.uint8Array, img.mediaType, "image")));
+    })();
+    return {
+      image: refs.then((rs: MediaRef[]) => rs[0]),
+      images: refs,
+      progress: progressStream(refs),
+    };
+  },
+};
+
+export const speechGenerate: OpDefinition = {
+  type: "ai.speech.generate",
+  title: "ai.speech.generate",
+  description: "Synthesize speech (TTS) from text. Audio bytes land in the blob store; output is a MediaRef.",
+  config: z.object({ voice: z.string().optional(), speed: z.number().optional(), format: z.string().optional() }),
+  inputs: { model: required(modelRefSchema), text: required(z.string()) },
+  outputs: { audio: value(mediaRefSchema) },
+  execute: async (ctx) => {
+    const [modelRef, text] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("text")]);
+    const model = await providerService(ctx).speechModel(modelRefSchema.parse(modelRef), ctx);
+    const cfg = ctx.config as { voice?: string; speed?: number };
+    const r = await generateSpeech({ model, text, voice: cfg.voice, speed: cfg.speed, abortSignal: ctx.signal });
+    return { audio: await putMedia(ctx, r.audio.uint8Array, r.audio.mediaType, "audio") };
+  },
+};
+
+export const transcribeOp: OpDefinition = {
+  type: "ai.transcribe",
+  title: "ai.transcribe",
+  description: "Transcribe audio to text (STT). Pass a MediaRef (or raw bytes). Returns text + optional segments.",
+  config: z.object({ language: z.string().optional() }),
+  inputs: { model: required(modelRefSchema), audio: required(mediaRefSchema), audioBytes: value(z.instanceof(Uint8Array)) },
+  outputs: {
+    text: value(z.string()),
+    segments: value(z.array(segmentSchema)),
+    language: value(z.string()),
+    durationMs: value(z.number()),
+  },
+  execute: async (ctx) => {
+    const [modelRef, audioRef, audioBytes] = await Promise.all([
+      ctx.input.value("model"),
+      ctx.input.value<MediaRef>("audio"),
+      maybe<Uint8Array>(ctx, "audioBytes"),
+    ]);
+    const model = await providerService(ctx).transcriptionModel(modelRefSchema.parse(modelRef), ctx);
+    const audio = audioBytes ?? (await mediaBytes(ctx, audioRef));
+    const r = await transcribe({ model, audio, abortSignal: ctx.signal });
+    return {
+      text: r.text,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      segments: (r.segments ?? []).map((s: any) => ({ text: s.text, startSecond: s.startSecond, endSecond: s.endSecond })),
+      language: r.language ?? "",
+      durationMs: r.durationInSeconds != null ? Math.round(r.durationInSeconds * 1000) : 0,
+    };
+  },
+};
+
+export const videoGenerate: OpDefinition = {
+  type: "ai.video.generate",
+  title: "ai.video.generate",
+  description:
+    "Generate video from a prompt (optionally an image for image-to-video). Long-running (minutes): progress streams start/done, bytes land in the blob store. Gateway-first.",
+  config: z.object({
+    n: z.number().int().positive().default(1),
+    durationSeconds: z.number().int().positive().optional(),
+    aspectRatio: z.string().optional(),
+  }),
+  inputs: { model: required(modelRefSchema), prompt: required(z.string()), image: value(mediaRefSchema) },
+  outputs: {
+    video: value(mediaRefSchema),
+    videos: value(z.array(mediaRefSchema)),
+    progress: stream(genProgressSchema),
+  },
+  execute: async (ctx) => {
+    const [modelRef, prompt] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("prompt")]);
+    const model = await providerService(ctx).videoModel(modelRefSchema.parse(modelRef), ctx);
+    const cfg = ctx.config as { n: number; durationSeconds?: number; aspectRatio?: string };
+    const refs = (async () => {
+      const r = await generateVideo({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        model: model as any,
+        prompt,
+        n: cfg.n,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(cfg.durationSeconds ? { duration: cfg.durationSeconds } : ({} as any)),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        aspectRatio: cfg.aspectRatio as any,
+        abortSignal: ctx.signal,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return Promise.all((r.videos as any[]).map((v) => putMedia(ctx, v.uint8Array, v.mediaType ?? "video/mp4", "video")));
+    })();
+    return {
+      video: refs.then((rs: MediaRef[]) => rs[0]),
+      videos: refs,
+      progress: progressStream(refs),
+    };
+  },
+};
+
+export const mediaOps: OpDefinition[] = [imageGenerate, speechGenerate, transcribeOp, videoGenerate];

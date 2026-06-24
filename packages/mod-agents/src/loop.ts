@@ -260,6 +260,7 @@ export function startTurn(params: StartTurnParams): {
           let text = "";
           const toolCalls: Array<{ callId: string; toolName: string; args: Record<string, unknown> }> = [];
           for await (const chunk of model.streamTurn({
+            ctx,
             modelRef: active.descriptor.model,
             system: active.descriptor.instructions,
             // A snapshot: the loop mutates `messages` after the step settles.

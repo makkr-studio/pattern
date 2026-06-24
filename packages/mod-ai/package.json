@@ -1,0 +1,52 @@
+{
+  "name": "@pattern-js/mod-ai",
+  "version": "0.2.2",
+  "description": "AI capabilities for Pattern via the Vercel AI SDK: text, structured object, embeddings, image, speech (TTS), transcription (STT), and video ops across any provider — direct or through the Vercel AI Gateway — plus the model provider for @pattern-js/mod-agents. Credentials resolve from the vault; a settings page manages providers and models.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.86",
+    "@ai-sdk/gateway": "^3.0.134",
+    "@ai-sdk/google": "^3.0.83",
+    "@ai-sdk/groq": "^3.0.42",
+    "@ai-sdk/mistral": "^3.0.40",
+    "@ai-sdk/openai": "^3.0.74",
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/mod-agents": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
+    "ai": "^6",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/mod-ai"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Makkr Studio (https://github.com/makkr-studio)"
+}

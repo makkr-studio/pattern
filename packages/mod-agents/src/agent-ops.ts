@@ -244,6 +244,7 @@ const compactOp: OpDefinition = {
     const recent = history.slice(history.length - cfg.keepRecent);
     const model = aiModelService(ctx);
     const { text } = await model.generateText({
+      ctx,
       modelRef,
       system:
         "Summarize the following conversation log into a compact brief that preserves facts, names, decisions and open tasks. Reply with the summary only.",

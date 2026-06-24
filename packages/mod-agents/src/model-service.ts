@@ -40,6 +40,8 @@ export type NeutralChunk =
   | { type: "finish"; finishReason: string; usage?: Usage; message: NeutralMessage };
 
 export interface StreamTurnInput {
+  /** The calling op's context — mod-ai resolves credentials (vault/env) through it. */
+  ctx: OpContext;
   /** Which model to call; mod-ai resolves it (undefined = the configured default). */
   modelRef?: ModelRef;
   /** The agent's instructions (system prompt). */
@@ -59,6 +61,7 @@ export interface StreamTurnInput {
 }
 
 export interface GenerateTextInput {
+  ctx: OpContext;
   modelRef?: ModelRef;
   system?: string;
   messages: NeutralMessage[];
