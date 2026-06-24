@@ -21,6 +21,7 @@ import { McpService } from "./mcp.js";
 import { AiConfigService } from "./config.js";
 import { aiOps } from "./ops/index.js";
 import { aiAdminRoutes, aiFrontend, settingsOps } from "./settings.js";
+import { mcpServeOp, mcpServerWorkflow } from "./mcp-server.js";
 
 function packagedDocs(engine: Engine): void {
   try {
@@ -36,8 +37,8 @@ export function aiMod(): PatternMod {
   return defineMod({
     name: "@pattern-js/mod-ai",
     docs: { filesystem: "ai-docs", title: "AI", order: 51 },
-    ops: [...aiOps, ...settingsOps],
-    workflows: aiAdminRoutes(),
+    ops: [...aiOps, ...settingsOps, mcpServeOp],
+    workflows: [...aiAdminRoutes(), mcpServerWorkflow()],
     frontend: aiFrontend(),
     setup: (engine: Engine) => {
       packagedDocs(engine);
