@@ -22,6 +22,7 @@ import { AiConfigService } from "./config.js";
 import { aiOps } from "./ops/index.js";
 import { aiAdminRoutes, aiFrontend, settingsOps } from "./settings.js";
 import { mcpServeOp, mcpServerWorkflow } from "./mcp-server.js";
+import { aiAppMount, provideAiAssets } from "./app.js";
 
 function packagedDocs(engine: Engine): void {
   try {
@@ -38,10 +39,11 @@ export function aiMod(): PatternMod {
     name: "@pattern-js/mod-ai",
     docs: { filesystem: "ai-docs", title: "AI", order: 51 },
     ops: [...aiOps, ...settingsOps, mcpServeOp],
-    workflows: [...aiAdminRoutes(), mcpServerWorkflow()],
+    workflows: [...aiAdminRoutes(), mcpServerWorkflow(), aiAppMount],
     frontend: aiFrontend(),
     setup: (engine: Engine) => {
       packagedDocs(engine);
+      provideAiAssets(engine);
       const provider = new ProviderService();
       engine.provideService(AI_PROVIDER_SERVICE, provider);
       engine.provideService(AI_CATALOG_SERVICE, new ModelCatalog());

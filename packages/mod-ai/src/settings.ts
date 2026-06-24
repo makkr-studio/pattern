@@ -10,6 +10,7 @@
 import {
   fromBody,
   httpEndpoint,
+  required,
   value,
   z,
   type FrontendContribution,
@@ -18,9 +19,10 @@ import {
   type Workflow,
 } from "@pattern-js/core";
 import { modelRefSchema } from "@pattern-js/mod-agents";
-import { AI_CATALOG_SERVICE, AI_CONFIG_SERVICE } from "./well-known.js";
+import { AI_CATALOG_SERVICE, AI_CONFIG_SERVICE, AI_PROVIDER_SERVICE } from "./well-known.js";
 import type { AiConfigService } from "./config.js";
 import type { ModelCatalogService } from "./catalog.js";
+import type { AiProviderService } from "./provider.js";
 import { maybe } from "./ops/shared.js";
 
 function configSvc(ctx: OpContext): AiConfigService {
@@ -104,7 +106,41 @@ const modelsList: OpDefinition = {
   },
 };
 
-export const settingsOps: OpDefinition[] = [settingsRead, settingsWrite, modelsList];
+const providerTest: OpDefinition = {
+  type: "ai.provider.test",
+  title: "ai.provider.test",
+  description: "Test a provider/model: resolves the key + builds the model, reporting { ok, detail }.",
+  reusable: false,
+  sensitivity: "privileged",
+  config: z.object({}),
+  inputs: {
+    routing: value(z.string()),
+    provider: required(z.string()),
+    modelId: required(z.string()),
+    modality: value(z.string()),
+  },
+  outputs: { result: value() },
+  execute: async (ctx) => {
+    const provider = ctx.services[AI_PROVIDER_SERVICE] as AiProviderService | undefined;
+    if (!provider) return { result: { ok: false, detail: "provider service missing" } };
+    const [routing, prov, modelId, modality] = await Promise.all([
+      maybe<string>(ctx, "routing"),
+      ctx.input.value<string>("provider"),
+      ctx.input.value<string>("modelId"),
+      maybe<string>(ctx, "modality"),
+    ]);
+    const ref = modelRefSchema.parse({
+      kind: "model",
+      routing: routing === "direct" ? "direct" : "gateway",
+      modality: modality ?? "language",
+      provider: prov,
+      modelId,
+    });
+    return { result: await provider.testConnection(ref, ctx) };
+  },
+};
+
+export const settingsOps: OpDefinition[] = [settingsRead, settingsWrite, modelsList, providerTest];
 
 const API = "/admin/api";
 
@@ -138,33 +174,22 @@ export function aiAdminRoutes(): Workflow[] {
       io: { out: "models" },
       auth,
     }),
+    httpEndpoint({
+      id: "ai.route.test",
+      name: `AI · POST ${API}/ai/test`,
+      method: "POST",
+      path: `${API}/ai/test`,
+      op: "ai.provider.test",
+      io: { in: { routing: fromBody(), provider: fromBody(), modelId: fromBody(), modality: fromBody() }, out: "result" },
+      auth,
+    }),
   ];
 }
 
 export function aiFrontend(): FrontendContribution {
   return {
-    settings: [
-      {
-        id: "ai",
-        title: "AI Providers",
-        description:
-          "The default model agents and chat use when no ai.model node is wired. Provider keys live in the vault (System → Secrets).",
-        route: { method: "GET", path: `${API}/ai/settings` },
-        submitRoute: { method: "POST", path: `${API}/ai/settings` },
-        fields: [
-          {
-            key: "defaultRouting",
-            label: "Routing",
-            type: "select",
-            options: [
-              { value: "gateway", label: "Vercel AI Gateway" },
-              { value: "direct", label: "Direct provider" },
-            ],
-          },
-          { key: "defaultProvider", label: "Provider", type: "text", description: 'direct: "openai" · gateway: provider half of the id' },
-          { key: "defaultModelId", label: "Model id", type: "text", description: 'direct: "gpt-5" · gateway: "openai/gpt-5"' },
-        ],
-      },
-    ],
+    // The richer Tier-2 page (default model + Test connection + catalog matrix).
+    menu: [{ category: "System", label: "AI Providers", icon: "bot", path: "/x/ai/providers", order: 20 }],
+    pages: [{ path: "/x/ai/providers", remote: "/ai-ext/ai-providers.js" }],
   };
 }
