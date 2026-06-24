@@ -24,7 +24,7 @@ export const textGenerate: OpDefinition = {
     const { model, system, messages } = await textInput(ctx);
     const cfg = ctx.config as { maxOutputTokens?: number };
     const r = await generateText({ model, system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
-    return { text: r.text, usage: mapUsage(r.totalUsage), finishReason: r.finishReason };
+    return { text: r.text, usage: mapUsage(r.usage), finishReason: r.finishReason };
   },
 };
 

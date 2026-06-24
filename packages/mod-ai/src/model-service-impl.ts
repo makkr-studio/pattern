@@ -90,6 +90,6 @@ export class ModelServiceImpl implements AiModelService {
     const model = await this.languageModel(input.modelRef, input.ctx);
     const messages = await toModelMessages(input.messages, input.ctx);
     const r = await generateText({ model, system: input.system, messages });
-    return { text: r.text, usage: mapUsage(r.totalUsage) };
+    return { text: r.text, usage: mapUsage(r.usage) };
   }
 }
