@@ -13,7 +13,7 @@ import type { Engine, Workflow } from "@pattern-js/core";
 
 const REMOTE = `
 const { React, api, ui } = globalThis.__PATTERN_ADMIN__;
-const { GlassPanel, PageHeader, NeonButton, Badge } = ui;
+const { GlassPanel, NeonButton, Badge } = ui;
 const h = React.createElement;
 
 function Field({ label, children }) {
@@ -30,29 +30,29 @@ export default function AIProvidersPage() {
   const [testing, setTesting] = React.useState(false);
 
   React.useEffect(() => {
-    api.call("GET", "/admin/api/ai/settings").then((s) => {
+    api.call("GET", "/ai/settings").then((s) => {
       if (!s) return;
       setRouting(s.defaultRouting || "gateway");
       setProvider(s.defaultProvider || "");
       setModelId(s.defaultModelId || "");
     });
-    api.call("GET", "/admin/api/ai/models").then(setModels).catch(() => setModels([]));
+    api.call("GET", "/ai/models").then(setModels).catch(() => setModels([]));
   }, []);
 
   function save() {
-    api.call("POST", "/admin/api/ai/settings", { defaultRouting: routing, defaultProvider: provider, defaultModelId: modelId })
+    api.call("POST", "/ai/settings", { defaultRouting: routing, defaultProvider: provider, defaultModelId: modelId })
       .then(() => { setSaved(true); setTimeout(() => setSaved(false), 1500); });
   }
   function runTest() {
     setTesting(true); setTest(null);
-    api.call("POST", "/admin/api/ai/test", { routing, provider, modelId, modality: "language" })
+    api.call("POST", "/ai/test", { routing, provider, modelId, modality: "language" })
       .then((r) => { setTest(r); setTesting(false); })
       .catch((e) => { setTest({ ok: false, detail: String(e) }); setTesting(false); });
   }
 
   const inputCls = "glass w-full rounded-lg px-3 py-2";
-  return h("div", null,
-    h(PageHeader, { title: "AI Providers", subtitle: "The default model agents & chat use when no ai.model node is wired. Provider keys live in the vault (System → Secrets)." }),
+  return h("div", { className: "space-y-6" },
+    h("p", { className: "text-muted text-sm" }, "The default model agents & chat use when no ai.model node is wired. Provider keys live in the vault (System → Secrets)."),
     h("div", { className: "grid gap-6 lg:grid-cols-2" },
       h(GlassPanel, { className: "p-6 space-y-4" },
         h("h3", { className: "font-semibold" }, "Default model"),

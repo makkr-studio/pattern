@@ -22,8 +22,9 @@ import {
 import { modelRefSchema } from "@pattern-js/mod-agents";
 import { AI_CATALOG_SERVICE, AI_CONFIG_SERVICE, AI_PROVIDER_SERVICE } from "./well-known.js";
 import type { AiConfigService } from "./config.js";
-import type { ModelCatalogService } from "./catalog.js";
+import { fromGatewayModel, type ModelCatalogService } from "./catalog.js";
 import type { AiProviderService } from "./provider.js";
+import type { ModelCapability } from "./types.js";
 import { maybe } from "./ops/shared.js";
 
 function configSvc(ctx: OpContext): AiConfigService {
@@ -96,14 +97,28 @@ const settingsWrite: OpDefinition = {
 const modelsList: OpDefinition = {
   type: "ai.models.list",
   title: "ai.models.list",
-  description: "List the model catalog (static baseline + gateway) for the settings UI.",
+  description: "List the model catalog (static baseline + live gateway listing) for the settings UI.",
   reusable: false,
   config: z.object({}),
   inputs: {},
   outputs: { models: value() },
   execute: async (ctx) => {
     const catalog = ctx.services[AI_CATALOG_SERVICE] as ModelCatalogService | undefined;
-    return { models: catalog ? await catalog.list() : [] };
+    const provider = ctx.services[AI_PROVIDER_SERVICE] as AiProviderService | undefined;
+    const stat = catalog ? await catalog.list() : [];
+    // Best-effort: augment with the live gateway listing when a gateway key resolves.
+    let live: ModelCapability[] = [];
+    if (provider) {
+      try {
+        const raw = await provider.gatewayModels(ctx);
+        live = raw.map(fromGatewayModel).filter((m): m is ModelCapability => m != null);
+      } catch {
+        /* keep the static baseline if the gateway is unreachable */
+      }
+    }
+    const seen = new Set(stat.map((m) => `${m.routing}:${m.id}`));
+    const merged = [...stat, ...live.filter((m) => !seen.has(`${m.routing}:${m.id}`))];
+    return { models: merged };
   },
 };
 

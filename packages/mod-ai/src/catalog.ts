@@ -18,7 +18,7 @@ export interface ModelCatalogService {
 }
 
 /** Map a gateway /v1/models entry to a capability descriptor (defensive about shape). */
-function fromGatewayModel(m: Record<string, unknown>): ModelCapability | undefined {
+export function fromGatewayModel(m: Record<string, unknown>): ModelCapability | undefined {
   const id = typeof m.id === "string" ? m.id : undefined;
   if (!id) return undefined;
   const provider = id.includes("/") ? id.split("/")[0]! : (typeof m.provider === "string" ? m.provider : "gateway");

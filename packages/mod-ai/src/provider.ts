@@ -79,18 +79,45 @@ export interface AiProviderService {
   transcriptionModel(ref: ModelRef, ctx: OpContext): Promise<TranscriptionModel>;
   videoModel(ref: ModelRef, ctx: OpContext): Promise<unknown>;
   testConnection(ref: ModelRef, ctx: OpContext): Promise<{ ok: boolean; detail?: string }>;
+  /** The live gateway /v1/models listing (raw entries); [] when no gateway key resolves. */
+  gatewayModels(ctx: OpContext): Promise<Record<string, unknown>[]>;
 }
 
 export class ProviderService implements AiProviderService {
-  private async resolveKey(ctx: OpContext, ref: ModelRef, fallback: string): Promise<string> {
-    const name = ref.credential ?? fallback;
+  private gwCache?: { at: number; models: Record<string, unknown>[] };
+
+  /** Resolve a secret by name from the env then the (unlocked) vault. Undefined if absent. */
+  private async tryKey(ctx: OpContext, name: string): Promise<string | undefined> {
     const fromEnv = ctx.env[name];
     if (fromEnv) return fromEnv;
     const vault = vaultLike(ctx);
     if (vault?.unlocked() && (await vault.has(name).catch(() => false))) return vault.read(name);
+    return undefined;
+  }
+
+  private async resolveKey(ctx: OpContext, ref: ModelRef, fallback: string): Promise<string> {
+    const name = ref.credential ?? fallback;
+    const key = await this.tryKey(ctx, name);
+    if (key) return key;
     throw new Error(
       `mod-ai: no credential "${name}" — store it in the vault (admin → Settings → AI Providers), set the ${name} env var, or set ModelRef.credential.`,
     );
+  }
+
+  async gatewayModels(ctx: OpContext): Promise<Record<string, unknown>[]> {
+    const apiKey = await this.tryKey(ctx, GATEWAY_SECRET);
+    if (!apiKey) return [];
+    if (this.gwCache && Date.now() - this.gwCache.at < 5 * 60 * 1000) return this.gwCache.models;
+    try {
+      const gw = createGateway({ apiKey }) as unknown as {
+        getAvailableModels(): Promise<{ models?: Record<string, unknown>[] }>;
+      };
+      const models = (await gw.getAvailableModels()).models ?? [];
+      this.gwCache = { at: Date.now(), models };
+      return models;
+    } catch {
+      return this.gwCache?.models ?? []; // keep last good / fall back to static-only
+    }
   }
 
   private async provider(ref: ModelRef, ctx: OpContext): Promise<ProviderLike> {
