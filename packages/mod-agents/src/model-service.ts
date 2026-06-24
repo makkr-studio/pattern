@@ -11,7 +11,10 @@
  */
 
 import type { OpContext } from "@pattern-js/core";
-import type { ModelRef, NeutralMessage, Usage } from "./types.js";
+import type { ModelRef, NeutralMessage, ToolRef, Usage } from "./types.js";
+
+/** The MCP variant of a tool reference (transport + connection details). */
+export type McpToolRef = Extract<ToolRef, { origin: "mcp" }>;
 
 /** A tool offered to the model for a turn (JSON-Schema parameters; engine-validated at the boundary.tool). */
 export interface NeutralToolDef {
@@ -37,8 +40,8 @@ export type NeutralChunk =
   | { type: "finish"; finishReason: string; usage?: Usage; message: NeutralMessage };
 
 export interface StreamTurnInput {
-  /** Which model to call; mod-ai resolves it to a concrete SDK model + key. */
-  modelRef: ModelRef;
+  /** Which model to call; mod-ai resolves it (undefined = the configured default). */
+  modelRef?: ModelRef;
   /** The agent's instructions (system prompt). */
   system?: string;
   /** Full conversation so far, in neutral parts-based shape. */
@@ -56,7 +59,7 @@ export interface StreamTurnInput {
 }
 
 export interface GenerateTextInput {
-  modelRef: ModelRef;
+  modelRef?: ModelRef;
   system?: string;
   messages: NeutralMessage[];
   signal: AbortSignal;
@@ -78,6 +81,30 @@ export function aiModelService(ctx: OpContext): AiModelService {
     throw new Error(
       'agents need a model provider — add "@pattern-js/mod-ai" to your pattern.config.json mods ' +
         "and configure a provider in admin → Settings → AI Providers.",
+    );
+  }
+  return svc;
+}
+
+/**
+ * The MCP seam. The MCP client (connection + tool discovery + calls) lives in
+ * mod-ai so this package never imports an MCP SDK. The agent loop resolves an
+ * `mcp` tool ref through this when present; absent, MCP tools fail with a hint.
+ */
+export interface AiMcpService {
+  /** The tools an MCP server exposes (discovered over a pooled connection). */
+  listTools(ref: McpToolRef): Promise<NeutralToolDef[]>;
+  /** Invoke one tool on the server. */
+  callTool(ref: McpToolRef, name: string, args: Record<string, unknown>): Promise<unknown>;
+}
+
+export const AI_MCP_SERVICE = "aiMcpService";
+
+export function aiMcpService(ctx: OpContext): AiMcpService {
+  const svc = ctx.services[AI_MCP_SERVICE] as AiMcpService | undefined;
+  if (!svc) {
+    throw new Error(
+      'MCP tools need "@pattern-js/mod-ai" installed (it carries the MCP client). Add it to your pattern.config.json mods.',
     );
   }
   return svc;

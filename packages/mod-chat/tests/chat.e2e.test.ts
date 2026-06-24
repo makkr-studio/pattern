@@ -6,10 +6,9 @@ beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
 import { Engine, resolvePorts, type Workflow } from "@pattern-js/core";
 import { createHttpHost } from "@pattern-js/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
-import { agentsMod, AGENTS_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
-import { agentsOpenAIMod, MODEL_PROVIDER_SERVICE } from "@pattern-js/mod-agents-openai";
+import { agentsMod, AGENTS_SERVICE, AI_MODEL_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
 import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
-import { scriptedProvider, type ScriptedTurn } from "../../mod-agents-openai/tests/scripted-model.js";
+import { scriptedModelService, type ScriptedTurn } from "../../mod-agents/tests/scripted-model-service.js";
 
 /**
  * The whole chat backend over a REAL HTTP host with a scripted model:
@@ -71,11 +70,10 @@ async function boot(
   }
   await engine.useAsync(storeMod({ storage: "memory" }), { deferReady: true });
   await engine.useAsync(agentsMod(), { deferReady: true });
-  await engine.useAsync(agentsOpenAIMod(), { deferReady: true });
   const chat = chatMod({ guardrail: opts.guardrail ?? false });
   await engine.useAsync(chat, { deferReady: true });
   await chat.ready?.(engine);
-  engine.provideService(MODEL_PROVIDER_SERVICE, scriptedProvider(turns));
+  engine.provideService(AI_MODEL_SERVICE, scriptedModelService(turns));
   engine.registerWorkflow(
     opts.gatedTool
       ? {

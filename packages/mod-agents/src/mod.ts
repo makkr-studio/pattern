@@ -9,6 +9,7 @@ import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
 import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
 import { agentBoundaryOps } from "./boundaries.js";
 import { agentsOps } from "./ops.js";
+import { agentRunOps } from "./agent-ops.js";
 import { AgentsRegistry } from "./service.js";
 import { AGENTS_SERVICE } from "./well-known.js";
 
@@ -27,7 +28,7 @@ export function agentsMod(): PatternMod {
   return defineMod({
     name: "@pattern-js/mod-agents",
     docs: { filesystem: "agents-docs", title: "Agents", order: 50 },
-    ops: [...agentBoundaryOps, ...agentsOps],
+    ops: [...agentBoundaryOps, ...agentsOps, ...agentRunOps],
     setup: (engine: Engine) => {
       packagedDocs(engine);
       engine.provideService(AGENTS_SERVICE, new AgentsRegistry(engine));

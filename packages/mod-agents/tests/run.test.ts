@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Engine, type TraceSink, type Workflow } from "@pattern-js/core";
-import { agentsMod, type TurnEvent } from "@pattern-js/mod-agents";
-import { agentsOpenAIMod } from "../src/mod.js";
-import { MODEL_PROVIDER_SERVICE } from "../src/well-known.js";
-import { scriptedProvider, type ScriptedTurn } from "./scripted-model.js";
+import { agentsMod, AI_MODEL_SERVICE, type TurnEvent } from "../src/index.js";
+import { scriptedModelService, type ScriptedTurn } from "./scripted-model-service.js";
 
 /**
- * The full SDK loop against a scripted model — no API key, no network.
- * Covers: streamed text, workflow tools as linked sub-runs, guardrail trips
- * as turn content, HITL interruption → resume, history threading.
+ * The native agent loop against a scripted model service — no provider, no
+ * network. Covers: streamed text, workflow tools as linked sub-runs, guardrail
+ * trips as turn content, HITL interruption → resume, history threading.
  */
 
 const weatherTool: Workflow = {
@@ -20,11 +18,7 @@ const weatherTool: Workflow = {
       config: {
         name: "get_weather",
         description: "Current weather for a city",
-        params: {
-          type: "object",
-          properties: { city: { type: "string" } },
-          required: ["city"],
-        },
+        params: { type: "object", properties: { city: { type: "string" } }, required: ["city"] },
       },
     },
     { id: "tpl", op: "core.string.template", config: { template: "sunny in {{city}}" } },
@@ -43,11 +37,7 @@ function runnerWorkflow(opts: { tools?: boolean; maxTurns?: number } = {}): Work
     nodes: [
       { id: "in", op: "boundary.manual", config: { outputs: ["input", "history"] } },
       ...(opts.tools ? [{ id: "tools", op: "agents.tools.workflows", config: {} }] : []),
-      {
-        id: "agent",
-        op: "agents.agent",
-        config: { name: "assistant", instructions: "Be helpful." },
-      },
+      { id: "agent", op: "agents.agent", config: { name: "assistant", instructions: "Be helpful." } },
       { id: "run", op: "agents.run", config: opts.maxTurns ? { maxTurns: opts.maxTurns } : {} },
       { id: "collect", op: "core.stream.accumulate", config: { mode: "array" } },
       {
@@ -79,10 +69,9 @@ function runnerWorkflow(opts: { tools?: boolean; maxTurns?: number } = {}): Work
 async function boot(turns: ScriptedTurn[]) {
   const engine = new Engine();
   await engine.useAsync(agentsMod());
-  await engine.useAsync(agentsOpenAIMod());
-  const provider = scriptedProvider(turns);
-  engine.provideService(MODEL_PROVIDER_SERVICE, provider);
-  return { engine, provider };
+  const model = scriptedModelService(turns);
+  engine.provideService(AI_MODEL_SERVICE, model);
+  return { engine, model };
 }
 
 const merged = (res: { outputs: Record<string, Record<string, unknown>> }) =>
@@ -94,7 +83,7 @@ const merged = (res: { outputs: Record<string, Record<string, unknown>> }) =>
     stateToken: string | null;
   };
 
-describe("agents.run against a scripted model", () => {
+describe("agents.run against a scripted model service", () => {
   it("streams text deltas and settles output/history/done", async () => {
     const { engine } = await boot([{ kind: "text", text: "Hello Benoit!", deltas: ["Hello ", "Benoit!"] }]);
     engine.registerWorkflow(runnerWorkflow());
@@ -105,7 +94,6 @@ describe("agents.run against a scripted model", () => {
     expect(out.stopReason).toBe("complete");
     expect(out.events.map((e) => e.type)).toEqual(["text.delta", "text.delta", "text.done", "done"]);
     expect(out.events.at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
-    // History: original user input + the assistant message.
     expect(out.history.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -132,14 +120,12 @@ describe("agents.run against a scripted model", () => {
       { phase: "done", toolName: "get_weather", result: "sunny in Paris" },
     ]);
 
-    // The tool ran as a child run of the agent workflow (round-11 linkage).
     const toolRun = starts.find((s) => s.workflowId === "tool-weather");
     expect(toolRun?.parent?.workflowId).toBe("agent-run");
   });
 
   it("turns a guardrail trip into turn CONTENT (error event + soft outputs)", async () => {
     const { engine } = await boot([{ kind: "text", text: "should never stream" }]);
-    // Guardrail tool: trips on any input.
     engine.registerWorkflow({
       id: "guardrail-block",
       nodes: [
@@ -189,7 +175,6 @@ describe("agents.run against a scripted model", () => {
       { kind: "tool_call", name: "get_weather", callId: "call_appr", args: { city: "Nice" } },
       { kind: "text", text: "Approved: sunny in Nice." },
     ]);
-    // Approval-gated variant of the weather tool.
     engine.registerWorkflow({
       ...weatherTool,
       id: "tool-weather-gated",
@@ -211,7 +196,6 @@ describe("agents.run against a scripted model", () => {
     expect(approval.interruption.toolName).toBe("get_weather");
     expect(out1.stateToken).toBeTruthy();
 
-    // Resume with the approval — the SAME descriptor reifies the same agent.
     engine.registerWorkflow({
       id: "agent-resume",
       nodes: [
@@ -244,7 +228,6 @@ describe("agents.run against a scripted model", () => {
     const out2 = merged(second as never);
     expect(out2.stopReason).toBe("complete");
     expect(out2.output).toBe("Approved: sunny in Nice.");
-    // The gated tool actually executed after approval.
     const toolDone = (out2.events as TurnEvent[]).find(
       (e) => e.type === "tool.activity" && (e as { phase: string }).phase === "done",
     );
@@ -252,17 +235,16 @@ describe("agents.run against a scripted model", () => {
   });
 
   it("threads history into the next model call", async () => {
-    const { engine, provider } = await boot([{ kind: "text", text: "second answer" }]);
+    const { engine, model } = await boot([{ kind: "text", text: "second answer" }]);
     engine.registerWorkflow(runnerWorkflow());
     const history = [
       { role: "user", content: "first question" },
-      { role: "assistant", status: "completed", content: [{ type: "output_text", text: "first answer" }] },
+      { role: "assistant", content: "first answer" },
     ];
     const res = await engine.run("agent-run", { input: { input: "second question", history } });
     expect(res.status).toBe("ok");
-    const request = provider.model.requests[0]!;
-    const items = request.input as Array<{ role?: string }>;
-    expect(items.length).toBe(3); // two history items + the new user turn
+    // The first model call saw both history items + the new user turn.
+    expect(model.calls[0]!.messages.length).toBe(3);
     const out = merged(res as never);
     expect(out.history.length).toBeGreaterThanOrEqual(4);
   });
@@ -278,13 +260,12 @@ describe("agents.run against a scripted model", () => {
     expect((out.events[0] as { message: string }).message).toContain("rate limited");
   });
 
-  it("fails LOUDLY pre-flight when no API key and no provider override", async () => {
+  it("fails LOUDLY pre-flight when no model provider is installed", async () => {
     const engine = new Engine();
     await engine.useAsync(agentsMod());
-    await engine.useAsync(agentsOpenAIMod());
     engine.registerWorkflow(runnerWorkflow());
     const res = await engine.run("agent-run", { input: { input: "hi" } });
     expect(res.status).toBe("error");
-    expect(String(res.error)).toContain("OPENAI_API_KEY");
+    expect(String(res.error)).toContain("model provider");
   });
 });

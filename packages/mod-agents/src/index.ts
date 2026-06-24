@@ -14,6 +14,7 @@ export {
 export { AgentsRegistry } from "./service.js";
 export { agentBoundaryOps, toolTrigger, toolReturn } from "./boundaries.js";
 export { agentsOps } from "./ops.js";
+export { agentRunOps } from "./agent-ops.js";
 export {
   agentSchema,
   guardrailSchema,
@@ -38,11 +39,16 @@ export {
   type Usage,
 } from "./types.js";
 export {
+  AI_MCP_SERVICE,
   AI_MODEL_SERVICE,
+  aiMcpService,
   aiModelService,
+  type AiMcpService,
   type AiModelService,
   type GenerateTextInput,
+  type McpToolRef,
   type NeutralChunk,
   type NeutralToolDef,
   type StreamTurnInput,
 } from "./model-service.js";
+export { startTurn, decodeState, type Decision, type TurnOutcome } from "./loop.js";

@@ -145,8 +145,8 @@ export interface AgentDescriptor {
   kind: "agent";
   name: string;
   instructions: string;
-  model?: string;
-  modelSettings?: Record<string, unknown>;
+  /** The model to run on (wire an ai.model node). Undefined = the configured default. */
+  model?: ModelRef;
   tools?: ToolsetDescriptor;
   guardrails?: GuardrailDescriptor[];
   /** Other agents this one may hand off to. */
@@ -161,8 +161,7 @@ export const agentSchema: z.ZodType<AgentDescriptor> = z.lazy(() =>
     kind: z.literal("agent"),
     name: z.string(),
     instructions: z.string(),
-    model: z.string().optional(),
-    modelSettings: z.record(z.string(), z.unknown()).optional(),
+    model: modelRefSchema.optional(),
     tools: toolsetSchema.optional(),
     guardrails: z.array(guardrailSchema).optional(),
     handoffs: z.array(agentSchema).optional(),

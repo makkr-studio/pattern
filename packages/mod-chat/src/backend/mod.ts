@@ -1,9 +1,9 @@
 /**
  * @pattern-js/mod-chat — the mod.
  *
- * Needs @pattern-js/mod-store (conversations, blobs, leases) and an agents
- * provider (@pattern-js/mod-agents + @pattern-js/mod-agents-openai) installed
- * alongside. `setup` registers the SPA assets filesystem; `ready` ensures
+ * Needs @pattern-js/mod-store (conversations, blobs, leases) and the agents
+ * stack (@pattern-js/mod-agents + @pattern-js/mod-ai for the model provider)
+ * installed alongside. `setup` registers the SPA assets filesystem; `ready` ensures
  * the chat collections (mod-store's setup has run by then, whatever the
  * listing order).
  */
