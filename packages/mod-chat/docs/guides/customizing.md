@@ -69,8 +69,8 @@ your changes affect the agent's reified shape.
 
 The SPA consumes the turn-event protocol (`text.delta`, `tool.activity`,
 `approval.request`, a terminal `done`) through a store abstraction — it never
-touches the wire. A future voice/avatar surface plugs into the same store. The
-protocol reserves `audio.ref` and `agents.realtime.key` is already there.
+touches the wire. A future voice/avatar surface plugs into the same store; the
+protocol reserves `audio.ref` for that round.
 
 ## Reliability you inherit
 

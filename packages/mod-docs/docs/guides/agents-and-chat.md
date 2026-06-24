@@ -12,8 +12,8 @@ and its guardrails are **workflow nodes you can see**:
 | --- | --- |
 | `@pattern-js/mod-store` | Generic persistence: JSON document collections with declared indexes, a blob store, TTL'd CAS **leases**. SQLite (`./.pattern-data/store.db`) or memory; admin Data browser. |
 | `@pattern-js/mod-vault` | Encrypted secrets (AES-256-GCM, master key from `PATTERN_VAULT_KEY`). `vault.read` emits values that are **masked out of run samples**. Write-only Secrets admin page. |
-| `@pattern-js/mod-agents` | The neutral contracts: agent/toolset/guardrail **descriptors** (plain JSON on edges), the **turn event protocol**, the `boundary.tool` pair, the live tool registry. No SDK dependency. |
-| `@pattern-js/mod-agents-openai` | The OpenAI Agents SDK provider: `agents.agent`, `agents.run` (streaming, always), `agents.run.resume` (HITL), `agents.mcp.server`, `agents.history.compact`, `agents.realtime.key`. |
+| `@pattern-js/mod-agents` | The neutral contracts **and the native agent run loop**: agent/toolset/guardrail **descriptors** (plain JSON on edges), the **turn event protocol**, the `boundary.tool` pair, the live tool registry, and `agents.agent` / `agents.run` (streaming, always) / `agents.run.resume` (HITL) / `agents.history.compact`. No provider SDK dependency — it calls a model through a neutral seam. |
+| `@pattern-js/mod-ai` | The **AI capability layer + model provider** (Vercel AI SDK): `ai.model` (routing direct/gateway), text/object/embed/image/speech/transcribe/video ops, the MCP client (`agents.mcp.server` connects) + MCP server (`POST /mcp`), and the AI Providers settings page. Backs `agents.run`. |
 | `@pattern-js/mod-chat` | The product chat app at `/chat` — streaming transcript with the **strand**, tool buds, image input, approvals, Stop — whose turn pipeline IS a workflow. |
 
 Fastest start: `npm create pattern@latest -- --modpack agent-chat`.
@@ -110,7 +110,7 @@ middle (tools, agent, guardrails, compaction) is yours to rewire:
   {
    "id": "run",
    "op": "agents.run",
-   "comment": "Streams turn events; needs OPENAI_API_KEY (or wire vault.read \u2192 apiKey).",
+   "comment": "Streams turn events; runs on the wired ai.model or the Settings default.",
    "ui": {
     "x": 1340,
     "y": 200
@@ -365,15 +365,17 @@ Stop goes through the provider's **turn-abort registry**
 (`AGENTS_SERVICE.abortTurn(turnId)`) rather than `engine.cancelRun`; the sink
 releases the lease at the terminal event.
 
-## API keys
+## Models & keys
 
-`agents.run` resolves its key in order: an explicit `apiKey` input →
-`OPENAI_API_KEY` from the environment (`loadProject` auto-loads a `.env`
-file next to `pattern.config.json`; existing env always wins — that's also
-where `PATTERN_VAULT_KEY` lives) → **a vault secret named `OPENAI_API_KEY`**
-(admin → System → Secrets) — storing it in the vault Just Works, no wiring.
-Vault-read values register into the engine's sample mask either way, so the
-key can never appear in sampled run I/O.
+The agent's model comes from an `ai.model` node wired into `agents.agent.model`
+(routing `direct` or `gateway`, a provider, a model id), or — wire nothing — the
+**default** set in admin → Settings → **AI Providers**. `mod-ai` resolves the
+provider key by name: an explicit `credential` → the environment (`loadProject`
+auto-loads a `.env` next to `pattern.config.json`; existing env wins — that's
+also where `PATTERN_VAULT_KEY` lives) → **a vault secret of that name** (e.g.
+`OPENAI_API_KEY`, or `AI_GATEWAY_API_KEY` for gateway routing) — storing it in
+the vault Just Works, no wiring. Vault-read values register into the engine's
+sample mask, so the key can never appear in sampled run I/O.
 
 ## Who may chat (CHAT_REQUIRE_AUTH)
 
@@ -411,7 +413,7 @@ common knobs without forking: `chatMod({ agent: { instructions, model } })`.
 
 ## Voice (pre-wired, future round)
 
-The protocol reserves `audio.ref`, `agents.realtime.key` mints ephemeral
-client secrets for browser↔OpenAI realtime sessions, and the chat UI's
-surfaces consume the store's event feed — a voice/avatar surface plugs in
-without touching the wire.
+The turn event protocol reserves `audio.ref` for a future voice round, and the
+chat UI's surfaces consume the store's event feed — so a voice/avatar surface
+can plug into the same wire later. Realtime audio sessions (persistent,
+bidirectional) are a separate, stream-native concern, not part of this release.

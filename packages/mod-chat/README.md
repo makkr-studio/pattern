@@ -26,9 +26,9 @@ Add these alongside in `pattern.config.json`:
 
 - **`@pattern-js/mod-store`** — conversations, turn docs, blobs, and the per-turn
   lease live here. `ready` throws without it.
-- **`@pattern-js/mod-agents`** plus a model backend like
-  **`@pattern-js/mod-agents-openai`**. The shipped pipeline's `agents.run` needs
-  `OPENAI_API_KEY` (or wire `vault.read` → its `apiKey`).
+- **`@pattern-js/mod-agents`** plus **`@pattern-js/mod-ai`** (the model provider).
+  Set a default model in admin → Settings → AI Providers and the provider key
+  (e.g. `OPENAI_API_KEY`) in the vault; the shipped pipeline's `agents.run` runs on it.
 
 Optional but assumed by the defaults: `@pattern-js/mod-identity` +
 `@pattern-js/mod-auth-magic-link` for the sign-in card the SPA renders — without

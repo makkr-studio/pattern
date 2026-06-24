@@ -179,7 +179,7 @@ mod you `engine.use()`.
 | `@pattern-js/mod-docs` | These docs: a served handbook + the generated op reference + `/docs/llms.txt`. |
 | `@pattern-js/mod-identity`, `@pattern-js/mod-auth-magic-link` | Identity kernel + a reference login method. |
 | `@pattern-js/mod-store`, `@pattern-js/mod-vault` | Persistence (documents/blobs/leases) + encrypted secrets. |
-| `@pattern-js/mod-agents`, `@pattern-js/mod-agents-openai` | Neutral agent contracts + an OpenAI provider. |
+| `@pattern-js/mod-agents`, `@pattern-js/mod-ai` | Neutral agent contracts + native run loop, and the AI capability layer (the model provider, text/image/embed/STT/TTS/video ops, MCP). |
 | `@pattern-js/mod-chat` | The chat application. |
 | `@pattern-js/mod-sample` | The anatomy-of-a-mod reference (ops + routes + a Tier-1 *and* Tier-2 admin page). |
 | `@pattern-js/create-pattern` | The scaffolder CLI (`npm create pattern`). |

@@ -2,9 +2,9 @@
  * {{name}} — build agentic workflows on Pattern, with the visual admin.
  *
  * `pattern.config.json` wires the agent stack: mod-store (durable state —
- * conversations, blobs, leases), mod-vault (your encrypted API key),
- * mod-agents + mod-agents-openai (the `agents.agent` / `agents.run` /
- * `agents.tools.*` ops, on OpenAI) and mod-admin (the editor + run traces at
+ * conversations, blobs, leases), mod-vault (your encrypted provider keys),
+ * mod-agents + mod-ai (the `agents.agent` / `agents.run` / `agents.tools.*`
+ * ops + `ai.model`, on any provider) and mod-admin (the editor + run traces at
  * /admin). An "agentic workflow" is just a graph that wires an agent into a
  * runner — no chat UI required; you build and run them in the editor.
  *

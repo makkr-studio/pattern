@@ -13,12 +13,13 @@ tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
    - `npx pattern ops chat` — the chat pipeline ops
    - `npx pattern ops <type>` — full ports + config detail for any op
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`.
-3. The agent needs an API key, resolved in order: explicit `apiKey` input →
-   `OPENAI_API_KEY` in `.env` (copied from `.env.example`; loaded
-   automatically, real env wins) → a vault secret NAMED `OPENAI_API_KEY`
-   (admin → System → Secrets — no wiring needed; vault values are masked out
-   of run samples). `PATTERN_VAULT_KEY` (the vault's master key) belongs in
-   `.env`.
+3. The chat agent needs a **model** and a **key**. The model is the default set
+   in admin → Settings → AI Providers (or wire an `ai.model` node into the
+   pipeline's `agents.agent.model`). The provider key resolves by name:
+   `OPENAI_API_KEY` in `.env` (copied from `.env.example`; loaded automatically,
+   real env wins) → a vault secret of that name (admin → System → Secrets —
+   masked out of run samples). Gateway routing uses one `AI_GATEWAY_API_KEY`
+   instead. `PATTERN_VAULT_KEY` (the vault's master key) belongs in `.env`.
 4. Don't edit `./.pattern` by hand; `./.pattern-data` is runtime data
    (conversations, blobs, secrets) and is gitignored.
 
@@ -83,8 +84,9 @@ outputs whole) and *Create an app* (serving a built SPA via the app trio).
 ### Tune the agent (instructions, model)
 
 Open `/admin` → Workflows → `chat.turn.pipeline` → the `agents.agent` node:
-its config carries `instructions` and `model`. The built-in pipeline is a
-code workflow — **fork it** (Editor → Fork), edit your copy, then disable the
+its config carries `instructions` (the model comes from Settings → AI Providers,
+or wire an `ai.model` node into the agent's `model` input). The built-in pipeline
+is a code workflow — **fork it** (Editor → Fork), edit your copy, then disable the
 built-in from the catalog (Status toggle). Your fork's route takes over.
 
 ### Add a guardrail
