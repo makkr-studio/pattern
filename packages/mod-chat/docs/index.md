@@ -42,12 +42,13 @@ chatMod() // an assistant at /chat, guests allowed, the default agent
 
 ```ts
 chatMod({
-  agent: { name: "Aria", instructions: "Be concise and warm.", model: "gpt-4o" },
+  agent: { name: "Aria", instructions: "Be concise and warm.", model: { provider: "openai", modelId: "gpt-5" } },
 })
 ```
 
-`agent.{name,instructions,model}` are the no-fork knobs; everything else has a
-sensible default (see [Customizing](./guides/customizing.md)).
+`agent.{name,instructions,model}` are the no-fork knobs (`model` is
+`{ routing?, provider, modelId }`, or omit it for the default model); everything
+else has a sensible default (see [Customizing](./guides/customizing.md)).
 
 ## Integration
 

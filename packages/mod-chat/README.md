@@ -42,13 +42,14 @@ import { chatMod } from "@pattern-js/mod-chat";
 chatMod() // an assistant at /chat, guests allowed, the default agent
 
 chatMod({
-  agent: { name: "Aria", instructions: "Be concise and warm.", model: "gpt-4o" },
+  agent: { name: "Aria", instructions: "Be concise and warm.", model: { provider: "openai", modelId: "gpt-5" } },
 })
 ```
 
-`agent.{name,instructions,model}` are the no-fork knobs. Every message runs the
-`chat.turn.pipeline` workflow — fork it in the admin to swap models, add
-guardrails, or narrow toolsets.
+`agent.{name,instructions,model}` are the no-fork knobs (`model` is
+`{ routing?, provider, modelId }`, or omit it for the default model from admin →
+Settings → AI Providers). Every message runs the `chat.turn.pipeline` workflow —
+fork it in the admin to swap models, add guardrails, or narrow toolsets.
 
 Full documentation: the **Chat** chapter at `/docs` (served by
 `@pattern-js/mod-docs`), or [the source](docs/index.md).

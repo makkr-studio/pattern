@@ -19,7 +19,39 @@
 import type { Workflow } from "@pattern-js/core";
 import { chatOpRoutes, type ChatInSpec } from "./ops.js";
 import { DEVICE_COOKIE } from "./data.js";
-import type { ResolvedChatOptions, ResolvedInstance, ResolvedPin } from "./options.js";
+import type { ChatModel, ResolvedChatOptions, ResolvedInstance, ResolvedPin } from "./options.js";
+
+/**
+ * Pin a chat agent's model: an `ai.model` node feeding the agent's `model`
+ * INPUT (agents.agent takes a ModelRef there — a `model` in its config is
+ * silently dropped). With no pin, the agent falls through to the app's
+ * configured default model. Needs `@pattern-js/mod-ai` installed.
+ */
+function modelInjection(
+  model: ChatModel | undefined,
+  agentNodeId: string,
+  ui: { x: number; y: number },
+): { nodes: Workflow["nodes"]; edges: Workflow["edges"] } {
+  if (!model) return { nodes: [], edges: [] };
+  const id = `${agentNodeId}Model`;
+  return {
+    nodes: [
+      {
+        id,
+        op: "ai.model",
+        config: {
+          routing: model.routing ?? "gateway",
+          provider: model.provider,
+          modelId: model.modelId,
+          ...(model.credential ? { credential: model.credential } : {}),
+        },
+        comment: "Pin this agent's model; remove to use the app's default model.",
+        ui,
+      },
+    ],
+    edges: [{ from: { node: id, port: "model" }, to: { node: agentNodeId, port: "model" } }],
+  };
+}
 
 interface RouteSpec {
   id: string;
@@ -151,6 +183,7 @@ export const GUARDRAIL_TOOL_NAME = "professional_conduct";
  * pipeline only WIRES it when `opts.guardrail.enabled`.
  */
 export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
+  const gModel = modelInjection(opts.guardrail.model, "agent", { x: 300, y: 520 });
   return {
     id: "chat.guardrail.professional",
     name: "Chat · guardrail · professional conduct",
@@ -187,14 +220,15 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
       {
         id: "agent",
         op: "agents.agent",
-        config: { name: "Conduct classifier", instructions: opts.guardrail.instructions, model: opts.guardrail.model },
-        comment: "Small, fast classifier (gpt-4.1-mini by default). Replies ALLOW or BLOCK: <reason>.",
+        config: { name: "Conduct classifier", instructions: opts.guardrail.instructions },
+        comment: "Conduct classifier. Pin a small model via guardrail.model, else the app default. Replies ALLOW or BLOCK.",
         ui: { x: 300, y: 340 },
       },
+      ...gModel.nodes,
       {
         id: "run",
         op: "agents.run",
-        comment: "One-shot classification; apiKey resolves from env/vault like the main run.",
+        comment: "One-shot classification on the agent's model (pinned or the app default).",
         ui: { x: 560, y: 240 },
       },
       { id: "upper", op: "core.string.upper", comment: "Case-fold the verdict.", ui: { x: 820, y: 120 } },
@@ -215,6 +249,7 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
       { id: "out", op: "boundary.tool.return", ui: { x: 1540, y: 240, pair: "in" } },
     ],
     edges: [
+      ...gModel.edges,
       { from: { node: "in", port: "args" }, to: { node: "text", port: "object" } },
       { from: { node: "text", port: "out" }, to: { node: "run", port: "input" } },
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
@@ -235,6 +270,7 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
 export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPin): Workflow {
   const guard = opts.guardrail.enabled && !pin; // forks opt out of the shared guardrail tool
   const agent = pin?.agent ?? opts.agent;
+  const aModel = modelInjection(agent.model, "agent", { x: 1080, y: 220 });
   const seg = pin ? pin.namespace : ":ns";
   return {
     id: pin ? `chat.turn.pipeline.${pin.namespace}` : "chat.turn.pipeline",
@@ -275,11 +311,11 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         config: {
           name: agent.name,
           instructions: agent.instructions,
-          ...(agent.model ? { model: agent.model } : {}),
         },
-        comment: "THE agent. Edit instructions/model here; wire guardrails/handoffs in.",
+        comment: "THE agent. Edit instructions here; pin a model via the ai.model node; wire guardrails/handoffs in.",
         ui: { x: 1080, y: 40 },
       },
+      ...aModel.nodes,
       ...(guard
         ? [
             {
@@ -295,7 +331,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         id: "run",
         op: "agents.run",
         config: { maxTurns: opts.maxTurns },
-        comment: "Streams turn events; needs OPENAI_API_KEY (or wire vault.read → apiKey).",
+        comment: "Streams turn events; runs on the wired ai.model or the app's default model.",
         ui: { x: 1340, y: 200 },
       },
       {
@@ -336,6 +372,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
             { from: { node: "guard", port: "guardrail" }, to: { node: "agent", port: "guardrails" } },
           ]
         : []),
+      ...aModel.edges,
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
       { from: { node: "begin", port: "input" }, to: { node: "run", port: "input" } },
       { from: { node: "begin", port: "history" }, to: { node: "run", port: "history" } },
@@ -360,6 +397,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
 
 /** HITL: approve/deny an interrupted turn → the SAME turn resumes streaming. */
 export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
+  const aModel = modelInjection(opts.agent.model, "agent", { x: 1080, y: 220 });
   return {
     id: "chat.approval.pipeline",
     name: "Chat · approval pipeline",
@@ -383,10 +421,10 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         config: {
           name: opts.agent.name,
           instructions: opts.agent.instructions,
-          ...(opts.agent.model ? { model: opts.agent.model } : {}),
         },
         comment: "Must reify the same agent shape as the turn pipeline.",
       },
+      ...aModel.nodes,
       { id: "resume", op: "agents.run.resume" },
       { id: "sink", op: "chat.events.sink" },
       { id: "ok", op: "boundary.http.response", config: { mode: "sse" } },
@@ -408,6 +446,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       { from: { node: "begin", port: "ok" }, to: { node: "gate", port: "condition" } },
       { from: { node: "gate", port: "then" }, to: { node: "tools", port: "in" } },
       { from: { node: "tools", port: "toolset" }, to: { node: "agent", port: "tools" } },
+      ...aModel.edges,
       { from: { node: "agent", port: "agent" }, to: { node: "resume", port: "agent" } },
       { from: { node: "begin", port: "stateToken" }, to: { node: "resume", port: "stateToken" } },
       { from: { node: "begin", port: "decisions" }, to: { node: "resume", port: "decisions" } },

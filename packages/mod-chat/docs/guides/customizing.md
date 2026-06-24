@@ -12,7 +12,7 @@ customization, cheapest first.
 
 ```ts
 chatMod({
-  agent: { name: "Aria", instructions: "Be concise and warm.", model: "gpt-4o" },
+  agent: { name: "Aria", instructions: "Be concise and warm.", model: { provider: "openai", modelId: "gpt-5" } },
   requireAuth: { env: "CHAT_REQUIRE_AUTH" },
   maxTurns: 12,
 })
@@ -21,9 +21,11 @@ chatMod({
 The no-fork knobs cover the common cases:
 
 - `agent.{name,instructions,model}` — the built-in agent's persona and model.
+  `model` is `{ routing?, provider, modelId }` (it wires an `ai.model` node);
+  omit it to use the default model from admin → Settings → AI Providers.
 - `guardrail` — the shipped professional-conduct input guardrail (`boolean`, or
-  `{ enabled, model, instructions }`). On by default; the `CHAT_GUARDRAIL` env
-  var is the runtime switch.
+  `{ enabled, model, instructions }`, where `model` is the same shape). On by
+  default; the `CHAT_GUARDRAIL` env var is the runtime switch.
 - `maxTurns` — model↔tool round-trips per turn (default 12).
 - `turnTtlMs` — the running-turn lease TTL / crash backstop (default 5 min).
 - `requireAuth`, `loginRequestPath`, `logoutPath` — who may chat and where
