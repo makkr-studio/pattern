@@ -14,7 +14,7 @@
     "@pattern-js/mod-store": "^0.2.0",
     "@pattern-js/mod-vault": "^0.2.0",
     "@pattern-js/mod-agents": "^0.2.0",
-    "@pattern-js/mod-agents-openai": "^0.2.0"
+    "@pattern-js/mod-ai": "^0.2.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

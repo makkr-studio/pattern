@@ -13,12 +13,14 @@ import { fileURLToPath } from "node:url";
 import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
 import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
 import { AI_MCP_SERVICE, AI_MODEL_SERVICE } from "@pattern-js/mod-agents";
-import { AI_CATALOG_SERVICE, AI_PROVIDER_SERVICE } from "./well-known.js";
+import { AI_CATALOG_SERVICE, AI_CONFIG_SERVICE, AI_PROVIDER_SERVICE } from "./well-known.js";
 import { ProviderService } from "./provider.js";
 import { ModelServiceImpl } from "./model-service-impl.js";
 import { ModelCatalog } from "./catalog.js";
 import { McpService } from "./mcp.js";
+import { AiConfigService } from "./config.js";
 import { aiOps } from "./ops/index.js";
+import { aiAdminRoutes, aiFrontend, settingsOps } from "./settings.js";
 
 function packagedDocs(engine: Engine): void {
   try {
@@ -30,17 +32,25 @@ function packagedDocs(engine: Engine): void {
 }
 
 export function aiMod(): PatternMod {
+  const config = new AiConfigService();
   return defineMod({
     name: "@pattern-js/mod-ai",
     docs: { filesystem: "ai-docs", title: "AI", order: 51 },
-    ops: aiOps,
+    ops: [...aiOps, ...settingsOps],
+    workflows: aiAdminRoutes(),
+    frontend: aiFrontend(),
     setup: (engine: Engine) => {
       packagedDocs(engine);
       const provider = new ProviderService();
       engine.provideService(AI_PROVIDER_SERVICE, provider);
       engine.provideService(AI_CATALOG_SERVICE, new ModelCatalog());
-      engine.provideService(AI_MODEL_SERVICE, new ModelServiceImpl(provider));
+      engine.provideService(AI_CONFIG_SERVICE, config);
+      // The model service falls back to the configured default when no ai.model is wired.
+      engine.provideService(AI_MODEL_SERVICE, new ModelServiceImpl(provider, () => config.defaultModel()));
       engine.provideService(AI_MCP_SERVICE, new McpService());
+    },
+    ready: async () => {
+      await config.load();
     },
   });
 }

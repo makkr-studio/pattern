@@ -82,8 +82,8 @@ const DOCS_MOD = "@pattern-js/mod-docs";
 const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-admin": "visual editor, run traces, /admin control plane",
   "@pattern-js/mod-agents": "agent ops: agent · run · tools · guardrail",
-  "@pattern-js/mod-agents-openai": "OpenAI provider for the agent ops",
-  "@pattern-js/mod-agents(-openai)": "agent ops (agent · run · tools) on OpenAI",
+  "@pattern-js/mod-ai": "AI capabilities (text/image/embed/stt/tts/video) + the model provider",
+  "@pattern-js/mod-agents + mod-ai": "agent ops + AI capabilities on any provider/model",
   "@pattern-js/mod-store": "durable state (sqlite): conversations, blobs, leases",
   "@pattern-js/mod-vault": "encrypted secrets — holds OPENAI_API_KEY",
   "@pattern-js/mod-chat": "the /chat product; its turn pipeline is a workflow",
@@ -192,7 +192,7 @@ const MODPACKS: Modpack[] = [
     hint: "build agentic workflows in the editor — agent/run/tools ops + vault + store; no chat UI",
     tagline: "Studio + the agent stack — build agentic workflows (agent · run · tools) in the editor",
     mods: [
-      "@pattern-js/mod-agents(-openai)",
+      "@pattern-js/mod-agents + mod-ai",
       "@pattern-js/mod-store",
       "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",
@@ -231,7 +231,7 @@ const MODPACKS: Modpack[] = [
     tagline: "Studio + Agents + mod-chat — the /chat product whose turn pipeline is an agentic workflow",
     mods: [
       "@pattern-js/mod-chat",
-      "@pattern-js/mod-agents(-openai)",
+      "@pattern-js/mod-agents + mod-ai",
       "@pattern-js/mod-store",
       "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",
