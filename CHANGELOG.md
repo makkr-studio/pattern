@@ -3,6 +3,17 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.2.2
+
+A pipeline and polish release; no functional changes to the published packages.
+
+- **The marketing site ships from CI.** The `site/` workspace now deploys to
+  Cloudflare Pages: every push to `main` refreshes a staging preview, and a
+  release tag publishes production. A tag ships the npm packages and the
+  production site together, so the site's version badge always tracks the
+  released framework version.
+- A more playful Konami easter egg on the site (the page "runs itself").
+
 ## 0.2.1
 
 - **Docs handbook rooted at the mount.** The primary chapter (the handbook) now

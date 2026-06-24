@@ -29,7 +29,8 @@ export type SfxName =
   | "ok"
   | "error"
   | "undo"
-  | "redo";
+  | "redo"
+  | "konami";
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -127,6 +128,17 @@ const SOUNDS: Record<SfxName, Tone[]> = {
   ],
   undo: [{ f0: 600, f1: 420, dur: 0.07, type: "triangle", gain: 0.3 }],
   redo: [{ f0: 420, f1: 600, dur: 0.07, type: "triangle", gain: 0.3 }],
+  // A rising arcade fanfare for the Konami egg — a square-wave power-up that
+  // climbs C-E-G-C-E-G and lands on a high sparkle.
+  konami: [
+    { f0: 523, dur: 0.09, at: 0.0, type: "square", gain: 0.26 },
+    { f0: 659, dur: 0.09, at: 0.09, type: "square", gain: 0.26 },
+    { f0: 784, dur: 0.09, at: 0.18, type: "square", gain: 0.26 },
+    { f0: 1047, dur: 0.11, at: 0.27, type: "square", gain: 0.28 },
+    { f0: 1319, dur: 0.1, at: 0.39, type: "triangle", gain: 0.22 },
+    { f0: 1568, dur: 0.24, at: 0.49, type: "triangle", gain: 0.26 },
+    { f0: 2093, dur: 0.3, at: 0.56, type: "sine", gain: 0.12 },
+  ],
 };
 
 export const sfx = {
