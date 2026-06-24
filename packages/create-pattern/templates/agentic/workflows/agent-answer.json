@@ -2,7 +2,7 @@
   "$schema": "pattern/workflow/v1",
   "id": "agent-answer",
   "name": "POST /ask — agent answers (with a tool)",
-  "description": "An agentic workflow as an HTTP route: pull the question, build an agent + its toolset, run it, return the answer. Every tool call is a linked sub-run in the admin.",
+  "description": "An agentic workflow as an HTTP route: pull the question, pick a model, build an agent + its toolset, run it, return the answer. Every tool call is a linked sub-run in the admin.",
   "nodes": [
     {
       "id": "in",
@@ -22,17 +22,23 @@
       "id": "tools",
       "op": "agents.tools.workflows",
       "comment": "every boundary.tool workflow becomes a callable tool",
-      "ui": { "x": 300, "y": 360 }
+      "ui": { "x": 300, "y": 460 }
+    },
+    {
+      "id": "model",
+      "op": "ai.model",
+      "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5-mini" },
+      "comment": "the model (any provider). Direct uses OPENAI_API_KEY from the vault/env; switch routing to \"gateway\" for the Vercel AI Gateway. Or set a default in admin → Settings → AI Providers and drop this node.",
+      "ui": { "x": 300, "y": 300 }
     },
     {
       "id": "agent",
       "op": "agents.agent",
       "config": {
         "name": "assistant",
-        "instructions": "You are a concise assistant. Use a tool when it helps answer accurately.",
-        "model": "gpt-4.1-mini"
+        "instructions": "You are a concise assistant. Use a tool when it helps answer accurately."
       },
-      "ui": { "x": 580, "y": 280 }
+      "ui": { "x": 580, "y": 300 }
     },
     {
       "id": "run",
@@ -49,6 +55,7 @@
   "edges": [
     { "from": { "node": "in", "port": "body" }, "to": { "node": "question", "port": "object" } },
     { "from": { "node": "tools", "port": "toolset" }, "to": { "node": "agent", "port": "tools" } },
+    { "from": { "node": "model", "port": "model" }, "to": { "node": "agent", "port": "model" } },
     { "from": { "node": "agent", "port": "agent" }, "to": { "node": "run", "port": "agent" } },
     { "from": { "node": "question", "port": "out" }, "to": { "node": "run", "port": "input" } },
     { "from": { "node": "run", "port": "output" }, "to": { "node": "out", "port": "body" } }

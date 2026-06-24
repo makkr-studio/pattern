@@ -15,22 +15,30 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
    - `npx pattern ops` — every op (core + this project's mods)
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`,
    and `npx pattern graph <file>` to see the graph in the terminal.
-3. The agent needs an API key, resolved in order: an `apiKey` input →
-   `OPENAI_API_KEY` in the environment (`.env` is loaded on boot, real env
-   wins) → a vault secret NAMED `OPENAI_API_KEY` (admin → System → Secrets — no
-   wiring; vault values are masked out of run samples). `PATTERN_VAULT_KEY`
-   (the vault master key) lives in `.env`.
+3. The agent needs a **model** and a **key**. Pick the model with an `ai.model`
+   node wired into `agents.agent.model` (config `{ routing, provider, modelId }`),
+   or set a default in admin → Settings → AI Providers and skip the node. The
+   provider key resolves by name: `OPENAI_API_KEY` in the environment (`.env` is
+   loaded on boot, real env wins) → a vault secret of that name (admin → System →
+   Secrets — masked out of run samples). Gateway routing uses one
+   `AI_GATEWAY_API_KEY` instead. `PATTERN_VAULT_KEY` (the vault master key) lives
+   in `.env`.
 4. Don't edit `./.pattern` by hand (admin-versioned workflows, committed);
    `./.pattern-data` is runtime data (sqlite, blobs, secrets) and is gitignored.
 
 ## The agent stack (60 seconds)
 
-- **`agents.agent`** — config `{ name, instructions, model? }`; inputs `tools`
-  (a toolset), `guardrails`, `handoffs`. Output `agent` is a *value* you wire
-  onward — it doesn't run anything by itself.
+- **`ai.model`** (from `@pattern-js/mod-ai`) — config `{ routing (direct|gateway),
+  provider, modelId }`; output `model` is a *value*. Wire it into
+  `agents.agent.model`. Direct uses the provider's key from the vault/env; gateway
+  uses one `AI_GATEWAY_API_KEY`. Skip it to fall back to the default model set in
+  admin → Settings → AI Providers.
+- **`agents.agent`** — config `{ name, instructions }`; inputs `model` (a ModelRef
+  from `ai.model`), `tools` (a toolset), `guardrails`, `handoffs`. Output `agent`
+  is a *value* you wire onward — it doesn't run anything by itself.
 - **`agents.run`** — inputs `agent` (required) + `input` (required) + optional
-  `history`/`apiKey`. Outputs an `events` **stream**, the final `output`, the
-  updated `history`, and a `stopReason`. Tool calls are linked sub-runs.
+  `history`. Outputs an `events` **stream**, the final `output`, the updated
+  `history`, and a `stopReason`. Tool calls are linked sub-runs.
 - **`agents.tools.workflows`** — collects every `boundary.tool` workflow into a
   `toolset` (config `tools: []` = all; name some to narrow). Wire `toolset` →
   `agents.agent.tools`.
@@ -61,13 +69,15 @@ copy; verify ports with `npx pattern ops agents.run`):
     { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/ask" } },
     { "id": "question", "op": "core.object.get", "config": { "path": "question" } },
     { "id": "tools", "op": "agents.tools.workflows" },
-    { "id": "agent", "op": "agents.agent", "config": { "name": "assistant", "instructions": "Be concise. Use a tool when it helps.", "model": "gpt-4.1-mini" } },
+    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5-mini" } },
+    { "id": "agent", "op": "agents.agent", "config": { "name": "assistant", "instructions": "Be concise. Use a tool when it helps." } },
     { "id": "run", "op": "agents.run" },
     { "id": "out", "op": "boundary.http.response" }
   ],
   "edges": [
     { "from": { "node": "in", "port": "body" }, "to": { "node": "question", "port": "object" } },
     { "from": { "node": "tools", "port": "toolset" }, "to": { "node": "agent", "port": "tools" } },
+    { "from": { "node": "model", "port": "model" }, "to": { "node": "agent", "port": "model" } },
     { "from": { "node": "agent", "port": "agent" }, "to": { "node": "run", "port": "agent" } },
     { "from": { "node": "question", "port": "out" }, "to": { "node": "run", "port": "input" } },
     { "from": { "node": "run", "port": "output" }, "to": { "node": "out", "port": "body" } }
