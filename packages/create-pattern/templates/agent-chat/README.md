@@ -34,7 +34,7 @@ examples ship in there) and the agent discovers it by itself. Set
 
 ```
 {{name}}/
-  pattern.config.json    # mods: chat + agents + agents-openai + store + vault + admin
+  pattern.config.json    # mods: chat + agents + ai + store + vault + admin
   workflows/
     tool-time.json       # a minimal boundary.tool
     tool-weather.json    # a tool with validated params + an outbound fetch

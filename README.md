@@ -123,7 +123,7 @@ Everything beyond the engine is an optional mod you `engine.use()`.
 | [`@pattern-js/mod-docs`](packages/mod-docs) | the served handbook and the generated op reference |
 | [`@pattern-js/mod-identity`](packages/mod-identity) · [`@pattern-js/mod-auth-magic-link`](packages/mod-auth-magic-link) | users, sessions, roles, magic-link login |
 | [`@pattern-js/mod-store`](packages/mod-store) · [`@pattern-js/mod-vault`](packages/mod-vault) | document / blob / lease persistence and encrypted secrets |
-| [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-agents-openai`](packages/mod-agents-openai) | the neutral agent contracts and an OpenAI provider |
+| [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-ai`](packages/mod-ai) | the neutral agent contracts + native run loop, and the AI capability layer (model provider, text / image / embeddings / STT / TTS / video, MCP) |
 | [`@pattern-js/mod-chat`](packages/mod-chat) | a complete chat application |
 | [`create-pattern`](packages/create-pattern) | the scaffolder (`npm create pattern`) |
 

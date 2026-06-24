@@ -43,7 +43,7 @@ agents.tools.workflows (toolset) → agents.agent → agents.run → boundary.ht
 
 ```
 {{name}}/
-  pattern.config.json    # mods: admin + agents + agents-openai + store + vault
+  pattern.config.json    # mods: admin + agents + ai + store + vault
   workflows/
     agent-answer.json    # POST /ask — the agentic workflow (canonical shape)
     tool-time.json       # a boundary.tool the agent can call

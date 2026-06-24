@@ -1,8 +1,9 @@
 # Copied to `.env` (gitignored), loaded automatically on boot — existing
 # environment variables always win over this file.
 
-# The agent's model key (or store it encrypted: admin → System → Secrets,
-# then wire a vault.read node into the pipeline's apiKey input).
+# The agent's provider key (or store it encrypted: admin → System → Secrets —
+# the agent finds a secret named OPENAI_API_KEY with no wiring). Gateway routing
+# uses one AI_GATEWAY_API_KEY instead.
 OPENAI_API_KEY=
 
 # The vault's master key. Generate ONCE: openssl rand -base64 32

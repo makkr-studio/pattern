@@ -1,10 +1,11 @@
 /**
- * @pattern-js/mod-ai — the AI settings screen (default model) + its routes.
+ * @pattern-js/mod-ai — the AI settings ops + admin routes behind the
+ * AI Providers page.
  *
  * The provider KEYS are managed by mod-vault's Secrets screen; here we set the
- * DEFAULT model agents/chat fall back to. A declarative SettingsSection renders
- * the form; admin-scope-gated routes back it. (A richer Tier-2 capability matrix
- * + test-connection page is a tracked follow-up.)
+ * DEFAULT model agents/chat fall back to, list the model catalog, and test a
+ * provider connection. The Tier-2 AI Providers page (src/app.ts) renders the
+ * form + capability matrix; these admin-scope-gated routes back it.
  */
 
 import {

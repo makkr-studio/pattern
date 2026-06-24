@@ -8,7 +8,8 @@
  * /admin). An "agentic workflow" is just a graph that wires an agent into a
  * runner — no chat UI required; you build and run them in the editor.
  *
- * The agent needs an OpenAI key, resolved in order: an `apiKey` input →
+ * The agent runs on a model picked by an `ai.model` node (or the default set in
+ * admin → Settings → AI Providers). Its provider key resolves by name:
  * OPENAI_API_KEY in the environment (a .env next to pattern.config.json is
  * loaded on boot) → a vault secret NAMED OPENAI_API_KEY (admin → Secrets).
  */
