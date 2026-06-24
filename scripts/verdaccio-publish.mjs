@@ -38,7 +38,7 @@ const PKG_DIRS = [
   "packages/mod-store",
   "packages/mod-vault",
   "packages/mod-agents",
-  "packages/mod-agents-openai",
+  "packages/mod-ai",
   "packages/mod-chat",
   "packages/mod-docs",
   "packages/create-pattern",
