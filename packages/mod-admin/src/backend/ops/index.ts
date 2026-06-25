@@ -370,10 +370,12 @@ const settingsSet = adminOp(
 const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", { out: "manifest" }, (_args, { engine }) => {
   const fe = engine.frontend();
   const pages = (fe.pages ?? []).map((p) => {
-    if ("view" in p) return { path: p.path, view: p.view };
-    if ("views" in p) return { path: p.path, views: p.views };
-    if ("remote" in p) return { path: p.path, remote: p.remote };
-    return { path: p.path, tier2: true }; // function-loaded; not serializable over HTTP
+    // Mod-controlled header chrome carries through to the shell (admin-spec §6).
+    const chrome = { title: p.title, subtitle: p.subtitle, header: p.header };
+    if ("view" in p) return { path: p.path, ...chrome, view: p.view };
+    if ("views" in p) return { path: p.path, ...chrome, views: p.views };
+    if ("remote" in p) return { path: p.path, ...chrome, remote: p.remote };
+    return { path: p.path, ...chrome, tier2: true }; // function-loaded; not serializable over HTTP
   });
   // `authProvider` lets the editor tell authors that a declared requireAuth
   // won't actually be enforced until an auth provider (e.g. identity) is added.

@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-ai",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "AI capabilities for Pattern via the Vercel AI SDK: text, structured object, embeddings, image, speech (TTS), transcription (STT), and video ops across any provider — direct or through the Vercel AI Gateway — plus the model provider for @pattern-js/mod-agents. Credentials resolve from the vault; a settings page manages providers and models.",
   "type": "module",
   "license": "MIT",

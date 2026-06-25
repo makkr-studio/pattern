@@ -60,6 +60,13 @@ export const modelRefSchema = z.object({
   modelId: z.string(),
   /** Vault secret NAME to resolve the key (defaults per routing/provider in mod-ai). */
   credential: z.string().optional(),
+  /**
+   * Optional reference to a named mod-ai **Connection** (provider + routing +
+   * explicitly-chosen vault secrets, incl. structured creds for Azure/Bedrock/
+   * Vertex). When set, mod-ai resolves provider/routing/keys from it; the inline
+   * fields above stay for display/catalog. This is what `ai.alias` produces.
+   */
+  connection: z.string().optional(),
   /** Pass-through provider options (temperature, reasoning, dimensions, voice…). */
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });

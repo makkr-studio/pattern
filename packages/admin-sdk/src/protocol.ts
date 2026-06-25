@@ -26,6 +26,11 @@ export interface UiManifestPage {
   views?: Array<{ title?: string; view: DeclarativeView }>;
   remote?: string;
   tier2?: boolean;
+  /** Mod-controlled header chrome (admin-spec §6). */
+  title?: string;
+  subtitle?: string;
+  /** Render the shell's page header? Default true; false ⇒ the page owns its header. */
+  header?: boolean;
 }
 
 export interface UiManifest {

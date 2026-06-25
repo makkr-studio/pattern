@@ -28,12 +28,12 @@ const chat = chatMod();
 await engine.useAsync(chat, { deferReady: true });
 await chat.ready?.(engine);
 
-// A default model resolves (so the turn streams), but the provider key is
+// A default alias resolves (so the turn streams), but its provider key is
 // missing — the failure fires MID-STREAM (after result-ready), the exact crash
-// shape. In-memory only (no persisted file).
-engine.service("aiConfig").settings = {
-  defaultModel: { kind: "model", routing: "direct", modality: "language", provider: "openai", modelId: "gpt-5-mini" },
-};
+// shape. (aiMod.ready never runs here, so nothing is loaded from disk.)
+const cfg = engine.service("aiConfig");
+await cfg.upsertConnection({ id: "openai", provider: "openai", routing: "direct", secrets: { apiKey: "OPENAI_API_KEY" }, options: {} });
+await cfg.upsertAlias({ name: "default", connection: "openai", modelId: "gpt-5-mini", modality: "language" });
 
 const host = createHttpHost(engine, { defaultPort: port });
 const { close } = await host.start();

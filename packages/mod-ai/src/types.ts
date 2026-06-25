@@ -17,6 +17,46 @@ export {
   type NeutralMessage,
 } from "@pattern-js/mod-agents";
 
+const modalityEnum = z.enum(["language", "embedding", "image", "speech", "transcription", "video"]);
+
+/**
+ * A named provider **connection**: how to reach a provider and authenticate.
+ * Auth material is never stored here — every `secrets` value is the NAME of a
+ * vault secret (chosen explicitly in the UI). `options` holds non-secret
+ * structured fields (Azure resourceName/apiVersion, Bedrock region, Vertex
+ * project/location, …). One connection backs many aliases.
+ */
+export const connectionSchema = z.object({
+  /** Stable id referenced by aliases / ModelRef.connection (e.g. "openai-prod"). */
+  id: z.string(),
+  /** Human label for the UI; defaults to the id. */
+  label: z.string().optional(),
+  /** Provider id ("openai", "anthropic", "azure", "amazon-bedrock", "google-vertex", …). */
+  provider: z.string(),
+  routing: z.enum(["direct", "gateway"]).default("direct"),
+  /** Auth field → vault secret NAME. e.g. { apiKey: "MY_OPENAI" } or { accessKeyId, secretAccessKey }. */
+  secrets: z.record(z.string(), z.string()).default({}),
+  /** Non-secret structured config. e.g. { resourceName, apiVersion } / { region } / { project, location }. */
+  options: z.record(z.string(), z.string()).default({}),
+});
+export type Connection = z.infer<typeof connectionSchema>;
+
+/**
+ * A named **alias** — "default", "mini", "vision", … — pointing a memorable
+ * name at a connection + model id. `ai.alias` resolves one to a ModelRef at run
+ * time, so re-pointing an alias in Settings instantly re-targets every workflow
+ * using it. Agents/chat fall back to the "default" alias when no model is wired.
+ */
+export const aliasSchema = z.object({
+  name: z.string(),
+  /** Connection id this alias draws provider/routing/keys from. */
+  connection: z.string(),
+  /** Model id within that provider (direct: bare; gateway: "provider/model"). */
+  modelId: z.string(),
+  modality: modalityEnum.default("language"),
+});
+export type Alias = z.infer<typeof aliasSchema>;
+
 /** A pointer to generated/consumed media bytes living in mod-store's blob store. */
 export const mediaRefSchema = z.object({
   blobId: z.string(),

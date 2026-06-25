@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-chat",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A complete chat application for Pattern agents: transcript-style SPA (the strand shows tool calls live), conversations + turn event log in mod-store (refresh mid-turn recovers), lease-guarded turns with Stop, image input, HITL approvals — the turn pipeline is a workflow you can fork and rewire.",
   "type": "module",
   "license": "MIT",

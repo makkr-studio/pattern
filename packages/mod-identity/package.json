@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-identity",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Users, sessions, roles and pluggable login methods for Pattern — the optional identity brick. Opaque revocable cookie sessions (CAS-backed, sqlite or in-memory), a single-use token kernel (login/invite/bootstrap), a login page, and admin screens.",
   "type": "module",
   "license": "MIT",

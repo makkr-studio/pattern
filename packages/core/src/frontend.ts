@@ -153,12 +153,29 @@ export type DeclarativeView =
  * them like routes and passes the extracted params as args to every view's
  * source op — which is how a row click becomes a details page.
  */
-export type PageDef =
-  | { path: string; view: DeclarativeView }
-  | { path: string; views: Array<{ title?: string; view: DeclarativeView }> }
-  | { path: string; element: () => Promise<{ default: unknown }> }
+/** The body of a page: a declarative view, stacked views, an element loader, or an ESM remote. */
+export type PageBody =
+  | { view: DeclarativeView }
+  | { views: Array<{ title?: string; view: DeclarativeView }> }
+  | { element: () => Promise<{ default: unknown }> }
   /** Tier-2 ESM remote by URL — serializable, so it survives the manifest endpoint. */
-  | { path: string; remote: string };
+  | { remote: string };
+
+/**
+ * A page contributed by a mod. `path` + a body, plus optional header chrome a
+ * mod controls: `title`/`subtitle` override the defaults the admin shell renders,
+ * and `header: false` suppresses the shell header entirely so the page owns its
+ * own (Tier-2 remotes that want full control).
+ */
+export type PageDef = {
+  path: string;
+  /** Header title — defaults to the page's menu label. */
+  title?: string;
+  /** Header subtitle — defaults to a generic "contributed by a mod" line. */
+  subtitle?: string;
+  /** Render the admin shell's page header? Default true; false ⇒ the page renders its own. */
+  header?: boolean;
+} & PageBody;
 
 /** A ⌘K command contributed by a mod (admin-spec §6, §15.2). */
 export interface CommandDef {
