@@ -1,18 +1,16 @@
 /**
  * @pattern-js/mod-ai — the Tier-2 "AI Providers" admin page.
  *
- * An ESM remote the admin loads at runtime, reading its deps off the shared
- * `__PATTERN_ADMIN__` global (React, the API client, the glass UI kit) — so it
- * uses the admin's exact stack, no bundler. It manages ALIASES: a name + a
- * provider (which drives the exact secret + option fields it needs), each
- * secret sourced from the vault or an env var, plus a Test check; and it shows
- * the model catalog. agents/chat resolve the "default" alias at run time.
+ * Just the ESM SOURCE of the page (default export = the component), written
+ * against the shared `__PATTERN_ADMIN__` global (React, the API client, the glass
+ * UI kit) — the admin's exact stack, no bundler. mod-ai contributes this string
+ * as `pages: [{ module: REMOTE }]`; the admin serves it same-origin and imports
+ * it (no workflow, no asset mount). It manages ALIASES: a name + a provider
+ * (which drives the secret + option fields), each secret from the vault or an env
+ * var, plus a Test check. agents/chat resolve the "default" alias at run time.
  */
 
-import { memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
-import type { Engine } from "@pattern-js/core";
-
-const REMOTE = `
+export const REMOTE = `
 const { React, api, ui } = globalThis.__PATTERN_ADMIN__;
 const { GlassPanel, NeonButton, Badge, Modal } = ui;
 const h = React.createElement;
@@ -179,14 +177,3 @@ export default function AIProvidersPage() {
     h(TestModal, { state: test, onClose: () => setTest(null) }));
 }
 `;
-
-/** The registered filesystem name + mount path (served declaratively via frontend.mounts). */
-export const ASSETS = "ai-assets";
-export const ASSETS_MOUNT = "/ai-ext";
-
-/** Register the page bundle as a filesystem (the host serves it at ASSETS_MOUNT via frontend.mounts). */
-export function provideAiAssets(engine: Engine): void {
-  const fs = memoryFs();
-  void fs.write("ai-providers.js", REMOTE);
-  provideFilesystem(engine, ASSETS, fs);
-}

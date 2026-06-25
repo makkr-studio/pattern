@@ -27,7 +27,7 @@ import {
 import { DefaultControlPlane } from "./control-plane/control-plane.js";
 import { FlystorageWorkflowStore } from "./control-plane/store.js";
 import { adminOps } from "./ops/index.js";
-import { endpointWorkflows, stampRequireAuth } from "./workflows/index.js";
+import { endpointWorkflows, stampRequireAuth, uiPageRoute } from "./workflows/index.js";
 import { ASSETS_FS, registerAdminServices } from "./services.js";
 import { adminFrontend } from "./frontend.js";
 
@@ -154,7 +154,9 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
     name: "@pattern-js/mod-admin",
     docs: { filesystem: "admin-docs", title: "Admin", order: 20 },
     ops: adminOps,
-    workflows: [...endpointWorkflows(requirement), spa],
+    // uiPageRoute is PUBLIC (unstamped) — it serves mod page source (UI code) so
+    // the shell can same-origin import() Tier-2 `module` pages.
+    workflows: [...endpointWorkflows(requirement), uiPageRoute(), spa],
     frontend: adminFrontend(mount),
     setup: async (engine: Engine) => {
       packagedDocs(engine);

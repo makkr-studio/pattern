@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern-js/core";
-import { localFs, memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
 
 /** Where the greetings data source is exposed (relative to the admin API mount). */
 const GREETINGS_ROUTE = "/sample/greetings";
@@ -135,8 +135,6 @@ export default defineMod({
   ops: [greetingsList, crunch],
   workflows: [replayShowcase, greetingsRoute],
   frontend: {
-    // The Tier-2 remote is served declaratively by the host (no app workflow).
-    mounts: [{ filesystem: "sample-assets", mount: "/ext" }],
     menu: [
       { category: "Examples", label: "Greetings", icon: "boxes", path: "/x/greetings", order: 10 },
       { category: "Examples", label: "Studio", icon: "package", path: "/x/studio", order: 20 },
@@ -155,13 +153,11 @@ export default defineMod({
           ],
         },
       },
-      { path: "/x/studio", remote: "/ext/sample-studio.js" },
+      // A Tier-2 page is just its source; the admin serves + imports it (no workflow, no assets).
+      { path: "/x/studio", module: STUDIO_REMOTE },
     ],
   },
   setup: (engine) => {
-    const fs = memoryFs();
-    void fs.write("sample-studio.js", STUDIO_REMOTE);
-    provideFilesystem(engine, "sample-assets", fs);
     // The packaged docs/ chapter (the `docs` contribution points at "sample-docs").
     try {
       const dir = fileURLToPath(new URL("../docs", import.meta.url));

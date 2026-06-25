@@ -1,7 +1,8 @@
 /**
  * admin internals M10 — the thesis proof: a sample mod extends the admin (Tier-1
- * declarative page + ⌘K command + menu + a self-served Tier-2 ESM remote) with
- * **zero admin-core changes**. We only `engine.use` the sample mod.
+ * declarative page + ⌘K command + menu + a fully-custom Tier-2 page shipped as
+ * `module` SOURCE that the admin serves same-origin) with **zero admin-core
+ * changes**. We only `engine.use` the sample mod.
  */
 
 import { describe, it, expect, afterEach } from "vitest";
@@ -40,8 +41,10 @@ describe("M10 — sample mod extends the admin with zero core changes", () => {
     const tier1 = manifest.pages.find((p) => p.path === "/x/greetings");
     expect(tier1?.view).toMatchObject({ kind: "table", route: { method: "GET", path: "/sample/greetings" } });
 
+    // A `module` page serializes as a same-origin URL into the admin's own
+    // page-serving route (slug of the path) — no per-mod workflow or mount.
     const tier2 = manifest.pages.find((p) => p.path === "/x/studio");
-    expect(tier2?.remote).toBe("/ext/sample-studio.js");
+    expect(tier2?.remote).toBe("/admin/api/ui/page/x-studio");
   });
 
   it("serves the mod's data-source through its own dedicated route (declarative-page data)", async () => {
@@ -50,12 +53,18 @@ describe("M10 — sample mod extends the admin with zero core changes", () => {
     expect(rows.map((r) => r.id)).toEqual(["ada", "linus", "yukihiro"]);
   });
 
-  it("serves the mod's Tier-2 ESM remote bundle", async () => {
+  it("serves the mod's Tier-2 page source as text/javascript from the admin's own route", async () => {
     const { p } = await start();
-    const res = await fetch(`http://localhost:${p}/ext/sample-studio.js`);
+    const res = await fetch(`http://localhost:${p}/admin/api/ui/page/x-studio`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("javascript");
     expect(await res.text()).toContain("SampleStudio");
+  });
+
+  it("404s an unknown page slug (no module page matches)", async () => {
+    const { p } = await start();
+    const res = await fetch(`http://localhost:${p}/admin/api/ui/page/does-not-exist`);
+    expect(res.status).toBe(404);
   });
 
   it("lists the sample mod in the catalog of mods", async () => {

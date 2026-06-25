@@ -65,9 +65,19 @@ Data browser (mod-store), Secrets (mod-vault), and Chat conversations (mod-chat)
 pages all arrive this way. The same idea powers these docs: see
 [Extending the docs](extending-the-docs.md).
 
+**Fully-custom pages, no workflow.** Beyond the declarative views, a mod can ship
+a **fully-custom React page** as `module` source — the ESM string of a component
+that reads React, the API client, and the glass UI kit off the shared
+`__PATTERN_ADMIN__` global (one React, no bundler). The admin serves that source
+from its own same-origin route and `import()`s it, so a custom page needs **no
+workflow, no asset mount, and no CSP relaxation** (a plain `script-src 'self'`
+covers it). mod-ai's "AI Providers" page works exactly this way. Serving a whole
+*app* (its own SPA) is the separate, unchanged story: a `boundary.http.app`
+workflow.
+
 **Page chrome is yours to control.** Each `pages[]` entry may set `title` and
 `subtitle` (the shell's header defaults to the menu label + a generic line), or
-`header: false` to suppress the shell header entirely and let a Tier-2 page
+`header: false` to suppress the shell header entirely and let a custom page
 render its own — so a polished page never shows a doubled title.
 
 ## Locking it down

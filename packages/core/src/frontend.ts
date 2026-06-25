@@ -153,19 +153,26 @@ export type DeclarativeView =
  * them like routes and passes the extracted params as args to every view's
  * source op — which is how a row click becomes a details page.
  */
-/** The body of a page: a declarative view, stacked views, an element loader, or an ESM remote. */
+/** The body of a page: a declarative view, stacked views, an element loader, or a Tier-2 module. */
 export type PageBody =
   | { view: DeclarativeView }
   | { views: Array<{ title?: string; view: DeclarativeView }> }
   | { element: () => Promise<{ default: unknown }> }
-  /** Tier-2 ESM remote by URL — serializable, so it survives the manifest endpoint. */
-  | { remote: string };
+  /**
+   * Tier-2 fully-custom page: the ESM **source** of a module whose default export
+   * is the component, written against the shared `__PATTERN_ADMIN__` globals (one
+   * React, no double-bundle). The admin serves this source from its OWN same-origin
+   * route and `import()`s it — no workflow, no asset mount, no CSP relaxation. For a
+   * bundled page (JSX/libs), build a single-file ESM with React externalized and pass
+   * the built string here.
+   */
+  | { module: string };
 
 /**
  * A page contributed by a mod. `path` + a body, plus optional header chrome a
  * mod controls: `title`/`subtitle` override the defaults the admin shell renders,
  * and `header: false` suppresses the shell header entirely so the page owns its
- * own (Tier-2 remotes that want full control).
+ * own (Tier-2 module pages that want full control).
  */
 export type PageDef = {
   path: string;
@@ -191,32 +198,13 @@ export interface CommandDef {
 }
 
 /**
- * A static asset mount a mod ships DECLARATIVELY — the host serves the named
- * filesystem at `mount` directly, with no authored `boundary.http.app` workflow
- * (so a Tier-2 page's JS bundle doesn't appear as a workflow in the catalog).
- * For a plain asset bundle leave `spaFallback` empty; set it for an SPA.
- */
-export interface AssetMount {
-  /** A registered filesystem name (provided in the mod's `setup`). */
-  filesystem: string;
-  /** URL prefix to serve it at, e.g. "/ai-ext". */
-  mount: string;
-  /** SPA index to fall back to for unmatched paths; "" (default) ⇒ asset bundle, 404 on miss. */
-  spaFallback?: string;
-  /** Serve assets with immutable cache headers (hashed filenames). */
-  immutableAssets?: boolean;
-}
-
-/**
- * A mod's frontend manifest (admin-spec P2). `mounts` are declarative static
- * mounts the host serves directly (the modern path). `assets` is a legacy opaque
- * pointer the host does not serve on its own (the mod mounts it via a
- * `boundary.http.app` workflow) — kept for full SPAs that still wire their own.
+ * A mod's frontend manifest (admin-spec P2). A custom page rides as `module`
+ * source in `pages` (the admin serves + imports it); a full SPA still serves
+ * itself via a `boundary.http.app` workflow and points `assets` at its
+ * registered filesystem.
  */
 export interface FrontendContribution {
-  /** Declarative static mounts served directly by the host (no workflow). */
-  mounts?: AssetMount[];
-  /** Legacy SPA/asset bundle pointer (a registered filesystem name); mounted by the mod's own app workflow. */
+  /** SPA/asset bundle pointer (a registered filesystem name) for a mod that serves a full app via its own workflow. */
   assets?: string;
   menu?: MenuEntry[];
   pages?: PageDef[];

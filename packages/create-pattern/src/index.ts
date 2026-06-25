@@ -1181,23 +1181,20 @@ function buildModIndex(pieces: ModPieces, vars: { pkgName: string; name: string;
   if (pieces.ops && pieces.admin !== "none") routes.push("itemsAdminRoute");
   if (routes.length) imp.push(`import { ${routes.join(", ")} } from "./routes.js";`);
   if (pieces.admin === "tier1") imp.push(`import { frontendTier1 } from "./frontend.js";`);
-  if (pieces.admin === "tier2") {
-    imp.push(`import { frontendTier2 } from "./frontend.js";`);
-    imp.push(`import { appMount, provideAssets } from "./app.js";`);
-  }
+  // Tier-2 ships its page as `module` SOURCE in frontend.ts — the admin serves +
+  // imports it, so there's no app.ts, no app workflow, no provideAssets.
+  if (pieces.admin === "tier2") imp.push(`import { frontendTier2 } from "./frontend.js";`);
 
   const fsName = `${vars.name}-docs`;
   const fields: string[] = [`  name: ${JSON.stringify(vars.pkgName)},`];
   if (pieces.ops) fields.push(`  ops: [itemsList],`);
   const wf = [...routes];
-  if (pieces.admin === "tier2") wf.push("appMount");
   if (wf.length) fields.push(`  workflows: [${wf.join(", ")}],`);
   if (pieces.admin === "tier1") fields.push(`  frontend: frontendTier1,`);
   if (pieces.admin === "tier2") fields.push(`  frontend: frontendTier2,`);
   if (pieces.docs) fields.push(`  docs: { filesystem: ${JSON.stringify(fsName)}, title: ${JSON.stringify(vars.title)}, order: 50 },`);
 
   const setup: string[] = [];
-  if (pieces.admin === "tier2") setup.push(`    provideAssets(engine);`);
   if (pieces.docs) {
     setup.push(`    try {`);
     setup.push(`      const dir = fileURLToPath(new URL("../docs", import.meta.url));`);
@@ -1234,7 +1231,6 @@ async function assembleMod(
   const routesNeeded = pieces.ops && (pieces.workflows || pieces.admin !== "none");
   if (!routesNeeded) await rm(src("routes.ts"), { force: true });
   if (pieces.admin === "none") await rm(src("frontend.ts"), { force: true });
-  if (pieces.admin !== "tier2") await rm(src("app.ts"), { force: true });
   // Docs: rename the op-prose stub to the real op type, or drop the chapter.
   if (pieces.docs) {
     const opDoc = join(targetDir, "docs", "ops", "op.md");

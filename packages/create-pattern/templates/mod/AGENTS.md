@@ -64,20 +64,24 @@ httpEndpoint({
 });
 ```
 
-## The admin page (`src/frontend.ts`, `src/app.ts`)
+## The admin page (`src/frontend.ts`)
 
 A `frontend` contribution adds UI to `@pattern-js/mod-admin` with **no admin
 changes**. Two tiers, each bound to a dedicated route:
 
 - **Tier 1** — a declarative `view` (table/form/chart/json/markdown/detail). No
   build step; the admin's kit renders it.
-- **Tier 2** — a custom React page shipped as an ESM **remote**. It reads its
+- **Tier 2** — a fully-custom React page shipped as `module` **source** (the ESM
+  string in `frontend.ts`; its default export is the component). It reads its
   dependencies off the admin's shared global `__PATTERN_ADMIN__` — `React`, `api`
   (the client), `ui` (the glass kit), `motion` (motion.dev) and `lucide` — so it
-  uses the admin's *exact* stack with no bundler. Serve the remote with the app
-  trio (`boundary.http.app` → `core.app.static` → `boundary.http.app.serve`); see
-  `src/app.ts`. **Never bundle your own React** — the admin renders your default
-  export with its instance, and two Reacts break hooks.
+  uses the admin's *exact* stack with no bundler. The admin serves that source
+  from its own same-origin route and `import()`s it: **no workflow, no asset
+  mount, no CSP relaxation** (a plain `script-src 'self'` covers it). **Never
+  bundle your own React** — the admin renders your default export with its
+  instance, and two Reacts break hooks. (Need JSX or libraries? Build a
+  single-file ESM bundle with React externalized to the global and assign the
+  built string to the page's `module`.)
 
 ## The docs chapter (`docs/`)
 
