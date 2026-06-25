@@ -62,6 +62,26 @@ export const api = {
       ),
     url: (id: string): string => `/store/blobs/${id}`,
   },
+
+  /** Speech-to-text: a previously-uploaded audio blob → text (needs a "transcription" alias). */
+  transcribe: async (blobId: string, mime: string): Promise<{ text: string }> =>
+    json(
+      await fetch(`${NS}/transcribe`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ blobId, mime }),
+      }),
+    ),
+
+  /** Text-to-speech: text → an audio MediaRef the SPA plays (needs a "speech" alias). */
+  speech: async (text: string): Promise<{ blobId: string; mime: string }> =>
+    json(
+      await fetch(`${NS}/speech`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      }),
+    ),
 };
 
 export interface TurnRequestError extends Error {

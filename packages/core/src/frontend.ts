@@ -191,12 +191,32 @@ export interface CommandDef {
 }
 
 /**
- * A mod's frontend manifest (admin-spec P2). `assets` is an opaque pointer the
- * host understands — for the admin it is the name of a registered filesystem
- * whose files are served via `boundary.http.app`.
+ * A static asset mount a mod ships DECLARATIVELY — the host serves the named
+ * filesystem at `mount` directly, with no authored `boundary.http.app` workflow
+ * (so a Tier-2 page's JS bundle doesn't appear as a workflow in the catalog).
+ * For a plain asset bundle leave `spaFallback` empty; set it for an SPA.
+ */
+export interface AssetMount {
+  /** A registered filesystem name (provided in the mod's `setup`). */
+  filesystem: string;
+  /** URL prefix to serve it at, e.g. "/ai-ext". */
+  mount: string;
+  /** SPA index to fall back to for unmatched paths; "" (default) ⇒ asset bundle, 404 on miss. */
+  spaFallback?: string;
+  /** Serve assets with immutable cache headers (hashed filenames). */
+  immutableAssets?: boolean;
+}
+
+/**
+ * A mod's frontend manifest (admin-spec P2). `mounts` are declarative static
+ * mounts the host serves directly (the modern path). `assets` is a legacy opaque
+ * pointer the host does not serve on its own (the mod mounts it via a
+ * `boundary.http.app` workflow) — kept for full SPAs that still wire their own.
  */
 export interface FrontendContribution {
-  /** Built SPA/asset bundle pointer (e.g. a registered filesystem name). */
+  /** Declarative static mounts served directly by the host (no workflow). */
+  mounts?: AssetMount[];
+  /** Legacy SPA/asset bundle pointer (a registered filesystem name); mounted by the mod's own app workflow. */
   assets?: string;
   menu?: MenuEntry[];
   pages?: PageDef[];

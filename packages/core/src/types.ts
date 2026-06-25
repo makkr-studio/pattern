@@ -539,6 +539,13 @@ export const WorkflowSchema = z.object({
    * sockets, and aren't pausable from the editor.
    */
   offload: z.boolean().optional(),
+  /**
+   * Framework plumbing (a route endpoint, an asset mount, …) rather than a
+   * user-meaningful workflow. Data-only: the admin catalog hides `internal`
+   * workflows by default (a toggle reveals them), keeping the list focused on
+   * what an operator authored or cares about.
+   */
+  internal: z.boolean().optional(),
   nodes: z.array(WorkflowNodeSchema),
   edges: z.array(EdgeSchema),
   /** Visual annotation boxes (T3). Data-only; engine-ignored. */

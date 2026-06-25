@@ -21,26 +21,63 @@ function progressStream(work: Promise<unknown>): ReadableStream<GenProgress> {
   });
 }
 
+/** Resolve input image MediaRefs to base64 data URLs (for providers that accept image input). */
+async function imageDataUrls(ctx: Parameters<typeof mediaBytes>[0], refs: MediaRef[]): Promise<string[]> {
+  return Promise.all(
+    refs.map(async (r) => {
+      const bytes = await mediaBytes(ctx, r);
+      return `data:${r.mime || "image/png"};base64,${Buffer.from(bytes).toString("base64")}`;
+    }),
+  );
+}
+
 export const imageGenerate: OpDefinition = {
   type: "ai.image.generate",
   title: "ai.image.generate",
-  description: "Generate image(s) from a prompt. Bytes land in the blob store; outputs are MediaRefs. Progress streams start/done.",
+  description:
+    "Generate image(s) from a prompt. Optionally pass input image(s) for image-to-image / editing — this is provider-dependent " +
+    "(forwarded via providerOptions; honored by providers that accept image input, ignored otherwise). Bytes land in the blob store; outputs are MediaRefs.",
   config: z.object({
     n: z.number().int().positive().default(1),
     size: z.string().optional(),
     aspectRatio: z.string().optional(),
     seed: z.number().int().optional(),
+    /** Pass-through provider options (merged with any forwarded input images). */
+    providerOptions: z.record(z.string(), z.unknown()).optional(),
   }),
-  inputs: { model: required(modelRefSchema), prompt: required(z.string()) },
+  inputs: {
+    model: required(modelRefSchema),
+    prompt: required(z.string()),
+    /** Optional input image(s) for image-to-image / editing (provider-dependent). */
+    image: value(mediaRefSchema),
+    images: value(z.array(mediaRefSchema)),
+  },
   outputs: {
     image: value(mediaRefSchema),
     images: value(z.array(mediaRefSchema)),
     progress: stream(genProgressSchema),
   },
   execute: async (ctx) => {
-    const [modelRef, prompt] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("prompt")]);
-    const model = await providerService(ctx).imageModel(modelRefSchema.parse(modelRef), ctx);
-    const cfg = ctx.config as { n: number; size?: string; aspectRatio?: string; seed?: number };
+    const [modelRefRaw, prompt, oneImage, manyImages] = await Promise.all([
+      ctx.input.value("model"),
+      ctx.input.value<string>("prompt"),
+      maybe<MediaRef>(ctx, "image"),
+      maybe<MediaRef[]>(ctx, "images"),
+    ]);
+    const modelRef = modelRefSchema.parse(modelRefRaw);
+    const model = await providerService(ctx).imageModel(modelRef, ctx);
+    const cfg = ctx.config as { n: number; size?: string; aspectRatio?: string; seed?: number; providerOptions?: Record<string, Record<string, unknown>> };
+
+    // Forward any input images under the underlying provider's options key (best-effort, provider-dependent).
+    const inputRefs = [...(oneImage ? [oneImage] : []), ...(manyImages ?? [])];
+    let providerOptions = cfg.providerOptions ? { ...cfg.providerOptions } : undefined;
+    if (inputRefs.length) {
+      const urls = await imageDataUrls(ctx, inputRefs);
+      const key = modelRef.routing === "gateway" ? modelRef.modelId.split("/")[0] || "gateway" : modelRef.provider;
+      providerOptions = { ...(providerOptions ?? {}) };
+      providerOptions[key] = { ...(providerOptions[key] ?? {}), image: urls[0], images: urls };
+    }
+
     const refs = (async () => {
       const r = await generateImage({
         model,
@@ -51,6 +88,8 @@ export const imageGenerate: OpDefinition = {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         aspectRatio: cfg.aspectRatio as any,
         seed: cfg.seed,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(providerOptions ? { providerOptions: providerOptions as any } : {}),
         abortSignal: ctx.signal,
       });
       return Promise.all(r.images.map((img) => putMedia(ctx, img.uint8Array, img.mediaType, "image")));

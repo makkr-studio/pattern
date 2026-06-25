@@ -23,7 +23,11 @@ import {
   blobUploadWorkflow,
   crudWorkflows,
   guardrailToolWorkflow,
+  imageToolWorkflow,
+  researcherToolWorkflow,
+  speechRouteWorkflow,
   spaWorkflow,
+  transcribeRouteWorkflow,
   turnPipelineWorkflow,
 } from "./workflows.js";
 
@@ -130,6 +134,11 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
           ...pins.map((pin) => turnPipelineWorkflow(opts, pin)), // per-namespace forks
           approvalPipelineWorkflow(opts),
           guardrailToolWorkflow(opts),
+          // Capability showcases (auto-discovered as agent tools / SPA routes):
+          imageToolWorkflow(opts), // generate_image tool → rendered inline in chat
+          researcherToolWorkflow(opts), // research tool: an agent-as-tool example
+          transcribeRouteWorkflow(opts), // mic → speech-to-text
+          speechRouteWorkflow(opts), // assistant message → text-to-speech
         ]
       : []),
     // One branded SPA per instance, all talking to the shared backend.

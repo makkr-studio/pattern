@@ -82,6 +82,13 @@ export function CatalogPage() {
   const [query, setQuery] = useState("");
   const [modsOpen, setModsOpen] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(readExcludedMods);
+  const [showInternal, setShowInternal] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("pattern.admin.catalog.showInternal") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   // Which mod contributed each workflow (admin-authored ones are "(local)").
   const modOf = useMemo(() => {
@@ -96,9 +103,9 @@ export function CatalogPage() {
   }, [data, modOf]);
 
   const filtered = useMemo(() => {
-    const list = (data ?? []).filter((w) => !excluded.has(modOf.get(w.slug) ?? LOCAL));
+    const list = (data ?? []).filter((w) => (showInternal || !w.internal) && !excluded.has(modOf.get(w.slug) ?? LOCAL));
     return fuzzyFilter(list, query, (w) => `${w.slug} ${w.name} ${w.description ?? ""} ${(w.tags ?? []).join(" ")} ${w.route?.path ?? ""}`);
-  }, [data, query, excluded, modOf]);
+  }, [data, query, excluded, modOf, showInternal]);
 
   const toggleMod = (name: string) => {
     setExcluded((prev) => {
@@ -269,6 +276,26 @@ export function CatalogPage() {
           <Badge hue={excluded.size ? 45 : 150}>
             {modNames.filter((m) => !excluded.has(m)).length}/{modNames.length}
           </Badge>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            setShowInternal((v) => {
+              const next = !v;
+              try {
+                localStorage.setItem("pattern.admin.catalog.showInternal", next ? "1" : "0");
+              } catch {
+                /* best-effort */
+              }
+              return next;
+            })
+          }
+          aria-label="Toggle framework internals"
+          title="Framework route + asset plumbing is hidden by default"
+          className="glass flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/5"
+        >
+          Internals
+          <Badge hue={showInternal ? 45 : 150}>{showInternal ? "shown" : "hidden"}</Badge>
         </button>
       </div>
 

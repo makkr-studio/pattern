@@ -26,6 +26,7 @@ import { aliasSchema, type ModelCapability } from "./types.js";
 import type { AiConfigService } from "./config.js";
 import { fromGatewayModel, type ModelCatalogService } from "./catalog.js";
 import { listProviders, type AiProviderService } from "./provider.js";
+import { ASSETS, ASSETS_MOUNT } from "./app.js";
 import { maybe } from "./ops/shared.js";
 
 function configSvc(ctx: OpContext): AiConfigService {
@@ -196,13 +197,14 @@ export function aiAdminRoutes(): Workflow[] {
 
 export function aiFrontend(): FrontendContribution {
   return {
+    // The Tier-2 page bundle is served declaratively by the host (no app workflow).
+    mounts: [{ filesystem: ASSETS, mount: ASSETS_MOUNT }],
     menu: [{ category: "System", label: "AI Providers", icon: "bot", path: "/x/ai/providers", order: 20 }],
     pages: [
       {
         path: "/x/ai/providers",
-        remote: "/ai-ext/ai-providers.js",
+        remote: `${ASSETS_MOUNT}/ai-providers.js`,
         title: "AI Providers",
-        subtitle: "Model aliases (provider + keys, from the vault or env) that agents & chat resolve at run time.",
       },
     ],
   };

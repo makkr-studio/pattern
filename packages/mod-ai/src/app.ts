@@ -10,11 +10,11 @@
  */
 
 import { memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
-import type { Engine, Workflow } from "@pattern-js/core";
+import type { Engine } from "@pattern-js/core";
 
 const REMOTE = `
 const { React, api, ui } = globalThis.__PATTERN_ADMIN__;
-const { GlassPanel, NeonButton, Badge } = ui;
+const { GlassPanel, NeonButton, Badge, Modal } = ui;
 const h = React.createElement;
 const inputCls = "glass w-full rounded-lg px-3 py-2 text-sm";
 const MODALITIES = ["language", "embedding", "image", "speech", "transcription", "video"];
@@ -47,26 +47,39 @@ function SecretRow({ field, ref, secrets, onChange }) {
       h("div", { className: "flex-1" }, src === "env" ? envInput : vaultPicker)));
 }
 
-function AliasesPanel({ providers, secrets, aliases, reload }) {
-  const blank = { name: "", provider: "gateway", modelId: "", modality: "language", secrets: {}, options: {} };
-  const [form, setForm] = React.useState(blank);
-  const [test, setTest] = React.useState(null);
+// The catalog (static suggestions + live gateway) as model-id hints for the current provider+modality.
+function suggestionsFor(models, provider, modality) {
+  const want = provider === "gateway" ? (m) => m.routing === "gateway" : (m) => m.provider === provider;
+  return (models || []).filter((m) => want(m) && (!modality || (m.modalities || []).indexOf(modality) >= 0)).map((m) => m.id);
+}
+
+function TestModal({ state, onClose }) {
+  if (!state) return null;
+  const ok = state.result && state.result.ok;
+  return h(Modal, { open: true, onClose, title: "Connection check" },
+    h("div", { className: "space-y-3" },
+      h("p", { className: "text-xs text-muted" }, "Checks configuration only: resolves the secret(s) and builds the provider. It does not call the provider's API, so it can't catch a wrong or expired key."),
+      state.busy
+        ? h("p", { className: "text-sm" }, "Checking…")
+        : h("div", { className: "space-y-2" },
+            h("p", { className: "text-sm font-medium", style: { color: ok ? "var(--color-neon-lime)" : "var(--color-neon-pink)" } },
+              ok ? "✓ Wiring OK — secrets resolve and the provider builds." : "✗ Failed"),
+            !ok && state.result && h("pre", { className: "glass rounded-lg p-3 text-xs whitespace-pre-wrap", style: { maxHeight: "16rem", overflow: "auto" } }, state.result.detail || "unknown error"))));
+}
+
+// The form that creates/edits one alias.
+function AliasForm({ providers, secrets, models, form, setForm, reload, onTest }) {
   const [busy, setBusy] = React.useState(false);
+  const blank = { name: "", provider: "gateway", modelId: "", modality: "language", secrets: {}, options: {} };
   const spec = providers.find((p) => p.id === form.provider) || { secrets: [{ name: "apiKey" }], options: [], modalities: MODALITIES, optional: false, pkg: "" };
 
-  function reset() { setForm(blank); setTest(null); }
-  function edit(a) {
-    setTest(null);
-    setForm({ name: a.name, provider: a.provider, modelId: a.modelId, modality: a.modality || "language", secrets: { ...(a.secrets || {}) }, options: { ...(a.options || {}) } });
-  }
   function pickProvider(id) {
     const p = providers.find((x) => x.id === id);
     const mods = (p && p.modalities) || MODALITIES;
-    setTest(null);
     setForm({ ...form, provider: id, secrets: {}, options: {}, modality: mods.indexOf(form.modality) >= 0 ? form.modality : mods[0] });
   }
-  function setSecret(field, ref) { setForm((f) => ({ ...f, secrets: { ...f.secrets, [field]: ref } })); }
-  function setOption(field, val) { setForm((f) => ({ ...f, options: { ...f.options, [field]: val } })); }
+  function setSecret(field, ref) { setForm({ ...form, secrets: { ...form.secrets, [field]: ref } }); }
+  function setOption(field, val) { setForm({ ...form, options: { ...form.options, [field]: val } }); }
 
   // Drop empty secret rows so we never persist a sourceless reference.
   function payload() {
@@ -76,34 +89,32 @@ function AliasesPanel({ providers, secrets, aliases, reload }) {
   }
   function save() {
     setBusy(true);
-    api.call("POST", "/ai/aliases", payload()).then(() => { reset(); reload(); }).finally(() => setBusy(false));
-  }
-  function del(name) { api.call("DELETE", "/ai/aliases/" + encodeURIComponent(name)).then(reload); }
-  function runTest() {
-    setBusy(true); setTest(null);
-    api.call("POST", "/ai/test", payload()).then(setTest).catch((e) => setTest({ ok: false, detail: String(e) })).finally(() => setBusy(false));
+    api.call("POST", "/ai/aliases", payload()).then(() => { setForm(blank); reload(); }).finally(() => setBusy(false));
   }
 
   const mods = spec.modalities || MODALITIES;
+  const suggestions = suggestionsFor(models, form.provider, form.modality);
   return h(GlassPanel, { className: "p-6 space-y-4" },
-    h("div", { className: "flex items-center justify-between" },
-      h("h3", { className: "font-semibold" }, "Model aliases"),
-      h("span", { className: "text-xs text-muted" }, "agents/chat use the default alias")),
-    aliases.length > 0 && h("div", { className: "space-y-1" }, aliases.map((a) =>
-      h("div", { key: a.name, className: "flex items-center justify-between rounded-lg px-2 py-1 hover:bg-white/5" },
-        h("button", { className: "text-left text-sm flex-1", onClick: () => edit(a) },
-          h(Badge, { hue: a.name === "default" ? 140 : 200 }, a.name), " ",
-          h("span", { className: "font-mono text-xs text-muted" }, a.provider + " · " + a.modelId)),
-        h("button", { className: "text-xs text-muted hover:text-[var(--color-neon-pink)]", onClick: () => del(a.name) }, "Delete")))),
-    h("div", { className: "space-y-3 border-t hairline pt-3" },
-      h("p", { className: "text-xs text-muted" }, form.name ? "Editing — name is the upsert key." : "New alias"),
+    h("div", null,
+      h("h3", { className: "font-semibold" }, form.name ? "Edit alias" : "New alias"),
+      h("p", { className: "text-xs text-muted mt-1" },
+        "An alias is a named model — a provider, a model id and the keys it needs. Wire one with an ", h("span", { className: "font-mono" }, "ai.alias"),
+        " node, or leave a node's model unset and the ", h("span", { className: "font-mono" }, "default"),
+        " alias is used. Re-point an alias here and every workflow and agent using it retargets instantly.")),
+    h("div", { className: "space-y-3" },
       h(Field, { label: "Alias name", hint: "the default alias is the fallback when no model is wired." },
         h("input", { className: inputCls, value: form.name, onChange: (e) => setForm({ ...form, name: e.target.value }), placeholder: "default" })),
       h(Field, { label: "Provider", hint: spec.optional && spec.pkg ? "needs " + spec.pkg : "the AI Gateway is built in" },
         h("select", { className: inputCls, value: form.provider, onChange: (e) => pickProvider(e.target.value) },
           providers.map((p) => h("option", { key: p.id, value: p.id }, p.label)))),
       h(Field, { label: "Model id", hint: form.provider === "gateway" ? "gateway: provider/model (openai/gpt-5)" : "direct: bare id (gpt-5)" },
-        h("input", { className: inputCls, value: form.modelId, onChange: (e) => setForm({ ...form, modelId: e.target.value }), placeholder: form.provider === "gateway" ? "openai/gpt-5" : "gpt-5" })),
+        h("input", { className: inputCls, list: "ai-model-suggestions", value: form.modelId, onChange: (e) => setForm({ ...form, modelId: e.target.value }), placeholder: form.provider === "gateway" ? "openai/gpt-5" : "gpt-5" }),
+        h("datalist", { id: "ai-model-suggestions" }, suggestions.map((id) => h("option", { key: id, value: id })))),
+      h("p", { className: "text-xs text-muted/70" },
+        "Browse ids: ",
+        h("a", { href: "https://vercel.com/ai-gateway/models", target: "_blank", rel: "noreferrer", className: "underline hover:text-[var(--color-neon-cyan)]" }, "gateway models"),
+        " · ",
+        h("a", { href: "https://ai-sdk.dev/providers/ai-sdk-providers", target: "_blank", rel: "noreferrer", className: "underline hover:text-[var(--color-neon-cyan)]" }, "provider packages")),
       (spec.secrets || []).map((f) => h(SecretRow, { key: f.name, field: f, ref: form.secrets[f.name], secrets: secrets, onChange: (ref) => setSecret(f.name, ref) })),
       (spec.options || []).map((f) => h(Field, { key: f.name, label: (f.label || f.name) + (f.required ? "" : " (optional)") },
         h("input", { className: inputCls, value: form.options[f.name] || "", placeholder: f.placeholder || "", onChange: (e) => setOption(f.name, e.target.value) }))),
@@ -112,35 +123,36 @@ function AliasesPanel({ providers, secrets, aliases, reload }) {
           mods.map((m) => h("option", { key: m, value: m }, m)))),
       h("div", { className: "flex items-center gap-3 pt-1" },
         h(NeonButton, { onClick: save, disabled: busy || !form.name || !form.modelId }, "Save alias"),
-        h(NeonButton, { onClick: runTest, disabled: busy || !form.modelId }, "Test"),
-        form.name && h(NeonButton, { onClick: reset }, "New"),
-        test && h("span", { className: "text-sm", style: { color: test.ok ? "var(--color-neon-lime)" : "var(--color-neon-pink)" } },
-          test.ok ? "✓ ok" : ("✗ " + (test.detail || "failed").slice(0, 90)))),
+        h(NeonButton, { onClick: () => onTest(payload()), disabled: busy || !form.modelId }, "Test"),
+        form.name && h(NeonButton, { onClick: () => setForm(blank) }, "New")),
       h("p", { className: "text-xs text-muted" }, "Secrets come from the vault (System → Secrets) or an env var — pick the source per field.")));
 }
 
-function CatalogPanel({ models }) {
+// The list of saved aliases (click to edit, delete).
+function AliasList({ aliases, onEdit, reload }) {
+  function del(name) { api.call("DELETE", "/ai/aliases/" + encodeURIComponent(name)).then(reload); }
   return h(GlassPanel, { className: "p-6 space-y-3" },
-    h("h3", { className: "font-semibold" }, "Model catalog"),
-    h("p", { className: "text-xs text-muted" }, "Suggestions — model ids are free text. The live gateway listing merges in when a gateway key is set."),
-    !models ? h("p", { className: "text-muted text-sm" }, "Loading…") :
-      h("div", { className: "overflow-auto", style: { maxHeight: "24rem" } },
-        h("table", { className: "w-full text-sm" },
-          h("thead", null, h("tr", { className: "text-left text-muted" },
-            h("th", { className: "py-1" }, "Model"), h("th", null, "Provider"), h("th", null, "Routing"), h("th", null, "Modalities"))),
-          h("tbody", null, models.map((m, i) =>
-            h("tr", { key: i, className: "border-t hairline" },
-              h("td", { className: "py-1 font-mono text-xs" }, m.id),
-              h("td", null, m.provider),
-              h("td", null, h(Badge, { hue: m.routing === "gateway" ? 200 : 280 }, m.routing)),
-              h("td", { className: "text-xs text-muted" }, (m.modalities || []).join(", "))))))));
+    h("div", { className: "flex items-center justify-between" },
+      h("h3", { className: "font-semibold" }, "Aliases"),
+      h("span", { className: "text-xs text-muted" }, aliases.length + " configured")),
+    aliases.length === 0
+      ? h("p", { className: "text-sm text-muted" }, "No aliases yet. Create a default to power agents and chat.")
+      : h("div", { className: "space-y-1" }, aliases.map((a) =>
+          h("div", { key: a.name, className: "flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-white/5" },
+            h("button", { className: "text-left text-sm flex-1 min-w-0", onClick: () => onEdit(a) },
+              h(Badge, { hue: a.name === "default" ? 140 : 200 }, a.name), " ",
+              h("span", { className: "font-mono text-xs text-muted" }, a.provider + " · " + a.modelId)),
+            h("button", { className: "text-xs text-muted hover:text-[var(--color-neon-pink)] shrink-0", onClick: () => del(a.name) }, "Delete")))));
 }
 
 export default function AIProvidersPage() {
+  const blank = { name: "", provider: "gateway", modelId: "", modality: "language", secrets: {}, options: {} };
   const [providers, setProviders] = React.useState([]);
   const [secrets, setSecrets] = React.useState([]);
   const [aliases, setAliases] = React.useState([]);
-  const [models, setModels] = React.useState(null);
+  const [models, setModels] = React.useState([]);
+  const [form, setForm] = React.useState(blank);
+  const [test, setTest] = React.useState(null);
 
   const reloadAliases = () => api.call("GET", "/ai/aliases").then((r) => setAliases(arr(r, "aliases")));
 
@@ -151,32 +163,30 @@ export default function AIProvidersPage() {
     api.call("GET", "/ai/models").then((r) => setModels(arr(r, "models"))).catch(() => setModels([]));
   }, []);
 
-  return h("div", { className: "grid gap-6 lg:grid-cols-2" },
-    h(AliasesPanel, { providers, secrets, aliases, reload: reloadAliases }),
-    h(CatalogPanel, { models }));
+  function runTest(payload) {
+    setTest({ busy: true });
+    api.call("POST", "/ai/test", payload)
+      .then((r) => setTest({ busy: false, result: r }))
+      .catch((e) => setTest({ busy: false, result: { ok: false, detail: String(e) } }));
+  }
+  function edit(a) { setForm({ name: a.name, provider: a.provider, modelId: a.modelId, modality: a.modality || "language", secrets: { ...(a.secrets || {}) }, options: { ...(a.options || {}) } }); }
+  function reloadAndReset() { reloadAliases(); setForm(blank); }
+
+  return h("div", null,
+    h("div", { className: "grid gap-6 lg:grid-cols-2" },
+      h(AliasForm, { providers, secrets, models, form, setForm, reload: reloadAndReset, onTest: runTest }),
+      h(AliasList, { aliases, onEdit: edit, reload: reloadAliases })),
+    h(TestModal, { state: test, onClose: () => setTest(null) }));
 }
 `;
 
-const ASSETS = "ai-assets";
+/** The registered filesystem name + mount path (served declaratively via frontend.mounts). */
+export const ASSETS = "ai-assets";
+export const ASSETS_MOUNT = "/ai-ext";
 
-/** Register the page bundle as a filesystem (served by the app mount below). */
+/** Register the page bundle as a filesystem (the host serves it at ASSETS_MOUNT via frontend.mounts). */
 export function provideAiAssets(engine: Engine): void {
   const fs = memoryFs();
   void fs.write("ai-providers.js", REMOTE);
   provideFilesystem(engine, ASSETS, fs);
 }
-
-/** The app trio serving the remote at `/ai-ext/ai-providers.js` (unique mount). */
-export const aiAppMount: Workflow = {
-  id: "ai.app",
-  name: "@pattern-js/mod-ai · Tier-2 assets",
-  nodes: [
-    { id: "mount", op: "boundary.http.app", config: { mount: "/ai-ext" } },
-    { id: "assets", op: "core.app.static", config: { filesystem: ASSETS, spaFallback: "" } },
-    { id: "serve", op: "boundary.http.app.serve" },
-  ],
-  edges: [
-    { from: { node: "mount", port: "out" }, to: { node: "assets", port: "in" } },
-    { from: { node: "assets", port: "app" }, to: { node: "serve", port: "app" } },
-  ],
-};

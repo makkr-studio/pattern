@@ -159,7 +159,7 @@ const MOD_ROLES: Record<string, string> = {
 };
 
 /** Ladder order (ascending capability) for the picker + --list. */
-const LADDER = ["blank", "headless", "studio", "agentic", "agent-chat"];
+const LADDER = ["blank", "headless", "studio", "studio-ai", "agentic", "agent-chat"];
 
 const MODPACKS: Modpack[] = [
   {
@@ -251,10 +251,44 @@ const MODPACKS: Modpack[] = [
       ].filter((l) => l !== ""),
   },
   {
+    id: "studio-ai",
+    label: "Studio + AI",
+    hint: "call AI ops directly in the editor — text/object/embed/image/speech ops + vault; no agent loop",
+    tagline: "Studio + mod-ai — build plain AI workflows (text · object · image · speech) in the editor",
+    mods: ["@pattern-js/mod-ai", "@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-admin"],
+    exampleSummary: "an AI workflow (POST /summarize → ai.text.generate, no agent)",
+    serves: (ex) => (ex ? ["/admin", "/summarize"] : ["/admin"]),
+    env: ["OPENAI_API_KEY", "PATTERN_VAULT_KEY"],
+    generates: (ex) =>
+      ex
+        ? ["workflows/summarize.json", "src/index.ts", ".env.example"]
+        : ["workflows/ (your AI flows)", "src/index.ts", ".env.example"],
+    showcase: "workflows/summarize.json",
+    auth: { default: true },
+    docs: { default: true },
+    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
+      [
+        `${pc.dim("$")} cd ${name}`,
+        installed ? "" : installLine,
+        vaultKey
+          ? `${pc.cyan("→")} set ${pc.bold("OPENAI_API_KEY")} in ${pc.bold(".env")} ${pc.dim("(vault key already generated — or use the admin Secrets page)")}`
+          : `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY + a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`,
+        `${pc.dim("$")} ${runCmd} dev`,
+        "",
+        ...(auth
+          ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
+          : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
+        `${pc.cyan("→")} create a ${pc.bold("default")} alias in admin → Settings → AI Providers`,
+        examples
+          ? `${pc.cyan("→")} curl -XPOST localhost:3000/summarize -H 'content-type: application/json' -d '{"text":"…"}' ${pc.dim("— ai.text.generate, no agent")}`
+          : `${pc.cyan("→")} build an AI workflow: ${pc.bold("ai.alias → ai.text.generate")} (see AGENTS.md)`,
+      ].filter((l) => l !== ""),
+  },
+  {
     id: "agentic",
-    label: "Studio + Agents",
-    hint: "build agentic workflows in the editor — agent/run/tools ops + vault + store; no chat UI",
-    tagline: "Studio + the agent stack — build agentic workflows (agent · run · tools) in the editor",
+    label: "Studio + AI + Agents",
+    hint: "build agentic workflows in the editor — agent/run/tools ops + AI + vault + store; no chat UI",
+    tagline: "Studio + AI + the agent stack — build agentic workflows (agent · run · tools) in the editor",
     mods: [
       "@pattern-js/mod-agents + mod-ai",
       "@pattern-js/mod-store",

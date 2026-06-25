@@ -1,0 +1,14 @@
+# Copied to `.env` (gitignored), loaded automatically on boot — existing
+# environment variables always win over this file.
+
+# The agent's model key. Or store it encrypted: admin → System → Secrets, as a
+# secret NAMED OPENAI_API_KEY — the agent ops find it there with no wiring.
+OPENAI_API_KEY=
+
+# The vault's master key. Generate ONCE: openssl rand -base64 32
+# Same key forever — it decrypts .pattern-data/vault.db.
+PATTERN_VAULT_KEY=
+
+# Require sign-in to READ the docs at /docs (if mod-docs is installed)?
+# Unset/false = open. true = any signed-in user; a scope list = required scopes.
+# DOCS_REQUIRE_AUTH=true

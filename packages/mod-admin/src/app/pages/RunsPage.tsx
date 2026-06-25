@@ -61,6 +61,59 @@ function IoPorts({ title, ports }: { title: string; ports?: Record<string, SpanI
   );
 }
 
+/** Reconstruct a copy-paste curl from an HTTP-triggered run's sampled trigger I/O.
+ *  Returns null when the run isn't HTTP-triggered or I/O sampling is off. */
+function curlOf(spans: SpanData[]): string | null {
+  const trig = spans.find((s) => s.attributes["pattern.node.op"] === "boundary.http.request");
+  const out = trig?.io?.outputs;
+  if (!out) return null;
+  const get = (k: string) => out[k]?.preview;
+  const url = get("url") ?? get("path");
+  if (typeof url !== "string") return null;
+  const method = String(get("method") ?? "GET").toUpperCase();
+  const q = (v: string) => "'" + v.replace(/'/g, "'\\''") + "'";
+  const lines = [`curl -X ${method} ${q(url)}`];
+  const headers = get("headers");
+  if (headers && typeof headers === "object") {
+    for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+      const lk = k.toLowerCase();
+      if (lk === "host" || lk === "connection" || lk === "content-length") continue;
+      lines.push(`  -H ${q(k + ": " + String(v))}`);
+    }
+  }
+  const body = get("body");
+  if (body != null && method !== "GET" && method !== "HEAD") {
+    lines.push(`  --data-raw ${q(typeof body === "string" ? body : JSON.stringify(body))}`);
+  }
+  return lines.join(" \\\n");
+}
+
+/** A copy-paste curl for an HTTP run, reconstructed from the sampled trigger I/O. */
+function CurlPanel({ curl }: { curl: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="glass mb-4 rounded-xl p-3">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-muted text-[10px] font-semibold uppercase tracking-wider">curl (from sampled request)</span>
+        <button
+          type="button"
+          className="text-xs text-[var(--color-neon-cyan)] hover:underline"
+          onClick={() => {
+            void navigator.clipboard?.writeText(curl).then(() => {
+              setCopied(true);
+              sfx.play("toggle");
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre text-xs font-mono text-muted">{curl}</pre>
+    </div>
+  );
+}
+
 function Waterfall({ spans, runStart, total }: { spans: SpanData[]; runStart: number; total: number }) {
   const [open, setOpen] = useState<string | null>(null);
   const nodes = spans.filter((s) => s.attributes["pattern.node.id"] !== undefined);
@@ -297,6 +350,10 @@ function RunDetail({ runId }: { runId: string }) {
           </span>
         </div>
       )}
+      {(() => {
+        const curl = curlOf(spans);
+        return curl ? <CurlPanel curl={curl} /> : null;
+      })()}
       <Waterfall spans={spans} runStart={runStart} total={runEnd - runStart} />
       {/* Sub-runs this run started (ctx.invoke) — link down. */}
       {(children?.length ?? 0) > 0 && (

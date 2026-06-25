@@ -92,6 +92,8 @@ export interface WorkflowMeta {
   live: VersionId | null;
   route?: RouteInfo;
   tags?: string[];
+  /** Framework plumbing (route endpoint / asset mount); hidden from the catalog by default. */
+  internal?: boolean;
   versions: VersionInfo[];
   audit: AuditEntry[];
 }

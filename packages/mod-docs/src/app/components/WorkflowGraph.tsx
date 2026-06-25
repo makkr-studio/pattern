@@ -84,7 +84,30 @@ function portColor(kind: PortInfo["kind"]): string {
 }
 
 function edgeStyle(kind: PortInfo["kind"]): React.CSSProperties {
-  return { stroke: portColor(kind), strokeWidth: 2, strokeDasharray: kind === "control" ? "4 4" : undefined };
+  const c = portColor(kind);
+  return {
+    stroke: c,
+    strokeWidth: 2,
+    strokeDasharray: kind === "control" ? "5 5" : undefined,
+    // A soft glow so the wires read "lit", like the site/admin canvas.
+    filter: `drop-shadow(0 0 4px color-mix(in srgb, ${c} 55%, transparent))`,
+  };
+}
+
+/** A glowing port dot, colored by kind (matches the admin/site node). */
+function dotStyle(kind: PortInfo["kind"], side: "left" | "right"): React.CSSProperties {
+  const c = portColor(kind);
+  return {
+    position: "relative",
+    transform: "none",
+    width: 9,
+    height: 9,
+    border: "none",
+    borderRadius: "50%",
+    background: c,
+    boxShadow: `0 0 6px color-mix(in srgb, ${c} 70%, transparent)`,
+    [side]: -4,
+  };
 }
 
 /** Longest-path columns + stacked rows — enough to read a pipeline. */
@@ -118,44 +141,55 @@ function autoLayout(doc: WorkflowDocLite): Map<string, { x: number; y: number }>
 
 function DocsOpNode({ data }: NodeProps<RFNode<NodeData>>) {
   const rows = Math.max(data.inputs.length, data.outputs.length);
+  // Boundary nodes get the neon-cyan accent; the rest a calm violet — the same
+  // visual language as the site/admin canvas (glass surface + accent border).
+  const accent = data.boundary ? "var(--color-neon-cyan)" : "var(--color-neon-violet)";
   return (
     <div
-      className="node-surface rounded-xl border text-[11px] hairline"
-      style={{ minWidth: 170, borderColor: data.boundary ? "var(--color-port-control)" : undefined }}
+      className="node-surface relative overflow-visible rounded-xl text-[11px]"
+      style={{
+        minWidth: 184,
+        border: `1px solid color-mix(in srgb, ${accent} ${data.boundary ? 60 : 38}%, var(--hairline))`,
+        boxShadow: "var(--glass-shadow)",
+      }}
     >
-      <div className="border-b px-2.5 py-1.5 hairline">
-        <div className="font-medium leading-tight" style={{ fontSize: 12 }}>
-          {data.title ?? data.op}
+      <div
+        className="flex items-center gap-2 rounded-t-xl border-b px-3 py-2 hairline"
+        style={{ background: `color-mix(in srgb, ${accent} 12%, transparent)` }}
+      >
+        <div className="min-w-0">
+          <div className="truncate font-medium leading-tight" style={{ fontSize: 12 }}>
+            {data.title ?? data.op}
+          </div>
+          <div className="truncate font-mono text-[9.5px] text-muted">{data.op}</div>
         </div>
-        <div className="font-mono text-[9.5px] text-muted">{data.op}</div>
+        {data.boundary && (
+          <span
+            className="ml-auto shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wide"
+            style={{ background: "var(--color-neon-cyan)", color: "#000" }}
+          >
+            {data.boundary === "trigger" ? "trig" : "out"}
+          </span>
+        )}
       </div>
-      <div className="relative px-2.5 py-1.5" style={{ minHeight: rows * 18 }}>
+      <div className="relative px-3 py-2" style={{ minHeight: rows * 20 }}>
         {data.inputs.map((p, i) => (
-          <div key={p.name} className="absolute left-0 flex items-center gap-1.5" style={{ top: 8 + i * 18 }}>
-            <Handle
-              type="target"
-              id={p.name}
-              position={Position.Left}
-              isConnectable={false}
-              style={{ position: "relative", transform: "none", width: 8, height: 8, border: "none", background: portColor(p.kind), left: -4 }}
-            />
-            <span className="text-muted">{p.name}</span>
+          <div key={p.name} className="absolute left-0 flex items-center gap-1.5" style={{ top: 8 + i * 20 }}>
+            <Handle type="target" id={p.name} position={Position.Left} isConnectable={false} style={dotStyle(p.kind, "left")} />
+            <span className="font-mono text-muted">
+              {p.name}
+              {p.required && <span className="text-[var(--color-neon-amber)]">*</span>}
+            </span>
           </div>
         ))}
         {data.outputs.map((p, i) => (
-          <div key={p.name} className="absolute right-0 flex items-center gap-1.5" style={{ top: 8 + i * 18 }}>
-            <span className="text-muted">{p.name}</span>
-            <Handle
-              type="source"
-              id={p.name}
-              position={Position.Right}
-              isConnectable={false}
-              style={{ position: "relative", transform: "none", width: 8, height: 8, border: "none", background: portColor(p.kind), right: -4 }}
-            />
+          <div key={p.name} className="absolute right-0 flex items-center gap-1.5" style={{ top: 8 + i * 20 }}>
+            <span className="font-mono text-muted">{p.name}</span>
+            <Handle type="source" id={p.name} position={Position.Right} isConnectable={false} style={dotStyle(p.kind, "right")} />
           </div>
         ))}
       </div>
-      {data.comment && <div className="border-t px-2.5 py-1 text-[10px] text-muted hairline">{data.comment}</div>}
+      {data.comment && <div className="border-t px-3 py-1.5 text-[10px] text-muted hairline">{data.comment}</div>}
     </div>
   );
 }

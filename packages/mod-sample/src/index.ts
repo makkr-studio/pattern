@@ -129,27 +129,14 @@ export default function SampleStudio() {
 }
 `;
 
-const appMount: Workflow = {
-  id: "sample.app",
-  name: "Sample · Tier-2 assets",
-  // The canonical app trio (§7): mount trigger → app op → serve out-gate.
-  nodes: [
-    { id: "mount", op: "boundary.http.app", config: { mount: "/ext" }, ui: { x: 60, y: 60, pair: "serve" } },
-    { id: "assets", op: "core.app.static", config: { filesystem: "sample-assets", spaFallback: "" }, ui: { x: 340, y: 60 } },
-    { id: "serve", op: "boundary.http.app.serve", ui: { x: 620, y: 60, pair: "mount" } },
-  ],
-  edges: [
-    { from: { node: "mount", port: "out" }, to: { node: "assets", port: "in" } },
-    { from: { node: "assets", port: "app" }, to: { node: "serve", port: "app" } },
-  ],
-};
-
 export default defineMod({
   name: "@pattern-js/mod-sample",
   docs: { filesystem: "sample-docs", title: "Sample", order: 90 },
   ops: [greetingsList, crunch],
-  workflows: [appMount, replayShowcase, greetingsRoute],
+  workflows: [replayShowcase, greetingsRoute],
   frontend: {
+    // The Tier-2 remote is served declaratively by the host (no app workflow).
+    mounts: [{ filesystem: "sample-assets", mount: "/ext" }],
     menu: [
       { category: "Examples", label: "Greetings", icon: "boxes", path: "/x/greetings", order: 10 },
       { category: "Examples", label: "Studio", icon: "package", path: "/x/studio", order: 20 },

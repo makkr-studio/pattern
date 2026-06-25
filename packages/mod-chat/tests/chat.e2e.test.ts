@@ -7,6 +7,7 @@ import { Engine, resolvePorts, type Workflow } from "@pattern-js/core";
 import { createHttpHost } from "@pattern-js/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
 import { agentsMod, AGENTS_SERVICE, AI_MODEL_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
+import { aiMod } from "../../mod-ai/src/index.js";
 import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
 import { scriptedModelService, type ScriptedTurn } from "../../mod-agents/tests/scripted-model-service.js";
 
@@ -70,6 +71,10 @@ async function boot(
   }
   await engine.useAsync(storeMod({ storage: "memory" }), { deferReady: true });
   await engine.useAsync(agentsMod(), { deferReady: true });
+  // mod-ai is chat's real dependency (it registers the ai.* ops the media tool /
+  // STT / TTS workflows reference). The scripted model service below overrides
+  // mod-ai's, so turns still run deterministically with no provider keys.
+  await engine.useAsync(aiMod(), { deferReady: true });
   const chat = chatMod({ guardrail: opts.guardrail ?? false });
   await engine.useAsync(chat, { deferReady: true });
   await chat.ready?.(engine);

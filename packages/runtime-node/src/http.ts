@@ -381,6 +381,20 @@ export class HttpHost {
         });
       }
     }
+    // Declarative static mounts (FrontendContribution.mounts) — served directly,
+    // with no authored boundary.http.app workflow (so a Tier-2 bundle never shows
+    // up as a workflow in the catalog).
+    for (const mod of this.engine.installedMods()) {
+      for (const m of mod.frontend?.mounts ?? []) {
+        apps.push({
+          mount: normalizeMount(m.mount),
+          port: this.defaultPort,
+          filesystem: m.filesystem,
+          spaFallback: typeof m.spaFallback === "string" ? m.spaFallback : "",
+          immutableAssets: Boolean(m.immutableAssets),
+        });
+      }
+    }
     // Longest mount first, so "/admin/sub" wins over "/admin" / "/".
     apps.sort((a, b) => b.mount.length - a.mount.length);
     return apps;

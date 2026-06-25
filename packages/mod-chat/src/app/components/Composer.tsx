@@ -20,8 +20,50 @@ export function Composer({ streaming, busy }: { streaming: boolean; busy: boolea
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
 
   const canSend = !streaming && (text.trim().length > 0 || attachments.some((a) => !a.uploading));
+
+  /** Push-to-talk: record the mic, then upload + transcribe into the textarea. */
+  async function toggleMic() {
+    if (recording) {
+      recRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size) chunksRef.current.push(e.data);
+      };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        if (!blob.size) return;
+        setTranscribing(true);
+        try {
+          const { id, meta } = await api.blobs.upload(blob);
+          const { text: heard } = await api.transcribe(id, meta.mime);
+          if (heard) setText((cur) => (cur ? `${cur} ${heard}` : heard));
+          taRef.current?.focus();
+        } catch {
+          /* transcription unavailable (no "transcription" alias?) — ignore */
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch {
+      /* mic permission denied / unsupported */
+    }
+  }
 
   async function addFiles(files: Iterable<File>) {
     for (const file of files) {
@@ -104,6 +146,27 @@ export function Composer({ streaming, busy }: { streaming: boolean; busy: boolea
           void addFiles(e.dataTransfer.files);
         }}
       >
+        <button
+          onClick={() => void toggleMic()}
+          disabled={transcribing || streaming}
+          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-40"
+          style={{
+            borderColor: recording ? "var(--danger)" : "var(--line)",
+            color: recording ? "var(--danger)" : "var(--fg-soft)",
+            background: recording ? "var(--danger-soft)" : "transparent",
+          }}
+          aria-label={recording ? "Stop recording" : "Record voice"}
+          title={transcribing ? "Transcribing…" : recording ? "Stop & transcribe" : "Record voice"}
+        >
+          {transcribing ? (
+            <span className="text-[11px]">…</span>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <rect x="5.5" y="1.5" width="5" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          )}
+        </button>
         <textarea
           ref={taRef}
           value={text}

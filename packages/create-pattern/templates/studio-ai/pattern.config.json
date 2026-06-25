@@ -1,0 +1,10 @@
+{
+  "$schema": "pattern/config/v1",
+  "mods": [
+    "@pattern-js/mod-store",
+    "@pattern-js/mod-vault",
+    "@pattern-js/mod-ai",
+    "@pattern-js/mod-admin"
+  ],
+  "workflows": "./workflows"
+}

@@ -206,6 +206,7 @@ export async function catalog(engine: Engine, store: WorkflowStore, parkedCode?:
     live: enabled ? "code" : null,
     route: extractRoute(wf),
     tags: wf.tags,
+    internal: wf.internal,
     versions: [{ id: "code", hash: "code", createdAt: "" }],
     audit: [],
   });
