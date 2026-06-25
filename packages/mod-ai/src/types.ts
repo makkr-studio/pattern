@@ -20,40 +20,39 @@ export {
 const modalityEnum = z.enum(["language", "embedding", "image", "speech", "transcription", "video"]);
 
 /**
- * A named provider **connection**: how to reach a provider and authenticate.
- * Auth material is never stored here — every `secrets` value is the NAME of a
- * vault secret (chosen explicitly in the UI). `options` holds non-secret
- * structured fields (Azure resourceName/apiVersion, Bedrock region, Vertex
- * project/location, …). One connection backs many aliases.
+ * Where a secret comes from. Auth VALUES are never stored — a secret reference
+ * is either a vault secret NAME (managed in System → Secrets) or an env-var NAME
+ * read at run time. Chosen explicitly per field, so nothing relies on guessing a
+ * provider's magic env-var convention.
  */
-export const connectionSchema = z.object({
-  /** Stable id referenced by aliases / ModelRef.connection (e.g. "openai-prod"). */
-  id: z.string(),
-  /** Human label for the UI; defaults to the id. */
-  label: z.string().optional(),
-  /** Provider id ("openai", "anthropic", "azure", "amazon-bedrock", "google-vertex", …). */
-  provider: z.string(),
-  routing: z.enum(["direct", "gateway"]).default("direct"),
-  /** Auth field → vault secret NAME. e.g. { apiKey: "MY_OPENAI" } or { accessKeyId, secretAccessKey }. */
-  secrets: z.record(z.string(), z.string()).default({}),
-  /** Non-secret structured config. e.g. { resourceName, apiVersion } / { region } / { project, location }. */
-  options: z.record(z.string(), z.string()).default({}),
+export const secretRefSchema = z.object({
+  source: z.enum(["vault", "env"]).default("vault"),
+  /** The vault secret name or the env-var name (never the value). */
+  key: z.string(),
 });
-export type Connection = z.infer<typeof connectionSchema>;
+export type SecretRef = z.infer<typeof secretRefSchema>;
 
 /**
- * A named **alias** — "default", "mini", "vision", … — pointing a memorable
- * name at a connection + model id. `ai.alias` resolves one to a ModelRef at run
- * time, so re-pointing an alias in Settings instantly re-targets every workflow
- * using it. Agents/chat fall back to the "default" alias when no model is wired.
+ * A named **alias** — "default", "mini", "vision", … — a fully self-contained
+ * model handle: a provider, a model id, the secret(s) it authenticates with
+ * (each from the vault or an env var) and any structured options (Azure
+ * resourceName, Bedrock region, Vertex project/location, an OpenAI-compatible
+ * baseURL, …). Two aliases of the same provider with different credentials are
+ * just two records. `ai.alias` resolves one to a ModelRef at run time, so
+ * re-pointing an alias in Settings instantly re-targets every workflow using it.
+ * Agents/chat fall back to the "default" alias when no model is wired.
  */
 export const aliasSchema = z.object({
   name: z.string(),
-  /** Connection id this alias draws provider/routing/keys from. */
-  connection: z.string(),
-  /** Model id within that provider (direct: bare; gateway: "provider/model"). */
+  /** Provider id from the registry ("openai", "azure", "amazon-bedrock", "gateway", …). */
+  provider: z.string(),
+  /** Model id within that provider (direct: bare "gpt-5"; gateway: "openai/gpt-5"). */
   modelId: z.string(),
   modality: modalityEnum.default("language"),
+  /** Auth field → where its secret comes from. e.g. { apiKey: { source:"env", key:"OPENAI_API_KEY" } }. */
+  secrets: z.record(z.string(), secretRefSchema).default({}),
+  /** Non-secret structured config. e.g. { resourceName, apiVersion } / { region } / { project, location }. */
+  options: z.record(z.string(), z.string()).default({}),
 });
 export type Alias = z.infer<typeof aliasSchema>;
 

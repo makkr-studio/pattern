@@ -10,20 +10,18 @@ export const modelOp: OpDefinition = {
   type: "ai.model",
   title: "ai.model",
   description:
-    "Build a model reference (a value) to wire into any ai.* op or agents.agent. Define it inline " +
-    '(routing "gateway" or "direct" + provider + key), or set `connection` to draw provider/routing/keys ' +
-    "from a configured Connection (the only way to use structured-credential providers like Azure/Bedrock/Vertex inline).",
+    "Build a model reference (a value) to wire into any ai.* op or agents.agent. Define it inline — " +
+    'routing "gateway" (one key, "provider/model" ids) or "direct" (a single-key provider + its key). ' +
+    "For multi-secret/structured providers (Azure, Bedrock, Vertex, …) configure an alias and use ai.alias.",
   config: z.object({
     routing: z.enum(["direct", "gateway"]).default("gateway"),
     modality: z.enum(["language", "embedding", "image", "speech", "transcription", "video"]).default("language"),
-    /** direct: provider id ("openai"); gateway: the provider half of "provider/model". Omit when using `connection`. */
+    /** direct: provider id ("openai"); gateway: the provider half of "provider/model". */
     provider: z.string().optional(),
     /** direct: bare id ("gpt-5"); gateway: the full "provider/model" id. */
     modelId: z.string().min(1),
-    /** Vault secret NAME for the key (defaults per routing/provider). */
+    /** Secret NAME for the key (env or vault), defaulting per routing/provider. */
     credential: z.string().optional(),
-    /** A configured Connection id — supplies provider/routing/keys (incl. structured creds). */
-    connection: z.string().optional(),
   }),
   configInputs: {
     provider: value(z.string()),
@@ -41,7 +39,6 @@ export const modelOp: OpDefinition = {
       provider?: string;
       modelId: string;
       credential?: string;
-      connection?: string;
     };
     const [credential, providerOptions] = await Promise.all([
       maybe<string>(ctx, "credential"),
@@ -51,10 +48,9 @@ export const modelOp: OpDefinition = {
       kind: "model",
       routing: cfg.routing,
       modality: cfg.modality,
-      provider: cfg.provider ?? "",
+      provider: cfg.provider ?? (cfg.routing === "gateway" ? "gateway" : ""),
       modelId: cfg.modelId,
       credential: credential ?? cfg.credential,
-      connection: cfg.connection,
       providerOptions,
     });
     return { model };
@@ -77,7 +73,7 @@ export const aliasOp: OpDefinition = {
     const model = config?.resolveAlias(alias);
     if (!model) {
       throw new Error(
-        `ai.alias: no alias "${alias}" is configured (or its connection is missing) — set it in admin → Settings → AI Providers.`,
+        `ai.alias: no alias "${alias}" is configured — set it in admin → Settings → AI Providers.`,
       );
     }
     return { model };

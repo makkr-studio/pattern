@@ -1,139 +1,32 @@
 /**
- * @pattern-js/mod-ai — the ProviderService: ModelRef → a concrete AI SDK model.
+ * @pattern-js/mod-ai — the ProviderService: a ModelRef → a concrete AI SDK model.
  *
- * The ONE seam (with sdk.ts) that touches @ai-sdk. A ModelRef resolves through a
- * Connection when `ref.connection` is set (provider + routing + explicit vault
- * secrets, incl. structured creds for Azure/Bedrock/Vertex), else inline
- * (provider + a single credential). Providers are a descriptor registry: the
- * five baseline ones are bundled; the rest are OPTIONAL peers, dynamically
- * imported only when used (a clear install hint if absent). Video forces an
- * extended-timeout fetch (it takes minutes).
+ * The ONE seam (with sdk.ts + registry.ts) that touches a provider. A ModelRef
+ * resolves through an **alias** when `ref.alias` is set (a fully self-contained
+ * model: provider + sourced secrets + structured options, incl. Azure/Bedrock/
+ * Vertex), else inline (a single-key provider + one credential). Every direct
+ * provider is an OPTIONAL peer, lazy-imported only when used (a clear install
+ * hint if absent); the gateway ships with `ai`. Video forces an extended-timeout
+ * fetch (it takes minutes).
  */
 
 import type { OpContext } from "@pattern-js/core";
 import type { ModelRef } from "@pattern-js/mod-agents";
 import {
-  createAnthropic,
   createGateway,
-  createGoogleGenerativeAI,
-  createGroq,
-  createMistral,
-  createOpenAI,
   type EmbeddingModel,
   type ImageModel,
   type LanguageModel,
   type SpeechModel,
   type TranscriptionModel,
 } from "./sdk.js";
-import type { Connection } from "./types.js";
+import type { Alias, SecretRef } from "./types.js";
+import { getSpec, type Creds, type ProviderSpec, type ProviderLike } from "./registry.js";
 import { vaultLike } from "./well-known.js";
 
-/** A provider exposes the standard model factories (gateway + native both do). */
-interface ProviderLike {
-  languageModel(id: string): LanguageModel;
-  textEmbeddingModel(id: string): EmbeddingModel;
-  imageModel(id: string): ImageModel;
-  speechModel(id: string): SpeechModel;
-  transcriptionModel(id: string): TranscriptionModel;
-}
-interface GatewayLike extends ProviderLike {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  video(id: string): any;
-}
-
-type Creds = Record<string, string>;
-type Opts = Record<string, string>;
-
-interface ProviderSpec {
-  label: string;
-  /** npm package — the install hint + the dynamic-import specifier for optional ones. */
-  pkg: string;
-  /** Bundled with mod-ai (hard dep); optional providers are lazy-imported peers. */
-  baseline?: boolean;
-  /** Vault-backed auth fields a Connection supplies (drives the settings form). */
-  secretFields: string[];
-  /** Non-secret structured fields a Connection supplies (region, resourceName, …). */
-  optionFields?: string[];
-  /** Default secret name for INLINE (connection-less) use; absent ⇒ a Connection is required. */
-  defaultSecret?: string;
-  /** Build the provider from resolved secret VALUES + structured options. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  make(mod: any, creds: Creds, opts: Opts): ProviderLike;
-}
-
-/** The provider registry. Baseline five use sdk.ts factories; the rest are lazy peers. */
-const SPECS: Record<string, ProviderSpec> = {
-  // ── Baseline (bundled) ──
-  openai: { label: "OpenAI", pkg: "@ai-sdk/openai", baseline: true, secretFields: ["apiKey"], defaultSecret: "OPENAI_API_KEY", make: (_m, c) => createOpenAI({ apiKey: c.apiKey }) as unknown as ProviderLike },
-  anthropic: { label: "Anthropic", pkg: "@ai-sdk/anthropic", baseline: true, secretFields: ["apiKey"], defaultSecret: "ANTHROPIC_API_KEY", make: (_m, c) => createAnthropic({ apiKey: c.apiKey }) as unknown as ProviderLike },
-  google: { label: "Google Generative AI", pkg: "@ai-sdk/google", baseline: true, secretFields: ["apiKey"], defaultSecret: "GOOGLE_GENERATIVE_AI_API_KEY", make: (_m, c) => createGoogleGenerativeAI({ apiKey: c.apiKey }) as unknown as ProviderLike },
-  mistral: { label: "Mistral", pkg: "@ai-sdk/mistral", baseline: true, secretFields: ["apiKey"], defaultSecret: "MISTRAL_API_KEY", make: (_m, c) => createMistral({ apiKey: c.apiKey }) as unknown as ProviderLike },
-  groq: { label: "Groq", pkg: "@ai-sdk/groq", baseline: true, secretFields: ["apiKey"], defaultSecret: "GROQ_API_KEY", make: (_m, c) => createGroq({ apiKey: c.apiKey }) as unknown as ProviderLike },
-
-  // ── Optional single-key providers (lazy peers) ──
-  xai: { label: "xAI (Grok)", pkg: "@ai-sdk/xai", secretFields: ["apiKey"], defaultSecret: "XAI_API_KEY", make: (m, c) => m.createXai({ apiKey: c.apiKey }) },
-  deepseek: { label: "DeepSeek", pkg: "@ai-sdk/deepseek", secretFields: ["apiKey"], defaultSecret: "DEEPSEEK_API_KEY", make: (m, c) => m.createDeepSeek({ apiKey: c.apiKey }) },
-  cohere: { label: "Cohere", pkg: "@ai-sdk/cohere", secretFields: ["apiKey"], defaultSecret: "COHERE_API_KEY", make: (m, c) => m.createCohere({ apiKey: c.apiKey }) },
-  togetherai: { label: "Together AI", pkg: "@ai-sdk/togetherai", secretFields: ["apiKey"], defaultSecret: "TOGETHER_AI_API_KEY", make: (m, c) => m.createTogetherAI({ apiKey: c.apiKey }) },
-  fireworks: { label: "Fireworks", pkg: "@ai-sdk/fireworks", secretFields: ["apiKey"], defaultSecret: "FIREWORKS_API_KEY", make: (m, c) => m.createFireworks({ apiKey: c.apiKey }) },
-  cerebras: { label: "Cerebras", pkg: "@ai-sdk/cerebras", secretFields: ["apiKey"], defaultSecret: "CEREBRAS_API_KEY", make: (m, c) => m.createCerebras({ apiKey: c.apiKey }) },
-  perplexity: { label: "Perplexity", pkg: "@ai-sdk/perplexity", secretFields: ["apiKey"], defaultSecret: "PERPLEXITY_API_KEY", make: (m, c) => m.createPerplexity({ apiKey: c.apiKey }) },
-
-  // ── Optional structured-credential providers (a Connection is required) ──
-  azure: {
-    label: "Azure OpenAI",
-    pkg: "@ai-sdk/azure",
-    secretFields: ["apiKey"],
-    optionFields: ["resourceName", "apiVersion", "baseURL"],
-    make: (m, c, o) => m.createAzure({ resourceName: o.resourceName || undefined, apiKey: c.apiKey, apiVersion: o.apiVersion || undefined, baseURL: o.baseURL || undefined }),
-  },
-  "amazon-bedrock": {
-    label: "Amazon Bedrock",
-    pkg: "@ai-sdk/amazon-bedrock",
-    secretFields: ["accessKeyId", "secretAccessKey", "sessionToken"],
-    optionFields: ["region"],
-    make: (m, c, o) => m.createAmazonBedrock({ region: o.region || undefined, accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey, sessionToken: c.sessionToken || undefined }),
-  },
-  "google-vertex": {
-    label: "Google Vertex AI",
-    pkg: "@ai-sdk/google-vertex",
-    secretFields: ["credentials"],
-    optionFields: ["project", "location"],
-    make: (m, c, o) =>
-      m.createVertex({ project: o.project || undefined, location: o.location || undefined, googleAuthOptions: c.credentials ? { credentials: JSON.parse(c.credentials) } : undefined }),
-  },
-};
+export { listProviders, type ProviderInfo } from "./registry.js";
 
 const GATEWAY_SECRET = "AI_GATEWAY_API_KEY";
-
-/** Public, serializable provider catalog for the settings form (no factories). */
-export interface ProviderInfo {
-  provider: string;
-  label: string;
-  /** "gateway" for the gateway pseudo-provider, else "direct". */
-  routing: "direct" | "gateway";
-  /** Needs an optional @ai-sdk package the host must install. */
-  optional: boolean;
-  pkg: string;
-  secretFields: string[];
-  optionFields: string[];
-}
-
-export function listProviders(): ProviderInfo[] {
-  const direct = Object.entries(SPECS).map(([provider, s]) => ({
-    provider,
-    label: s.label,
-    routing: "direct" as const,
-    optional: !s.baseline,
-    pkg: s.pkg,
-    secretFields: s.secretFields,
-    optionFields: s.optionFields ?? [],
-  }));
-  return [
-    { provider: "gateway", label: "Vercel AI Gateway", routing: "gateway", optional: false, pkg: "@ai-sdk/gateway", secretFields: ["apiKey"], optionFields: [] },
-    ...direct,
-  ];
-}
 
 /** Long video generations exceed undici's default 5-minute timeout. */
 const VIDEO_TIMEOUT_MS = 15 * 60 * 1000;
@@ -161,18 +54,37 @@ export interface AiProviderService {
   speechModel(ref: ModelRef, ctx: OpContext): Promise<SpeechModel>;
   transcriptionModel(ref: ModelRef, ctx: OpContext): Promise<TranscriptionModel>;
   videoModel(ref: ModelRef, ctx: OpContext): Promise<unknown>;
-  testConnection(ref: ModelRef, ctx: OpContext): Promise<{ ok: boolean; detail?: string }>;
+  /** Test an alias draft (resolves its secrets + builds the provider). */
+  testAlias(alias: Alias, ctx: OpContext): Promise<{ ok: boolean; detail?: string }>;
   gatewayModels(ctx: OpContext): Promise<Record<string, unknown>[]>;
 }
 
 export class ProviderService implements AiProviderService {
   private gwCache?: { at: number; models: Record<string, unknown>[] };
 
-  /** `lookup` resolves a ModelRef.connection id → a Connection (from AiConfigService). */
-  constructor(private readonly lookup: (id: string) => Connection | undefined = () => undefined) {}
+  /** `lookup` resolves a ModelRef.alias name → an Alias (from AiConfigService). */
+  constructor(private readonly lookup: (name: string) => Alias | undefined = () => undefined) {}
 
-  /** Resolve a secret by name from the env then the (unlocked) vault. Undefined if absent. */
-  private async tryKey(ctx: OpContext, name: string): Promise<string | undefined> {
+  /** Resolve a secret reference from its declared source (vault or env). Throws if absent. */
+  private async resolveSourced(ctx: OpContext, ref: SecretRef): Promise<string> {
+    if (ref.source === "env") {
+      const v = ctx.env[ref.key];
+      if (v) return v;
+      throw new Error(`mod-ai: env var "${ref.key}" is not set.`);
+    }
+    const vault = vaultLike(ctx);
+    if (vault?.unlocked() && (await vault.has(ref.key).catch(() => false))) return vault.read(ref.key);
+    throw new Error(`mod-ai: no vault secret "${ref.key}" — add it in admin → System → Secrets.`);
+  }
+
+  /** Resolve a secret by NAME from env then the (unlocked) vault (inline + gateway default). */
+  private async resolveByName(ctx: OpContext, name: string): Promise<string> {
+    const v = await this.tryName(ctx, name);
+    if (v) return v;
+    throw new Error(`mod-ai: no secret "${name}" — add it in admin → System → Secrets, or set the ${name} env var.`);
+  }
+
+  private async tryName(ctx: OpContext, name: string): Promise<string | undefined> {
     const fromEnv = ctx.env[name];
     if (fromEnv) return fromEnv;
     const vault = vaultLike(ctx);
@@ -180,17 +92,8 @@ export class ProviderService implements AiProviderService {
     return undefined;
   }
 
-  private async resolveSecret(ctx: OpContext, name: string): Promise<string> {
-    const key = await this.tryKey(ctx, name);
-    if (key) return key;
-    throw new Error(
-      `mod-ai: no secret "${name}" — add it in admin → System → Secrets, or set the ${name} env var.`,
-    );
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async loadPkg(spec: ProviderSpec): Promise<any> {
-    if (spec.baseline) return undefined; // baseline factories come from sdk.ts
     try {
       const pkg = spec.pkg; // variable specifier ⇒ optional, not statically resolved
       return await import(pkg);
@@ -201,68 +104,100 @@ export class ProviderService implements AiProviderService {
     }
   }
 
-  /** Build the SDK provider for a ref (via its Connection when present, else inline). */
-  private async provider(ref: ModelRef, ctx: OpContext): Promise<ProviderLike> {
-    const conn = ref.connection ? this.lookup(ref.connection) : undefined;
-    const routing = conn?.routing ?? ref.routing;
+  /** Build the SDK provider for a fully-configured alias. */
+  private async providerForAlias(alias: Alias, ctx: OpContext): Promise<ProviderLike> {
+    if (alias.provider === "gateway") {
+      return createGateway({ apiKey: await this.aliasGatewayKey(alias, ctx) }) as unknown as ProviderLike;
+    }
+    const spec = getSpec(alias.provider);
+    if (!spec) throw this.unknownProvider(alias.provider);
+    const creds: Creds = {};
+    for (const [field, ref] of Object.entries(alias.secrets ?? {})) {
+      if (ref?.key) creds[field] = await this.resolveSourced(ctx, ref);
+    }
+    return spec.make(await this.loadPkg(spec), creds, alias.options ?? {});
+  }
 
-    if (routing === "gateway") {
-      const apiKey = await this.resolveSecret(ctx, conn?.secrets.apiKey ?? ref.credential ?? GATEWAY_SECRET);
-      return createGateway({ apiKey }) as unknown as ProviderLike;
+  /** Build the SDK provider for a ModelRef (its alias when present, else inline single-key). */
+  private async providerForRef(ref: ModelRef, ctx: OpContext): Promise<ProviderLike> {
+    if (ref.alias) {
+      const alias = this.lookup(ref.alias);
+      if (!alias) {
+        throw new Error(`mod-ai: alias "${ref.alias}" is not configured — set it in admin → Settings → AI Providers.`);
+      }
+      return this.providerForAlias(alias, ctx);
     }
 
-    const providerId = conn?.provider ?? ref.provider;
-    const spec = SPECS[providerId];
-    if (!spec) {
+    // Inline (alias-less ai.model): gateway, or a single-key direct provider.
+    if (ref.routing === "gateway" || ref.provider === "gateway") {
+      return createGateway({ apiKey: await this.resolveByName(ctx, ref.credential ?? GATEWAY_SECRET) }) as unknown as ProviderLike;
+    }
+    const spec = getSpec(ref.provider);
+    if (!spec) throw this.unknownProvider(ref.provider);
+    if (!spec.inlineSecret) {
       throw new Error(
-        `mod-ai: unknown direct provider "${providerId}" (known: ${Object.keys(SPECS).join(", ")}). Use routing "gateway" for any other provider.`,
+        `mod-ai: provider "${ref.provider}" needs structured credentials — configure an alias for it in admin → Settings → AI Providers.`,
       );
     }
+    const creds: Creds = { [spec.secrets[0]!.name]: await this.resolveByName(ctx, ref.credential ?? spec.inlineSecret) };
+    return spec.make(await this.loadPkg(spec), creds, {});
+  }
 
-    const creds: Creds = {};
-    if (conn) {
-      for (const field of spec.secretFields) {
-        const secretName = conn.secrets[field];
-        if (secretName) creds[field] = await this.resolveSecret(ctx, secretName);
-      }
-    } else {
-      if (!spec.defaultSecret) {
-        throw new Error(
-          `mod-ai: provider "${providerId}" needs structured credentials — configure a Connection for it in admin → Settings → AI Providers.`,
-        );
-      }
-      creds[spec.secretFields[0]!] = await this.resolveSecret(ctx, ref.credential ?? spec.defaultSecret);
+  private unknownProvider(id: string): Error {
+    return new Error(
+      `mod-ai: unknown provider "${id}". Pick one of the registry providers, or use "gateway" for any model through the Vercel AI Gateway.`,
+    );
+  }
+
+  /** A model getter on a provider, with a friendly error when that provider lacks the modality. */
+  private model<T>(prov: ProviderLike, method: keyof ProviderLike, ref: ModelRef): T {
+    const fn = prov[method];
+    if (typeof fn !== "function") {
+      throw new Error(`mod-ai: provider "${ref.provider}" does not support ${String(method)} (model "${ref.modelId}").`);
     }
-
-    return spec.make(await this.loadPkg(spec), creds, conn?.options ?? {});
+    return (fn as (id: string) => T).call(prov, ref.modelId);
   }
 
   async languageModel(ref: ModelRef, ctx: OpContext): Promise<LanguageModel> {
-    return (await this.provider(ref, ctx)).languageModel(ref.modelId);
+    return this.model<LanguageModel>(await this.providerForRef(ref, ctx), "languageModel", ref);
   }
   async textEmbeddingModel(ref: ModelRef, ctx: OpContext): Promise<EmbeddingModel> {
-    return (await this.provider(ref, ctx)).textEmbeddingModel(ref.modelId);
+    return this.model<EmbeddingModel>(await this.providerForRef(ref, ctx), "textEmbeddingModel", ref);
   }
   async imageModel(ref: ModelRef, ctx: OpContext): Promise<ImageModel> {
-    return (await this.provider(ref, ctx)).imageModel(ref.modelId);
+    return this.model<ImageModel>(await this.providerForRef(ref, ctx), "imageModel", ref);
   }
   async speechModel(ref: ModelRef, ctx: OpContext): Promise<SpeechModel> {
-    return (await this.provider(ref, ctx)).speechModel(ref.modelId);
+    return this.model<SpeechModel>(await this.providerForRef(ref, ctx), "speechModel", ref);
   }
   async transcriptionModel(ref: ModelRef, ctx: OpContext): Promise<TranscriptionModel> {
-    return (await this.provider(ref, ctx)).transcriptionModel(ref.modelId);
-  }
-  async videoModel(ref: ModelRef, ctx: OpContext): Promise<unknown> {
-    // Video is gateway-first and long-running; build a gateway with the extended timeout.
-    const conn = ref.connection ? this.lookup(ref.connection) : undefined;
-    const apiKey = await this.resolveSecret(ctx, conn?.secrets.apiKey ?? ref.credential ?? GATEWAY_SECRET);
-    const gw = createGateway({ apiKey, fetch: await getVideoFetch() }) as unknown as GatewayLike;
-    return gw.video(ref.modelId);
+    return this.model<TranscriptionModel>(await this.providerForRef(ref, ctx), "transcriptionModel", ref);
   }
 
-  async testConnection(ref: ModelRef, ctx: OpContext): Promise<{ ok: boolean; detail?: string }> {
+  async videoModel(ref: ModelRef, ctx: OpContext): Promise<unknown> {
+    // Gateway video is long-running ⇒ the extended-timeout dispatcher.
+    if (ref.routing === "gateway" || ref.provider === "gateway" || this.aliasProvider(ref) === "gateway") {
+      const apiKey = ref.alias
+        ? await this.aliasGatewayKey(this.lookup(ref.alias)!, ctx)
+        : await this.resolveByName(ctx, ref.credential ?? GATEWAY_SECRET);
+      const gw = createGateway({ apiKey, fetch: await getVideoFetch() }) as unknown as ProviderLike;
+      return this.model<unknown>(gw, "video", ref);
+    }
+    return this.model<unknown>(await this.providerForRef(ref, ctx), "video", ref);
+  }
+
+  private aliasProvider(ref: ModelRef): string | undefined {
+    return ref.alias ? this.lookup(ref.alias)?.provider : undefined;
+  }
+
+  private async aliasGatewayKey(alias: Alias, ctx: OpContext): Promise<string> {
+    const ref = alias.secrets?.apiKey;
+    return ref?.key ? this.resolveSourced(ctx, ref) : this.resolveByName(ctx, GATEWAY_SECRET);
+  }
+
+  async testAlias(alias: Alias, ctx: OpContext): Promise<{ ok: boolean; detail?: string }> {
     try {
-      await this.provider(ref, ctx); // exercises key resolution + (lazy) provider construction
+      await this.providerForAlias(alias, ctx); // exercises secret resolution + (lazy) provider construction
       return { ok: true };
     } catch (err) {
       return { ok: false, detail: err instanceof Error ? err.message : String(err) };
@@ -270,7 +205,7 @@ export class ProviderService implements AiProviderService {
   }
 
   async gatewayModels(ctx: OpContext): Promise<Record<string, unknown>[]> {
-    const apiKey = await this.tryKey(ctx, GATEWAY_SECRET);
+    const apiKey = await this.tryName(ctx, GATEWAY_SECRET);
     if (!apiKey) return [];
     if (this.gwCache && Date.now() - this.gwCache.at < 5 * 60 * 1000) return this.gwCache.models;
     try {

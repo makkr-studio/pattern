@@ -1,12 +1,10 @@
 /**
- * @pattern-js/mod-ai — persisted settings: connections + model aliases.
+ * @pattern-js/mod-ai — persisted settings: model aliases.
  *
- * Provider KEYS live in the vault (mod-vault's Secrets screen). What mod-ai
- * persists is:
- *  - **connections** — how to reach each provider (secret NAMES + structured
- *    options), so credential selection is explicit, and
- *  - **aliases** — memorable names ("default", "mini", …) pointing at a
- *    connection + model id, resolved by `ai.alias`.
+ * Provider KEYS live in the vault (mod-vault's Secrets screen) or in env vars.
+ * What mod-ai persists is a flat list of **aliases** — memorable names
+ * ("default", "mini", …), each a fully self-contained model handle (provider +
+ * model id + sourced secrets + structured options), resolved by `ai.alias`.
  * Agents/chat fall back to the "default" alias when no model is wired. Stored as
  * a small JSON file under the runtime data dir; in-memory on a read-only fs.
  */
@@ -14,21 +12,18 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "@pattern-js/core";
-import { modelRefSchema, type ModelRef } from "@pattern-js/mod-agents";
-import { aliasSchema, connectionSchema, type Alias, type Connection } from "./types.js";
+import type { ModelRef } from "@pattern-js/mod-agents";
+import { aliasSchema, type Alias } from "./types.js";
 
 export const DEFAULT_ALIAS = "default";
 
 export const aiSettingsSchema = z.object({
-  connections: z.array(connectionSchema).default([]),
   aliases: z.array(aliasSchema).default([]),
-  /** Legacy single default model (pre-aliases) — still honored as a fallback. */
-  defaultModel: modelRefSchema.optional(),
 });
 export type AiSettings = z.infer<typeof aiSettingsSchema>;
 
 export class AiConfigService {
-  private settings: AiSettings = { connections: [], aliases: [] };
+  private settings: AiSettings = { aliases: [] };
   private loaded = false;
 
   constructor(private readonly path = ".pattern-data/ai-config.json") {}
@@ -48,58 +43,44 @@ export class AiConfigService {
     return this.settings;
   }
 
-  connections(): Connection[] {
-    return this.settings.connections;
-  }
-
   aliases(): Alias[] {
     return this.settings.aliases;
-  }
-
-  connection(id: string): Connection | undefined {
-    return this.settings.connections.find((c) => c.id === id);
   }
 
   alias(name: string): Alias | undefined {
     return this.settings.aliases.find((a) => a.name === name);
   }
 
-  /** Resolve an alias to a connection-backed ModelRef (provider/routing for display). */
+  /**
+   * Resolve an alias to a ModelRef. The ref carries the alias NAME so mod-ai's
+   * ProviderService re-resolves the (sourced) secrets + options at run time —
+   * keeping re-pointing dynamic and secret VALUES out of the value that flows on
+   * edges. provider/routing/modelId are filled for display + catalog validation.
+   */
   resolveAlias(name: string): ModelRef | undefined {
     const a = this.alias(name);
     if (!a) return undefined;
-    const conn = this.connection(a.connection);
-    if (!conn) return undefined;
     return {
       kind: "model",
-      routing: conn.routing,
+      routing: a.provider === "gateway" ? "gateway" : "direct",
       modality: a.modality,
-      provider: conn.provider,
+      provider: a.provider,
       modelId: a.modelId,
-      connection: conn.id,
+      alias: a.name,
     };
   }
 
-  /** The model agents/chat fall back to: the "default" alias, then the legacy single default. */
+  /** The model agents/chat fall back to: the "default" alias. */
   defaultModel(): ModelRef | undefined {
-    return this.resolveAlias(DEFAULT_ALIAS) ?? this.settings.defaultModel;
+    return this.resolveAlias(DEFAULT_ALIAS);
   }
 
-  // ── Mutations (upsert by id/name; each persists) ──
-
-  async upsertConnection(c: Connection): Promise<void> {
-    const next = this.settings.connections.filter((x) => x.id !== c.id);
-    next.push(connectionSchema.parse(c));
-    await this.write({ ...this.settings, connections: next });
-  }
-
-  async deleteConnection(id: string): Promise<void> {
-    await this.write({ ...this.settings, connections: this.settings.connections.filter((c) => c.id !== id) });
-  }
+  // ── Mutations (upsert by name; each persists) ──
 
   async upsertAlias(a: Alias): Promise<void> {
-    const next = this.settings.aliases.filter((x) => x.name !== a.name);
-    next.push(aliasSchema.parse(a));
+    const parsed = aliasSchema.parse(a);
+    const next = this.settings.aliases.filter((x) => x.name !== parsed.name);
+    next.push(parsed);
     await this.write({ ...this.settings, aliases: next });
   }
 

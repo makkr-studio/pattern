@@ -1,10 +1,12 @@
 /**
  * @pattern-js/mod-ai — the single AI SDK import surface.
  *
- * EVERY reference to `ai` / `@ai-sdk/*` lives here and in provider.ts. Confining
- * the SDK to one place makes a v6→v7 upgrade a one-file change and keeps the
- * experimental video name (and any other moving surface) in exactly one spot.
- * Pinned to ai@^6.
+ * EVERY static reference to `ai` lives here. The provider PACKAGES
+ * (`@ai-sdk/*`) are never imported statically: mod-ai bundles none of them and
+ * lazy-imports each one only when an alias uses it (see registry.ts /
+ * provider.ts). The Vercel AI Gateway is the exception — it ships inside `ai`
+ * (`createGateway`), so it always works with no extra install. Confining the
+ * SDK to one place makes a v6→v7 upgrade a one-file change. Pinned to ai@^6.
  */
 
 export {
@@ -21,6 +23,7 @@ export {
   tool,
   jsonSchema,
   stepCountIs,
+  createGateway,
 } from "ai";
 
 export type {
@@ -32,10 +35,3 @@ export type {
   TranscriptionModel,
   ToolSet,
 } from "ai";
-
-export { createGateway } from "@ai-sdk/gateway";
-export { createOpenAI } from "@ai-sdk/openai";
-export { createAnthropic } from "@ai-sdk/anthropic";
-export { createGoogleGenerativeAI } from "@ai-sdk/google";
-export { createMistral } from "@ai-sdk/mistral";
-export { createGroq } from "@ai-sdk/groq";

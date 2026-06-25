@@ -32,8 +32,14 @@ await chat.ready?.(engine);
 // missing — the failure fires MID-STREAM (after result-ready), the exact crash
 // shape. (aiMod.ready never runs here, so nothing is loaded from disk.)
 const cfg = engine.service("aiConfig");
-await cfg.upsertConnection({ id: "openai", provider: "openai", routing: "direct", secrets: { apiKey: "OPENAI_API_KEY" }, options: {} });
-await cfg.upsertAlias({ name: "default", connection: "openai", modelId: "gpt-5-mini", modality: "language" });
+await cfg.upsertAlias({
+  name: "default",
+  provider: "openai",
+  modelId: "gpt-5-mini",
+  modality: "language",
+  secrets: { apiKey: { source: "env", key: "OPENAI_API_KEY" } },
+  options: {},
+});
 
 const host = createHttpHost(engine, { defaultPort: port });
 const { close } = await host.start();

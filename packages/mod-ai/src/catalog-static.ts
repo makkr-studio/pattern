@@ -1,14 +1,12 @@
 /**
- * @pattern-js/mod-ai — a static model catalog.
+ * @pattern-js/mod-ai — static model SUGGESTIONS.
  *
- * The offline baseline that keeps the editor + settings useful with no network
- * and no gateway. The Vercel AI Gateway's /v1/models endpoint is the live,
- * authoritative source (see catalog.ts / the ai.models.list op merges it when a
- * gateway key is present); this is the curated snapshot for the native DIRECT
- * providers (openai, anthropic, google, mistral, groq — the ones with an
- * @ai-sdk factory), plus a few popular gateway-only providers so the breadth is
- * visible offline. Ids/flags are a best-effort snapshot — the live gateway list
- * is the current truth.
+ * Model ids are free text (you type "gpt-5" or pick a provider/model), so this
+ * is not a gate — it is a curated set of popular ids per provider that keeps the
+ * editor + settings useful offline with no network and no gateway. The Vercel AI
+ * Gateway's /v1/models endpoint is the live, authoritative source (catalog.ts /
+ * the ai.models.list op merges it when a gateway key is present). Ids/flags are
+ * a best-effort snapshot; the live gateway list is the current truth.
  */
 
 import type { ModelCapability } from "./types.js";

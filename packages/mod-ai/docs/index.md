@@ -39,23 +39,24 @@ Either way, wire `model.model` → any `ai.*` op's `model` input or
 `agents.agent.model`. Skip the node entirely and agents/chat fall back to the
 **`default`** alias.
 
-## Connections & aliases
+## Aliases
 
-Two concepts (managed in admin → Settings → **AI Providers**) keep credentials
-explicit and models swappable:
+An **alias** is one self-contained, named model handle (managed in admin →
+Settings → **AI Providers**): a provider, a model id, the secret(s) it
+authenticates with, and any structured options. Each secret is sourced
+explicitly, from the **vault** or an **env var**, so nothing relies on guessing a
+provider's magic env-var name. A single-key provider needs only `apiKey`; Azure
+adds a `resourceName`, Bedrock a `region` + AWS keys, Vertex a project/location +
+a service-account secret. Two aliases of the same provider with different
+credentials are simply two records.
 
-- A **connection** is a named provider setup: a provider, routing, and — picked
-  explicitly from the vault, never guessed from an env-var convention — the
-  secret(s) it authenticates with, plus any structured options. A single-key
-  provider needs only `apiKey`; Azure adds `resourceName`/`apiVersion`, Bedrock a
-  `region` + AWS keys, Vertex a project/location + a service-account secret.
-- An **alias** points a memorable name (`default`, `mini`, `vision`, …) at a
-  connection + model id. `ai.alias` resolves it **at run time**, so re-pointing
-  `default` from GPT-5 to Claude in Settings instantly re-targets every workflow
-  and agent using it — no graph edits.
+`ai.alias` resolves an alias to a model **at run time**, so re-pointing `default`
+from GPT-5 to Claude in Settings instantly re-targets every workflow and agent
+using it, with no graph edits. Agents and chat fall back to the `default` alias
+when no model is wired.
 
-Provider **keys** themselves live in the vault (admin → System → **Secrets**); a
-connection just references them by name.
+Provider **keys** live in the vault (admin → System → **Secrets**) or in env
+vars; an alias just references them by name and source.
 
 ## The modality ops
 
@@ -106,23 +107,26 @@ which tools are exposed by building your own route around `ai.mcp.serve`
 
 ## Providers
 
-Direct routing **bundles five** providers — openai, anthropic, google, mistral,
-groq — and the gateway. **Ten more are optional**: Azure OpenAI, Amazon Bedrock,
-Google Vertex, xAI, DeepSeek, Cohere, Together, Fireworks, Cerebras, Perplexity.
-Each is lazy-loaded only when a connection uses it; add the matching package to
-turn one on:
+mod-ai **bundles no provider**. The Vercel AI Gateway ships inside `ai`, so it
+always works with one key and `provider/model` ids. Every **direct** provider is
+an optional peer that mod-ai lazy-loads only when an alias uses it; add the
+matching package to turn one on:
 
 ```bash
-npm i @ai-sdk/amazon-bedrock   # then create an Amazon Bedrock connection
+npm i @ai-sdk/anthropic        # then point an alias at the "anthropic" provider
 ```
 
-`npm create pattern` offers a provider multi-select when a modpack uses mod-ai, so
-a scaffold installs exactly what you pick. Any other provider still works through
-the **gateway** with no extra package.
+The full first-party AI SDK catalog is supported (OpenAI, Anthropic, Azure,
+Bedrock, Vertex, xAI, Groq, Mistral, Google, Together, Cohere, Fireworks,
+DeepSeek, Perplexity, Fal, Luma, ElevenLabs, Deepgram, and many more, plus an
+OpenAI-compatible provider for any other endpoint). `npm create pattern` offers a
+provider multi-select when a modpack uses mod-ai, so a scaffold installs exactly
+the ones you pick. The gateway needs no package.
 
 ## Settings
 
-Admin → Settings → **AI Providers** manages **connections** (a provider + a
-vault-secret picker + structured options + a Test check) and **aliases**, and
-browses the model catalog — the static baseline plus the live gateway listing
-when a gateway key is set.
+Admin → Settings → **AI Providers** manages your **aliases**: pick a provider
+(which surfaces exactly the secret + option fields it needs), source each secret
+from the vault or an env var, set the model id, and run a **Test** check. It also
+browses the model catalog (curated suggestions plus the live gateway listing when
+a gateway key is set).

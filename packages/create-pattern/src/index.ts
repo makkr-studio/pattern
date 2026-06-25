@@ -79,25 +79,60 @@ const AUTH_MODS = ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link"
 const DOCS_MOD = "@pattern-js/mod-docs";
 
 /**
- * Optional AI providers offered when a pack uses mod-ai. The baseline (openai,
- * anthropic, google, mistral, groq + the gateway) is built in; picking one adds
- * its @ai-sdk package to the project so mod-ai can lazy-load it. `value` is the
- * package the scaffold installs.
+ * The AI provider packages offered when a pack uses mod-ai. mod-ai bundles NONE
+ * of them: the Vercel AI Gateway ships inside `ai` (always available), and every
+ * direct provider is an optional peer that mod-ai lazy-loads only when an alias
+ * uses it. Picking one here adds its @ai-sdk package to the project. Ordered by
+ * how likely it is to be picked; `value` is the package the scaffold installs.
+ *
+ * The @ai-sdk provider packages are at DIFFERENT majors (they share one spec
+ * layer, @ai-sdk/provider@3, so all are ai-v6 compatible) — each range is pinned
+ * to the package's real major (verified against npm) to avoid ETARGET installs.
  */
-// The @ai-sdk provider packages are at DIFFERENT majors (they share one spec
-// layer, @ai-sdk/provider, so they're all ai-v6 compatible) — pin each correctly.
 const AI_PROVIDERS = [
-  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI models on Azure", range: "^3" },
-  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "Claude & more on AWS", range: "^4" },
+  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^3" },
+  { value: "@ai-sdk/vercel", label: "Vercel", hint: "v0 models", range: "^2" },
+  { value: "@ai-sdk/openai", label: "OpenAI", hint: "", range: "^3" },
+  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI on Azure", range: "^3" },
+  { value: "@ai-sdk/anthropic", label: "Anthropic", hint: "", range: "^3" },
+  { value: "@ai-sdk/open-responses", label: "Open Responses", hint: "self-hosted Responses API", range: "^1" },
+  { value: "@ai-sdk/anthropic-aws", label: "Claude on AWS", hint: "Claude via Bedrock", range: "^1" },
+  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "models on AWS", range: "^4" },
+  { value: "@ai-sdk/groq", label: "Groq", hint: "", range: "^3" },
+  { value: "@ai-sdk/fal", label: "Fal", hint: "image/video/audio", range: "^2" },
+  { value: "@ai-sdk/deepinfra", label: "DeepInfra", hint: "", range: "^2" },
+  { value: "@ai-sdk/black-forest-labs", label: "Black Forest Labs", hint: "FLUX", range: "^1" },
+  { value: "@ai-sdk/google", label: "Google Generative AI", hint: "Gemini", range: "^3" },
   { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP", range: "^4" },
-  { value: "@ai-sdk/xai", label: "xAI (Grok)", hint: "", range: "^3" },
-  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "", range: "^2" },
+  { value: "@ai-sdk/mistral", label: "Mistral AI", hint: "", range: "^3" },
+  { value: "@ai-sdk/togetherai", label: "Together.ai", hint: "", range: "^2" },
   { value: "@ai-sdk/cohere", label: "Cohere", hint: "", range: "^3" },
-  { value: "@ai-sdk/togetherai", label: "Together AI", hint: "", range: "^2" },
   { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "", range: "^2" },
+  { value: "@ai-sdk/voyage", label: "Voyage AI", hint: "embeddings", range: "^1" },
+  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "", range: "^2" },
+  { value: "@ai-sdk/moonshotai", label: "Moonshot AI", hint: "Kimi", range: "^2" },
+  { value: "@ai-sdk/alibaba", label: "Alibaba", hint: "Qwen", range: "^1" },
   { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "", range: "^2" },
+  { value: "@ai-sdk/replicate", label: "Replicate", hint: "image/video", range: "^2" },
+  { value: "@ai-sdk/prodia", label: "Prodia", hint: "image", range: "^1" },
   { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "", range: "^3" },
+  { value: "@ai-sdk/luma", label: "Luma", hint: "image/video", range: "^2" },
+  { value: "@ai-sdk/bytedance", label: "ByteDance", hint: "Seed/Seedance", range: "^1" },
+  { value: "@ai-sdk/klingai", label: "Kling AI", hint: "video", range: "^3" },
+  { value: "@ai-sdk/elevenlabs", label: "ElevenLabs", hint: "speech/STT", range: "^2" },
+  { value: "@ai-sdk/assemblyai", label: "AssemblyAI", hint: "transcription", range: "^2" },
+  { value: "@ai-sdk/deepgram", label: "Deepgram", hint: "speech/STT", range: "^2" },
+  { value: "@ai-sdk/gladia", label: "Gladia", hint: "transcription", range: "^2" },
+  { value: "@ai-sdk/lmnt", label: "LMNT", hint: "speech", range: "^2" },
+  { value: "@ai-sdk/hume", label: "Hume", hint: "speech", range: "^2" },
+  { value: "@ai-sdk/revai", label: "Rev.ai", hint: "transcription", range: "^2" },
+  { value: "@ai-sdk/baseten", label: "Baseten", hint: "", range: "^1" },
+  { value: "@ai-sdk/huggingface", label: "Hugging Face", hint: "", range: "^1" },
+  { value: "@ai-sdk/quiverai", label: "QuiverAI", hint: "", range: "^1" },
+  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible", hint: "any OpenAI-style endpoint", range: "^2" },
 ];
+/** Prechecked in the interactive picker — the most common direct providers. */
+const AI_PROVIDERS_DEFAULT = ["@ai-sdk/openai", "@ai-sdk/anthropic"];
 /** A pack uses mod-ai if it wires it (directly or via the combined agents+ai entry). */
 function packUsesAi(pack: Modpack): boolean {
   return pack.mods.some((m) => m.includes("mod-ai"));
@@ -602,10 +637,10 @@ async function applyVaultKey(targetDir: string): Promise<void> {
 }
 
 /**
- * Add the chosen optional AI providers to the project's deps. mod-ai lazy-imports
- * an @ai-sdk package only when a connection uses that provider, so the project
- * carries exactly the providers it picked — nothing more. (The baseline five +
- * the gateway ship with mod-ai itself.)
+ * Add the chosen AI providers to the project's deps. mod-ai bundles no provider
+ * and lazy-imports an @ai-sdk package only when an alias uses that provider, so
+ * the project carries exactly the providers it picked, nothing more. (The Vercel
+ * AI Gateway ships inside `ai`, so it always works with no pick.)
  */
 async function applyProviders(targetDir: string, providers: string[]): Promise<void> {
   const pkgPath = join(targetDir, "package.json");
@@ -905,16 +940,18 @@ async function runInteractive(flags: Flags): Promise<void> {
     }
   }
 
-  // Extra AI providers (only when the pack uses mod-ai). The baseline is built
-  // in; these add an optional @ai-sdk package so mod-ai can lazy-load them.
+  // AI providers (only when the pack uses mod-ai). The Vercel AI Gateway ships
+  // inside `ai` (always available); each pick adds an optional @ai-sdk package
+  // mod-ai lazy-loads when an alias uses that provider.
   let providers: string[] = [];
   if (packUsesAi(pack)) {
     if (flags.providers !== undefined) {
       providers = flags.providers.map(normProvider);
     } else {
       const sel = await p.multiselect({
-        message: `Extra AI providers? ${pc.dim("openai · anthropic · google · mistral · groq + the gateway are built in")}`,
+        message: `AI providers to install? ${pc.dim("the AI Gateway is built in; pick the direct providers you'll use")}`,
         options: AI_PROVIDERS,
+        initialValues: AI_PROVIDERS_DEFAULT,
         required: false,
       });
       if (p.isCancel(sel)) return cancel();

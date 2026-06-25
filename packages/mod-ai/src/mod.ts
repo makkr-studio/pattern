@@ -44,7 +44,7 @@ export function aiMod(): PatternMod {
     setup: (engine: Engine) => {
       packagedDocs(engine);
       provideAiAssets(engine);
-      const provider = new ProviderService((id) => config.connection(id));
+      const provider = new ProviderService((name) => config.alias(name));
       engine.provideService(AI_PROVIDER_SERVICE, provider);
       engine.provideService(AI_CATALOG_SERVICE, new ModelCatalog());
       engine.provideService(AI_CONFIG_SERVICE, config);
