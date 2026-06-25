@@ -65,6 +65,11 @@ Data browser (mod-store), Secrets (mod-vault), and Chat conversations (mod-chat)
 pages all arrive this way. The same idea powers these docs: see
 [Extending the docs](extending-the-docs.md).
 
+**Page chrome is yours to control.** Each `pages[]` entry may set `title` and
+`subtitle` (the shell's header defaults to the menu label + a generic line), or
+`header: false` to suppress the shell header entirely and let a Tier-2 page
+render its own — so a polished page never shows a doubled title.
+
 ## Locking it down
 
 The admin **always declares** `requireAuth: { scopes: ["admin"] }` on its API +

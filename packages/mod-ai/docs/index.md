@@ -12,27 +12,50 @@ Install it alongside `@pattern-js/mod-agents` (for agents) and, for generated
 media, `@pattern-js/mod-store` (bytes land in its blob store). Provider keys live
 in `@pattern-js/mod-vault`.
 
-## Pick a model: `ai.model`
+## Two ways to pick a model
 
-Every capability op (and every agent) takes a **model reference** — a value you
-build with `ai.model` and wire onward, exactly like `agents.agent` builds an
-agent value. Routing is **explicit and first-class**:
+Every capability op (and every agent) takes a **model reference** — a value, like
+the agent value `agents.agent` builds. Two ops produce one.
 
-| Routing | What it is | The key | Model id |
-|---|---|---|---|
-| `direct` | a native provider SDK (`@ai-sdk/openai`, `anthropic`, `google`, `mistral`, `groq`) | the provider's key (e.g. `OPENAI_API_KEY`) | bare, e.g. `gpt-5` |
-| `gateway` | the **Vercel AI Gateway** — one key, hundreds of models, BYOK | `AI_GATEWAY_API_KEY` | `provider/model`, e.g. `openai/gpt-5` |
+**`ai.model`** — define a model inline. Routing is explicit and first-class:
+
+| Routing | What it is | Model id |
+|---|---|---|
+| `direct` | a native provider SDK + that provider's key | bare, e.g. `gpt-5` |
+| `gateway` | the **Vercel AI Gateway** — one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5` |
 
 ```json
 { "id": "model", "op": "ai.model",
   "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5" } }
 ```
 
-Wire `model.model` → any `ai.*` op's `model` input, or into `agents.agent.model`.
-The key resolves by name: an explicit `credential`, then the env, then a vault
-secret of that name (masked out of run samples). Set a **default model** in admin
-→ Settings → **AI Providers** and you can skip the node entirely — agents/chat
-fall back to it.
+**`ai.alias`** — resolve a model configured in Settings by name:
+
+```json
+{ "id": "model", "op": "ai.alias", "config": { "alias": "default" } }
+```
+
+Either way, wire `model.model` → any `ai.*` op's `model` input or
+`agents.agent.model`. Skip the node entirely and agents/chat fall back to the
+**`default`** alias.
+
+## Connections & aliases
+
+Two concepts (managed in admin → Settings → **AI Providers**) keep credentials
+explicit and models swappable:
+
+- A **connection** is a named provider setup: a provider, routing, and — picked
+  explicitly from the vault, never guessed from an env-var convention — the
+  secret(s) it authenticates with, plus any structured options. A single-key
+  provider needs only `apiKey`; Azure adds `resourceName`/`apiVersion`, Bedrock a
+  `region` + AWS keys, Vertex a project/location + a service-account secret.
+- An **alias** points a memorable name (`default`, `mini`, `vision`, …) at a
+  connection + model id. `ai.alias` resolves it **at run time**, so re-pointing
+  `default` from GPT-5 to Claude in Settings instantly re-targets every workflow
+  and agent using it — no graph edits.
+
+Provider **keys** themselves live in the vault (admin → System → **Secrets**); a
+connection just references them by name.
 
 ## The modality ops
 
@@ -81,9 +104,25 @@ sub-run with the same validation + tracing as an agent's own tool call. Narrow
 which tools are exposed by building your own route around `ai.mcp.serve`
 (`config.tools`).
 
-## Settings & keys
+## Providers
 
-- **Provider keys** → the vault (admin → System → **Secrets**): store
-  `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, etc. `mod-ai` resolves them by name.
-- **Default model** → admin → Settings → **AI Providers**: pick routing +
-  provider + model, **Test connection**, and browse the model catalog matrix.
+Direct routing **bundles five** providers — openai, anthropic, google, mistral,
+groq — and the gateway. **Ten more are optional**: Azure OpenAI, Amazon Bedrock,
+Google Vertex, xAI, DeepSeek, Cohere, Together, Fireworks, Cerebras, Perplexity.
+Each is lazy-loaded only when a connection uses it; add the matching package to
+turn one on:
+
+```bash
+npm i @ai-sdk/amazon-bedrock   # then create an Amazon Bedrock connection
+```
+
+`npm create pattern` offers a provider multi-select when a modpack uses mod-ai, so
+a scaffold installs exactly what you pick. Any other provider still works through
+the **gateway** with no extra package.
+
+## Settings
+
+Admin → Settings → **AI Providers** manages **connections** (a provider + a
+vault-secret picker + structured options + a Test check) and **aliases**, and
+browses the model catalog — the static baseline plus the live gateway listing
+when a gateway key is set.

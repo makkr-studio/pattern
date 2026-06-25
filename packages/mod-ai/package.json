@@ -35,6 +35,30 @@
     "ai": "^6",
     "zod": "^4.0.0"
   },
+  "peerDependencies": {
+    "@ai-sdk/amazon-bedrock": "^3",
+    "@ai-sdk/azure": "^3",
+    "@ai-sdk/cerebras": "^3",
+    "@ai-sdk/cohere": "^3",
+    "@ai-sdk/deepseek": "^3",
+    "@ai-sdk/fireworks": "^3",
+    "@ai-sdk/google-vertex": "^3",
+    "@ai-sdk/perplexity": "^3",
+    "@ai-sdk/togetherai": "^3",
+    "@ai-sdk/xai": "^3"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/amazon-bedrock": { "optional": true },
+    "@ai-sdk/azure": { "optional": true },
+    "@ai-sdk/cerebras": { "optional": true },
+    "@ai-sdk/cohere": { "optional": true },
+    "@ai-sdk/deepseek": { "optional": true },
+    "@ai-sdk/fireworks": { "optional": true },
+    "@ai-sdk/google-vertex": { "optional": true },
+    "@ai-sdk/perplexity": { "optional": true },
+    "@ai-sdk/togetherai": { "optional": true },
+    "@ai-sdk/xai": { "optional": true }
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"

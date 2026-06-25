@@ -78,6 +78,32 @@ const AUTH_MODS = ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link"
 /** What the docs toggle adds: self-reflecting documentation at /docs. */
 const DOCS_MOD = "@pattern-js/mod-docs";
 
+/**
+ * Optional AI providers offered when a pack uses mod-ai. The baseline (openai,
+ * anthropic, google, mistral, groq + the gateway) is built in; picking one adds
+ * its @ai-sdk package to the project so mod-ai can lazy-load it. `value` is the
+ * package the scaffold installs.
+ */
+const AI_PROVIDERS = [
+  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI models on Azure" },
+  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "Claude & more on AWS" },
+  { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP" },
+  { value: "@ai-sdk/xai", label: "xAI (Grok)", hint: "" },
+  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "" },
+  { value: "@ai-sdk/cohere", label: "Cohere", hint: "" },
+  { value: "@ai-sdk/togetherai", label: "Together AI", hint: "" },
+  { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "" },
+  { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "" },
+  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "" },
+];
+const AI_SDK_RANGE = "^3.0.0";
+/** A pack uses mod-ai if it wires it (directly or via the combined agents+ai entry). */
+function packUsesAi(pack: Modpack): boolean {
+  return pack.mods.some((m) => m.includes("mod-ai"));
+}
+/** Accept short ids ("azure") or full packages ("@ai-sdk/azure"). */
+const normProvider = (id: string): string => (id.startsWith("@ai-sdk/") ? id : "@ai-sdk/" + id);
+
 /** One-line technical role per mod — shown beside each in the manifest card. */
 const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-admin": "visual editor, run traces, /admin control plane",
@@ -291,6 +317,8 @@ interface Flags {
   examples?: boolean;
   /** undefined = ask (vault packs only) / default ON. Generate PATTERN_VAULT_KEY into .env. */
   vaultKey?: boolean;
+  /** Extra AI providers (short id or @ai-sdk pkg) to install. undefined = ask (mod-ai packs). */
+  providers?: string[];
   /** Print the manifest for the resolved selection and write nothing. */
   dryRun: boolean;
   /** What to scaffold: an app (default) or a publishable mod. undefined = ask. */
@@ -320,6 +348,7 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--no-examples") flags.examples = false;
     else if (a === "--vault-key") flags.vaultKey = true;
     else if (a === "--no-vault-key") flags.vaultKey = false;
+    else if (a === "--providers") flags.providers = (argv[++i] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (a === "--dry-run" || a === "--dry") flags.dryRun = true;
@@ -393,12 +422,16 @@ function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean
 }
 
 /** Resolve the orthogonal dimensions from flags + pack defaults (no prompts). */
-function resolveDims(pack: Modpack, flags: Flags): { auth: boolean; docs: boolean; examples: boolean; vaultKey: boolean } {
+function resolveDims(
+  pack: Modpack,
+  flags: Flags,
+): { auth: boolean; docs: boolean; examples: boolean; vaultKey: boolean; providers: string[] } {
   return {
     auth: pack.auth ? (flags.auth ?? pack.auth.default) : false,
     docs: pack.docs ? (flags.docs ?? pack.docs.default) : false,
     examples: flags.examples ?? true,
     vaultKey: packNeedsVault(pack) ? (flags.vaultKey ?? true) : false,
+    providers: packUsesAi(pack) ? (flags.providers ?? []).map(normProvider) : [],
   };
 }
 
@@ -563,6 +596,19 @@ async function applyVaultKey(targetDir: string): Promise<void> {
     ? example.replace(/^PATTERN_VAULT_KEY=.*$/m, `PATTERN_VAULT_KEY=${key}`)
     : `${example}\nPATTERN_VAULT_KEY=${key}\n`;
   await writeFile(join(targetDir, ".env"), env);
+}
+
+/**
+ * Add the chosen optional AI providers to the project's deps. mod-ai lazy-imports
+ * an @ai-sdk package only when a connection uses that provider, so the project
+ * carries exactly the providers it picked — nothing more. (The baseline five +
+ * the gateway ship with mod-ai itself.)
+ */
+async function applyProviders(targetDir: string, providers: string[]): Promise<void> {
+  const pkgPath = join(targetDir, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
+  for (const id of providers) pkg.dependencies[normProvider(id)] = AI_SDK_RANGE;
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
 /** Flip the docs dimension on: /docs joins the manifest + config (last — it documents the rest). */
@@ -853,6 +899,23 @@ async function runInteractive(flags: Flags): Promise<void> {
     }
   }
 
+  // Extra AI providers (only when the pack uses mod-ai). The baseline is built
+  // in; these add an optional @ai-sdk package so mod-ai can lazy-load them.
+  let providers: string[] = [];
+  if (packUsesAi(pack)) {
+    if (flags.providers !== undefined) {
+      providers = flags.providers.map(normProvider);
+    } else {
+      const sel = await p.multiselect({
+        message: `Extra AI providers? ${pc.dim("openai · anthropic · google · mistral · groq + the gateway are built in")}`,
+        options: AI_PROVIDERS,
+        required: false,
+      });
+      if (p.isCancel(sel)) return cancel();
+      providers = sel as string[];
+    }
+  }
+
   // The pack card: what this modpack actually wires up.
   p.note(packCard(pack, auth, docs, examples, vaultKey), `${pack.label} modpack`);
 
@@ -867,7 +930,7 @@ async function runInteractive(flags: Flags): Promise<void> {
 
   const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
 
-  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, docs, examples, vaultKey });
+  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, docs, examples, vaultKey, providers });
 
   const runCmd = pm === "npm" ? "npm run" : String(pm);
   p.note(
@@ -901,11 +964,11 @@ async function runHeadless(flags: Flags): Promise<void> {
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
   // No prompt to ask — flags win, else the pack's default (studio ships locked).
-  const { auth, docs, examples, vaultKey } = resolveDims(pack, flags);
+  const { auth, docs, examples, vaultKey, providers } = resolveDims(pack, flags);
   console.log(
-    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${examples ? "" : ", no examples"}${auth ? ", auth on" : ""}${docs ? ", docs on" : ""})`,
+    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${examples ? "" : ", no examples"}${auth ? ", auth on" : ""}${docs ? ", docs on" : ""}${providers.length ? `, +${providers.length} provider(s)` : ""})`,
   );
-  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples, vaultKey });
+  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples, vaultKey, providers });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (set OPENAI_API_KEY there).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
@@ -927,6 +990,7 @@ async function scaffold(opts: {
   docs: boolean;
   examples: boolean;
   vaultKey: boolean;
+  providers?: string[];
 }): Promise<void> {
   const targetDir = resolve(process.cwd(), opts.name);
   if (existsSync(targetDir) && (await readdir(targetDir)).length > 0) {
@@ -941,7 +1005,8 @@ async function scaffold(opts: {
   if (opts.auth) await applyAuth(targetDir, opts.pack);
   if (opts.docs) await applyDocs(targetDir);
   if (opts.vaultKey) await applyVaultKey(targetDir);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""})`);
+  if (opts.providers?.length) await applyProviders(targetDir, opts.providers);
+  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""})`);
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });
