@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-ai",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "AI capabilities for Pattern via the Vercel AI SDK: text, structured object, embeddings, image, speech (TTS), transcription (STT), and video ops across any provider — direct or through the Vercel AI Gateway — plus the model provider for @pattern-js/mod-agents. Credentials resolve from the vault; a settings page manages providers and models.",
   "type": "module",
   "license": "MIT",
@@ -36,28 +36,48 @@
     "zod": "^4.0.0"
   },
   "peerDependencies": {
-    "@ai-sdk/amazon-bedrock": "^3",
+    "@ai-sdk/amazon-bedrock": "^4",
     "@ai-sdk/azure": "^3",
-    "@ai-sdk/cerebras": "^3",
+    "@ai-sdk/cerebras": "^2",
     "@ai-sdk/cohere": "^3",
-    "@ai-sdk/deepseek": "^3",
-    "@ai-sdk/fireworks": "^3",
-    "@ai-sdk/google-vertex": "^3",
+    "@ai-sdk/deepseek": "^2",
+    "@ai-sdk/fireworks": "^2",
+    "@ai-sdk/google-vertex": "^4",
     "@ai-sdk/perplexity": "^3",
-    "@ai-sdk/togetherai": "^3",
+    "@ai-sdk/togetherai": "^2",
     "@ai-sdk/xai": "^3"
   },
   "peerDependenciesMeta": {
-    "@ai-sdk/amazon-bedrock": { "optional": true },
-    "@ai-sdk/azure": { "optional": true },
-    "@ai-sdk/cerebras": { "optional": true },
-    "@ai-sdk/cohere": { "optional": true },
-    "@ai-sdk/deepseek": { "optional": true },
-    "@ai-sdk/fireworks": { "optional": true },
-    "@ai-sdk/google-vertex": { "optional": true },
-    "@ai-sdk/perplexity": { "optional": true },
-    "@ai-sdk/togetherai": { "optional": true },
-    "@ai-sdk/xai": { "optional": true }
+    "@ai-sdk/amazon-bedrock": {
+      "optional": true
+    },
+    "@ai-sdk/azure": {
+      "optional": true
+    },
+    "@ai-sdk/cerebras": {
+      "optional": true
+    },
+    "@ai-sdk/cohere": {
+      "optional": true
+    },
+    "@ai-sdk/deepseek": {
+      "optional": true
+    },
+    "@ai-sdk/fireworks": {
+      "optional": true
+    },
+    "@ai-sdk/google-vertex": {
+      "optional": true
+    },
+    "@ai-sdk/perplexity": {
+      "optional": true
+    },
+    "@ai-sdk/togetherai": {
+      "optional": true
+    },
+    "@ai-sdk/xai": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

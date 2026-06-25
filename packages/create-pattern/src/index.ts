@@ -84,25 +84,28 @@ const DOCS_MOD = "@pattern-js/mod-docs";
  * its @ai-sdk package to the project so mod-ai can lazy-load it. `value` is the
  * package the scaffold installs.
  */
+// The @ai-sdk provider packages are at DIFFERENT majors (they share one spec
+// layer, @ai-sdk/provider, so they're all ai-v6 compatible) — pin each correctly.
 const AI_PROVIDERS = [
-  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI models on Azure" },
-  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "Claude & more on AWS" },
-  { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP" },
-  { value: "@ai-sdk/xai", label: "xAI (Grok)", hint: "" },
-  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "" },
-  { value: "@ai-sdk/cohere", label: "Cohere", hint: "" },
-  { value: "@ai-sdk/togetherai", label: "Together AI", hint: "" },
-  { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "" },
-  { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "" },
-  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "" },
+  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI models on Azure", range: "^3" },
+  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "Claude & more on AWS", range: "^4" },
+  { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP", range: "^4" },
+  { value: "@ai-sdk/xai", label: "xAI (Grok)", hint: "", range: "^3" },
+  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "", range: "^2" },
+  { value: "@ai-sdk/cohere", label: "Cohere", hint: "", range: "^3" },
+  { value: "@ai-sdk/togetherai", label: "Together AI", hint: "", range: "^2" },
+  { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "", range: "^2" },
+  { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "", range: "^2" },
+  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "", range: "^3" },
 ];
-const AI_SDK_RANGE = "^3.0.0";
 /** A pack uses mod-ai if it wires it (directly or via the combined agents+ai entry). */
 function packUsesAi(pack: Modpack): boolean {
   return pack.mods.some((m) => m.includes("mod-ai"));
 }
 /** Accept short ids ("azure") or full packages ("@ai-sdk/azure"). */
 const normProvider = (id: string): string => (id.startsWith("@ai-sdk/") ? id : "@ai-sdk/" + id);
+/** The version range for a provider package (falls back to latest for an unknown one). */
+const providerRange = (pkg: string): string => AI_PROVIDERS.find((p) => p.value === pkg)?.range ?? "latest";
 
 /** One-line technical role per mod — shown beside each in the manifest card. */
 const MOD_ROLES: Record<string, string> = {
@@ -607,7 +610,10 @@ async function applyVaultKey(targetDir: string): Promise<void> {
 async function applyProviders(targetDir: string, providers: string[]): Promise<void> {
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
-  for (const id of providers) pkg.dependencies[normProvider(id)] = AI_SDK_RANGE;
+  for (const id of providers) {
+    const p = normProvider(id);
+    pkg.dependencies[p] = providerRange(p);
+  }
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
