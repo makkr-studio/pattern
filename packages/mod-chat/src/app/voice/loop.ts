@@ -51,17 +51,18 @@ function stripEmoji(text: string): string {
 
 // Mood \u2192 a voice-tone instruction for promptable TTS (e.g. gpt-4o-mini-tts). The
 // neutral one alone already lifts the delivery out of a flat monotone.
+const PACE = " Keep a brisk, natural conversational pace.";
 const TONE: Record<string, string> = {
-  neutral: "Speak naturally and conversationally, warm and lightly expressive, not flat.",
-  excited: "Speak with bright, upbeat energy and genuine enthusiasm.",
-  happy: "Speak warmly and cheerfully, with a smile in your voice.",
-  sad: "Speak gently and softly, slower, with empathy.",
-  calm: "Speak in a calm, soothing, unhurried tone.",
-  curious: "Speak with a light, inquisitive, engaged lilt.",
-  concerned: "Speak earnestly and carefully, with a note of concern.",
-  thinking: "Speak thoughtfully, at a measured, reflective pace.",
-  angry: "Speak firmly and intensely, with controlled force.",
-  playful: "Speak playfully, with a teasing, animated bounce.",
+  neutral: "Speak naturally and conversationally, warm and lightly expressive, not flat." + PACE,
+  excited: "Speak with bright, upbeat energy and genuine enthusiasm." + PACE,
+  happy: "Speak warmly and cheerfully, with a smile in your voice." + PACE,
+  sad: "Speak gently and softly, with empathy, at an unhurried pace.",
+  calm: "Speak in a calm, soothing tone, at a relaxed pace.",
+  curious: "Speak with a light, inquisitive, engaged lilt." + PACE,
+  concerned: "Speak earnestly and carefully, with a note of concern." + PACE,
+  thinking: "Speak thoughtfully, at a measured pace.",
+  angry: "Speak firmly and intensely, with controlled force." + PACE,
+  playful: "Speak playfully, with a teasing, animated bounce." + PACE,
 };
 function toneFor(emotion: string): string {
   return TONE[emotion] ?? TONE.neutral!;
@@ -70,34 +71,14 @@ function toneFor(emotion: string): string {
 // A pool of fun glyphs to sprinkle into a tool's emoji cycle for variety.
 const RANDOM_POOL = ["\u2728", "\uD83C\uDF08", "\uD83E\uDE84", "\uD83D\uDCAB", "\uD83C\uDF87", "\uD83C\uDF1F", "\uD83D\uDD2E", "\uD83C\uDF86"];
 
-// Where to cut the next short subtitle phrase from the streaming buffer (0 = wait
-// for more). Prefer a sentence end or newline WITHIN a window (so a distant period
-// can't pull a whole paragraph); otherwise, for long punctuation-free runs (common
-// in lists), break at a clause separator, then a word boundary, near the cap.
-const SUB_CAP = 90;
-const CLAUSE_SEPS: Array<[string, number]> = [
-  [": ", 2],
-  ["; ", 2],
-  [" - ", 3],
-  [" \u2013 ", 3],
-  [", ", 2],
-];
-function phraseCut(buf: string): number {
-  const win = buf.slice(0, SUB_CAP + 28);
-  const s = win.search(/[.!?\u2026]\s/);
-  if (s >= 0) return s + 1;
-  const nl = win.indexOf("\n");
-  if (nl >= 0) return nl + 1;
-  if (buf.length < SUB_CAP) return 0;
-  const head = buf.slice(0, SUB_CAP);
-  let best = -1;
-  for (const [sep, off] of CLAUSE_SEPS) {
-    const k = head.lastIndexOf(sep);
-    if (k >= 24) best = Math.max(best, k + off);
-  }
-  if (best >= 0) return best;
-  const sp = head.lastIndexOf(" ");
-  return sp >= 24 ? sp + 1 : SUB_CAP;
+// Where to cut the next TTS chunk from the streaming buffer (0 = wait for more).
+// ONLY at natural pause points (sentence end, newline, or a colon followed by a
+// space), so the audio never breaks mid-clause. A run-on with no boundary is sent
+// whole at the end of the turn. The subtitle display is decoupled from this: the
+// caption is the chunk's text, shown in a 2-line window that scrolls over its audio.
+function ttsCut(buf: string): number {
+  const m = buf.match(/[.!?\u2026]\s|:\s|\n/);
+  return m && m.index !== undefined ? m.index + m[0].length : 0;
 }
 
 function imageRefOf(v: unknown): { blobId: string } | null {
@@ -112,6 +93,8 @@ function imageRefOf(v: unknown): { blobId: string } | null {
 export interface VoiceLoopCallbacks {
   onState: (s: AvatarState) => void;
   onCaption: (text: string) => void;
+  /** 0..1 progress through the current spoken line, for scrolling the subtitle. */
+  onCaptionScroll?: (progress: number) => void;
   onToolLabel: (label: string | null) => void;
   onError?: (msg: string) => void;
 }
@@ -130,7 +113,9 @@ class TtsPlayer {
   readonly analyser: AnalyserNode;
   private audio = new Audio();
   private ctx = new AudioContext();
-  private queue: TtsChunk[] = [];
+  // Each item's audio starts generating the moment it is enqueued (prefetch), so
+  // generation is pipelined with playback and there is no gap between chunks.
+  private queue: Array<{ chunk: TtsChunk; url: Promise<string | null> }> = [];
   private playing = false;
 
   constructor(
@@ -152,35 +137,46 @@ class TtsPlayer {
     return this.playing || this.queue.length > 0;
   }
 
+  /** Playback progress of the current chunk, 0..1 (0 if nothing is playing). */
+  progress(): number {
+    const d = this.audio.duration;
+    if (!this.playing || !isFinite(d) || d <= 0) return 0;
+    return Math.min(1, Math.max(0, this.audio.currentTime / d));
+  }
+
   enqueue(text: string, tone?: string): void {
     const speak = stripEmoji(text);
     if (!speak) return; // nothing speakable (e.g. an emoji-only fragment)
     const emojis = text.match(EMOJI_RE) ?? [];
-    this.queue.push({ speak, caption: speak, tone, emojis }); // caption is emoji-free
+    const chunk: TtsChunk = { speak, caption: speak, tone, emojis }; // caption is emoji-free
+    this.queue.push({ chunk, url: this.fetchUrl(chunk) });
     if (!this.playing) void this.next();
   }
 
+  private async fetchUrl(chunk: TtsChunk): Promise<string | null> {
+    try {
+      const { blobId } = await api.speech(chunk.speak, chunk.tone);
+      return api.blobs.url(blobId);
+    } catch {
+      return null;
+    }
+  }
+
   private async next(): Promise<void> {
-    const chunk = this.queue.shift();
-    if (!chunk) {
+    const item = this.queue.shift();
+    if (!item) {
       this.playing = false;
       this.onEnd();
       return;
     }
     this.playing = true;
-    let url: string | null = null;
-    try {
-      const { blobId } = await api.speech(chunk.speak, chunk.tone);
-      url = api.blobs.url(blobId);
-    } catch {
-      url = null;
-    }
+    const url = await item.url; // generation was kicked off at enqueue time
     if (!url) {
       void this.next();
       return;
     }
     this.audio.src = url;
-    this.onStart(chunk);
+    this.onStart(item.chunk);
     try {
       await this.ctx.resume();
       await this.audio.play();
@@ -393,10 +389,9 @@ export class VoiceLoop {
   }
 
   private maybeSpeakSentence(): void {
-    // Flush short phrases as soon as they are ready, so the audio and the synced
-    // subtitle advance line by line instead of dumping a whole paragraph at once.
+    // Flush whole natural segments to the TTS as they complete (never mid-clause).
     for (;;) {
-      const cut = phraseCut(this.assistantBuf);
+      const cut = ttsCut(this.assistantBuf);
       if (cut <= 0) break;
       const chunk = this.assistantBuf.slice(0, cut).trim();
       this.assistantBuf = this.assistantBuf.slice(cut);
@@ -530,6 +525,7 @@ export class VoiceLoop {
     if (this.state === "speaking") {
       level = rmsOf(this.tts.analyser, this.ttsBuf) * 4;
       bands = bandsOf(this.tts.analyser, this.ttsFreq);
+      this.cb.onCaptionScroll?.(this.tts.progress()); // scroll the subtitle with the audio
     } else if ((this.state === "listening" || this.state === "idle") && this.micAnalyser) {
       level = rmsOf(this.micAnalyser, this.micBuf) * 4;
       bands = bandsOf(this.micAnalyser, this.micFreq);

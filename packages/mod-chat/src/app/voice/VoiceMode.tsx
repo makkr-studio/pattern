@@ -22,6 +22,8 @@ const STATE_LABEL: Record<AvatarState, string> = {
 export default function VoiceMode({ onClose }: { onClose: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const capBoxRef = useRef<HTMLDivElement>(null); // 2-line clip window
+  const capInnerRef = useRef<HTMLDivElement>(null); // full-text inner, scrolled by translateY
   const [state, setState] = useState<AvatarState>("idle");
   const [caption, setCaption] = useState("");
   const [capOn, setCapOn] = useState(false);
@@ -64,11 +66,21 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
           // Subtitle: show the spoken line; an empty string fades it out (audio stopped).
           onCaption: (t: string) => {
             if (t) {
+              if (capInnerRef.current) capInnerRef.current.style.transform = "translateY(0)"; // reset scroll
               setCaption(t);
               setCapOn(true);
             } else {
               setCapOn(false);
             }
+          },
+          // Decoupled from the TTS chunking: scroll the (possibly long) line through
+          // the fixed 2-line window as its audio plays, so nothing is clipped away.
+          onCaptionScroll: (p: number) => {
+            const inner = capInnerRef.current;
+            const box = capBoxRef.current;
+            if (!inner || !box) return;
+            const overflow = inner.scrollHeight - box.clientHeight;
+            inner.style.transform = `translateY(${overflow > 2 ? -overflow * p : 0}px)`;
           },
           onToolLabel: setToolLabel,
           onError: setError,
@@ -141,19 +153,21 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-6 pb-12">
         <div
-          className="mx-auto max-w-xl text-center text-[17px] leading-relaxed transition-opacity duration-500"
-          style={{
-            color: "rgba(255,255,255,0.92)",
-            textShadow: "0 2px 22px rgba(0,0,0,0.85)",
-            opacity: capOn ? 1 : 0,
-            // Subtitle area never grows past two lines, however long a chunk is.
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
+          ref={capBoxRef}
+          className="mx-auto max-w-xl overflow-hidden text-center text-[17px] transition-opacity duration-500"
+          style={{ opacity: capOn ? 1 : 0, height: "3.4em", lineHeight: "1.7em" }}
         >
-          {caption}
+          <div
+            ref={capInnerRef}
+            style={{
+              color: "rgba(255,255,255,0.92)",
+              textShadow: "0 2px 22px rgba(0,0,0,0.85)",
+              lineHeight: "1.7em",
+              willChange: "transform",
+            }}
+          >
+            {caption}
+          </div>
         </div>
         {error && (
           <div className="mx-auto mt-3 max-w-md text-center text-[13px]" style={{ color: "#e8a0a0" }}>
