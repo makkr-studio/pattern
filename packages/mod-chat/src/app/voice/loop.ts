@@ -103,12 +103,12 @@ interface TtsChunk {
   speak: string; // emoji-stripped text sent to the TTS
   caption: string; // what to show as the synced subtitle (also emoji-stripped)
   tone?: string; // voice-tone instruction (promptable TTS)
-  emojis: string[]; // emojis from this line, shown while it is the subtitle
 }
 
 /** Sequential TTS player with an analyser for the avatar's "speaking" reaction.
- *  Reports the spoken chunk's caption + its emojis on start, so subtitles track
- *  the audio and the avatar morphs to an emoji while its line is on screen. */
+ *  Reports the spoken chunk's caption on start, so subtitles track the audio.
+ *  Emoji display is handled separately (paced over the whole reply), so emoji
+ *  clusters that fall between spoken chunks are not lost. */
 class TtsPlayer {
   readonly analyser: AnalyserNode;
   private audio = new Audio();
@@ -147,8 +147,7 @@ class TtsPlayer {
   enqueue(text: string, tone?: string): void {
     const speak = stripEmoji(text);
     if (!speak) return; // nothing speakable (e.g. an emoji-only fragment)
-    const emojis = text.match(EMOJI_RE) ?? [];
-    const chunk: TtsChunk = { speak, caption: speak, tone, emojis }; // caption is emoji-free
+    const chunk: TtsChunk = { speak, caption: speak, tone }; // caption is emoji-free
     this.queue.push({ chunk, url: this.fetchUrl(chunk) });
     if (!this.playing) void this.next();
   }
@@ -210,12 +209,16 @@ export class VoiceLoop {
   private replyText = ""; // the whole reply so far (never sliced) for emoji + mood scans
   private morphTimer: ReturnType<typeof setTimeout> | null = null;
   private toolCycleTimer: ReturnType<typeof setInterval> | null = null;
-  private chunkEmojiTimer: ReturnType<typeof setTimeout> | null = null; // emojis for the current spoken line
   private captionTimer: ReturnType<typeof setTimeout> | null = null; // delayed subtitle fade-out
   private presenting = false;
   // Client-side auto-expression bookkeeping.
   private lastEmotion = "";
   private lastEmotionAt = 0;
+  // Every emoji in the reply, paced through the avatar over the speaking time.
+  private emojiQueue: string[] = [];
+  private emojiSeen = 0; // how many of replyText's emojis are already queued
+  private emojiTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastSpokeAt = 0; // for a short grace tail after speech ends
   private micBuf = new Float32Array(1024);
   private micFreq = new Uint8Array(512);
   private ttsBuf = new Float32Array(1024);
@@ -232,9 +235,10 @@ export class VoiceLoop {
           clearTimeout(this.captionTimer);
           this.captionTimer = null;
         }
+        this.lastSpokeAt = Date.now();
         this.setState("speaking");
         this.cb.onCaption(chunk.caption); // subtitle tracks the spoken chunk
-        this.showLineEmojis(chunk.emojis); // morph to this line's emojis while it shows
+        this.scheduleEmoji(); // make sure the emoji pacer is running while we speak
       },
       () => this.onTtsEnd(),
     );
@@ -265,7 +269,7 @@ export class VoiceLoop {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.stopToolCycle();
-    if (this.chunkEmojiTimer) clearTimeout(this.chunkEmojiTimer);
+    if (this.emojiTimer) clearTimeout(this.emojiTimer);
     if (this.captionTimer) clearTimeout(this.captionTimer);
     if (this.morphTimer) clearTimeout(this.morphTimer);
     this.tts.dispose();
@@ -312,10 +316,12 @@ export class VoiceLoop {
       if (this.turnActive) void chatStore.stop();
       this.assistantBuf = "";
       this.replyText = "";
+      this.emojiQueue = [];
+      this.emojiSeen = 0;
     }
-    if (this.chunkEmojiTimer) {
-      clearTimeout(this.chunkEmojiTimer);
-      this.chunkEmojiTimer = null;
+    if (this.emojiTimer) {
+      clearTimeout(this.emojiTimer);
+      this.emojiTimer = null;
     }
     if (this.captionTimer) {
       clearTimeout(this.captionTimer);
@@ -335,6 +341,12 @@ export class VoiceLoop {
       if (!said) return this.backToListening();
       this.assistantBuf = "";
       this.replyText = "";
+      this.emojiQueue = [];
+      this.emojiSeen = 0;
+      if (this.emojiTimer) {
+        clearTimeout(this.emojiTimer);
+        this.emojiTimer = null;
+      }
       this.lastEmotion = "";
       this.cb.onCaption("");
       // React to the user's own tone right away (so the avatar moves before the reply).
@@ -367,6 +379,7 @@ export class VoiceLoop {
     if (ev.type === "text.delta") {
       this.assistantBuf += ev.delta;
       this.replyText += ev.delta;
+      this.collectEmojis();
       this.autoExpress();
       this.maybeSpeakSentence();
     } else if (ev.type === "tool.activity") {
@@ -399,21 +412,34 @@ export class VoiceLoop {
     }
   }
 
-  /** Morph to the emojis from the line now on screen, paced if there are several. */
-  private showLineEmojis(emojis: string[]): void {
-    if (this.chunkEmojiTimer) {
-      clearTimeout(this.chunkEmojiTimer);
-      this.chunkEmojiTimer = null;
+  /** Queue every NEW emoji from the reply so far (clusters included), in order. */
+  private collectEmojis(): void {
+    const all = this.replyText.match(EMOJI_RE) ?? [];
+    while (this.emojiSeen < all.length) {
+      const e = all[this.emojiSeen++];
+      if (e) this.emojiQueue.push(e);
     }
-    if (this.presenting || this.toolCycleTimer || !emojis.length) return;
-    let i = 0;
-    const next = () => {
-      if (this.presenting || i >= emojis.length) return;
-      const e = emojis[i++];
-      if (e) this.transientMorph(emojiTarget(e, 12000), 2600);
-      if (i < emojis.length) this.chunkEmojiTimer = setTimeout(next, 1900);
-    };
-    next();
+  }
+
+  /** Pace ALL the reply's emojis through the avatar, faster when many are queued,
+   *  with a short grace tail so a late cluster still finishes after the audio. */
+  private scheduleEmoji(): void {
+    if (this.emojiTimer || !this.emojiQueue.length) return;
+    const n = this.emojiQueue.length;
+    const delay = n > 20 ? 480 : n > 12 ? 650 : n > 6 ? 950 : 1500;
+    this.emojiTimer = setTimeout(() => {
+      this.emojiTimer = null;
+      const live = this.tts.active || this.state === "speaking" || Date.now() - this.lastSpokeAt < 2800;
+      if (!live) {
+        this.emojiQueue = []; // turn is over: drop any leftovers and stop
+        return;
+      }
+      if (!this.presenting && !this.toolCycleTimer) {
+        const e = this.emojiQueue.shift();
+        if (e) this.transientMorph(emojiTarget(e, 12000), 1700);
+      }
+      this.scheduleEmoji();
+    }, delay);
   }
 
   /** Shift the gradient toward a mood, subtly (part-way from the brand gradient). */
