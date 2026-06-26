@@ -8,6 +8,13 @@
  * composer's recording UI and the voice avatar's "listening" reaction).
  */
 
+import { appBoot } from "./config";
+
+// Assets are vendored under <mount>/vad/ (see vite.config.ts). The path must be
+// ABSOLUTE: onnxruntime-web loads its wasm glue with dynamic import(), and a bare
+// relative specifier ("vad/…") is rejected by the browser as a module specifier.
+const ASSET_BASE = `${appBoot.mount.replace(/\/+$/, "")}/vad/`;
+
 export interface VadController {
   /** Begin listening for speech (onSpeechEnd fires per utterance). */
   start(): void;
@@ -47,12 +54,10 @@ export async function createVad(handlers: VadHandlers, onError?: (e: unknown) =>
     const micStream = stream;
 
     const vad = await MicVAD.new({
-      // Assets are vendored under <mount>/vad/ (see vite.config.ts). Relative paths
-      // resolve against the host-injected <base href="<mount>/">, so this works at
-      // any mount and in the dev server alike. Legacy model = silero_vad_legacy.onnx.
+      // Legacy model = silero_vad_legacy.onnx (vendored under ASSET_BASE).
       model: "legacy",
-      baseAssetPath: "vad/",
-      onnxWASMBasePath: "vad/",
+      baseAssetPath: ASSET_BASE,
+      onnxWASMBasePath: ASSET_BASE,
       audioContext: ctx,
       getStream: async () => micStream,
       // We own the stream's lifetime (destroy() stops it) so the analyser keeps

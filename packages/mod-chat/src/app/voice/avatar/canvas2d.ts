@@ -49,11 +49,13 @@ export class Canvas2DAvatar implements Avatar {
     this.ctx = ctx;
     for (let i = 0; i < N; i++) {
       const seed = Math.random();
-      const rank = Math.sqrt(Math.random());
+      // Gaussian radius (Box-Muller) → a soft cloud with no hard edge.
+      const gauss = Math.sqrt(-2 * Math.log(1 - Math.random()));
+      const rank = Math.min(1.4, gauss * 0.42);
       this.seed[i] = seed;
       this.rank[i] = rank;
       const a = seed * Math.PI * 2;
-      const r = 0.5 + 0.2 * rank;
+      const r = rank * 0.72;
       this.px[i] = Math.cos(a) * r;
       this.py[i] = Math.sin(a) * r;
     }
@@ -85,26 +87,27 @@ export class Canvas2DAvatar implements Avatar {
     const rr = this.rank[i] ?? 0;
     const a0 = s * Math.PI * 2;
     const lvl = this.eased.level;
-    let r: number;
+    let sc: number;
     let spin: number;
     switch (state) {
       case "listening":
-        r = 0.46 + 0.16 * rr + lvl * 0.3 + Math.sin(t * 1.4 + a0 * 3) * 0.03;
-        spin = t * 0.09;
+        sc = 1.06 + lvl * 0.55 + Math.sin(t * 1.3 + a0 * 2) * 0.03;
+        spin = 0.04;
         break;
       case "thinking":
-        r = 0.32 + 0.08 * rr + Math.sin(t * 2 + s * 8) * 0.02;
-        spin = t * 0.7;
+        sc = 0.6 + Math.sin(t * 1.6 + s * 8) * 0.03;
+        spin = 0.5;
         break;
       case "speaking":
-        r = 0.44 + 0.18 * rr + lvl * 0.42 + this.eased.bass * 0.28 + Math.sin(t * 3 + a0 * 4) * this.eased.treble * 0.12;
-        spin = t * 0.16;
+        sc = 1.04 + lvl * 0.7 + this.eased.bass * 0.3 + Math.sin(t * 2.4 + a0 * 3) * this.eased.treble * 0.1;
+        spin = 0.05;
         break;
       default: // idle
-        r = 0.48 + 0.18 * rr + Math.sin(t * 0.8 + s * 6) * 0.045;
-        spin = t * 0.05;
+        sc = 1.0 + Math.sin(t * 0.5 + s * 6) * 0.04;
+        spin = 0.022;
     }
-    const a = a0 + spin;
+    const r = rr * 0.72 * sc;
+    const a = a0 + spin * t;
     return [Math.cos(a) * r, Math.sin(a) * r];
   }
 
@@ -171,9 +174,9 @@ export class Canvas2DAvatar implements Avatar {
     const ctx = this.ctx;
     const W = this.canvas.width;
     const H = this.canvas.height;
-    // Fade (motion trails) instead of clear.
+    // Fade (motion trails) instead of clear — long, soft trails for smoke.
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(8, 7, 9, 0.30)";
+    ctx.fillStyle = "rgba(4, 3, 6, 0.22)";
     ctx.fillRect(0, 0, W, H);
 
     ctx.globalCompositeOperation = "lighter";
@@ -184,13 +187,15 @@ export class Canvas2DAvatar implements Avatar {
     const baseCol = e.color;
     const mc = this.morph?.colors;
     const mix = e.morphMix;
-    const dotR = Math.max(1, Math.min(W, H) * 0.0042);
-    const glow = 1 + e.level * 1.2;
+    const dotR = Math.max(1.5, Math.min(W, H) * 0.0075);
+    const glow = 0.9 + e.level * 0.5;
 
     for (let i = 0; i < N; i++) {
       const x = cx + (this.px[i] ?? 0) * sc;
       const y = cy + (this.py[i] ?? 0) * sc;
-      const speed = Math.min(1, (Math.abs(this.vx[i] ?? 0) + Math.abs(this.vy[i] ?? 0)) * 7);
+      const seed = this.seed[i] ?? 0;
+      const speed = Math.min(1, (Math.abs(this.vx[i] ?? 0) + Math.abs(this.vy[i] ?? 0)) * 6);
+      const depth = 0.55 + 0.45 * Math.sin(seed * 12.9898 + 1.7);
       let r = baseCol[0];
       let g = baseCol[1];
       let b = baseCol[2];
@@ -199,19 +204,20 @@ export class Canvas2DAvatar implements Avatar {
         g += ((mc[i * 3 + 1] ?? g) - g) * mix;
         b += ((mc[i * 3 + 2] ?? b) - b) * mix;
       }
-      // Per-particle brightness variation keeps it organic.
-      const bright = (0.55 + (this.seed[i] ?? 0) * 0.45 + speed * 0.4) * glow;
+      // Gentle, color-preserving brightness; the glow comes from accumulation.
+      const bright = (0.35 + depth * 0.5 + speed * 0.25) * glow;
       const cr = Math.min(255, r * 255 * bright) | 0;
       const cg = Math.min(255, g * 255 * bright) | 0;
       const cb = Math.min(255, b * 255 * bright) | 0;
-      // Halo + core for a cheap glow.
-      ctx.fillStyle = `rgba(${cr},${cg},${cb},0.05)`;
+      const rad = dotR * (0.6 + 1.1 * depth);
+      // A wide soft halo + a faint core, both low-alpha → smoke, not hard dots.
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},0.045)`;
       ctx.beginPath();
-      ctx.arc(x, y, dotR * 3.2, 0, 6.2832);
+      ctx.arc(x, y, rad * 2.6, 0, 6.2832);
       ctx.fill();
-      ctx.fillStyle = `rgba(${cr},${cg},${cb},0.85)`;
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},0.13)`;
       ctx.beginPath();
-      ctx.arc(x, y, dotR, 0, 6.2832);
+      ctx.arc(x, y, rad, 0, 6.2832);
       ctx.fill();
     }
   }

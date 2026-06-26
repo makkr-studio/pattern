@@ -28,24 +28,28 @@ struct U {
 @group(0) @binding(2) var<storage, read> cst: array<vec2f>;
 @group(0) @binding(3) var<storage, read> morph: array<vec2f>;
 
+// A soft volumetric blob: rr is a gaussian radius (no hard rim), scaled per
+// state. The cloud breathes when idle, leans out when listening, condenses when
+// thinking, and blooms with the voice when speaking.
 fn posture(i: u32, t: f32) -> vec2f {
   let s = cst[i].x;
   let rr = cst[i].y;
   let a0 = s * 6.2831853;
   let lvl = u.level;
-  var r: f32;
+  var sc: f32;
   var spin: f32;
   let st = u.stateId;
   if (st < 0.5) {
-    r = 0.48 + 0.18 * rr + sin(t * 0.8 + s * 6.0) * 0.045; spin = t * 0.05;
+    sc = 1.0 + sin(t * 0.5 + s * 6.0) * 0.04; spin = 0.022;
   } else if (st < 1.5) {
-    r = 0.46 + 0.16 * rr + lvl * 0.3 + sin(t * 1.4 + a0 * 3.0) * 0.03; spin = t * 0.09;
+    sc = 1.06 + lvl * 0.55 + sin(t * 1.3 + a0 * 2.0) * 0.03; spin = 0.04;
   } else if (st < 2.5) {
-    r = 0.32 + 0.08 * rr + sin(t * 2.0 + s * 8.0) * 0.02; spin = t * 0.7;
+    sc = 0.6 + sin(t * 1.6 + s * 8.0) * 0.03; spin = 0.5;
   } else {
-    r = 0.44 + 0.18 * rr + lvl * 0.42 + u.bass * 0.28 + sin(t * 3.0 + a0 * 4.0) * u.treble * 0.12; spin = t * 0.16;
+    sc = 1.04 + lvl * 0.7 + u.bass * 0.3 + sin(t * 2.4 + a0 * 3.0) * u.treble * 0.1; spin = 0.05;
   }
-  let a = a0 + spin;
+  let r = rr * 0.72 * sc;
+  let a = a0 + spin * t;
   return vec2f(cos(a) * r, sin(a) * r);
 }
 
@@ -104,16 +108,22 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let d = dyn[ii];
   let p = d.xy;
   let vel = d.zw;
+  let s = cst[ii].x;
+  // A pseudo-depth per particle gives the cloud volume: nearer motes are larger
+  // and brighter, farther ones recede into haze.
+  let depth = 0.55 + 0.45 * sin(s * 12.9898 + 1.7);
   // Aspect-correct fit: scale the longer axis down so circles stay circular.
   let asp = vec2f(min(1.0, u.res.y / u.res.x), min(1.0, u.res.x / u.res.y));
-  let world = p * u.scale + c * u.dotSize;
+  let size = u.dotSize * (0.5 + 1.1 * depth);
+  let world = p * u.scale + c * size;
   let clip = world * 0.82 * asp;
   var vo: VSOut;
   vo.pos = vec4f(clip, 0.0, 1.0);
   vo.uv = c;
-  let s = cst[ii].x;
-  let speed = clamp((abs(vel.x) + abs(vel.y)) * 7.0, 0.0, 1.0);
-  vo.bright = (0.55 + s * 0.45 + speed * 0.4) * (1.0 + u.level * 1.2);
+  let speed = clamp((abs(vel.x) + abs(vel.y)) * 6.0, 0.0, 1.0);
+  // Gentle, color-preserving brightness — the glow comes from many soft motes
+  // accumulating, not from blowing each one out to white.
+  vo.bright = (0.35 + 0.5 * depth + speed * 0.25) * (0.9 + u.level * 0.5);
   var col = u.color.xyz;
   if (u.useMorphColor > 0.5 && u.morphMix > 0.01) {
     col = mix(col, mcol[ii].xyz, u.morphMix);
@@ -124,10 +134,12 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
 
 @fragment
 fn fs(frag: VSOut) -> @location(0) vec4f {
-  let d = length(frag.uv);
-  let a = smoothstep(1.0, 0.0, d);
-  let c = frag.color * frag.bright * a;
-  return vec4f(c, a);
+  // Soft gaussian mote + a low additive alpha → smoke that builds gradually
+  // and keeps its color instead of clipping to white.
+  let r2 = dot(frag.uv, frag.uv);
+  let g = exp(-r2 * 3.6);
+  let alpha = g * 0.075;
+  return vec4f(frag.color * frag.bright * alpha, alpha);
 }
 `;
 
@@ -155,11 +167,13 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   const cst0 = new Float32Array(N * 2);
   for (let i = 0; i < N; i++) {
     const seed = Math.random();
-    const rank = Math.sqrt(Math.random());
+    // Gaussian radius (Box-Muller) → a soft cloud with no hard edge.
+    const gauss = Math.sqrt(-2 * Math.log(1 - Math.random()));
+    const rank = Math.min(1.4, gauss * 0.42);
     cst0[i * 2] = seed;
     cst0[i * 2 + 1] = rank;
     const a = seed * Math.PI * 2;
-    const r = 0.5 + 0.2 * rank;
+    const r = rank * 0.72;
     dyn0[i * 4] = Math.cos(a) * r;
     dyn0[i * 4 + 1] = Math.sin(a) * r;
   }
@@ -350,7 +364,7 @@ class WebGPUAvatar implements Avatar {
     u[8] = e.morphMix;
     u[9] = e.scale;
     u[10] = STATE_ID[inp.state];
-    u[11] = 0.012; // dotSize (world units)
+    u[11] = 0.055; // dotSize (world units) — large + soft for smoke
     u[12] = N;
     u[13] = this.useMorphColor;
     u[16] = e.color[0];
@@ -368,7 +382,7 @@ class WebGPUAvatar implements Avatar {
 
     const view = this.context.getCurrentTexture().createView();
     const rp = enc.beginRenderPass({
-      colorAttachments: [{ view, clearValue: { r: 0.03, g: 0.027, b: 0.035, a: 1 }, loadOp: "clear", storeOp: "store" }],
+      colorAttachments: [{ view, clearValue: { r: 0.016, g: 0.014, b: 0.022, a: 1 }, loadOp: "clear", storeOp: "store" }],
     });
     rp.setPipeline(this.res.renderPipeline);
     rp.setBindGroup(0, this.res.renderBind);
