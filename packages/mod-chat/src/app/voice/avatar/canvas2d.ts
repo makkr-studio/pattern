@@ -228,12 +228,11 @@ export class Canvas2DAvatar implements Avatar {
     const ctx = this.ctx;
     const W = this.canvas.width;
     const H = this.canvas.height;
-    // Light frame fade — short, crisp trails (not a long smear).
+    // Clear to the dark background each frame (no trails) — a crisp point cloud.
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(4, 3, 8, 0.42)";
+    ctx.fillStyle = "#050407";
     ctx.fillRect(0, 0, W, H);
 
-    ctx.globalCompositeOperation = "lighter";
     const cx = W / 2;
     const cy = H / 2;
     const sc = Math.min(W, H) * 0.4 * this.eased.scale;
@@ -243,8 +242,7 @@ export class Canvas2DAvatar implements Avatar {
     const mc = this.morph?.colors;
     const mix = e.morphMix;
     const mcCount = mc ? mc.length / 3 : 0;
-    const dotR = Math.max(1, Math.min(W, H) * 0.0044);
-    const glow = 0.9 + e.level * 0.6;
+    const dotR = Math.max(0.75, Math.min(W, H) * 0.0016);
 
     const ang = this.t * 0.05;
     const gcos = Math.cos(ang);
@@ -256,35 +254,27 @@ export class Canvas2DAvatar implements Avatar {
       const y = cy + ny * sc;
       const s = this.seed[i] ?? 0;
       const rr = this.rank[i] ?? 0;
-      // Per-particle random (hash, NOT a linear seed/radius combo — that draws
-      // spiral bands). tw skews most motes dim (mist), a few bright (sparkles).
-      const depth = hash2(s, rr);
-      const tw = depth * depth;
-      const soft = 1 - tw;
+      const rnd = hash2(s, rr);
       const speed = Math.min(1, (Math.abs(this.vx[i] ?? 0) + Math.abs(this.vy[i] ?? 0)) * 5);
       // Gradient by POSITION (smooth, no bands): project onto a slowly turning axis.
-      const gt = Math.max(0, Math.min(1, 0.5 + 0.62 * (nx * gcos + ny * gsin) + (depth - 0.5) * 0.12));
+      const gt = Math.max(0, Math.min(1, 0.5 + 0.62 * (nx * gcos + ny * gsin) + (rnd - 0.5) * 0.12));
       let r = ca[0] + (cb[0] - ca[0]) * gt;
       let g = ca[1] + (cb[1] - ca[1]) * gt;
       let b = ca[2] + (cb[2] - ca[2]) * gt;
       if (mc && mix > 0.01 && mcCount > 0) {
         const j = i % mcCount;
-        const m = mix * 0.92;
+        const m = mix * 0.96;
         r += ((mc[j * 3] ?? r) - r) * m;
         g += ((mc[j * 3 + 1] ?? g) - g) * m;
         b += ((mc[j * 3 + 2] ?? b) - b) * m;
       }
-      const bright = (0.3 + tw + speed * 0.45) * glow;
+      const bright = 0.82 + 0.3 * rnd + speed * 0.25;
       const cr = Math.min(255, r * 255 * bright) | 0;
       const cg = Math.min(255, g * 255 * bright) | 0;
       const cbl = Math.min(255, b * 255 * bright) | 0;
-      // Sparkles: small + bright core. Mist: wider + very faint (a soft wash).
-      const rad = dotR * (0.7 + 1.4 * soft);
-      ctx.fillStyle = `rgba(${cr},${cg},${cbl},${(0.05 + 0.03 * soft).toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(x, y, rad * 3, 0, 6.2832);
-      ctx.fill();
-      ctx.fillStyle = `rgba(${cr},${cg},${cbl},${(0.55 * tw + 0.06).toFixed(3)})`;
+      const rad = dotR * (0.8 + 0.5 * rnd);
+      // A small crisp dot.
+      ctx.fillStyle = `rgba(${cr},${cg},${cbl},${(0.72 + 0.28 * rnd).toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(x, y, rad, 0, 6.2832);
       ctx.fill();

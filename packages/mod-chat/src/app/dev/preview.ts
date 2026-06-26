@@ -11,7 +11,7 @@
 import { createAvatar, emojiTarget, type Avatar, type AvatarState } from "../voice/avatar";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
-const dpr = Math.min(2, window.devicePixelRatio || 1);
+const dpr = window.devicePixelRatio || 1;
 let avatar: Avatar | null = null;
 let level = 0;
 let dir = 1;

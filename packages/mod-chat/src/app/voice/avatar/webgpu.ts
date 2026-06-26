@@ -2,10 +2,10 @@
 /**
  * WebGPU particle avatar (the showcase renderer). A compute pass eases ~40k
  * particles toward a per-state posture (computed in-shader) blended with an
- * uploaded morph target; a render pass draws them as additive point sprites,
- * tone-mapped onto the canvas. No bloom — the particles are meant to read crisp.
- * Creation captures WGSL/validation errors and throws, so the factory falls back
- * to Canvas2D on any problem.
+ * uploaded morph target; a render pass draws them as small CRISP alpha-blended
+ * dots straight onto the canvas at native device resolution — a real point cloud,
+ * no HDR accumulation, no bloom, no glow. Creation captures WGSL/validation errors
+ * and throws, so the factory falls back to Canvas2D on any problem.
  */
 
 import type { Avatar, AvatarInputs, AvatarState, MorphTarget, RGB } from "./types";
@@ -13,7 +13,7 @@ import { DEFAULT_INPUTS } from "./types";
 
 const N = 40000;
 const U_FLOATS = 24; // 96 bytes — must match struct U below (two gradient stops)
-const HDR_FORMAT: GPUTextureFormat = "rgba16float"; // float accumulation target for the tone-map
+const BG: GPUColor = { r: 0.0196, g: 0.0157, b: 0.0275, a: 1 }; // matches the #050407 overlay
 
 const STATE_ID: Record<AvatarState, number> = { idle: 0, listening: 1, thinking: 2, speaking: 3, presenting: 3 };
 
@@ -43,14 +43,14 @@ fn stagger(m: f32, ph: f32) -> f32 {
   return win * win * (3.0 - 2.0 * win);
 }
 
-// Per-particle drift: a small elliptical orbit around the home spot, phase/speed
+// Per-particle drift: a slow elliptical wander around the home spot, phase/speed
 // hashed PER PARTICLE (decorrelated from position) so neighbours move out of phase
-// and the cloud shimmers without coherent lanes. Grows with the voice.
+// and the cloud is always alive without coherent lanes. Grows a little with the voice.
 fn drift(s: f32, rr: f32, t: f32, amp: f32) -> vec2f {
   let a1 = fract(s * 37.0 + rr * 101.0);
   let a2 = fract(s * 17.0 + rr * 53.0);
-  let w = 0.5 + a1 * 1.2;
-  return vec2f(cos(t * w + a1 * TAU), sin(t * w * 0.92 + a2 * TAU)) * amp;
+  let w = 0.25 + a1 * 0.6;
+  return vec2f(cos(t * w + a1 * TAU), sin(t * w * 0.9 + a2 * TAU)) * amp;
 }
 
 // Per-state posture for one stateId (so transitions can blend two of them). idle
@@ -59,8 +59,6 @@ fn drift(s: f32, rr: f32, t: f32, amp: f32) -> vec2f {
 fn postureFor(s: f32, rr: f32, t: f32, st: f32) -> vec2f {
   let lvl = u.level;
   if (st >= 2.5) {
-    // Gaussian bell: x fills left→right; the vertical band tapers from a tall
-    // centre to thin edges, and the whole envelope rises with the voice.
     let span = 2.0;
     let x = (s - 0.5) * 2.0 * span;
     let sigma = 0.72;
@@ -99,13 +97,12 @@ fn cs(@builtin(global_invocation_id) gid: vec3u) {
   let lmState = stagger(u.stateMix, ph);
   let basePosture = mix(postureFor(s, rr, t, u.prevStateId), postureFor(s, rr, t, u.stateId), lmState);
 
-  let amp = 0.016 + u.level * 0.06 + u.treble * 0.05;
+  let amp = 0.020 + u.level * 0.05 + u.treble * 0.04;
   let dr = drift(s, rr, t, amp);
   let base = basePosture + dr;
 
   var tgt = base;
   if (u.morphMix > 0.001) {
-    // Staggered morph assembly; a little drift rides along so the shape breathes.
     let lmM = stagger(u.morphMix, ph);
     tgt = mix(base, morph[i] + dr * 0.35, lmM);
   }
@@ -136,8 +133,7 @@ struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,
   @location(1) color: vec3f,
-  @location(2) bright: f32,
-  @location(3) soft: f32, // 0 = crisp sparkle, 1 = soft mist
+  @location(2) alpha: f32,
 };
 
 // Spatially incoherent per-particle random (NOT a linear seed/radius combo — that
@@ -158,77 +154,39 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let vel = d.zw;
   let s = cst[ii].x;
   let rr = cst[ii].y;
-  // tw skews most particles dim (a soft mist body), a sparse few bright (crisp
-  // sparkles). soft drives the sprite falloff: mist wide+faint, sparkle tight+bright.
-  let depth = hash(vec2f(s, rr));
-  let tw = depth * depth;
-  let soft = 1.0 - tw;
-  // Aspect-correct fit: scale the longer axis down so circles stay circular.
+  let rnd = hash(vec2f(s, rr));
+  // Aspect-correct fit so circles stay circular.
   let asp = vec2f(min(1.0, u.res.y / u.res.x), min(1.0, u.res.x / u.res.y));
-  let size = u.dotSize * (0.55 + 0.95 * soft);
+  // Small crisp dots; a touch of per-particle size variety for an organic cloud.
+  let size = u.dotSize * (0.8 + 0.5 * rnd);
   let world = p * u.scale + c * size;
   let clip = world * 0.82 * asp;
   var vo: VSOut;
   vo.pos = vec4f(clip, 0.0, 1.0);
   vo.uv = c;
-  let speed = clamp((abs(vel.x) + abs(vel.y)) * 5.0, 0.0, 1.0);
   // GRADIENT by POSITION (smooth, no bands): project onto a slowly turning axis.
   let ga = u.time * 0.05;
   let gdir = vec2f(cos(ga), sin(ga));
-  let gt = clamp(0.5 + 0.62 * dot(p, gdir) + (depth - 0.5) * 0.12, 0.0, 1.0);
+  let gt = clamp(0.5 + 0.62 * dot(p, gdir) + (rnd - 0.5) * 0.12, 0.0, 1.0);
   var col = mix(u.colorA.xyz, u.colorB.xyz, gt);
   if (u.useMorphColor > 0.5 && u.morphMix > 0.01) {
     // A morph's own colours (emoji / image pixels) take over as it assembles.
     col = mix(col, mcol[ii].xyz, u.morphMix * 0.96);
   }
-  vo.color = col;
-  vo.soft = soft;
-  vo.bright = (0.30 + 1.0 * tw + speed * 0.45) * (0.9 + u.level * 0.6);
+  let speed = clamp((abs(vel.x) + abs(vel.y)) * 5.0, 0.0, 1.0);
+  vo.color = col * (0.82 + 0.3 * rnd + speed * 0.25);
+  vo.alpha = 0.72 + 0.28 * rnd;
   return vo;
 }
 
 @fragment
 fn fs(frag: VSOut) -> @location(0) vec4f {
-  // One sprite, two reads: sparkles (soft≈0) a tight crisp core; mist motes
-  // (soft≈1) a wide soft falloff at low alpha. Many faint mist motes overlap into
-  // a smooth body; the sparkles are the crisp points of light.
-  let r2 = dot(frag.uv, frag.uv);
-  if (r2 > 1.0) { discard; }
-  let k = mix(9.0, 2.4, frag.soft);
-  let g = exp(-r2 * k);
-  let alpha = g * mix(0.18, 0.05, frag.soft);
-  return vec4f(frag.color * frag.bright * alpha, alpha);
-}
-`;
-
-// Fullscreen-triangle vertex stub for the tone-map pass.
-const FS_VS = /* wgsl */ `
-struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
-@vertex
-fn vs(@builtin(vertex_index) vi: u32) -> VOut {
-  var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
-  let xy = p[vi];
-  var o: VOut;
-  o.pos = vec4f(xy, 0.0, 1.0);
-  o.uv = vec2f(xy.x, -xy.y) * 0.5 + 0.5;
-  return o;
-}
-`;
-
-// Tone-map: compress the LUMINANCE with Reinhard (chroma preserved, so dense
-// overlaps stay saturated neon rather than clipping to white) over a neon-dark floor.
-const TONEMAP_WGSL = /* wgsl */ `
-@group(0) @binding(0) var samp: sampler;
-@group(0) @binding(1) var tex: texture_2d<f32>;
-${FS_VS}
-@fragment
-fn fs(i: VOut) -> @location(0) vec4f {
-  let hdr = textureSample(tex, samp, i.uv).rgb;
-  let l = max(dot(hdr, vec3f(0.2126, 0.7152, 0.0722)), 0.0001);
-  let lt = (l * 1.1) / (1.0 + l * 1.1);
-  let mapped = min(hdr * (lt / l), vec3f(1.0));
-  let bg = vec3f(0.012, 0.011, 0.018);
-  return vec4f(mapped + bg, 1.0);
+  // A crisp round dot with a 1-px antialiased rim. Alpha-blended over the dark
+  // background — discrete points, no additive glow.
+  let r = length(frag.uv);
+  let a = (1.0 - smoothstep(0.62, 1.0, r)) * frag.alpha;
+  if (a <= 0.003) { discard; }
+  return vec4f(frag.color, a);
 }
 `;
 
@@ -281,29 +239,16 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
       entryPoint: "fs",
       targets: [
         {
-          format: HDR_FORMAT,
+          format,
+          // Straight (non-premultiplied) alpha over the background — crisp dots.
           blend: {
-            color: { srcFactor: "one", dstFactor: "one", operation: "add" },
-            alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+            color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
           },
         },
       ],
     },
     primitive: { topology: "triangle-list" },
-  });
-
-  const tonemapModule = device.createShaderModule({ code: TONEMAP_WGSL });
-  const tonemapPipeline = device.createRenderPipeline({
-    layout: "auto",
-    vertex: { module: tonemapModule, entryPoint: "vs" },
-    fragment: { module: tonemapModule, entryPoint: "fs", targets: [{ format }] },
-    primitive: { topology: "triangle-list" },
-  });
-  const sampler = device.createSampler({
-    magFilter: "linear",
-    minFilter: "linear",
-    addressModeU: "clamp-to-edge",
-    addressModeV: "clamp-to-edge",
   });
 
   const err = await device.popErrorScope();
@@ -341,11 +286,9 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
     ],
   });
 
-  return new WebGPUAvatar(device, context, format, {
+  return new WebGPUAvatar(device, context, {
     computePipeline,
     renderPipeline,
-    tonemapPipeline,
-    sampler,
     computeBind,
     renderBind,
     uniformBuf,
@@ -357,8 +300,6 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
 interface GpuRes {
   computePipeline: GPUComputePipeline;
   renderPipeline: GPURenderPipeline;
-  tonemapPipeline: GPURenderPipeline;
-  sampler: GPUSampler;
   computeBind: GPUBindGroup;
   renderBind: GPUBindGroup;
   uniformBuf: GPUBuffer;
@@ -387,15 +328,12 @@ class WebGPUAvatar implements Avatar {
   private t = 0;
   private w = 1;
   private h = 1;
+  private sized = false;
   private disposed = false;
-  private sceneTex: GPUTexture | null = null;
-  private sceneView: GPUTextureView | null = null;
-  private tonemapBind: GPUBindGroup | null = null;
 
   constructor(
     private device: GPUDevice,
     private context: GPUCanvasContext,
-    private format: GPUTextureFormat,
     private res: GpuRes,
   ) {
     this.loop = this.loop.bind(this);
@@ -412,26 +350,12 @@ class WebGPUAvatar implements Avatar {
     this.h = Math.max(1, Math.floor(h * dpr));
     (this.context.canvas as HTMLCanvasElement).width = this.w;
     (this.context.canvas as HTMLCanvasElement).height = this.h;
-    this.sceneTex?.destroy();
-    this.sceneTex = this.device.createTexture({
-      size: [this.w, this.h],
-      format: HDR_FORMAT,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    this.sceneView = this.sceneTex.createView();
-    this.tonemapBind = this.device.createBindGroup({
-      layout: this.res.tonemapPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: this.res.sampler },
-        { binding: 1, resource: this.sceneView },
-      ],
-    });
+    this.sized = true;
   }
 
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
-    this.sceneTex?.destroy();
     this.device.destroy?.();
   }
 
@@ -465,7 +389,7 @@ class WebGPUAvatar implements Avatar {
   private loop(): void {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
-    if (!this.sceneView || !this.tonemapBind) return; // not sized yet
+    if (!this.sized) return;
 
     if (this.morph !== this.lastMorph) {
       this.lastMorph = this.morph;
@@ -511,7 +435,7 @@ class WebGPUAvatar implements Avatar {
     u[8] = e.morphMix;
     u[9] = e.scale;
     u[10] = STATE_ID[this.curState];
-    u[11] = 0.026; // dotSize (world units) — crisp mote size
+    u[11] = 0.0075; // dotSize (world units) — small crisp dot
     u[12] = N;
     u[13] = this.useMorphColor;
     u[14] = STATE_ID[this.prevState];
@@ -533,23 +457,14 @@ class WebGPUAvatar implements Avatar {
     cp.dispatchWorkgroups(Math.ceil(N / 64));
     cp.end();
 
-    // Pass 1: accumulate crisp particles additively into the HDR scene.
+    // One pass: clear to the dark background, then draw the crisp dots over it.
     const rp = enc.beginRenderPass({
-      colorAttachments: [{ view: this.sceneView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
+      colorAttachments: [{ view: this.context.getCurrentTexture().createView(), clearValue: BG, loadOp: "clear", storeOp: "store" }],
     });
     rp.setPipeline(this.res.renderPipeline);
     rp.setBindGroup(0, this.res.renderBind);
     rp.draw(6, N);
     rp.end();
-
-    // Pass 2: tone-map the scene onto the canvas.
-    const tp = enc.beginRenderPass({
-      colorAttachments: [{ view: this.context.getCurrentTexture().createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
-    });
-    tp.setPipeline(this.res.tonemapPipeline);
-    tp.setBindGroup(0, this.tonemapBind);
-    tp.draw(3, 1);
-    tp.end();
 
     this.device.queue.submit([enc.finish()]);
   }

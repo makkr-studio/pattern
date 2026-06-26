@@ -50,7 +50,8 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
       setBackend(a.backend);
       const fit = () => {
         const r = wrap.getBoundingClientRect();
-        a.resize(r.width, r.height, Math.min(2, window.devicePixelRatio || 1));
+        // Native device pixels (1:1, no upscale) so the point cloud stays crisp.
+        a.resize(r.width, r.height, window.devicePixelRatio || 1);
       };
       fit();
       ro = new ResizeObserver(fit);
