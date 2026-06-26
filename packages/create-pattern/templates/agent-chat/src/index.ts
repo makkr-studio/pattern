@@ -7,9 +7,9 @@
  * and mod-admin (the kitchen at /admin — the chat's turn pipeline IS a workflow
  * you can fork and rewire).
  *
- * The agent runs on the default model (admin → Settings → AI Providers). Its
- * provider key resolves by name: set OPENAI_API_KEY in your environment, or
- * store it on the admin's Secrets page (System → Secrets) — no wiring needed.
+ * The agent runs on the "default" model alias you configure in admin → Settings →
+ * AI Providers. Each alias carries its own provider key, sourced from the vault
+ * (admin → System → Secrets) or an env var you name per alias. No global key.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 
@@ -20,6 +20,4 @@ const base = `http://localhost:${ports[0]}`;
 console.log(`◆ {{name}}`);
 console.log(`  Chat    ${base}/chat`);
 console.log(`  Admin   ${base}/admin`);
-if (!process.env.OPENAI_API_KEY) {
-  console.log(`  ⚠ OPENAI_API_KEY is not set — turns will fail until you set it (or use the vault).`);
-}
+console.log(`  → add a "default" model in admin → Settings → AI Providers (each alias brings its own key, from the vault or an env var)`);

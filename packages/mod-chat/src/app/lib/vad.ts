@@ -47,6 +47,12 @@ export async function createVad(handlers: VadHandlers, onError?: (e: unknown) =>
     const micStream = stream;
 
     const vad = await MicVAD.new({
+      // Assets are vendored under <mount>/vad/ (see vite.config.ts). Relative paths
+      // resolve against the host-injected <base href="<mount>/">, so this works at
+      // any mount and in the dev server alike. Legacy model = silero_vad_legacy.onnx.
+      model: "legacy",
+      baseAssetPath: "vad/",
+      onnxWASMBasePath: "vad/",
       audioContext: ctx,
       getStream: async () => micStream,
       // We own the stream's lifetime (destroy() stops it) so the analyser keeps

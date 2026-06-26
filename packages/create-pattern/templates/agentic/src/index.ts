@@ -8,10 +8,9 @@
  * /admin). An "agentic workflow" is just a graph that wires an agent into a
  * runner — no chat UI required; you build and run them in the editor.
  *
- * The agent runs on a model picked by an `ai.model` node (or the default set in
- * admin → Settings → AI Providers). Its provider key resolves by name:
- * OPENAI_API_KEY in the environment (a .env next to pattern.config.json is
- * loaded on boot) → a vault secret NAMED OPENAI_API_KEY (admin → Secrets).
+ * The agent runs on a model from an `ai.model` node, or the "default" alias you
+ * set in admin → Settings → AI Providers. Each alias carries its own provider
+ * key, sourced from the vault (admin → System → Secrets) or an env var you name.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 
@@ -21,6 +20,4 @@ const base = `http://localhost:${ports[0]}`;
 
 console.log(`◆ {{name}}`);
 console.log(`  Admin   ${base}/admin`);
-if (!process.env.OPENAI_API_KEY) {
-  console.log(`  ⚠ OPENAI_API_KEY is not set — agent runs fail until you set it (or store it in the vault).`);
-}
+console.log(`  → add a "default" model in admin → Settings → AI Providers (each alias brings its own key, from the vault or an env var)`);

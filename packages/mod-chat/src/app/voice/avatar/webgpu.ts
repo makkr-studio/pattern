@@ -58,10 +58,10 @@ fn cs(@builtin(global_invocation_id) gid: vec3u) {
   let pos = d.xy;
   var vel = d.zw;
   let base = posture(i, t);
-  var target = base;
+  var tgt = base;
   if (u.morphMix > 0.001) {
     let m = morph[i];
-    target = base + (m - base) * u.morphMix;
+    tgt = base + (m - base) * u.morphMix;
   }
   let s = cst[i].x;
   let nx = sin(pos.y * 3.0 + t * 0.7 + s * 10.0);
@@ -69,7 +69,7 @@ fn cs(@builtin(global_invocation_id) gid: vec3u) {
   let turb = 0.0009 + u.level * 0.004 + u.treble * 0.003;
   var k = 0.05;
   if (u.morphMix > 0.001) { k = 0.09; }
-  vel = vel * 0.9 + (target - pos) * k + vec2f(nx, ny) * turb;
+  vel = vel * 0.9 + (tgt - pos) * k + vec2f(nx, ny) * turb;
   dyn[i] = vec4f(pos + vel, vel);
 }
 `;
@@ -108,25 +108,25 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let asp = vec2f(min(1.0, u.res.y / u.res.x), min(1.0, u.res.x / u.res.y));
   let world = p * u.scale + c * u.dotSize;
   let clip = world * 0.82 * asp;
-  var out: VSOut;
-  out.pos = vec4f(clip, 0.0, 1.0);
-  out.uv = c;
+  var vo: VSOut;
+  vo.pos = vec4f(clip, 0.0, 1.0);
+  vo.uv = c;
   let s = cst[ii].x;
   let speed = clamp((abs(vel.x) + abs(vel.y)) * 7.0, 0.0, 1.0);
-  out.bright = (0.55 + s * 0.45 + speed * 0.4) * (1.0 + u.level * 1.2);
+  vo.bright = (0.55 + s * 0.45 + speed * 0.4) * (1.0 + u.level * 1.2);
   var col = u.color.xyz;
   if (u.useMorphColor > 0.5 && u.morphMix > 0.01) {
     col = mix(col, mcol[ii].xyz, u.morphMix);
   }
-  out.color = col;
-  return out;
+  vo.color = col;
+  return vo;
 }
 
 @fragment
-fn fs(in: VSOut) -> @location(0) vec4f {
-  let d = length(in.uv);
+fn fs(frag: VSOut) -> @location(0) vec4f {
+  let d = length(frag.uv);
   let a = smoothstep(1.0, 0.0, d);
-  let c = in.color * in.bright * a;
+  let c = frag.color * frag.bright * a;
   return vec4f(c, a);
 }
 `;
@@ -137,10 +137,7 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   const adapter = await gpu.requestAdapter();
   if (!adapter) throw new Error("no GPU adapter");
   const device = await adapter.requestDevice();
-  const context = canvas.getContext("webgpu");
-  if (!context) throw new Error("no webgpu context");
   const format = gpu.getPreferredCanvasFormat();
-  context.configure({ device, format, alphaMode: "opaque" });
 
   device.pushErrorScope("validation");
   const computeModule = device.createShaderModule({ code: COMPUTE_WGSL });
@@ -193,7 +190,20 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   });
 
   const err = await device.popErrorScope();
-  if (err) throw new Error(`WGSL/pipeline: ${err.message}`);
+  if (err) {
+    device.destroy?.();
+    throw new Error(`WGSL/pipeline: ${err.message}`);
+  }
+
+  // Acquire the canvas's WebGPU context ONLY now that the shaders/pipelines are
+  // known good. A canvas can hold a single context type, so touching it before
+  // validation would taint it and break the Canvas2D fallback when WGSL fails.
+  const context = canvas.getContext("webgpu");
+  if (!context) {
+    device.destroy?.();
+    throw new Error("no webgpu context");
+  }
+  context.configure({ device, format, alphaMode: "opaque" });
 
   const computeBind = device.createBindGroup({
     layout: computePipeline.getBindGroupLayout(0),
