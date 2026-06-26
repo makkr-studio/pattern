@@ -435,7 +435,7 @@ class WebGPUAvatar implements Avatar {
     u[8] = e.morphMix;
     u[9] = e.scale;
     u[10] = STATE_ID[this.curState];
-    u[11] = 0.0075; // dotSize (world units) — small crisp dot
+    u[11] = 0.0055; // dotSize (world units) — small crisp dot
     u[12] = N;
     u[13] = this.useMorphColor;
     u[14] = STATE_ID[this.prevState];

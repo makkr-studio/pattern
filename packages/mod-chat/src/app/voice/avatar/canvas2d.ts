@@ -242,7 +242,7 @@ export class Canvas2DAvatar implements Avatar {
     const mc = this.morph?.colors;
     const mix = e.morphMix;
     const mcCount = mc ? mc.length / 3 : 0;
-    const dotR = Math.max(0.75, Math.min(W, H) * 0.0016);
+    const dotR = Math.max(0.6, Math.min(W, H) * 0.0012);
 
     const ang = this.t * 0.05;
     const gcos = Math.cos(ang);
