@@ -8,6 +8,7 @@ import { createHttpHost } from "@pattern-js/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
 import { agentsMod, AGENTS_SERVICE, AI_MODEL_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
 import { aiMod } from "../../mod-ai/src/index.js";
+import { AI_CONFIG_SERVICE } from "../../mod-ai/src/well-known.js";
 import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
 import { scriptedModelService, type ScriptedTurn } from "../../mod-agents/tests/scripted-model-service.js";
 
@@ -322,6 +323,65 @@ describe("chat over HTTP (scripted model)", () => {
     expect(down.status).toBe(200);
     expect(down.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await down.arrayBuffer())).toEqual(png);
+  });
+});
+
+describe("model switcher + express avatar signal", () => {
+  it("GET /models lists language aliases only, with secrets stripped", async () => {
+    const { base, engine } = await boot([]);
+    // Override the alias source (duck-typed off the aiConfig service) with a mix
+    // of modalities; the route must return only language aliases, names+display.
+    engine.provideService(AI_CONFIG_SERVICE, {
+      aliases: () => [
+        { name: "smart", provider: "openai", modelId: "gpt-5", modality: "language", secrets: { apiKey: { source: "env", key: "OPENAI" } }, options: {} },
+        { name: "voice", provider: "openai", modelId: "tts-1", modality: "speech", secrets: {}, options: {} },
+      ],
+    });
+    const res = await fetch(`${base}/chat/api/default/models`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+    expect(body.models).toEqual([{ name: "smart", provider: "openai", modelId: "gpt-5" }]);
+  });
+
+  it("GET /models returns an empty list (not an error) when none are configured", async () => {
+    const { base } = await boot([]);
+    const res = await fetch(`${base}/chat/api/default/models`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { models: unknown[] }).models).toEqual([]);
+  });
+
+  it("a per-turn model alias is accepted and fails soft to the default", async () => {
+    const { base } = await boot([{ kind: "text", text: "ok" }]);
+    const { id, cookie } = await createConversation(base);
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ content: [{ type: "text", text: "hi" }], model: "does-not-exist" }),
+    });
+    expect(res.status).toBe(200);
+    expect(sseEvents(await res.text()).at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
+  });
+
+  it("express is a callable (non-guardrail) tool that echoes its args to the stream", async () => {
+    const { base, engine } = await boot([
+      { kind: "tool_call", name: "express", callId: "e1", args: { emotion: "excited", emoji: "🎉" } },
+      { kind: "text", text: "Great news!" },
+    ]);
+    const svc = engine.service<AgentsService>(AGENTS_SERVICE)!;
+    expect(svc.getWorkflowTool("express")?.guardrail).toBeFalsy();
+
+    const { id, cookie } = await createConversation(base);
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ content: [{ type: "text", text: "news?" }] }),
+    });
+    const events = sseEvents(await res.text());
+    const done = events.find(
+      (e) => e.type === "tool.activity" && (e as { toolName: string }).toolName === "express" && (e as { phase: string }).phase === "done",
+    ) as { result?: { emoji?: string } } | undefined;
+    expect(done?.result?.emoji).toBe("🎉");
+    expect(events.at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
   });
 });
 

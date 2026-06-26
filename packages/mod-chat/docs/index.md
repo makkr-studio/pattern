@@ -68,6 +68,30 @@ compaction, or narrow toolsets. The bookends `chat.turn.begin` and
 `chat.events.sink` stay; you rewire the rest. See
 [Customizing](./guides/customizing.md).
 
+## The chat experience
+
+Beyond the transcript, the SPA ships a polished UX with no configuration:
+
+- **Voice mode.** A fullscreen, always-on voice conversation behind the wave
+  button. An on-device neural VAD (Silero) detects when you finish speaking,
+  transcribes, sends the turn, and speaks the reply back sentence by sentence;
+  start talking again and it stops to listen (barge-in). A GPU particle avatar
+  (custom WGSL, with a Canvas2D fallback) reacts to the audio, shows tool calls
+  as glyphs, "paints" a generated image before dissolving it, and shifts color
+  with the assistant's tone. It loads only when entered.
+- **Model switcher.** Pick any language-model alias per turn from the header; the
+  choice persists and applies to voice mode too. Backed by
+  `GET {mount}/api/:ns/models` (alias names and display fields only, never
+  secrets) and resolved per turn by `chat.model.resolve`, which fails soft to the
+  configured pin or app default.
+- **Theme.** A three-way light / dark / system toggle in the sidebar.
+- **Smart dictation.** The composer mic uses the same VAD: speak, and it stops
+  and transcribes itself, with a live waveform while listening.
+
+The avatar's tone and emoji morphs are driven by a silent `express` tool the
+agent may call. It rides the normal tool-event stream (so it persists and
+replays) but is hidden from the transcript and consumed only by voice mode.
+
 ## Reliability model
 
 The store is the source of truth; SSE is a live tail. Every event lands in the

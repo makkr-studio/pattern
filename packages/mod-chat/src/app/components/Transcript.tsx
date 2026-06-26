@@ -5,7 +5,8 @@
  * Buds expand to their args/result and deep-link into the admin's run view.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useLayoutEffect, useEffect, useRef, useState } from "react";
+import { Volume2, Square, Loader2, Wrench } from "lucide-react";
 import { api } from "../lib/api";
 import { chatStore } from "../lib/store";
 import { segmentsOf, type MessagePart, type Segment, type Turn } from "../lib/types";
@@ -60,7 +61,9 @@ function ToolBud({ seg }: { seg: Extract<Segment, { kind: "tool" }> }) {
         className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[13px] transition-colors hover:opacity-80"
         style={{ borderColor: "var(--line)", color: "var(--fg-soft)", background: "var(--bg-raised)" }}
       >
-        <span style={{ fontFamily: "var(--mono)" }}>⚙ {seg.toolName}</span>
+        <span className="inline-flex items-center gap-1.5" style={{ fontFamily: "var(--mono)" }}>
+          <Wrench size={12} /> {seg.toolName}
+        </span>
         <span style={{ color: seg.phase === "error" ? "var(--danger)" : "var(--fg-faint)" }}>{label}</span>
       </button>
       {image && (
@@ -212,12 +215,12 @@ function SpeakButton({ text }: { text: string }) {
   return (
     <button
       onClick={() => void toggle()}
-      className="mt-1 inline-flex items-center gap-1 text-[12px] transition-opacity hover:opacity-80"
+      className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-80"
       style={{ color: "var(--fg-faint)" }}
-      title="Read aloud"
-      aria-label="Read aloud"
+      title={state === "playing" ? "Stop" : "Read aloud"}
+      aria-label={state === "playing" ? "Stop" : "Read aloud"}
     >
-      {state === "loading" ? "…" : state === "playing" ? "◼ stop" : "🔊 listen"}
+      {state === "loading" ? <Loader2 size={13} className="animate-spin" /> : state === "playing" ? <Square size={13} /> : <Volume2 size={14} />}
     </button>
   );
 }
@@ -297,7 +300,11 @@ export function Transcript({ turns, liveTurnId }: { turns: Turn[]; liveTurnId: s
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect): set the anchor — and thus reserve the
+  // min-height — in the SAME commit the new turn paints in. With useEffect the
+  // reservation landed a frame late, so the area briefly collapsed to 0 (content
+  // dropped then snapped up) — that flash is what this fixes.
+  useLayoutEffect(() => {
     if (!last) return;
     const sameConv = prev.current.conv === convId;
     const newLast = prev.current.last !== last.id;
@@ -313,7 +320,7 @@ export function Transcript({ turns, liveTurnId }: { turns: Turn[]; liveTurnId: s
   }, [convId, last, liveTurnId]);
 
   // Scroll AFTER the min-height committed, so "top" is actually reachable.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (anchoredId) lastRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [anchoredId]);
 

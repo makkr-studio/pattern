@@ -1,6 +1,6 @@
 /** Pattern Chat — API client (pure fetch; SSE via ReadableStream). */
 
-import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
+import type { Conversation, Me, MessagePart, Model, Turn, TurnEvent } from "./types";
 import { appBoot } from "./config";
 
 // Two roots on the SHARED backend: `API` for unscoped calls (/me, blobs) and
@@ -25,6 +25,9 @@ async function json<T>(res: Response): Promise<T> {
 export const api = {
   /** Who am I, and is auth required? Always open — drives the sign-in gate. */
   me: async (): Promise<Me> => json(await fetch(`${API}/me`)),
+
+  /** The language-model aliases the switcher offers (empty if mod-ai is absent). */
+  models: async (): Promise<Model[]> => (await json<{ models: Model[] }>(await fetch(`${NS}/models`))).models,
 
   conversations: {
     list: async (): Promise<Conversation[]> =>
@@ -116,11 +119,12 @@ export async function* streamTurn(
   conversationId: string,
   content: MessagePart[],
   turnId: string,
+  model?: string,
 ): AsyncGenerator<TurnEvent> {
   const res = await fetch(`${NS}/conversations/${conversationId}/turns`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({ turnId, content }),
+    body: JSON.stringify(model ? { turnId, content, model } : { turnId, content }),
   });
   if (!res.ok || !res.body) {
     let body: unknown = {};

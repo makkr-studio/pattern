@@ -31,6 +31,7 @@ function modelInjection(
   model: ChatModel | undefined,
   agentNodeId: string,
   ui: { x: number; y: number },
+  target: { node: string; port: string } = { node: agentNodeId, port: "model" },
 ): { nodes: Workflow["nodes"]; edges: Workflow["edges"] } {
   if (!model) return { nodes: [], edges: [] };
   const id = `${agentNodeId}Model`;
@@ -49,9 +50,20 @@ function modelInjection(
         ui,
       },
     ],
-    edges: [{ from: { node: id, port: "model" }, to: { node: agentNodeId, port: "model" } }],
+    edges: [{ from: { node: id, port: "model" }, to: target }],
   };
 }
+
+/**
+ * Appended to the chat agent's instructions: the silent `express` avatar signal.
+ * Optional and zero-cost when skipped — the model only calls it when expressive
+ * value is real, so plain factual replies stay fast.
+ */
+const EXPRESS_NOTE =
+  "\n\nYou also have a silent `express` tool that drives an optional on-screen avatar during voice " +
+  "conversations. When it genuinely adds value, you may call it once at the very start of a reply with " +
+  "your tone: a short emotion label, optionally a fitting emoji or shape. It is invisible, never replaces " +
+  "or delays your answer, and is entirely optional. Skip it for plain, factual replies.";
 
 interface RouteSpec {
   id: string;
@@ -129,6 +141,8 @@ export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
     { id: "chat.route.conversations.delete", method: "DELETE", path: `${api}/:ns/conversations/:id`, op: "chat.conversations.delete" },
     { id: "chat.route.turns.list", method: "GET", path: `${api}/:ns/conversations/:id/turns`, op: "chat.turns.list" },
     { id: "chat.route.turn.stop", method: "POST", path: `${api}/:ns/conversations/:id/turns/:turnId/stop`, op: "chat.turn.stop" },
+    // The model switcher's source of truth: language-model aliases (no secrets).
+    { id: "chat.route.models", method: "GET", path: `${api}/:ns/models`, op: "chat.models.list" },
   ];
   return [
     // /me is ALWAYS open: it answers "who am I / is auth required?" so the
@@ -270,7 +284,9 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
 export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPin): Workflow {
   const guard = opts.guardrail.enabled && !pin; // forks opt out of the shared guardrail tool
   const agent = pin?.agent ?? opts.agent;
-  const aModel = modelInjection(agent.model, "agent", { x: 1140, y: 240 });
+  // The pin (if any) feeds resolveModel's FALLBACK; resolveModel produces the
+  // agent's model, layering a per-turn alias selection on top.
+  const aModel = modelInjection(agent.model, "agent", { x: 940, y: 380 }, { node: "resolveModel", port: "fallback" });
   const seg = pin ? pin.namespace : ":ns";
   return {
     id: pin ? `chat.turn.pipeline.${pin.namespace}` : "chat.turn.pipeline",
@@ -310,12 +326,18 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         op: "agents.agent",
         config: {
           name: agent.name,
-          instructions: agent.instructions,
+          instructions: agent.instructions + EXPRESS_NOTE,
         },
-        comment: "THE agent. Edit instructions here; pin a model via the ai.model node; wire guardrails/handoffs in.",
+        comment: "THE agent. Edit instructions here; the model comes from resolveModel (per-turn alias → pin → default).",
         ui: { x: 1140, y: 60 },
       },
       ...aModel.nodes,
+      {
+        id: "resolveModel",
+        op: "chat.model.resolve",
+        comment: "Per-turn model: a language alias picked in the UI overrides the pin / app default.",
+        ui: { x: 1140, y: 300 },
+      },
       ...(guard
         ? [
             {
@@ -347,7 +369,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
       // id from the cookies port. The conflict/not-found path maps begin's
       // httpOutcome to a status.
       { id: "ex_params", op: "core.object.extract", config: { keys: ["id"] }, ui: { x: 240, y: 60 } },
-      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId"] }, ui: { x: 240, y: 180 } },
+      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId", "model"] }, ui: { x: 240, y: 180 } },
       { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 240, y: 300 } },
       { id: "errStatus", op: "boundary.http.status", ui: { x: 680, y: 440 } },
     ],
@@ -372,7 +394,12 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
             { from: { node: "guard", port: "guardrail" }, to: { node: "agent", port: "guardrails" } },
           ]
         : []),
+      // Model resolution: the pin (aModel.edges) feeds resolveModel.fallback; the
+      // per-turn alias from the body feeds resolveModel.alias; the result is the
+      // agent's model (undefined ⇒ app default).
       ...aModel.edges,
+      { from: { node: "ex_body", port: "model" }, to: { node: "resolveModel", port: "alias" } },
+      { from: { node: "resolveModel", port: "model" }, to: { node: "agent", port: "model" } },
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
       { from: { node: "begin", port: "input" }, to: { node: "run", port: "input" } },
       { from: { node: "begin", port: "history" }, to: { node: "run", port: "history" } },
@@ -420,7 +447,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         op: "agents.agent",
         config: {
           name: opts.agent.name,
-          instructions: opts.agent.instructions,
+          instructions: opts.agent.instructions + EXPRESS_NOTE,
         },
         comment: "Must reify the same agent shape as the turn pipeline.",
       },
@@ -507,6 +534,48 @@ export function imageToolWorkflow(_opts: ResolvedChatOptions): Workflow {
       { from: { node: "model", port: "model" }, to: { node: "gen", port: "model" } },
       { from: { node: "gen", port: "image" }, to: { node: "out", port: "result" } },
     ],
+  };
+}
+
+/**
+ * The avatar signal: a silent, callable `express` tool that simply ECHOES its
+ * args back as the tool result. The model calls it to surface its emotional tone
+ * (and optionally a fitting emoji/shape) to the fullscreen voice avatar. It rides
+ * the normal `tool.activity` event protocol — reaching the client live (SSE) and
+ * persisted by the sink — but the transcript filters it out (`segmentsOf`), so it
+ * never shows as a tool bud. No model/IO work: the echo is instant.
+ */
+export function expressToolWorkflow(_opts: ResolvedChatOptions): Workflow {
+  return {
+    id: "chat.tool.express",
+    name: "Chat · tool · express (avatar signal)",
+    description:
+      "A silent tool the chat agent calls to drive the on-screen voice avatar: it echoes { emotion, emoji, shape } " +
+      "straight back as the tool result. Filtered out of the transcript; consumed by the fullscreen voice mode.",
+    source: "code",
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.tool",
+        config: {
+          name: "express",
+          description:
+            "Silently signal your emotional tone to an on-screen avatar (voice mode). Produces no visible output and " +
+            "never replaces your reply. Optional. Use at most once, at the start of a reply.",
+          params: {
+            type: "object",
+            properties: {
+              emotion: { type: "string", description: "A short tone label, e.g. neutral, happy, thinking, concerned, excited, playful." },
+              emoji: { type: "string", description: "One fitting emoji (optional)." },
+              shape: { type: "string", description: "An abstract shape word the avatar may morph into, e.g. spiral, star, wave (optional)." },
+            },
+          },
+        },
+        ui: { x: 40, y: 160, pair: "out" },
+      },
+      { id: "out", op: "boundary.tool.return", ui: { x: 360, y: 160, pair: "in" } },
+    ],
+    edges: [{ from: { node: "in", port: "args" }, to: { node: "out", port: "result" } }],
   };
 }
 

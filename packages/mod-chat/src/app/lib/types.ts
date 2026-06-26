@@ -40,6 +40,20 @@ export type TurnEvent =
       stopReason: "complete" | "interrupted" | "error" | "cancelled";
     };
 
+/** A selectable language-model alias (GET /chat/api/:ns/models). */
+export interface Model {
+  name: string;
+  provider: string;
+  modelId: string;
+}
+
+/** The avatar signal the model emits via the silent `express` tool. */
+export interface Express {
+  emotion?: string;
+  emoji?: string;
+  shape?: string;
+}
+
 /** GET /chat/api/me — caller identity + the server's resolved auth policy. */
 export interface Me {
   user: { id: string; name: string | null; email: string | null; provider: string | null } | null;
@@ -106,6 +120,9 @@ export function segmentsOf(events: TurnEvent[], live: boolean): Segment[] {
         out.push({ kind: "text", text: ev.text, streaming: false });
         break;
       case "tool.activity": {
+        // The silent `express` avatar signal never shows in the transcript — it's
+        // consumed by the voice mode (see expressOf), not rendered as a tool bud.
+        if (ev.toolName === "express") break;
         closeText(false);
         const open = out.find(
           (s): s is Extract<Segment, { kind: "tool" }> =>
@@ -162,4 +179,17 @@ export function segmentsOf(events: TurnEvent[], live: boolean): Segment[] {
   if (acc) out.push({ kind: "text", text: acc, streaming: live });
   // Approvals are resolved once the turn isn't interrupted anymore.
   return out;
+}
+
+/** The latest `express` avatar signal in an event log (null if none). */
+export function expressOf(events: TurnEvent[]): Express | null {
+  let latest: Express | null = null;
+  for (const ev of events) {
+    if (ev.type !== "tool.activity" || ev.toolName !== "express") continue;
+    const data = (ev.phase === "start" ? ev.args : ev.result) as Express | undefined;
+    if (data && typeof data === "object") {
+      latest = { emotion: data.emotion, emoji: data.emoji, shape: data.shape };
+    }
+  }
+  return latest;
 }

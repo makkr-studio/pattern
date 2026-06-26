@@ -24,7 +24,7 @@ import {
   type OpContext,
   type OpDefinition,
 } from "@pattern-js/core";
-import { AGENTS_SERVICE, messagePartSchema, turnEventSchema, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
+import { AGENTS_SERVICE, messagePartSchema, modelRefSchema, turnEventSchema, type AgentsService, type ModelRef, type TurnEvent } from "@pattern-js/mod-agents";
 import type { DocumentRow, PatternStores } from "@pattern-js/mod-store";
 import {
   CONVERSATIONS,
@@ -252,7 +252,55 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     },
   );
 
+  // The language-model aliases the chat model switcher offers. Read duck-typed
+  // off mod-ai's "aiConfig" service (no hard dep on mod-ai) — names + display
+  // fields only, never the sourced secrets. Empty list if mod-ai isn't installed.
+  const modelsList = chatOp(
+    "chat.models.list",
+    "Language-model aliases offered in the chat model switcher (display fields only, never secrets).",
+    { in: { ns: P() }, out: "models" },
+    (_inputs, ctx) => {
+      const cfg = ctx.services["aiConfig"] as
+        | { aliases(): Array<{ name: string; provider: string; modelId: string; modality?: string }> }
+        | undefined;
+      const models = (cfg?.aliases() ?? [])
+        .filter((a) => (a.modality ?? "language") === "language")
+        .map((a) => ({ name: a.name, provider: a.provider, modelId: a.modelId }));
+      return { models };
+    },
+  );
+
   /* ── pipeline bookends ───────────────────────────────────────────────── */
+
+  // Resolve the model for a turn: a per-turn language alias selected in the UI
+  // (the request `model`) overrides the configured pin (`fallback`), which itself
+  // overrides the app default (an undefined output). Fails soft — an unknown or
+  // non-language alias falls through to the fallback, never throwing. This is the
+  // single producer of the agent's `model` input in the turn pipeline.
+  const resolveModel: OpDefinition = {
+    type: "chat.model.resolve",
+    title: "chat.model.resolve",
+    description:
+      "Resolve a turn's model: a per-turn language alias overrides the configured pin, which overrides the app " +
+      "default. Fails soft: an unknown or non-language alias falls back rather than throwing.",
+    reusable: false,
+    inputs: { alias: value(z.string()), fallback: value(modelRefSchema) },
+    outputs: { model: value(modelRefSchema) },
+    execute: async (ctx) => {
+      const [alias, fallback] = await Promise.all([maybe<string>(ctx, "alias"), maybe<ModelRef>(ctx, "fallback")]);
+      const cfg = ctx.services["aiConfig"] as
+        | { alias(name: string): { modality?: string } | undefined; resolveAlias(name: string): ModelRef | undefined }
+        | undefined;
+      if (alias && cfg) {
+        const a = cfg.alias(alias);
+        if (a && (a.modality ?? "language") === "language") {
+          const resolved = cfg.resolveAlias(alias);
+          if (resolved) return { model: resolved };
+        }
+      }
+      return { model: fallback ?? null };
+    },
+  };
 
   const begin: OpDefinition = {
     type: "chat.turn.begin",
@@ -585,7 +633,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     },
   };
 
-  return [me, create, list, get, del, turnsList, stop, begin, sink, approvalBegin];
+  return [me, create, list, get, del, turnsList, stop, modelsList, resolveModel, begin, sink, approvalBegin];
 }
 
 /** The slice of resolved options `chat.me` reports to the SPA. */
