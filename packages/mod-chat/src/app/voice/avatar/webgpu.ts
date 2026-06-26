@@ -446,8 +446,8 @@ class WebGPUAvatar implements Avatar {
     u[8] = e.morphMix;
     u[9] = e.scale;
     u[10] = STATE_ID[this.curState];
-    // Small crisp dot; finer still while presenting a picture (more, smaller dots).
-    u[11] = this.curState === "presenting" ? 0.0030 : 0.0042;
+    // Small crisp dot; a touch larger while presenting a picture so it reads as filled.
+    u[11] = this.curState === "presenting" ? 0.0040 : 0.0034;
     u[12] = N;
     u[13] = this.useMorphColor;
     u[14] = STATE_ID[this.prevState];
