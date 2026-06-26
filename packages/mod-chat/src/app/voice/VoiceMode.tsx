@@ -24,6 +24,7 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<AvatarState>("idle");
   const [caption, setCaption] = useState("");
+  const [capOn, setCapOn] = useState(false);
   const [toolLabel, setToolLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [backend, setBackend] = useState<"webgpu" | "canvas2d" | null>(null);
@@ -58,7 +59,20 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
       ro.observe(wrap);
       loop = new VoiceLoop(
         a,
-        { onState: setState, onCaption: setCaption, onToolLabel: setToolLabel, onError: setError },
+        {
+          onState: setState,
+          // Subtitle: show the spoken line; an empty string fades it out (audio stopped).
+          onCaption: (t: string) => {
+            if (t) {
+              setCaption(t);
+              setCapOn(true);
+            } else {
+              setCapOn(false);
+            }
+          },
+          onToolLabel: setToolLabel,
+          onError: setError,
+        },
         () => chatStore.getState().selectedModel ?? undefined,
       );
       await loop.start();
@@ -127,8 +141,8 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-6 pb-12">
         <div
-          className="mx-auto max-w-2xl text-center text-[18px] leading-relaxed"
-          style={{ color: "rgba(255,255,255,0.86)", textShadow: "0 2px 22px rgba(0,0,0,0.65)" }}
+          className="mx-auto max-w-2xl text-center text-[18px] leading-relaxed transition-opacity duration-500"
+          style={{ color: "rgba(255,255,255,0.9)", textShadow: "0 2px 22px rgba(0,0,0,0.7)", opacity: capOn ? 1 : 0 }}
         >
           {caption}
         </div>
@@ -137,7 +151,7 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
             {error}
           </div>
         )}
-        {!caption && !error && (
+        {!capOn && !error && (
           <div className="mx-auto max-w-md text-center text-[13px]" style={{ color: "rgba(255,255,255,0.3)" }}>
             Say something. I&apos;m listening.
           </div>

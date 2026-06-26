@@ -107,13 +107,26 @@ export const speechGenerate: OpDefinition = {
   title: "ai.speech.generate",
   description: "Synthesize speech (TTS) from text. Audio bytes land in the blob store; output is a MediaRef.",
   config: z.object({ voice: z.string().optional(), speed: z.number().optional(), format: z.string().optional() }),
-  inputs: { model: required(modelRefSchema), text: required(z.string()) },
+  // `instructions` steers the voice tone/style on providers that support it
+  // (e.g. OpenAI gpt-4o-mini-tts: "Speak warmly and excitedly").
+  inputs: { model: required(modelRefSchema), text: required(z.string()), instructions: value(z.string()) },
   outputs: { audio: value(mediaRefSchema) },
   execute: async (ctx) => {
-    const [modelRef, text] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("text")]);
+    const [modelRef, text, instructions] = await Promise.all([
+      ctx.input.value("model"),
+      ctx.input.value<string>("text"),
+      maybe<string>(ctx, "instructions"),
+    ]);
     const model = await providerService(ctx).speechModel(modelRefSchema.parse(modelRef), ctx);
     const cfg = ctx.config as { voice?: string; speed?: number };
-    const r = await generateSpeech({ model, text, voice: cfg.voice, speed: cfg.speed, abortSignal: ctx.signal });
+    const r = await generateSpeech({
+      model,
+      text,
+      voice: cfg.voice,
+      speed: cfg.speed,
+      instructions: instructions && instructions.trim() ? instructions : undefined,
+      abortSignal: ctx.signal,
+    });
     return { audio: await putMedia(ctx, r.audio.uint8Array, r.audio.mediaType, "audio") };
   },
 };

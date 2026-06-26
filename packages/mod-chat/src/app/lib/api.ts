@@ -76,13 +76,14 @@ export const api = {
       }),
     ),
 
-  /** Text-to-speech: text → an audio MediaRef the SPA plays (needs a "speech" alias). */
-  speech: async (text: string): Promise<{ blobId: string; mime: string }> =>
+  /** Text-to-speech: text → an audio MediaRef the SPA plays (needs a "speech" alias).
+   *  `instructions` steers the voice tone on promptable TTS (e.g. gpt-4o-mini-tts). */
+  speech: async (text: string, instructions?: string): Promise<{ blobId: string; mime: string }> =>
     json(
       await fetch(`${NS}/speech`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(instructions ? { text, instructions } : { text }),
       }),
     ),
 };

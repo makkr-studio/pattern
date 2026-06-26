@@ -12,19 +12,20 @@ export const BRAND_B: RGB = [0.25, 0.92, 0.98];
 export const BRAND: RGB = BRAND_A; // back-compat single-color alias
 
 // Keyword → [stopA, stopB] (rgb 0..1). Matched by substring so "very excited"
-// still lands. Each pair is two related hues that read as one mood.
+// still lands. Each pair is two related hues that read as one mood — deliberately
+// distinct from the neutral violet/aqua so the shift reads, not subliminal.
 const GRAD: Array<[string, [RGB, RGB]]> = [
-  ["excited", [[1.0, 0.42, 0.62], [1.0, 0.78, 0.34]]],
-  ["happy", [[1.0, 0.6, 0.3], [1.0, 0.86, 0.42]]],
-  ["joy", [[1.0, 0.6, 0.3], [1.0, 0.86, 0.42]]],
-  ["playful", [[0.92, 0.4, 0.95], [0.45, 0.7, 1.0]]],
-  ["curious", [[0.62, 0.45, 1.0], [0.35, 0.92, 0.95]]],
-  ["thinking", [[0.4, 0.55, 1.0], [0.45, 0.92, 0.95]]],
-  ["focused", [[0.4, 0.55, 1.0], [0.45, 0.92, 0.95]]],
-  ["calm", [[0.3, 0.8, 0.85], [0.45, 0.65, 1.0]]],
-  ["concerned", [[0.95, 0.78, 0.35], [0.95, 0.5, 0.4]]],
-  ["sad", [[0.35, 0.5, 0.9], [0.45, 0.7, 1.0]]],
-  ["angry", [[1.0, 0.32, 0.3], [1.0, 0.6, 0.25]]],
+  ["excited", [[1.0, 0.28, 0.5], [1.0, 0.66, 0.2]]], // hot pink → orange
+  ["happy", [[1.0, 0.74, 0.2], [1.0, 0.48, 0.32]]], // gold → coral
+  ["joy", [[1.0, 0.74, 0.2], [1.0, 0.48, 0.32]]],
+  ["playful", [[1.0, 0.36, 0.86], [0.4, 0.78, 1.0]]], // magenta → sky
+  ["curious", [[0.86, 0.34, 1.0], [0.5, 0.45, 1.0]]], // magenta-violet
+  ["thinking", [[0.26, 0.5, 1.0], [0.3, 0.85, 1.0]]], // blue → cyan
+  ["focused", [[0.26, 0.5, 1.0], [0.3, 0.85, 1.0]]],
+  ["calm", [[0.2, 0.82, 0.74], [0.36, 0.92, 0.5]]], // teal → mint
+  ["concerned", [[1.0, 0.62, 0.18], [0.96, 0.36, 0.3]]], // amber → red
+  ["sad", [[0.3, 0.42, 0.82], [0.46, 0.52, 0.72]]], // muted indigo
+  ["angry", [[1.0, 0.2, 0.22], [1.0, 0.42, 0.16]]], // red → ember
   ["neutral", [BRAND_A, BRAND_B]],
 ];
 

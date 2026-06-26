@@ -39,12 +39,36 @@ function emotionFromText(text: string): string | null {
   return null;
 }
 
-// Last emoji cluster (base pictographic + ZWJ joins + variation/skin modifiers).
+// Emoji cluster (base pictographic + ZWJ joins + variation/skin modifiers).
 const EMOJI_RE = /\p{Extended_Pictographic}(\u200d\p{Extended_Pictographic}|[\uFE0F\u{1F3FB}-\u{1F3FF}])*/gu;
-function lastEmojiOf(text: string): string | null {
-  const m = text.match(EMOJI_RE);
-  return m && m.length ? (m[m.length - 1] ?? null) : null;
+
+// Strip emoji (and their joiners/modifiers) from text bound for the TTS \u2014 they
+// make some voices emit odd noises.
+const EMOJI_STRIP_RE = /[\p{Extended_Pictographic}\u200d\uFE0F\u{1F3FB}-\u{1F3FF}]/gu;
+function stripEmoji(text: string): string {
+  return text.replace(EMOJI_STRIP_RE, "").replace(/\s{2,}/g, " ").trim();
 }
+
+// Mood \u2192 a voice-tone instruction for promptable TTS (e.g. gpt-4o-mini-tts). The
+// neutral one alone already lifts the delivery out of a flat monotone.
+const TONE: Record<string, string> = {
+  neutral: "Speak naturally and conversationally, warm and lightly expressive, not flat.",
+  excited: "Speak with bright, upbeat energy and genuine enthusiasm.",
+  happy: "Speak warmly and cheerfully, with a smile in your voice.",
+  sad: "Speak gently and softly, slower, with empathy.",
+  calm: "Speak in a calm, soothing, unhurried tone.",
+  curious: "Speak with a light, inquisitive, engaged lilt.",
+  concerned: "Speak earnestly and carefully, with a note of concern.",
+  thinking: "Speak thoughtfully, at a measured, reflective pace.",
+  angry: "Speak firmly and intensely, with controlled force.",
+  playful: "Speak playfully, with a teasing, animated bounce.",
+};
+function toneFor(emotion: string): string {
+  return TONE[emotion] ?? TONE.neutral!;
+}
+
+// A pool of fun glyphs to sprinkle into a tool's emoji cycle for variety.
+const RANDOM_POOL = ["\u2728", "\uD83C\uDF08", "\uD83E\uDE84", "\uD83D\uDCAB", "\uD83C\uDF87", "\uD83C\uDF1F", "\uD83D\uDD2E", "\uD83C\uDF86"];
 
 function imageRefOf(v: unknown): { blobId: string } | null {
   if (v && typeof v === "object") {
@@ -62,16 +86,23 @@ export interface VoiceLoopCallbacks {
   onError?: (msg: string) => void;
 }
 
-/** Sequential TTS player with an analyser for the avatar's "speaking" reaction. */
+interface TtsChunk {
+  speak: string; // emoji-stripped text sent to the TTS
+  caption: string; // what to show as the synced subtitle
+  tone?: string; // voice-tone instruction (promptable TTS)
+}
+
+/** Sequential TTS player with an analyser for the avatar's "speaking" reaction.
+ *  Reports the spoken chunk's caption on start, so subtitles track the audio. */
 class TtsPlayer {
   readonly analyser: AnalyserNode;
   private audio = new Audio();
   private ctx = new AudioContext();
-  private queue: string[] = [];
+  private queue: TtsChunk[] = [];
   private playing = false;
 
   constructor(
-    private onStart: () => void,
+    private onStart: (caption: string) => void,
     private onEnd: () => void,
   ) {
     this.audio.crossOrigin = "anonymous";
@@ -89,16 +120,17 @@ class TtsPlayer {
     return this.playing || this.queue.length > 0;
   }
 
-  enqueue(text: string): void {
-    const t = text.trim();
-    if (!t) return;
-    this.queue.push(t);
+  enqueue(text: string, tone?: string): void {
+    const caption = text.trim();
+    const speak = stripEmoji(text);
+    if (!speak) return; // nothing speakable (e.g. an emoji-only fragment)
+    this.queue.push({ speak, caption: caption || speak, tone });
     if (!this.playing) void this.next();
   }
 
   private async next(): Promise<void> {
-    const t = this.queue.shift();
-    if (!t) {
+    const chunk = this.queue.shift();
+    if (!chunk) {
       this.playing = false;
       this.onEnd();
       return;
@@ -106,7 +138,7 @@ class TtsPlayer {
     this.playing = true;
     let url: string | null = null;
     try {
-      const { blobId } = await api.speech(t);
+      const { blobId } = await api.speech(chunk.speak, chunk.tone);
       url = api.blobs.url(blobId);
     } catch {
       url = null;
@@ -116,7 +148,7 @@ class TtsPlayer {
       return;
     }
     this.audio.src = url;
-    this.onStart();
+    this.onStart(chunk.caption);
     try {
       await this.ctx.resume();
       await this.audio.play();
@@ -146,16 +178,17 @@ export class VoiceLoop {
   private disposed = false;
   private turnActive = false;
   private turnDone = true;
-  private assistantBuf = "";
-  private caption = "";
+  private assistantBuf = ""; // pending text not yet handed to the TTS (gets sliced)
+  private replyText = ""; // the whole reply so far (never sliced) for emoji + mood scans
   private morphTimer: ReturnType<typeof setTimeout> | null = null;
   private toolCycleTimer: ReturnType<typeof setInterval> | null = null;
+  private emojiPacer: ReturnType<typeof setInterval> | null = null;
   private presenting = false;
   // Client-side auto-expression bookkeeping.
   private lastEmotion = "";
   private lastEmotionAt = 0;
-  private lastEmojiKey = "";
-  private lastEmojiAt = 0;
+  private emojiQueue: string[] = []; // emojis from the reply, paced out over the audio
+  private emojiSeen = 0; // how many of assistantBuf's emojis are already queued
   private micBuf = new Float32Array(1024);
   private micFreq = new Uint8Array(512);
   private ttsBuf = new Float32Array(1024);
@@ -167,7 +200,10 @@ export class VoiceLoop {
     private getModel: () => string | undefined,
   ) {
     this.tts = new TtsPlayer(
-      () => this.setState("speaking"),
+      (caption) => {
+        this.setState("speaking");
+        this.cb.onCaption(caption); // subtitle tracks the spoken chunk
+      },
       () => this.onTtsEnd(),
     );
     this.tick = this.tick.bind(this);
@@ -190,6 +226,12 @@ export class VoiceLoop {
     vad.start();
     this.setState("listening");
     this.raf = requestAnimationFrame(this.tick);
+    // Pace the reply's emojis out over the speaking time, so they all get a moment.
+    this.emojiPacer = setInterval(() => {
+      if (this.state !== "speaking" || this.presenting || this.toolCycleTimer || !this.emojiQueue.length) return;
+      const e = this.emojiQueue.shift();
+      if (e) this.transientMorph(emojiTarget(e, 12000), 2800);
+    }, 3000);
     return true;
   }
 
@@ -197,6 +239,7 @@ export class VoiceLoop {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.stopToolCycle();
+    if (this.emojiPacer) clearInterval(this.emojiPacer);
     if (this.morphTimer) clearTimeout(this.morphTimer);
     this.tts.dispose();
     this.vad?.destroy();
@@ -241,6 +284,9 @@ export class VoiceLoop {
       this.tts.stop();
       if (this.turnActive) void chatStore.stop();
       this.assistantBuf = "";
+      this.replyText = "";
+      this.emojiQueue = [];
+      this.emojiSeen = 0;
     }
     this.cb.onCaption("");
     this.cb.onToolLabel(null);
@@ -255,10 +301,17 @@ export class VoiceLoop {
       const said = text?.trim();
       if (!said) return this.backToListening();
       this.assistantBuf = "";
-      this.caption = "";
-      this.cb.onCaption("");
+      this.replyText = "";
+      this.emojiQueue = [];
+      this.emojiSeen = 0;
       this.lastEmotion = "";
-      this.lastEmojiKey = "";
+      this.cb.onCaption("");
+      // React to the user's own tone right away (so the avatar moves before the reply).
+      const userEmo = emotionFromText(said);
+      if (userEmo) {
+        this.lastEmotion = userEmo;
+        this.setMood(userEmo, 0.8);
+      }
       this.turnActive = true;
       this.turnDone = false;
       await chatStore.send([{ type: "text", text: said }], {
@@ -268,7 +321,7 @@ export class VoiceLoop {
       this.turnActive = false;
       this.turnDone = true;
       if (this.assistantBuf.trim()) {
-        this.tts.enqueue(this.assistantBuf);
+        this.tts.enqueue(this.assistantBuf, toneFor(this.lastEmotion || "neutral"));
         this.assistantBuf = "";
       }
       if (!this.tts.active) this.backToListening();
@@ -282,8 +335,8 @@ export class VoiceLoop {
   private onEvent(ev: TurnEvent): void {
     if (ev.type === "text.delta") {
       this.assistantBuf += ev.delta;
-      this.caption = (this.caption + ev.delta).slice(-280);
-      this.cb.onCaption(this.caption);
+      this.replyText += ev.delta;
+      this.collectEmojis();
       this.autoExpress();
       this.maybeSpeakSentence();
     } else if (ev.type === "tool.activity") {
@@ -314,7 +367,16 @@ export class VoiceLoop {
     if (idx >= 20) {
       const chunk = buf.slice(0, idx + 1);
       this.assistantBuf = buf.slice(idx + 1);
-      this.tts.enqueue(chunk);
+      this.tts.enqueue(chunk, toneFor(this.lastEmotion || "neutral"));
+    }
+  }
+
+  /** Queue every NEW emoji the assistant has written, in order (the pacer spreads them). */
+  private collectEmojis(): void {
+    const all = this.replyText.match(EMOJI_RE) ?? [];
+    while (this.emojiSeen < all.length) {
+      const e = all[this.emojiSeen++];
+      if (e) this.emojiQueue.push(e);
     }
   }
 
@@ -325,34 +387,27 @@ export class VoiceLoop {
   }
 
   /**
-   * Drive the avatar from the reply text itself, so it stays alive without the
-   * model having to call `express`: re-read the mood often and shift the gradient
-   * a little, and morph briefly to any emoji the assistant actually wrote.
+   * Drive the gradient from the reply text itself, so the avatar stays alive
+   * without the model having to call `express`: re-read the mood frequently and
+   * shift the gradient toward it (emojis are handled separately by the pacer).
    */
   private autoExpress(): void {
-    if (this.presenting) return;
     const now = Date.now();
-    if (now - this.lastEmotionAt > 1000) {
-      this.lastEmotionAt = now;
-      const emo = emotionFromText(this.assistantBuf.slice(-180));
-      if (emo && emo !== this.lastEmotion) {
-        this.lastEmotion = emo;
-        this.setMood(emo, 0.6); // subtle, not full saturation
-      }
-    }
-    if (!this.toolCycleTimer && now - this.lastEmojiAt > 2600) {
-      const emo = lastEmojiOf(this.assistantBuf);
-      if (emo && emo !== this.lastEmojiKey) {
-        this.lastEmojiKey = emo;
-        this.lastEmojiAt = now;
-        this.transientMorph(emojiTarget(emo, 12000), 3200);
-      }
+    if (now - this.lastEmotionAt < 850) return;
+    this.lastEmotionAt = now;
+    const emo = emotionFromText(this.replyText.slice(-220));
+    if (emo && emo !== this.lastEmotion) {
+      this.lastEmotion = emo;
+      this.setMood(emo, 0.85);
     }
   }
 
   private onExpress(data?: { emotion?: string; emoji?: string }): void {
     if (!data || typeof data !== "object") return;
-    if (data.emotion) this.setMood(data.emotion, 0.78);
+    if (data.emotion) {
+      this.lastEmotion = data.emotion;
+      this.setMood(data.emotion, 0.9);
+    }
     if (data.emoji && !this.presenting) {
       this.transientMorph(emojiTarget(data.emoji, 12000), 4200);
     }
@@ -374,12 +429,16 @@ export class VoiceLoop {
     let i = 0;
     const show = () => {
       if (this.presenting) return;
-      const glyph = list[i % list.length] ?? list[0]!;
+      // Every third beat, sprinkle in a random glyph for variety/surprise.
+      const glyph =
+        i % 3 === 2
+          ? (RANDOM_POOL[Math.floor(Math.random() * RANDOM_POOL.length)] ?? list[0]!)
+          : (list[i % list.length] ?? list[0]!);
       this.avatar.set({ morph: emojiTarget(glyph, 12000, label) });
       i++;
     };
     show();
-    this.toolCycleTimer = setInterval(show, 1500);
+    this.toolCycleTimer = setInterval(show, 2000);
   }
 
   private stopToolCycle(): void {
@@ -404,7 +463,7 @@ export class VoiceLoop {
         this.presenting = false;
         this.avatar.set({ morph: null });
         this.setState(this.tts.active ? "speaking" : this.vad ? "listening" : "idle");
-      }, 4800);
+      }, 9000);
     } catch {
       /* image unreachable — ignore the reveal */
     }

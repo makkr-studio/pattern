@@ -166,13 +166,13 @@ export class Canvas2DAvatar implements Avatar {
     e.bass += (inp.bands.bass - e.bass) * 0.25;
     e.mid += (inp.bands.mid - e.mid) * 0.25;
     e.treble += (inp.bands.treble - e.treble) * 0.25;
-    // Slower colour easing → a smoother hue transition.
-    e.color[0] += (inp.color[0] - e.color[0]) * 0.02;
-    e.color[1] += (inp.color[1] - e.color[1]) * 0.02;
-    e.color[2] += (inp.color[2] - e.color[2]) * 0.02;
-    e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.02;
-    e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.02;
-    e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.02;
+    // Smooth but noticeable colour easing for the hue transitions.
+    e.color[0] += (inp.color[0] - e.color[0]) * 0.03;
+    e.color[1] += (inp.color[1] - e.color[1]) * 0.03;
+    e.color[2] += (inp.color[2] - e.color[2]) * 0.03;
+    e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.03;
+    e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.03;
+    e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.03;
     const morphing = this.morph != null;
     e.morphMix += ((morphing ? 1 : 0) - e.morphMix) * 0.035;
 
