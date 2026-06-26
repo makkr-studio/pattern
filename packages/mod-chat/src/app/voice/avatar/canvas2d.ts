@@ -160,7 +160,7 @@ export class Canvas2DAvatar implements Avatar {
       this.curState = inp.state;
       this.stateMix = 0;
     }
-    this.stateMix += (1 - this.stateMix) * 0.05;
+    this.stateMix += (1 - this.stateMix) * 0.028;
 
     e.level += (inp.level - e.level) * 0.2;
     e.bass += (inp.bands.bass - e.bass) * 0.25;
@@ -174,7 +174,7 @@ export class Canvas2DAvatar implements Avatar {
     e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.02;
     e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.02;
     const morphing = this.morph != null;
-    e.morphMix += ((morphing ? 1 : 0) - e.morphMix) * 0.06;
+    e.morphMix += ((morphing ? 1 : 0) - e.morphMix) * 0.035;
 
     const targetScale = this.curState === "thinking" ? 0.78 : this.curState === "speaking" ? 1.08 : 1;
     e.scale += (targetScale - e.scale) * 0.05;
@@ -184,7 +184,7 @@ export class Canvas2DAvatar implements Avatar {
     const mp = this.morph?.positions;
     const mix = e.morphMix;
     const sm = this.stateMix;
-    const ease = e.morphMix > 0.5 ? 0.16 : 0.1;
+    const ease = e.morphMix > 0.5 ? 0.09 : 0.055;
     const mpCount = mp ? mp.length / 2 : 0;
 
     for (let i = 0; i < N; i++) {
@@ -242,7 +242,7 @@ export class Canvas2DAvatar implements Avatar {
     const mc = this.morph?.colors;
     const mix = e.morphMix;
     const mcCount = mc ? mc.length / 3 : 0;
-    const dotR = Math.max(0.6, Math.min(W, H) * 0.0012);
+    const dotR = Math.max(0.5, Math.min(W, H) * (this.curState === "presenting" ? 0.0007 : 0.0009));
 
     const ang = this.t * 0.05;
     const gcos = Math.cos(ang);

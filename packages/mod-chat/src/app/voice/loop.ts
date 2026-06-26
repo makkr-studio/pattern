@@ -11,14 +11,40 @@ import { createVad, type VadController } from "../lib/vad";
 import { analyserFromStream, rmsOf, bandsOf } from "../lib/audio";
 import type { TurnEvent } from "../lib/types";
 import type { Avatar, AvatarState } from "./avatar";
-import { emotionGradient, emojiTarget, imageTarget } from "./avatar";
+import { emotionGradient, emojiTarget, imageTarget, BRAND_A, BRAND_B, lerpRGB } from "./avatar";
 
-const TOOL_EMOJI: Record<string, string> = {
-  generate_image: "🖼️",
-  research: "🔭",
-  web: "🔎",
-  search: "🔎",
+// While a tool runs, cycle through a few glyphs to convey "working / waiting".
+const TOOL_CYCLE: Record<string, string[]> = {
+  generate_image: ["🎨", "🖌️", "🖼️", "⏳"],
+  research: ["🔭", "📚", "⏳"],
+  web: ["🔎", "🌐", "⏳"],
+  search: ["🔎", "🌐", "⏳"],
 };
+
+// Lightweight client-side emotion detection from the streamed reply, so the avatar
+// shifts color on its own — no model "express" call required.
+const EMOTION_WORDS: Array<[RegExp, string]> = [
+  [/\b(amazing|awesome|incredible|fantastic|wow|excellent|brilliant|love it|thrill|can't wait|let's go)\b/i, "excited"],
+  [/\b(happy|glad|great|wonderful|delighted|cheer|yay|congrat|perfect|nice work)\b/i, "happy"],
+  [/\b(sorry|unfortunately|sad|afraid|regret|apolog|that's tough|bad news)\b/i, "sad"],
+  [/\b(calm|relax|gently|peaceful|no worries|take your time|it's okay|don't worry)\b/i, "calm"],
+  [/\b(interesting|curious|wonder|hmm|fascinat|let me think|good question)\b/i, "curious"],
+  [/\b(careful|caution|warning|important|note that|heads up|be aware)\b/i, "concerned"],
+  [/\b(analy|comput|process|calculat|figuring out|working on|looking into)\b/i, "thinking"],
+];
+function emotionFromText(text: string): string | null {
+  for (const [re, emo] of EMOTION_WORDS) if (re.test(text)) return emo;
+  if ((text.match(/!/g) ?? []).length >= 2) return "excited";
+  if (/\?\s*$/.test(text.trim())) return "curious";
+  return null;
+}
+
+// Last emoji cluster (base pictographic + ZWJ joins + variation/skin modifiers).
+const EMOJI_RE = /\p{Extended_Pictographic}(\u200d\p{Extended_Pictographic}|[\uFE0F\u{1F3FB}-\u{1F3FF}])*/gu;
+function lastEmojiOf(text: string): string | null {
+  const m = text.match(EMOJI_RE);
+  return m && m.length ? (m[m.length - 1] ?? null) : null;
+}
 
 function imageRefOf(v: unknown): { blobId: string } | null {
   if (v && typeof v === "object") {
@@ -123,7 +149,13 @@ export class VoiceLoop {
   private assistantBuf = "";
   private caption = "";
   private morphTimer: ReturnType<typeof setTimeout> | null = null;
+  private toolCycleTimer: ReturnType<typeof setInterval> | null = null;
   private presenting = false;
+  // Client-side auto-expression bookkeeping.
+  private lastEmotion = "";
+  private lastEmotionAt = 0;
+  private lastEmojiKey = "";
+  private lastEmojiAt = 0;
   private micBuf = new Float32Array(1024);
   private micFreq = new Uint8Array(512);
   private ttsBuf = new Float32Array(1024);
@@ -164,6 +196,7 @@ export class VoiceLoop {
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.stopToolCycle();
     if (this.morphTimer) clearTimeout(this.morphTimer);
     this.tts.dispose();
     this.vad?.destroy();
@@ -183,6 +216,7 @@ export class VoiceLoop {
   }
 
   private clearMorph(): void {
+    this.stopToolCycle();
     if (this.morphTimer) {
       clearTimeout(this.morphTimer);
       this.morphTimer = null;
@@ -223,6 +257,8 @@ export class VoiceLoop {
       this.assistantBuf = "";
       this.caption = "";
       this.cb.onCaption("");
+      this.lastEmotion = "";
+      this.lastEmojiKey = "";
       this.turnActive = true;
       this.turnDone = false;
       await chatStore.send([{ type: "text", text: said }], {
@@ -248,6 +284,7 @@ export class VoiceLoop {
       this.assistantBuf += ev.delta;
       this.caption = (this.caption + ev.delta).slice(-280);
       this.cb.onCaption(this.caption);
+      this.autoExpress();
       this.maybeSpeakSentence();
     } else if (ev.type === "tool.activity") {
       if (ev.toolName === "express") {
@@ -258,6 +295,7 @@ export class VoiceLoop {
         const img = imageRefOf(ev.result);
         if (img) void this.onImage(img.blobId);
         else {
+          this.stopToolCycle();
           this.cb.onToolLabel(null);
           if (!this.presenting) this.avatar.set({ morph: null });
         }
@@ -280,28 +318,81 @@ export class VoiceLoop {
     }
   }
 
+  /** Shift the gradient toward a mood, subtly (part-way from the brand gradient). */
+  private setMood(emotion: string, strength: number): void {
+    const [ea, eb] = emotionGradient(emotion);
+    this.avatar.set({ color: lerpRGB(BRAND_A, ea, strength), colorB: lerpRGB(BRAND_B, eb, strength) });
+  }
+
+  /**
+   * Drive the avatar from the reply text itself, so it stays alive without the
+   * model having to call `express`: re-read the mood often and shift the gradient
+   * a little, and morph briefly to any emoji the assistant actually wrote.
+   */
+  private autoExpress(): void {
+    if (this.presenting) return;
+    const now = Date.now();
+    if (now - this.lastEmotionAt > 1000) {
+      this.lastEmotionAt = now;
+      const emo = emotionFromText(this.assistantBuf.slice(-180));
+      if (emo && emo !== this.lastEmotion) {
+        this.lastEmotion = emo;
+        this.setMood(emo, 0.6); // subtle, not full saturation
+      }
+    }
+    if (!this.toolCycleTimer && now - this.lastEmojiAt > 2600) {
+      const emo = lastEmojiOf(this.assistantBuf);
+      if (emo && emo !== this.lastEmojiKey) {
+        this.lastEmojiKey = emo;
+        this.lastEmojiAt = now;
+        this.transientMorph(emojiTarget(emo, 12000), 3200);
+      }
+    }
+  }
+
   private onExpress(data?: { emotion?: string; emoji?: string }): void {
     if (!data || typeof data !== "object") return;
-    if (data.emotion) {
-      const [a, b] = emotionGradient(data.emotion);
-      this.avatar.set({ color: a, colorB: b });
-    }
+    if (data.emotion) this.setMood(data.emotion, 0.78);
     if (data.emoji && !this.presenting) {
-      this.transientMorph(emojiTarget(data.emoji, 9000), 4200);
+      this.transientMorph(emojiTarget(data.emoji, 12000), 4200);
     }
   }
 
   private onToolStart(toolName: string): void {
     this.cb.onToolLabel(toolName);
-    const emoji = TOOL_EMOJI[toolName];
-    if (emoji && !this.presenting) {
-      this.avatar.set({ morph: emojiTarget(emoji, 9000, toolName) });
+    const cycle = TOOL_CYCLE[toolName];
+    if (cycle && !this.presenting) this.startToolCycle(cycle, toolName);
+  }
+
+  /** Cycle through a tool's glyphs while it runs, to convey "working / waiting". */
+  private startToolCycle(list: string[], label: string): void {
+    this.stopToolCycle();
+    if (this.morphTimer) {
+      clearTimeout(this.morphTimer);
+      this.morphTimer = null;
+    }
+    let i = 0;
+    const show = () => {
+      if (this.presenting) return;
+      const glyph = list[i % list.length] ?? list[0]!;
+      this.avatar.set({ morph: emojiTarget(glyph, 12000, label) });
+      i++;
+    };
+    show();
+    this.toolCycleTimer = setInterval(show, 1500);
+  }
+
+  private stopToolCycle(): void {
+    if (this.toolCycleTimer) {
+      clearInterval(this.toolCycleTimer);
+      this.toolCycleTimer = null;
     }
   }
 
   private async onImage(blobId: string): Promise<void> {
+    this.stopToolCycle();
     try {
-      const target = await imageTarget(api.blobs.url(blobId), 13000);
+      const target = await imageTarget(api.blobs.url(blobId), 40000);
       if (this.disposed) return;
       this.presenting = true;
       this.cb.onToolLabel(null);

@@ -78,7 +78,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 /** A generated image as a colored point cloud (the "painting" reveal). */
-export async function imageTarget(url: string, count: number, size = 168): Promise<MorphTarget> {
+export async function imageTarget(url: string, count: number, size = 200): Promise<MorphTarget> {
   const img = await loadImage(url);
   const ar = img.width / Math.max(1, img.height);
   const w = ar >= 1 ? size : Math.max(1, Math.round(size * ar));

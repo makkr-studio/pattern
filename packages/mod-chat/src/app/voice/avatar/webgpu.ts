@@ -109,7 +109,7 @@ fn cs(@builtin(global_invocation_id) gid: vec3u) {
 
   // Exponential easing toward the (moving) target: smooth, monotonic, NO bounce.
   // The stored "velocity" is just this frame's delta, for the render's speed term.
-  let ease = select(0.10, 0.16, u.morphMix > 0.5);
+  let ease = select(0.055, 0.09, u.morphMix > 0.5);
   let delta = (tgt - pos) * ease;
   dyn[i] = vec4f(pos + delta, delta);
 }
@@ -142,6 +142,14 @@ fn hash(p: vec2f) -> f32 {
   return fract(sin(dot(p, vec2f(12.9898, 78.233))) * 43758.5453);
 }
 
+// Rotate an RGB colour around the grey axis (a cheap hue shift) — used for a tiny
+// always-on ambient drift so the gradient is gently alive.
+fn hueRotate(c: vec3f, a: f32) -> vec3f {
+  let k = vec3f(0.57735027);
+  let ca = cos(a);
+  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
+}
+
 @vertex
 fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut {
   var corners = array<vec2f, 6>(
@@ -169,6 +177,9 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let gdir = vec2f(cos(ga), sin(ga));
   let gt = clamp(0.5 + 0.62 * dot(p, gdir) + (rnd - 0.5) * 0.12, 0.0, 1.0);
   var col = mix(u.colorA.xyz, u.colorB.xyz, gt);
+  // Subtle always-on ambient hue drift (a few degrees, non-repeating) so even a
+  // resting cloud feels alive. Not applied to a morph's own pixels below.
+  col = hueRotate(col, sin(u.time * 0.06) * 0.05 + sin(u.time * 0.017) * 0.05);
   if (u.useMorphColor > 0.5 && u.morphMix > 0.01) {
     // A morph's own colours (emoji / image pixels) take over as it assembles.
     col = mix(col, mcol[ii].xyz, u.morphMix * 0.96);
@@ -403,7 +414,7 @@ class WebGPUAvatar implements Avatar {
       this.curState = this.inputs.state;
       this.stateMix = 0;
     }
-    this.stateMix += (1 - this.stateMix) * 0.05;
+    this.stateMix += (1 - this.stateMix) * 0.028;
 
     const e = this.eased;
     const inp = this.inputs;
@@ -418,7 +429,7 @@ class WebGPUAvatar implements Avatar {
     e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.02;
     e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.02;
     e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.02;
-    e.morphMix += ((this.morph ? 1 : 0) - e.morphMix) * 0.06;
+    e.morphMix += ((this.morph ? 1 : 0) - e.morphMix) * 0.035;
     const targetScale = this.curState === "thinking" ? 0.78 : this.curState === "speaking" ? 1.08 : 1;
     e.scale += (targetScale - e.scale) * 0.05;
     this.t += 0.016;
@@ -435,7 +446,8 @@ class WebGPUAvatar implements Avatar {
     u[8] = e.morphMix;
     u[9] = e.scale;
     u[10] = STATE_ID[this.curState];
-    u[11] = 0.0055; // dotSize (world units) — small crisp dot
+    // Small crisp dot; finer still while presenting a picture (more, smaller dots).
+    u[11] = this.curState === "presenting" ? 0.0030 : 0.0042;
     u[12] = N;
     u[13] = this.useMorphColor;
     u[14] = STATE_ID[this.prevState];
