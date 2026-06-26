@@ -12,6 +12,7 @@ import { DEFAULT_INPUTS } from "./types";
 
 const N = 40000;
 const U_FLOATS = 20; // 80 bytes — must match struct U below
+const HDR_FORMAT: GPUTextureFormat = "rgba16float"; // float accumulation target for the tone-map
 
 const STATE_ID: Record<AvatarState, number> = { idle: 0, listening: 1, thinking: 2, speaking: 3, presenting: 3 };
 
@@ -40,13 +41,13 @@ fn posture(i: u32, t: f32) -> vec2f {
   var spin: f32;
   let st = u.stateId;
   if (st < 0.5) {
-    sc = 1.0 + sin(t * 0.5 + s * 6.0) * 0.04; spin = 0.022;
+    sc = 1.0 + sin(t * 0.5 + s * 6.0) * 0.04; spin = 0.02;
   } else if (st < 1.5) {
-    sc = 1.06 + lvl * 0.55 + sin(t * 1.3 + a0 * 2.0) * 0.03; spin = 0.04;
+    sc = 1.02 + lvl * 0.28 + sin(t * 1.3 + a0 * 2.0) * 0.03; spin = 0.035;
   } else if (st < 2.5) {
-    sc = 0.6 + sin(t * 1.6 + s * 8.0) * 0.03; spin = 0.5;
+    sc = 0.62 + sin(t * 1.6 + s * 8.0) * 0.03; spin = 0.42;
   } else {
-    sc = 1.04 + lvl * 0.7 + u.bass * 0.3 + sin(t * 2.4 + a0 * 3.0) * u.treble * 0.1; spin = 0.05;
+    sc = 1.0 + lvl * 0.34 + u.bass * 0.16 + sin(t * 2.4 + a0 * 3.0) * u.treble * 0.08; spin = 0.045;
   }
   let r = rr * 0.72 * sc;
   let a = a0 + spin * t;
@@ -68,9 +69,12 @@ fn cs(@builtin(global_invocation_id) gid: vec3u) {
     tgt = base + (m - base) * u.morphMix;
   }
   let s = cst[i].x;
-  let nx = sin(pos.y * 3.0 + t * 0.7 + s * 10.0);
-  let ny = cos(pos.x * 3.0 - t * 0.6 + s * 10.0);
-  let turb = 0.0009 + u.level * 0.004 + u.treble * 0.003;
+  // Higher-frequency, per-particle-decorrelated curl → fine smoke shimmer rather
+  // than one coherent spiral lane carving a dark crescent.
+  let ph = s * 40.0;
+  let nx = sin(pos.y * 9.0 + t * 0.7 + ph) + 0.5 * sin(pos.x * 19.0 - t * 0.5 + ph);
+  let ny = cos(pos.x * 9.0 - t * 0.6 + ph) + 0.5 * cos(pos.y * 19.0 + t * 0.4 + ph);
+  let turb = 0.0007 + u.level * 0.004 + u.treble * 0.003;
   var k = 0.05;
   if (u.morphMix > 0.001) { k = 0.09; }
   vel = vel * 0.9 + (tgt - pos) * k + vec2f(nx, ny) * turb;
@@ -109,9 +113,12 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let p = d.xy;
   let vel = d.zw;
   let s = cst[ii].x;
-  // A pseudo-depth per particle gives the cloud volume: nearer motes are larger
-  // and brighter, farther ones recede into haze.
-  let depth = 0.55 + 0.45 * sin(s * 12.9898 + 1.7);
+  let rr = cst[ii].y;
+  // Pseudo-depth per particle (gives the cloud volume): decorrelate from the
+  // angle (s) by mixing in the radius (rr), so brightness does not band around
+  // the circle. NOTE: never sin() a large value here (f32(ii) etc.) — Metal
+  // returns NaN for huge arguments, which collapses every quad to nothing.
+  let depth = 0.4 + 0.6 * fract(s * 11.0 + rr * 7.0);
   // Aspect-correct fit: scale the longer axis down so circles stay circular.
   let asp = vec2f(min(1.0, u.res.y / u.res.x), min(1.0, u.res.x / u.res.y));
   let size = u.dotSize * (0.5 + 1.1 * depth);
@@ -134,12 +141,44 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
 
 @fragment
 fn fs(frag: VSOut) -> @location(0) vec4f {
-  // Soft gaussian mote + a low additive alpha → smoke that builds gradually
-  // and keeps its color instead of clipping to white.
+  // Soft gaussian mote. Drawn additively into an HDR target, so it may exceed 1;
+  // the tone-map pass rolls the bright core off to a warm glow (no hard white).
   let r2 = dot(frag.uv, frag.uv);
   let g = exp(-r2 * 3.6);
-  let alpha = g * 0.075;
+  let alpha = g * 0.05;
   return vec4f(frag.color * frag.bright * alpha, alpha);
+}
+`;
+
+// Tone-map pass: sample the HDR accumulation and compress with Reinhard (hue is
+// preserved, highlights roll off softly instead of clipping to white), over a
+// subtle neon-dark background.
+const TONEMAP_WGSL = /* wgsl */ `
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+
+struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VOut {
+  var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  let xy = p[vi];
+  var o: VOut;
+  o.pos = vec4f(xy, 0.0, 1.0);
+  o.uv = vec2f(xy.x, -xy.y) * 0.5 + 0.5;
+  return o;
+}
+
+@fragment
+fn fs(i: VOut) -> @location(0) vec4f {
+  let hdr = textureSample(tex, samp, i.uv).rgb;
+  // Tone-map the LUMINANCE and keep the chroma, so the bright core stays a
+  // saturated neon glow instead of desaturating to cream.
+  let l = max(dot(hdr, vec3f(0.2126, 0.7152, 0.0722)), 0.0001);
+  let lt = (l * 1.1) / (1.0 + l * 1.1);
+  let mapped = min(hdr * (lt / l), vec3f(1.0));
+  let bg = vec3f(0.012, 0.011, 0.018); // neon-dark floor
+  return vec4f(mapped + bg, 1.0);
 }
 `;
 
@@ -167,9 +206,11 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   const cst0 = new Float32Array(N * 2);
   for (let i = 0; i < N; i++) {
     const seed = Math.random();
-    // Gaussian radius (Box-Muller) → a soft cloud with no hard edge.
-    const gauss = Math.sqrt(-2 * Math.log(1 - Math.random()));
-    const rank = Math.min(1.4, gauss * 0.42);
+    // Projected unit sphere: a point uniform on a sphere, flattened to 2D. The
+    // radial density is highest at the rim and soft (but never empty) toward the
+    // centre → a glassy neon orb, no hot core, no hollow donut.
+    const ct = 1 - 2 * Math.random(); // cos(theta), uniform on the sphere
+    const rank = Math.sqrt(Math.max(0, 1 - ct * ct));
     cst0[i * 2] = seed;
     cst0[i * 2 + 1] = rank;
     const a = seed * Math.PI * 2;
@@ -192,7 +233,7 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
       entryPoint: "fs",
       targets: [
         {
-          format,
+          format: HDR_FORMAT,
           blend: {
             color: { srcFactor: "one", dstFactor: "one", operation: "add" },
             alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
@@ -202,6 +243,15 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
     },
     primitive: { topology: "triangle-list" },
   });
+
+  const tonemapModule = device.createShaderModule({ code: TONEMAP_WGSL });
+  const tonemapPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: { module: tonemapModule, entryPoint: "vs" },
+    fragment: { module: tonemapModule, entryPoint: "fs", targets: [{ format }] },
+    primitive: { topology: "triangle-list" },
+  });
+  const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 
   const err = await device.popErrorScope();
   if (err) {
@@ -241,6 +291,8 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   return new WebGPUAvatar(device, context, format, {
     computePipeline,
     renderPipeline,
+    tonemapPipeline,
+    sampler,
     computeBind,
     renderBind,
     uniformBuf,
@@ -252,6 +304,8 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
 interface GpuRes {
   computePipeline: GPUComputePipeline;
   renderPipeline: GPURenderPipeline;
+  tonemapPipeline: GPURenderPipeline;
+  sampler: GPUSampler;
   computeBind: GPUBindGroup;
   renderBind: GPUBindGroup;
   uniformBuf: GPUBuffer;
@@ -272,6 +326,9 @@ class WebGPUAvatar implements Avatar {
   private w = 1;
   private h = 1;
   private disposed = false;
+  private hdrTex: GPUTexture | null = null;
+  private hdrView: GPUTextureView | null = null;
+  private tonemapBind: GPUBindGroup | null = null;
 
   constructor(
     private device: GPUDevice,
@@ -293,11 +350,27 @@ class WebGPUAvatar implements Avatar {
     this.h = Math.max(1, Math.floor(h * dpr));
     (this.context.canvas as HTMLCanvasElement).width = this.w;
     (this.context.canvas as HTMLCanvasElement).height = this.h;
+    // (Re)create the HDR accumulation target + its tone-map bind group.
+    this.hdrTex?.destroy();
+    this.hdrTex = this.device.createTexture({
+      size: [this.w, this.h],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.hdrView = this.hdrTex.createView();
+    this.tonemapBind = this.device.createBindGroup({
+      layout: this.res.tonemapPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.res.sampler },
+        { binding: 1, resource: this.hdrView },
+      ],
+    });
   }
 
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.hdrTex?.destroy();
     this.device.destroy?.();
   }
 
@@ -331,6 +404,7 @@ class WebGPUAvatar implements Avatar {
   private loop(): void {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
+    if (!this.hdrView || !this.tonemapBind) return; // not sized yet
 
     if (this.morph !== this.lastMorph) {
       this.lastMorph = this.morph;
@@ -364,7 +438,7 @@ class WebGPUAvatar implements Avatar {
     u[8] = e.morphMix;
     u[9] = e.scale;
     u[10] = STATE_ID[inp.state];
-    u[11] = 0.055; // dotSize (world units) — large + soft for smoke
+    u[11] = 0.042; // dotSize (world units) — soft mote size
     u[12] = N;
     u[13] = this.useMorphColor;
     u[16] = e.color[0];
@@ -380,14 +454,25 @@ class WebGPUAvatar implements Avatar {
     cp.dispatchWorkgroups(Math.ceil(N / 64));
     cp.end();
 
-    const view = this.context.getCurrentTexture().createView();
+    // Pass 1: accumulate the particles additively into the HDR target.
     const rp = enc.beginRenderPass({
-      colorAttachments: [{ view, clearValue: { r: 0.016, g: 0.014, b: 0.022, a: 1 }, loadOp: "clear", storeOp: "store" }],
+      colorAttachments: [{ view: this.hdrView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
     });
     rp.setPipeline(this.res.renderPipeline);
     rp.setBindGroup(0, this.res.renderBind);
     rp.draw(6, N);
     rp.end();
+
+    // Pass 2: tone-map the HDR target onto the canvas.
+    const canvasView = this.context.getCurrentTexture().createView();
+    const tp = enc.beginRenderPass({
+      colorAttachments: [{ view: canvasView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
+    });
+    tp.setPipeline(this.res.tonemapPipeline);
+    tp.setBindGroup(0, this.tonemapBind);
+    tp.draw(3, 1);
+    tp.end();
+
     this.device.queue.submit([enc.finish()]);
   }
 }

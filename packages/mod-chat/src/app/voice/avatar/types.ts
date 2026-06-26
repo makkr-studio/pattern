@@ -39,6 +39,6 @@ export const DEFAULT_INPUTS: AvatarInputs = {
   state: "idle",
   level: 0,
   bands: { bass: 0, mid: 0, treble: 0 },
-  color: [0.78, 0.42, 0.26],
+  color: [0.55, 0.42, 1.0],
   morph: null,
 };

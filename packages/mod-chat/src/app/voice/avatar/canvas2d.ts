@@ -49,9 +49,10 @@ export class Canvas2DAvatar implements Avatar {
     this.ctx = ctx;
     for (let i = 0; i < N; i++) {
       const seed = Math.random();
-      // Gaussian radius (Box-Muller) → a soft cloud with no hard edge.
-      const gauss = Math.sqrt(-2 * Math.log(1 - Math.random()));
-      const rank = Math.min(1.4, gauss * 0.42);
+      // Projected unit sphere → a glassy orb (rim-dense, soft centre), matching
+      // the WebGPU renderer.
+      const ct = 1 - 2 * Math.random();
+      const rank = Math.sqrt(Math.max(0, 1 - ct * ct));
       this.seed[i] = seed;
       this.rank[i] = rank;
       const a = seed * Math.PI * 2;

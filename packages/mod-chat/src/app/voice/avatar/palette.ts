@@ -2,7 +2,7 @@
 
 import type { RGB } from "./types";
 
-export const BRAND: RGB = [0.82, 0.42, 0.24];
+export const BRAND: RGB = [0.55, 0.42, 1.0];
 
 // Keyword → rgb (0..1). Matched by substring so "very excited" still lands.
 const MAP: Array<[string, RGB]> = [
