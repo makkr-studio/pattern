@@ -20,8 +20,10 @@ export interface AvatarInputs {
   level: number;
   /** Coarse FFT bands 0..1 for richer reactivity. */
   bands: { bass: number; mid: number; treble: number };
-  /** Target palette color (rgb 0..1) — the avatar eases toward it. */
+  /** Gradient stop A — the primary palette color (rgb 0..1); the avatar eases toward it. */
   color: RGB;
+  /** Gradient stop B — the cloud blends A→B across itself for a multi-hue look. */
+  colorB: RGB;
   /** When set, particles morph into this shape; cleared → back to the posture. */
   morph: MorphTarget | null;
 }
@@ -39,6 +41,7 @@ export const DEFAULT_INPUTS: AvatarInputs = {
   state: "idle",
   level: 0,
   bands: { bass: 0, mid: 0, treble: 0 },
-  color: [0.55, 0.42, 1.0],
+  color: [0.62, 0.36, 1.0], // electric violet
+  colorB: [0.25, 0.92, 0.98], // aqua
   morph: null,
 };

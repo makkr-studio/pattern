@@ -1,30 +1,44 @@
-/** Emotion → color. Neutral sits on the brand terracotta; tones shift the hue. */
+/**
+ * Emotion → color gradient. Neutral is a neon violet→aqua sweep; each emotion
+ * shifts both stops so the whole cloud re-hues, not just one flat tone.
+ */
 
 import type { RGB } from "./types";
 
-export const BRAND: RGB = [0.55, 0.42, 1.0];
+// Neutral gradient stops (electric violet → aqua). Retune these to rebrand the
+// avatar's resting palette.
+export const BRAND_A: RGB = [0.62, 0.36, 1.0];
+export const BRAND_B: RGB = [0.25, 0.92, 0.98];
+export const BRAND: RGB = BRAND_A; // back-compat single-color alias
 
-// Keyword → rgb (0..1). Matched by substring so "very excited" still lands.
-const MAP: Array<[string, RGB]> = [
-  ["excited", [0.98, 0.45, 0.55]],
-  ["happy", [0.97, 0.64, 0.26]],
-  ["joy", [0.97, 0.64, 0.26]],
-  ["playful", [0.86, 0.46, 0.88]],
-  ["curious", [0.62, 0.5, 0.95]],
-  ["thinking", [0.42, 0.62, 0.96]],
-  ["focused", [0.42, 0.62, 0.96]],
-  ["calm", [0.36, 0.8, 0.78]],
-  ["concerned", [0.95, 0.78, 0.35]],
-  ["sad", [0.42, 0.54, 0.86]],
-  ["angry", [0.96, 0.34, 0.3]],
-  ["neutral", BRAND],
+// Keyword → [stopA, stopB] (rgb 0..1). Matched by substring so "very excited"
+// still lands. Each pair is two related hues that read as one mood.
+const GRAD: Array<[string, [RGB, RGB]]> = [
+  ["excited", [[1.0, 0.42, 0.62], [1.0, 0.78, 0.34]]],
+  ["happy", [[1.0, 0.6, 0.3], [1.0, 0.86, 0.42]]],
+  ["joy", [[1.0, 0.6, 0.3], [1.0, 0.86, 0.42]]],
+  ["playful", [[0.92, 0.4, 0.95], [0.45, 0.7, 1.0]]],
+  ["curious", [[0.62, 0.45, 1.0], [0.35, 0.92, 0.95]]],
+  ["thinking", [[0.4, 0.55, 1.0], [0.45, 0.92, 0.95]]],
+  ["focused", [[0.4, 0.55, 1.0], [0.45, 0.92, 0.95]]],
+  ["calm", [[0.3, 0.8, 0.85], [0.45, 0.65, 1.0]]],
+  ["concerned", [[0.95, 0.78, 0.35], [0.95, 0.5, 0.4]]],
+  ["sad", [[0.35, 0.5, 0.9], [0.45, 0.7, 1.0]]],
+  ["angry", [[1.0, 0.32, 0.3], [1.0, 0.6, 0.25]]],
+  ["neutral", [BRAND_A, BRAND_B]],
 ];
 
-export function emotionColor(emotion?: string | null): RGB {
-  if (!emotion) return BRAND;
+/** The two-stop gradient for an emotion (defaults to the neutral brand sweep). */
+export function emotionGradient(emotion?: string | null): [RGB, RGB] {
+  if (!emotion) return [BRAND_A, BRAND_B];
   const key = emotion.toLowerCase();
-  for (const [k, rgb] of MAP) if (key.includes(k)) return rgb;
-  return BRAND;
+  for (const [k, g] of GRAD) if (key.includes(k)) return g;
+  return [BRAND_A, BRAND_B];
+}
+
+/** The primary (stop A) color for an emotion — kept for callers wanting one tone. */
+export function emotionColor(emotion?: string | null): RGB {
+  return emotionGradient(emotion)[0];
 }
 
 export function lerpRGB(a: RGB, b: RGB, t: number): RGB {

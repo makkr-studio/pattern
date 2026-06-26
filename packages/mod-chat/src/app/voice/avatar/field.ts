@@ -52,7 +52,7 @@ function sampleCanvas(canvas: HTMLCanvasElement, count: number, withColor: boole
 }
 
 /** An emoji silhouette as a point cloud (single color). */
-export function emojiTarget(emoji: string, count: number, label?: string, size = 168): MorphTarget {
+export function emojiTarget(emoji: string, count: number, label?: string, size = 240): MorphTarget {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d");
@@ -77,7 +77,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 /** A generated image as a colored point cloud (the "painting" reveal). */
-export async function imageTarget(url: string, count: number, size = 110): Promise<MorphTarget> {
+export async function imageTarget(url: string, count: number, size = 168): Promise<MorphTarget> {
   const img = await loadImage(url);
   const ar = img.width / Math.max(1, img.height);
   const w = ar >= 1 ? size : Math.max(1, Math.round(size * ar));

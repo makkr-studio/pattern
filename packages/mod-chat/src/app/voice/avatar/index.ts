@@ -4,7 +4,7 @@ import type { Avatar } from "./types";
 import { Canvas2DAvatar } from "./canvas2d";
 
 export type { Avatar, AvatarState, AvatarInputs, MorphTarget, RGB } from "./types";
-export { emotionColor, lerpRGB, BRAND } from "./palette";
+export { emotionColor, emotionGradient, lerpRGB, BRAND, BRAND_A, BRAND_B } from "./palette";
 export { emojiTarget, imageTarget } from "./field";
 
 export async function createAvatar(canvas: HTMLCanvasElement): Promise<Avatar> {

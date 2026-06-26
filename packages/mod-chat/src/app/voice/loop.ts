@@ -11,7 +11,7 @@ import { createVad, type VadController } from "../lib/vad";
 import { analyserFromStream, rmsOf, bandsOf } from "../lib/audio";
 import type { TurnEvent } from "../lib/types";
 import type { Avatar, AvatarState } from "./avatar";
-import { emotionColor, emojiTarget, imageTarget } from "./avatar";
+import { emotionGradient, emojiTarget, imageTarget } from "./avatar";
 
 const TOOL_EMOJI: Record<string, string> = {
   generate_image: "🖼️",
@@ -282,9 +282,12 @@ export class VoiceLoop {
 
   private onExpress(data?: { emotion?: string; emoji?: string }): void {
     if (!data || typeof data !== "object") return;
-    if (data.emotion) this.avatar.set({ color: emotionColor(data.emotion) });
+    if (data.emotion) {
+      const [a, b] = emotionGradient(data.emotion);
+      this.avatar.set({ color: a, colorB: b });
+    }
     if (data.emoji && !this.presenting) {
-      this.transientMorph(emojiTarget(data.emoji, 2200), 2600);
+      this.transientMorph(emojiTarget(data.emoji, 9000), 4200);
     }
   }
 
@@ -292,13 +295,13 @@ export class VoiceLoop {
     this.cb.onToolLabel(toolName);
     const emoji = TOOL_EMOJI[toolName];
     if (emoji && !this.presenting) {
-      this.avatar.set({ morph: emojiTarget(emoji, 2200, toolName) });
+      this.avatar.set({ morph: emojiTarget(emoji, 9000, toolName) });
     }
   }
 
   private async onImage(blobId: string): Promise<void> {
     try {
-      const target = await imageTarget(api.blobs.url(blobId), 2800);
+      const target = await imageTarget(api.blobs.url(blobId), 13000);
       if (this.disposed) return;
       this.presenting = true;
       this.cb.onToolLabel(null);
