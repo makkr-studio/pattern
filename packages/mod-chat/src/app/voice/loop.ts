@@ -70,6 +70,36 @@ function toneFor(emotion: string): string {
 // A pool of fun glyphs to sprinkle into a tool's emoji cycle for variety.
 const RANDOM_POOL = ["\u2728", "\uD83C\uDF08", "\uD83E\uDE84", "\uD83D\uDCAB", "\uD83C\uDF87", "\uD83C\uDF1F", "\uD83D\uDD2E", "\uD83C\uDF86"];
 
+// Where to cut the next short subtitle phrase from the streaming buffer (0 = wait
+// for more). Prefer a sentence end or newline WITHIN a window (so a distant period
+// can't pull a whole paragraph); otherwise, for long punctuation-free runs (common
+// in lists), break at a clause separator, then a word boundary, near the cap.
+const SUB_CAP = 90;
+const CLAUSE_SEPS: Array<[string, number]> = [
+  [": ", 2],
+  ["; ", 2],
+  [" - ", 3],
+  [" \u2013 ", 3],
+  [", ", 2],
+];
+function phraseCut(buf: string): number {
+  const win = buf.slice(0, SUB_CAP + 28);
+  const s = win.search(/[.!?\u2026]\s/);
+  if (s >= 0) return s + 1;
+  const nl = win.indexOf("\n");
+  if (nl >= 0) return nl + 1;
+  if (buf.length < SUB_CAP) return 0;
+  const head = buf.slice(0, SUB_CAP);
+  let best = -1;
+  for (const [sep, off] of CLAUSE_SEPS) {
+    const k = head.lastIndexOf(sep);
+    if (k >= 24) best = Math.max(best, k + off);
+  }
+  if (best >= 0) return best;
+  const sp = head.lastIndexOf(" ");
+  return sp >= 24 ? sp + 1 : SUB_CAP;
+}
+
 function imageRefOf(v: unknown): { blobId: string } | null {
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
@@ -363,15 +393,14 @@ export class VoiceLoop {
   }
 
   private maybeSpeakSentence(): void {
-    const buf = this.assistantBuf;
-    let idx = -1;
-    for (const sep of [". ", "! ", "? ", ".\n", "!\n", "?\n", "…"]) {
-      idx = Math.max(idx, buf.lastIndexOf(sep) + (buf.lastIndexOf(sep) >= 0 ? sep.length - 1 : 0));
-    }
-    if (idx >= 20) {
-      const chunk = buf.slice(0, idx + 1);
-      this.assistantBuf = buf.slice(idx + 1);
-      this.tts.enqueue(chunk, toneFor(this.lastEmotion || "neutral"));
+    // Flush short phrases as soon as they are ready, so the audio and the synced
+    // subtitle advance line by line instead of dumping a whole paragraph at once.
+    for (;;) {
+      const cut = phraseCut(this.assistantBuf);
+      if (cut <= 0) break;
+      const chunk = this.assistantBuf.slice(0, cut).trim();
+      this.assistantBuf = this.assistantBuf.slice(cut);
+      if (/[\p{L}\p{N}]/u.test(chunk)) this.tts.enqueue(chunk, toneFor(this.lastEmotion || "neutral"));
     }
   }
 

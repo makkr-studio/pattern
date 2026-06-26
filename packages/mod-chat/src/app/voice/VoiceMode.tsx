@@ -141,8 +141,17 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-6 pb-12">
         <div
-          className="mx-auto max-w-2xl text-center text-[18px] leading-relaxed transition-opacity duration-500"
-          style={{ color: "rgba(255,255,255,0.9)", textShadow: "0 2px 22px rgba(0,0,0,0.7)", opacity: capOn ? 1 : 0 }}
+          className="mx-auto max-w-xl text-center text-[17px] leading-relaxed transition-opacity duration-500"
+          style={{
+            color: "rgba(255,255,255,0.92)",
+            textShadow: "0 2px 22px rgba(0,0,0,0.85)",
+            opacity: capOn ? 1 : 0,
+            // Subtitle area never grows past two lines, however long a chunk is.
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
         >
           {caption}
         </div>
