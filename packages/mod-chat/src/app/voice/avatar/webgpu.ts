@@ -1,10 +1,11 @@
 /// <reference types="@webgpu/types" />
 /**
- * WebGPU particle avatar (the showcase renderer). A compute pass springs ~40k
+ * WebGPU particle avatar (the showcase renderer). A compute pass eases ~40k
  * particles toward a per-state posture (computed in-shader) blended with an
- * uploaded morph target, with audio-driven curl turbulence; a render pass draws
- * them as additive glowing point sprites. Creation captures WGSL/validation
- * errors and throws, so the factory falls back to Canvas2D on any problem.
+ * uploaded morph target; a render pass draws them as additive point sprites,
+ * tone-mapped onto the canvas. No bloom — the particles are meant to read crisp.
+ * Creation captures WGSL/validation errors and throws, so the factory falls back
+ * to Canvas2D on any problem.
  */
 
 import type { Avatar, AvatarInputs, AvatarState, MorphTarget, RGB } from "./types";
@@ -21,7 +22,7 @@ struct U {
   res: vec2f, time: f32, dt: f32,
   level: f32, bass: f32, mid: f32, treble: f32,
   morphMix: f32, scale: f32, stateId: f32, dotSize: f32,
-  count: f32, useMorphColor: f32, pad0: f32, pad1: f32,
+  count: f32, useMorphColor: f32, prevStateId: f32, stateMix: f32,
   colorA: vec4f,
   colorB: vec4f,
 };
@@ -32,46 +33,56 @@ struct U {
 
 const TAU = 6.2831853;
 
-// Per-state posture. The orb breathes when idle, leans out when listening,
-// condenses and spins fast when thinking, and STRETCHES WIDE + blooms with the
-// voice when speaking (ex/ey are the horizontal/vertical aspect of the form).
-fn posture(i: u32, t: f32) -> vec2f {
-  let s = cst[i].x;
-  let rr = cst[i].y;
-  let a0 = s * TAU;
+fn h11(a: f32, b: f32) -> f32 { return fract(sin(a * 12.9898 + b * 78.233) * 43758.5453); }
+
+// Per-particle staggered ramp: each particle crosses its window on its own beat
+// (seeded by ph), so a shape forms / a state changes like sand flowing into place
+// rather than every point moving at once. Reverses cleanly on the way out.
+fn stagger(m: f32, ph: f32) -> f32 {
+  let win = clamp((m - ph * 0.55) / 0.45, 0.0, 1.0);
+  return win * win * (3.0 - 2.0 * win);
+}
+
+// Per-particle drift: a small elliptical orbit around the home spot, phase/speed
+// hashed PER PARTICLE (decorrelated from position) so neighbours move out of phase
+// and the cloud shimmers without coherent lanes. Grows with the voice.
+fn drift(s: f32, rr: f32, t: f32, amp: f32) -> vec2f {
+  let a1 = fract(s * 37.0 + rr * 101.0);
+  let a2 = fract(s * 17.0 + rr * 53.0);
+  let w = 0.5 + a1 * 1.2;
+  return vec2f(cos(t * w + a1 * TAU), sin(t * w * 0.92 + a2 * TAU)) * amp;
+}
+
+// Per-state posture for one stateId (so transitions can blend two of them). idle
+// breathes; listening leans out; thinking condenses + spins; speaking spreads into
+// a GAUSSIAN BELL across the full width, its height pulsing with the voice.
+fn postureFor(s: f32, rr: f32, t: f32, st: f32) -> vec2f {
   let lvl = u.level;
+  if (st >= 2.5) {
+    // Gaussian bell: x fills left→right; the vertical band tapers from a tall
+    // centre to thin edges, and the whole envelope rises with the voice.
+    let span = 2.0;
+    let x = (s - 0.5) * 2.0 * span;
+    let sigma = 0.72;
+    let amp = 0.26 + lvl * 0.62 + u.bass * 0.22;
+    let env = 0.04 + amp * exp(-(x * x) / (2.0 * sigma * sigma));
+    let hv = h11(rr, s);
+    return vec2f(x, (hv - 0.5) * 2.0 * env);
+  }
+  let a0 = s * TAU;
   var sc: f32;
   var spin: f32;
   var ex: f32 = 1.0;
-  var ey: f32 = 1.0;
-  let st = u.stateId;
   if (st < 0.5) {                 // idle
     sc = 1.0 + sin(t * 0.5 + s * 6.0) * 0.04; spin = 0.006;
-  } else if (st < 1.5) {          // listening — gentle outward lean to the mic
-    sc = 1.02 + lvl * 0.26 + sin(t * 1.3 + a0 * 2.0) * 0.03; spin = 0.012;
-    ex = 1.0 + lvl * 0.10;
-  } else if (st < 2.5) {          // thinking — tight, fast-spinning core
+  } else if (st < 1.5) {          // listening
+    sc = 1.02 + lvl * 0.26 + sin(t * 1.3 + a0 * 2.0) * 0.03; spin = 0.012; ex = 1.0 + lvl * 0.10;
+  } else {                        // thinking
     sc = 0.60 + sin(t * 1.6 + s * 8.0) * 0.03; spin = 0.40;
-  } else {                        // speaking / presenting — wide horizontal bloom
-    sc = 0.96 + lvl * 0.22 + u.bass * 0.12;
-    spin = 0.014;
-    ex = 1.30 + lvl * 0.55 + u.bass * 0.20;
-    ey = 0.80 - lvl * 0.05;
   }
   let r = rr * 0.72 * sc;
   let a = a0 + spin * t;
-  return vec2f(cos(a) * r * ex, sin(a) * r * ey);
-}
-
-// Per-particle drift: a small elliptical orbit around the home spot, with a
-// phase/speed hashed PER PARTICLE (decorrelated from spatial position). Neighbours
-// move out of phase, so the cloud stays full and just shimmers — no coherent
-// streamlines carving black lanes. Grows with the voice for a living bloom.
-fn drift(s: f32, rr: f32, t: f32, amp: f32) -> vec2f {
-  let h1 = fract(s * 37.0 + rr * 101.0);
-  let h2 = fract(s * 17.0 + rr * 53.0);
-  let w = 0.5 + h1 * 1.2;
-  return vec2f(cos(t * w + h1 * TAU), sin(t * w * 0.92 + h2 * TAU)) * amp;
+  return vec2f(cos(a) * r * ex, sin(a) * r);
 }
 
 @compute @workgroup_size(64)
@@ -79,33 +90,31 @@ fn cs(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i >= u32(u.count)) { return; }
   let t = u.time;
-  let d = dyn[i];
-  let pos = d.xy;
-  var vel = d.zw;
+  let pos = dyn[i].xy;
   let s = cst[i].x;
   let rr = cst[i].y;
+  let ph = fract(s * 7.0 + rr * 3.0);
+
+  // Staggered state transition: blend the previous posture into the current one.
+  let lmState = stagger(u.stateMix, ph);
+  let basePosture = mix(postureFor(s, rr, t, u.prevStateId), postureFor(s, rr, t, u.stateId), lmState);
 
   let amp = 0.016 + u.level * 0.06 + u.treble * 0.05;
   let dr = drift(s, rr, t, amp);
-  let base = posture(i, t) + dr;
+  let base = basePosture + dr;
+
   var tgt = base;
   if (u.morphMix > 0.001) {
-    // Per-particle staggered assembly: each particle crosses into the shape on
-    // its own seeded beat, so the morph flows in like sand rather than every
-    // point snapping at once. A little drift rides along so the held shape still
-    // breathes (never fully fixed). The window reverses cleanly on dissolve.
-    let ph = fract(s * 7.0 + rr * 3.0);
-    let win = clamp((u.morphMix - ph * 0.55) / 0.45, 0.0, 1.0);
-    let lm = win * win * (3.0 - 2.0 * win); // smoothstep
-    let m = morph[i] + dr * 0.35;
-    tgt = mix(base, m, lm);
+    // Staggered morph assembly; a little drift rides along so the shape breathes.
+    let lmM = stagger(u.morphMix, ph);
+    tgt = mix(base, morph[i] + dr * 0.35, lmM);
   }
 
-  // Hard-damped pull to the (drifting) target: tracks closely so the fill stays
-  // even, with no elastic overshoot. Tighter still while morphing so shapes read.
-  let attract = select(0.11, 0.17, u.morphMix > 0.5);
-  vel = vel * 0.78 + (tgt - pos) * attract;
-  dyn[i] = vec4f(pos + vel, vel);
+  // Exponential easing toward the (moving) target: smooth, monotonic, NO bounce.
+  // The stored "velocity" is just this frame's delta, for the render's speed term.
+  let ease = select(0.10, 0.16, u.morphMix > 0.5);
+  let delta = (tgt - pos) * ease;
+  dyn[i] = vec4f(pos + delta, delta);
 }
 `;
 
@@ -114,7 +123,7 @@ struct U {
   res: vec2f, time: f32, dt: f32,
   level: f32, bass: f32, mid: f32, treble: f32,
   morphMix: f32, scale: f32, stateId: f32, dotSize: f32,
-  count: f32, useMorphColor: f32, pad0: f32, pad1: f32,
+  count: f32, useMorphColor: f32, prevStateId: f32, stateMix: f32,
   colorA: vec4f,
   colorB: vec4f,
 };
@@ -131,9 +140,8 @@ struct VSOut {
   @location(3) soft: f32, // 0 = crisp sparkle, 1 = soft mist
 };
 
-// Spatially incoherent per-particle random (NOT a linear combo of seed/radius —
-// that would draw spiral iso-bands). The sin argument stays small (<~100), so no
-// Metal NaN.
+// Spatially incoherent per-particle random (NOT a linear seed/radius combo — that
+// draws spiral iso-bands). The sin argument stays small (<~100), so no Metal NaN.
 fn hash(p: vec2f) -> f32 {
   return fract(sin(dot(p, vec2f(12.9898, 78.233))) * 43758.5453);
 }
@@ -150,15 +158,13 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   let vel = d.zw;
   let s = cst[ii].x;
   let rr = cst[ii].y;
-  // Per-particle random (no spiral). tw skews most particles dim → a soft mist,
-  // with a sparse few bright → crisp sparkles. soft drives the sprite falloff:
-  // mist motes are wide + faint, sparkles are tight + bright. One system, two reads.
+  // tw skews most particles dim (a soft mist body), a sparse few bright (crisp
+  // sparkles). soft drives the sprite falloff: mist wide+faint, sparkle tight+bright.
   let depth = hash(vec2f(s, rr));
   let tw = depth * depth;
   let soft = 1.0 - tw;
   // Aspect-correct fit: scale the longer axis down so circles stay circular.
   let asp = vec2f(min(1.0, u.res.y / u.res.x), min(1.0, u.res.x / u.res.y));
-  // Mist motes a touch larger (to fill smoothly), sparkles small + crisp.
   let size = u.dotSize * (0.55 + 0.95 * soft);
   let world = p * u.scale + c * size;
   let clip = world * 0.82 * asp;
@@ -166,28 +172,26 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VSOut
   vo.pos = vec4f(clip, 0.0, 1.0);
   vo.uv = c;
   let speed = clamp((abs(vel.x) + abs(vel.y)) * 5.0, 0.0, 1.0);
-  // GRADIENT by POSITION (smooth, no bands): project the particle onto a slowly
-  // rotating axis so the whole cloud sweeps colorA→colorB and the gradient itself
-  // turns gently over time. A hair of per-particle jitter softens the seam.
+  // GRADIENT by POSITION (smooth, no bands): project onto a slowly turning axis.
   let ga = u.time * 0.05;
   let gdir = vec2f(cos(ga), sin(ga));
   let gt = clamp(0.5 + 0.62 * dot(p, gdir) + (depth - 0.5) * 0.12, 0.0, 1.0);
   var col = mix(u.colorA.xyz, u.colorB.xyz, gt);
   if (u.useMorphColor > 0.5 && u.morphMix > 0.01) {
-    col = mix(col, mcol[ii].xyz, u.morphMix * 0.92);
+    // A morph's own colours (emoji / image pixels) take over as it assembles.
+    col = mix(col, mcol[ii].xyz, u.morphMix * 0.96);
   }
   vo.color = col;
   vo.soft = soft;
-  // Dim mist body + bright sparse sparkles (tw skews most low), faster motes flare.
   vo.bright = (0.30 + 1.0 * tw + speed * 0.45) * (0.9 + u.level * 0.6);
   return vo;
 }
 
 @fragment
 fn fs(frag: VSOut) -> @location(0) vec4f {
-  // One sprite, two reads: sparkles (soft≈0) get a tight crisp core; mist motes
-  // (soft≈1) get a wide soft falloff at low alpha. Many faint mist motes overlap
-  // into a smooth glowing body; the sparkles are the crisp points of light.
+  // One sprite, two reads: sparkles (soft≈0) a tight crisp core; mist motes
+  // (soft≈1) a wide soft falloff at low alpha. Many faint mist motes overlap into
+  // a smooth body; the sparkles are the crisp points of light.
   let r2 = dot(frag.uv, frag.uv);
   if (r2 > 1.0) { discard; }
   let k = mix(9.0, 2.4, frag.soft);
@@ -197,7 +201,7 @@ fn fs(frag: VSOut) -> @location(0) vec4f {
 }
 `;
 
-// Fullscreen-triangle vertex stub shared by the blur + composite passes.
+// Fullscreen-triangle vertex stub for the tone-map pass.
 const FS_VS = /* wgsl */ `
 struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 @vertex
@@ -211,50 +215,22 @@ fn vs(@builtin(vertex_index) vi: u32) -> VOut {
 }
 `;
 
-// Separable 9-tap Gaussian. Run twice (horizontal, then vertical) at quarter res
-// to grow each crisp mote into a wide, soft halo — the "dreamy glow" that the
-// sharp particles themselves deliberately lack. `step` is the per-tap UV offset.
-const BLUR_WGSL = /* wgsl */ `
-struct B { step: vec2f, pad: vec2f };
+// Tone-map: compress the LUMINANCE with Reinhard (chroma preserved, so dense
+// overlaps stay saturated neon rather than clipping to white) over a neon-dark floor.
+const TONEMAP_WGSL = /* wgsl */ `
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> b: B;
 ${FS_VS}
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
-  let s = b.step;
-  var c = textureSample(tex, samp, i.uv).rgb * 0.227027;
-  c += (textureSample(tex, samp, i.uv + s * 1.0).rgb + textureSample(tex, samp, i.uv - s * 1.0).rgb) * 0.1945946;
-  c += (textureSample(tex, samp, i.uv + s * 2.0).rgb + textureSample(tex, samp, i.uv - s * 2.0).rgb) * 0.1216216;
-  c += (textureSample(tex, samp, i.uv + s * 3.0).rgb + textureSample(tex, samp, i.uv - s * 3.0).rgb) * 0.0540540;
-  c += (textureSample(tex, samp, i.uv + s * 4.0).rgb + textureSample(tex, samp, i.uv - s * 4.0).rgb) * 0.0162162;
-  return vec4f(c, 1.0);
-}
-`;
-
-// Composite: crisp scene + soft bloom, then tone-map the LUMINANCE with Reinhard
-// (chroma preserved, so the bright core stays a saturated neon glow rather than
-// blowing out to white), over a subtle neon-dark floor.
-const COMPOSITE_WGSL = /* wgsl */ `
-@group(0) @binding(0) var samp: sampler;
-@group(0) @binding(1) var sceneTex: texture_2d<f32>;
-@group(0) @binding(2) var bloomTex: texture_2d<f32>;
-${FS_VS}
-@fragment
-fn fs(i: VOut) -> @location(0) vec4f {
-  let scene = textureSample(sceneTex, samp, i.uv).rgb;
-  let bloom = textureSample(bloomTex, samp, i.uv).rgb;
-  let hdr = scene + bloom * 1.35; // bloom strength
+  let hdr = textureSample(tex, samp, i.uv).rgb;
   let l = max(dot(hdr, vec3f(0.2126, 0.7152, 0.0722)), 0.0001);
   let lt = (l * 1.1) / (1.0 + l * 1.1);
   let mapped = min(hdr * (lt / l), vec3f(1.0));
-  let bg = vec3f(0.012, 0.011, 0.018); // neon-dark floor
+  let bg = vec3f(0.012, 0.011, 0.018);
   return vec4f(mapped + bg, 1.0);
 }
 `;
-
-// Bloom blur spread (taps are this many quarter-res texels apart) — wider = softer.
-const BLOOM_SPREAD = 1.7;
 
 export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Avatar> {
   const gpu = (navigator as Navigator & { gpu?: GPU }).gpu;
@@ -280,10 +256,8 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   const cst0 = new Float32Array(N * 2);
   for (let i = 0; i < N; i++) {
     const seed = Math.random();
-    // Projected unit sphere: a point uniform on a sphere, flattened to 2D. The
-    // radial density is highest at the rim and soft (but never empty) toward the
-    // centre → a glassy neon orb, no hot core, no hollow donut.
-    const ct = 1 - 2 * Math.random(); // cos(theta), uniform on the sphere
+    // Projected unit sphere: rim-dense, soft (never empty) centre → a glassy orb.
+    const ct = 1 - 2 * Math.random();
     const rank = Math.sqrt(Math.max(0, 1 - ct * ct));
     cst0[i * 2] = seed;
     cst0[i * 2 + 1] = rank;
@@ -318,24 +292,13 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
     primitive: { topology: "triangle-list" },
   });
 
-  const blurModule = device.createShaderModule({ code: BLUR_WGSL });
-  const blurPipeline = device.createRenderPipeline({
+  const tonemapModule = device.createShaderModule({ code: TONEMAP_WGSL });
+  const tonemapPipeline = device.createRenderPipeline({
     layout: "auto",
-    vertex: { module: blurModule, entryPoint: "vs" },
-    fragment: { module: blurModule, entryPoint: "fs", targets: [{ format: HDR_FORMAT }] },
+    vertex: { module: tonemapModule, entryPoint: "vs" },
+    fragment: { module: tonemapModule, entryPoint: "fs", targets: [{ format }] },
     primitive: { topology: "triangle-list" },
   });
-  const compositeModule = device.createShaderModule({ code: COMPOSITE_WGSL });
-  const compositePipeline = device.createRenderPipeline({
-    layout: "auto",
-    vertex: { module: compositeModule, entryPoint: "vs" },
-    fragment: { module: compositeModule, entryPoint: "fs", targets: [{ format }] },
-    primitive: { topology: "triangle-list" },
-  });
-  // Per-direction blur step (UV offset). Rewritten on resize.
-  const blurStepH = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const blurStepV = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  // Clamp-to-edge so the blur taps don't wrap a glow across the frame.
   const sampler = device.createSampler({
     magFilter: "linear",
     minFilter: "linear",
@@ -381,32 +344,26 @@ export async function createWebGPUAvatar(canvas: HTMLCanvasElement): Promise<Ava
   return new WebGPUAvatar(device, context, format, {
     computePipeline,
     renderPipeline,
-    blurPipeline,
-    compositePipeline,
+    tonemapPipeline,
     sampler,
     computeBind,
     renderBind,
     uniformBuf,
     morphBuf,
     mcolBuf,
-    blurStepH,
-    blurStepV,
   });
 }
 
 interface GpuRes {
   computePipeline: GPUComputePipeline;
   renderPipeline: GPURenderPipeline;
-  blurPipeline: GPURenderPipeline;
-  compositePipeline: GPURenderPipeline;
+  tonemapPipeline: GPURenderPipeline;
   sampler: GPUSampler;
   computeBind: GPUBindGroup;
   renderBind: GPUBindGroup;
   uniformBuf: GPUBuffer;
   morphBuf: GPUBuffer;
   mcolBuf: GPUBuffer;
-  blurStepH: GPUBuffer;
-  blurStepV: GPUBuffer;
 }
 
 class WebGPUAvatar implements Avatar {
@@ -422,6 +379,10 @@ class WebGPUAvatar implements Avatar {
   private morph: MorphTarget | null = null;
   private lastMorph: MorphTarget | null = null;
   private useMorphColor = 0;
+  // Staggered state-transition tracking.
+  private curState: AvatarState = "idle";
+  private prevState: AvatarState = "idle";
+  private stateMix = 1;
   private raf = 0;
   private t = 0;
   private w = 1;
@@ -429,13 +390,7 @@ class WebGPUAvatar implements Avatar {
   private disposed = false;
   private sceneTex: GPUTexture | null = null;
   private sceneView: GPUTextureView | null = null;
-  private bloomA: GPUTexture | null = null;
-  private bloomB: GPUTexture | null = null;
-  private bloomAView: GPUTextureView | null = null;
-  private bloomBView: GPUTextureView | null = null;
-  private blurHBind: GPUBindGroup | null = null;
-  private blurVBind: GPUBindGroup | null = null;
-  private compositeBind: GPUBindGroup | null = null;
+  private tonemapBind: GPUBindGroup | null = null;
 
   constructor(
     private device: GPUDevice,
@@ -457,52 +412,18 @@ class WebGPUAvatar implements Avatar {
     this.h = Math.max(1, Math.floor(h * dpr));
     (this.context.canvas as HTMLCanvasElement).width = this.w;
     (this.context.canvas as HTMLCanvasElement).height = this.h;
-    const bw = Math.max(1, Math.floor(this.w / 4));
-    const bh = Math.max(1, Math.floor(this.h / 4));
-    const dev = this.device;
-    const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
-
-    // Full-res crisp scene + two quarter-res ping-pong bloom targets.
     this.sceneTex?.destroy();
-    this.bloomA?.destroy();
-    this.bloomB?.destroy();
-    this.sceneTex = dev.createTexture({ size: [this.w, this.h], format: HDR_FORMAT, usage });
-    this.bloomA = dev.createTexture({ size: [bw, bh], format: HDR_FORMAT, usage });
-    this.bloomB = dev.createTexture({ size: [bw, bh], format: HDR_FORMAT, usage });
+    this.sceneTex = this.device.createTexture({
+      size: [this.w, this.h],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
     this.sceneView = this.sceneTex.createView();
-    this.bloomAView = this.bloomA.createView();
-    this.bloomBView = this.bloomB.createView();
-
-    // Blur steps: horizontal reads the full scene, vertical reads the quarter map.
-    dev.queue.writeBuffer(this.res.blurStepH, 0, new Float32Array([BLOOM_SPREAD / bw, 0, 0, 0]));
-    dev.queue.writeBuffer(this.res.blurStepV, 0, new Float32Array([0, BLOOM_SPREAD / bh, 0, 0]));
-
-    const blurLayout = this.res.blurPipeline.getBindGroupLayout(0);
-    // H: scene → bloomB.
-    this.blurHBind = dev.createBindGroup({
-      layout: blurLayout,
+    this.tonemapBind = this.device.createBindGroup({
+      layout: this.res.tonemapPipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: this.res.sampler },
         { binding: 1, resource: this.sceneView },
-        { binding: 2, resource: { buffer: this.res.blurStepH } },
-      ],
-    });
-    // V: bloomB → bloomA.
-    this.blurVBind = dev.createBindGroup({
-      layout: blurLayout,
-      entries: [
-        { binding: 0, resource: this.res.sampler },
-        { binding: 1, resource: this.bloomBView },
-        { binding: 2, resource: { buffer: this.res.blurStepV } },
-      ],
-    });
-    // Composite: scene + bloomA → canvas.
-    this.compositeBind = dev.createBindGroup({
-      layout: this.res.compositePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: this.res.sampler },
-        { binding: 1, resource: this.sceneView },
-        { binding: 2, resource: this.bloomAView },
       ],
     });
   }
@@ -511,8 +432,6 @@ class WebGPUAvatar implements Avatar {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.sceneTex?.destroy();
-    this.bloomA?.destroy();
-    this.bloomB?.destroy();
     this.device.destroy?.();
   }
 
@@ -546,7 +465,7 @@ class WebGPUAvatar implements Avatar {
   private loop(): void {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
-    if (!this.sceneView || !this.blurHBind || !this.blurVBind || !this.compositeBind) return; // not sized yet
+    if (!this.sceneView || !this.tonemapBind) return; // not sized yet
 
     if (this.morph !== this.lastMorph) {
       this.lastMorph = this.morph;
@@ -554,20 +473,29 @@ class WebGPUAvatar implements Avatar {
       else this.useMorphColor = 0;
     }
 
+    // Staggered state transition: snapshot the previous state on a change.
+    if (this.inputs.state !== this.curState) {
+      this.prevState = this.curState;
+      this.curState = this.inputs.state;
+      this.stateMix = 0;
+    }
+    this.stateMix += (1 - this.stateMix) * 0.05;
+
     const e = this.eased;
     const inp = this.inputs;
     e.level += (inp.level - e.level) * 0.2;
     e.bass += (inp.bands.bass - e.bass) * 0.25;
     e.mid += (inp.bands.mid - e.mid) * 0.25;
     e.treble += (inp.bands.treble - e.treble) * 0.25;
-    e.color[0] += (inp.color[0] - e.color[0]) * 0.04;
-    e.color[1] += (inp.color[1] - e.color[1]) * 0.04;
-    e.color[2] += (inp.color[2] - e.color[2]) * 0.04;
-    e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.04;
-    e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.04;
-    e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.04;
+    // Slower colour easing → a smoother hue transition.
+    e.color[0] += (inp.color[0] - e.color[0]) * 0.02;
+    e.color[1] += (inp.color[1] - e.color[1]) * 0.02;
+    e.color[2] += (inp.color[2] - e.color[2]) * 0.02;
+    e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.02;
+    e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.02;
+    e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.02;
     e.morphMix += ((this.morph ? 1 : 0) - e.morphMix) * 0.06;
-    const targetScale = inp.state === "thinking" ? 0.78 : inp.state === "speaking" ? 1.08 : 1;
+    const targetScale = this.curState === "thinking" ? 0.78 : this.curState === "speaking" ? 1.08 : 1;
     e.scale += (targetScale - e.scale) * 0.05;
     this.t += 0.016;
 
@@ -582,10 +510,12 @@ class WebGPUAvatar implements Avatar {
     u[7] = e.treble;
     u[8] = e.morphMix;
     u[9] = e.scale;
-    u[10] = STATE_ID[inp.state];
+    u[10] = STATE_ID[this.curState];
     u[11] = 0.026; // dotSize (world units) — crisp mote size
     u[12] = N;
     u[13] = this.useMorphColor;
+    u[14] = STATE_ID[this.prevState];
+    u[15] = this.stateMix;
     u[16] = e.color[0];
     u[17] = e.color[1];
     u[18] = e.color[2];
@@ -603,23 +533,23 @@ class WebGPUAvatar implements Avatar {
     cp.dispatchWorkgroups(Math.ceil(N / 64));
     cp.end();
 
-    const fullPass = (view: GPUTextureView, pipeline: GPURenderPipeline, bind: GPUBindGroup, instances: number, verts: number) => {
-      const rp = enc.beginRenderPass({
-        colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
-      });
-      rp.setPipeline(pipeline);
-      rp.setBindGroup(0, bind);
-      rp.draw(verts, instances);
-      rp.end();
-    };
+    // Pass 1: accumulate crisp particles additively into the HDR scene.
+    const rp = enc.beginRenderPass({
+      colorAttachments: [{ view: this.sceneView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
+    });
+    rp.setPipeline(this.res.renderPipeline);
+    rp.setBindGroup(0, this.res.renderBind);
+    rp.draw(6, N);
+    rp.end();
 
-    // Pass 1: accumulate crisp particles additively into the full-res scene.
-    fullPass(this.sceneView, this.res.renderPipeline, this.res.renderBind, N, 6);
-    // Pass 2+3: separable Gaussian → quarter-res bloom (scene→B horizontal, B→A vertical).
-    fullPass(this.bloomBView!, this.res.blurPipeline, this.blurHBind, 1, 3);
-    fullPass(this.bloomAView!, this.res.blurPipeline, this.blurVBind, 1, 3);
-    // Pass 4: composite crisp scene + soft bloom, tone-mapped, onto the canvas.
-    fullPass(this.context.getCurrentTexture().createView(), this.res.compositePipeline, this.compositeBind, 1, 3);
+    // Pass 2: tone-map the scene onto the canvas.
+    const tp = enc.beginRenderPass({
+      colorAttachments: [{ view: this.context.getCurrentTexture().createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
+    });
+    tp.setPipeline(this.res.tonemapPipeline);
+    tp.setBindGroup(0, this.tonemapBind);
+    tp.draw(3, 1);
+    tp.end();
 
     this.device.queue.submit([enc.finish()]);
   }

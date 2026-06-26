@@ -51,11 +51,12 @@ function sampleCanvas(canvas: HTMLCanvasElement, count: number, withColor: boole
   return { positions, colors };
 }
 
-/** An emoji silhouette as a point cloud (single color). */
+/** An emoji as a COLORED point cloud — sampling the glyph's real pixels so a face
+ * emoji reads as a face (yellow field, dark eyes/mouth) instead of a blank disk. */
 export function emojiTarget(emoji: string, count: number, label?: string, size = 240): MorphTarget {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (ctx) {
     ctx.clearRect(0, 0, size, size);
     ctx.font = `${Math.floor(size * 0.78)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",serif`;
@@ -63,7 +64,7 @@ export function emojiTarget(emoji: string, count: number, label?: string, size =
     ctx.textBaseline = "middle";
     ctx.fillText(emoji, size / 2, size / 2 + size * 0.04);
   }
-  return { ...sampleCanvas(canvas, count, false), label: label ?? null };
+  return { ...sampleCanvas(canvas, count, true), label: label ?? null };
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {

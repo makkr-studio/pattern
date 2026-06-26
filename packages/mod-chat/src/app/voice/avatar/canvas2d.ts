@@ -18,6 +18,12 @@ function hash2(a: number, b: number): number {
   return v - Math.floor(v);
 }
 
+/** Per-particle staggered ramp (smoothstep over a seeded window). */
+function stagger(m: number, ph: number): number {
+  const win = Math.max(0, Math.min(1, (m - ph * 0.55) / 0.45));
+  return win * win * (3 - 2 * win);
+}
+
 interface Eased {
   level: number;
   bass: number;
@@ -43,6 +49,10 @@ export class Canvas2DAvatar implements Avatar {
     scale: 1,
   };
   private morph: MorphTarget | null = null;
+  // Staggered state-transition tracking.
+  private curState: AvatarState = "idle";
+  private prevState: AvatarState = "idle";
+  private stateMix = 1;
 
   // Particle state (normalized space, roughly [-1,1]).
   private px = new Float32Array(N);
@@ -98,104 +108,110 @@ export class Canvas2DAvatar implements Avatar {
     cancelAnimationFrame(this.raf);
   }
 
-  /** Per-state posture target for particle i (normalized space). */
-  private posture(i: number, state: AvatarState, t: number): [number, number] {
-    const s = this.seed[i] ?? 0;
-    const rr = this.rank[i] ?? 0;
-    const a0 = s * Math.PI * 2;
+  /** Per-state posture target for one state (so transitions can blend two). */
+  private postureFor(s: number, rr: number, t: number, state: AvatarState): [number, number] {
     const lvl = this.eased.level;
+    if (state === "speaking" || state === "presenting") {
+      // Gaussian bell: x fills left→right; the vertical band tapers from a tall
+      // centre to thin edges, the whole envelope rising with the voice.
+      const span = 2.0;
+      const x = (s - 0.5) * 2 * span;
+      const sigma = 0.72;
+      const amp = 0.26 + lvl * 0.62 + this.eased.bass * 0.22;
+      const env = 0.04 + amp * Math.exp(-(x * x) / (2 * sigma * sigma));
+      const hv = hash2(rr, s);
+      return [x, (hv - 0.5) * 2 * env];
+    }
+    const a0 = s * Math.PI * 2;
     let sc: number;
     let spin: number;
     let ex = 1;
-    let ey = 1;
-    switch (state) {
-      case "listening":
-        sc = 1.02 + lvl * 0.26 + Math.sin(t * 1.3 + a0 * 2) * 0.03;
-        spin = 0.03;
-        ex = 1 + lvl * 0.1;
-        break;
-      case "thinking":
-        sc = 0.6 + Math.sin(t * 1.6 + s * 8) * 0.03;
-        spin = 0.4;
-        break;
-      case "speaking":
-      case "presenting":
-        sc = 0.96 + lvl * 0.22 + this.eased.bass * 0.12;
-        spin = 0.035;
-        ex = 1.3 + lvl * 0.55 + this.eased.bass * 0.2;
-        ey = 0.8 - lvl * 0.05;
-        break;
-      default: // idle
-        sc = 1.0 + Math.sin(t * 0.5 + s * 6) * 0.04;
-        spin = 0.02;
+    if (state === "listening") {
+      sc = 1.02 + lvl * 0.26 + Math.sin(t * 1.3 + a0 * 2) * 0.03;
+      spin = 0.012;
+      ex = 1 + lvl * 0.1;
+    } else if (state === "thinking") {
+      sc = 0.6 + Math.sin(t * 1.6 + s * 8) * 0.03;
+      spin = 0.4;
+    } else {
+      sc = 1.0 + Math.sin(t * 0.5 + s * 6) * 0.04;
+      spin = 0.006;
     }
     const r = rr * 0.72 * sc;
     const a = a0 + spin * t;
-    return [Math.cos(a) * r * ex, Math.sin(a) * r * ey];
+    return [Math.cos(a) * r * ex, Math.sin(a) * r];
   }
 
-  /** Divergence-free curl flow (cheap potential, finite-difference curl). */
-  private curl(x: number, y: number, t: number): [number, number] {
-    const pot = (px: number, py: number) =>
-      Math.sin(px * 2.4 + t * 0.3) * Math.cos(py * 2.4 - t * 0.22) +
-      0.5 * Math.sin(px * 4.7 - t * 0.2) * Math.cos(py * 4.3 + t * 0.16);
-    const e = 0.025;
-    const dx = pot(x + e, y) - pot(x - e, y);
-    const dy = pot(x, y + e) - pot(x, y - e);
-    return [dy / (2 * e), -dx / (2 * e)];
+  /** Per-particle decorrelated drift (no coherent lanes), grows with the voice. */
+  private drift(s: number, rr: number, t: number, amp: number): [number, number] {
+    const a1 = (s * 37 + rr * 101) % 1;
+    const a2 = (s * 17 + rr * 53) % 1;
+    const w = 0.5 + a1 * 1.2;
+    const TAU = 6.2831853;
+    return [Math.cos(t * w + a1 * TAU) * amp, Math.sin(t * w * 0.92 + a2 * TAU) * amp];
   }
 
   private step(): void {
-    const { state } = this.inputs;
     const e = this.eased;
     const inp = this.inputs;
+    // Staggered state transition: snapshot the previous state on a change.
+    if (inp.state !== this.curState) {
+      this.prevState = this.curState;
+      this.curState = inp.state;
+      this.stateMix = 0;
+    }
+    this.stateMix += (1 - this.stateMix) * 0.05;
+
     e.level += (inp.level - e.level) * 0.2;
     e.bass += (inp.bands.bass - e.bass) * 0.25;
     e.mid += (inp.bands.mid - e.mid) * 0.25;
     e.treble += (inp.bands.treble - e.treble) * 0.25;
-    e.color[0] += (inp.color[0] - e.color[0]) * 0.04;
-    e.color[1] += (inp.color[1] - e.color[1]) * 0.04;
-    e.color[2] += (inp.color[2] - e.color[2]) * 0.04;
-    e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.04;
-    e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.04;
-    e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.04;
+    // Slower colour easing → a smoother hue transition.
+    e.color[0] += (inp.color[0] - e.color[0]) * 0.02;
+    e.color[1] += (inp.color[1] - e.color[1]) * 0.02;
+    e.color[2] += (inp.color[2] - e.color[2]) * 0.02;
+    e.colorB[0] += (inp.colorB[0] - e.colorB[0]) * 0.02;
+    e.colorB[1] += (inp.colorB[1] - e.colorB[1]) * 0.02;
+    e.colorB[2] += (inp.colorB[2] - e.colorB[2]) * 0.02;
     const morphing = this.morph != null;
     e.morphMix += ((morphing ? 1 : 0) - e.morphMix) * 0.06;
 
-    const targetScale = state === "thinking" ? 0.78 : state === "speaking" ? 1.08 : 1;
+    const targetScale = this.curState === "thinking" ? 0.78 : this.curState === "speaking" ? 1.08 : 1;
     e.scale += (targetScale - e.scale) * 0.05;
 
     this.t += 0.016;
     const t = this.t;
     const mp = this.morph?.positions;
     const mix = e.morphMix;
-    const mixing = e.morphMix > 0.5;
-    const attract = mixing ? 0.09 : 0.052;
-    const drag = mixing ? 0.86 : 0.8;
-    const flowAmt = (0.0011 + e.level * 0.0018 + e.treble * 0.0022) * (mixing ? 0.5 : 1);
+    const sm = this.stateMix;
+    const ease = e.morphMix > 0.5 ? 0.16 : 0.1;
     const mpCount = mp ? mp.length / 2 : 0;
 
     for (let i = 0; i < N; i++) {
       const s = this.seed[i] ?? 0;
       const rr = this.rank[i] ?? 0;
-      const [bx, by] = this.posture(i, state, t);
-      let tx = bx;
-      let ty = by;
+      const ph = (s * 7 + rr * 3) % 1;
+      // Staggered blend of previous → current posture.
+      const lmS = stagger(sm, ph);
+      const [pbx, pby] = this.postureFor(s, rr, t, this.prevState);
+      const [cbx, cby] = this.postureFor(s, rr, t, this.curState);
+      const amp = 0.016 + e.level * 0.06 + e.treble * 0.05;
+      const [dx, dy] = this.drift(s, rr, t, amp);
+      let tx = pbx + (cbx - pbx) * lmS + dx;
+      let ty = pby + (cby - pby) * lmS + dy;
       if (mp && mix > 0.001 && mpCount > 0) {
-        const ph = (s * 7 + rr * 3) % 1;
-        const win = Math.max(0, Math.min(1, (mix - ph * 0.55) / 0.45));
-        const lm = win * win * (3 - 2 * win);
+        const lmM = stagger(mix, ph);
         const j = i % mpCount;
-        const mxp = mp[j * 2] ?? bx;
-        const myp = mp[j * 2 + 1] ?? by;
-        tx = bx + (mxp - bx) * lm;
-        ty = by + (myp - by) * lm;
+        const mxp = (mp[j * 2] ?? tx) + dx * 0.35;
+        const myp = (mp[j * 2 + 1] ?? ty) + dy * 0.35;
+        tx = tx + (mxp - tx) * lmM;
+        ty = ty + (myp - ty) * lmM;
       }
       const px = this.px[i] ?? 0;
       const py = this.py[i] ?? 0;
-      const [fx, fy] = this.curl(px * 1.15, py * 1.15, t);
-      const vx = (this.vx[i] ?? 0) * drag + (tx - px) * attract + fx * flowAmt;
-      const vy = (this.vy[i] ?? 0) * drag + (ty - py) * attract + fy * flowAmt;
+      // Exponential easing (no bounce); store the delta as the speed term.
+      const vx = (tx - px) * ease;
+      const vy = (ty - py) * ease;
       this.vx[i] = vx;
       this.vy[i] = vy;
       this.px[i] = px + vx;
