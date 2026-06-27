@@ -41,6 +41,22 @@ function emotionFromText(text: string): string | null {
 
 // Emoji cluster (base pictographic + ZWJ joins + variation/skin modifiers).
 const EMOJI_RE = /\p{Extended_Pictographic}(\u200d\p{Extended_Pictographic}|[\uFE0F\u{1F3FB}-\u{1F3FF}])*/gu;
+// Sticky variant: matches an emoji cluster only at an exact position.
+const EMOJI_AT = /\p{Extended_Pictographic}(\u200d\p{Extended_Pictographic}|[\uFE0F\u{1F3FB}-\u{1F3FF}])*/uy;
+
+/** Advance past an emoji run (clusters + the spaces between/after them) starting at
+ *  `k`, so a sentence keeps the emojis that trail it instead of handing them to the
+ *  next chunk as leading (frac-0) emojis. */
+function absorbTrailingEmojis(buf: string, k: number): number {
+  let j = k;
+  for (;;) {
+    EMOJI_AT.lastIndex = j;
+    if (!EMOJI_AT.test(buf)) break;
+    j = EMOJI_AT.lastIndex;
+    while (j < buf.length && /[ \t]/.test(buf[j]!)) j++;
+  }
+  return j;
+}
 
 // Strip emoji (and their joiners/modifiers) from text bound for the TTS \u2014 they
 // make some voices emit odd noises.
@@ -161,6 +177,10 @@ function nextSentenceCut(buf: string, atEnd: boolean): number {
     }
     let k = end + 1;
     while (k < buf.length && /[ \t]/.test(buf[k]!)) k++;
+    k = absorbTrailingEmojis(buf, k); // keep "Great! 🎉" together, not "🎉 Next"
+    // If that ran to the buffer's end mid-stream, wait: a trailing emoji may still
+    // be streaming in, and we want it on THIS sentence rather than the next chunk.
+    if (k >= buf.length) return atEnd ? buf.length : 0;
     return k;
   }
   return atEnd && buf.trim() ? buf.length : 0;
@@ -179,6 +199,18 @@ function emojiTimeline(md: string): Array<{ glyph: string; frac: number }> {
     out.push({ glyph: m[0], frac: Math.min(1, before / spokenTotal) });
   }
   return out;
+}
+
+// Adjacent emojis (e.g. "🌞🌸") share a position because no spoken character sits
+// between them, so they'd morph in the same frame and only the last would show.
+// Pull each one back so consecutive emojis keep a minimum spacing, anchored at and
+// leading up to where they sit — each then gets its own on-screen moment.
+const EMOJI_FRAC_GAP = 0.18;
+function spreadEmojiFracs(list: Array<{ glyph: string; frac: number }>): void {
+  for (let i = list.length - 2; i >= 0; i--) {
+    const ceiling = list[i + 1]!.frac - EMOJI_FRAC_GAP;
+    if (list[i]!.frac > ceiling) list[i]!.frac = Math.max(0, ceiling);
+  }
 }
 
 function imageRefOf(v: unknown): { blobId: string } | null {
@@ -415,6 +447,12 @@ export class VoiceLoop {
       this.replyText = "";
       this.pendingEmojis = [];
     }
+    // Clear any lingering emoji morph (e.g. the reply's last one still dissolving).
+    if (this.morphTimer) {
+      clearTimeout(this.morphTimer);
+      this.morphTimer = null;
+    }
+    if (!this.presenting) this.avatar.set({ morph: null });
     if (this.captionTimer) {
       clearTimeout(this.captionTimer);
       this.captionTimer = null;
@@ -510,6 +548,7 @@ export class VoiceLoop {
     }
     const emojis = [...this.pendingEmojis.map((glyph) => ({ glyph, frac: 0 })), ...timeline];
     this.pendingEmojis = [];
+    spreadEmojiFracs(emojis); // give consecutive emojis distinct moments
     this.tts.enqueue({ speak, caption: speak, emojis, tone: toneFor(this.lastEmotion || "neutral") });
   }
 
@@ -615,7 +654,12 @@ export class VoiceLoop {
 
   private onTtsEnd(): void {
     if (this.turnDone && !this.presenting) {
-      this.backToListening();
+      // Soft return: go back to listening but leave any in-flight emoji morph to
+      // dissolve on its own timer, so the reply's final emoji is still visible for
+      // a beat (a hard clearMorph would snap it away the instant it fired).
+      this.stopToolCycle();
+      this.cb.onToolLabel(null);
+      this.setState(this.vad ? "listening" : "idle");
       // Let the last subtitle linger a few seconds after the audio stops, then fade.
       if (this.captionTimer) clearTimeout(this.captionTimer);
       this.captionTimer = setTimeout(() => {
