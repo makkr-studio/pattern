@@ -20,4 +20,3 @@ const base = `http://localhost:${ports[0]}`;
 
 console.log(`◆ {{name}}`);
 console.log(`  Admin   ${base}/admin`);
-console.log(`  → add a "default" model in admin → Settings → AI Providers (each alias brings its own key, from the vault or an env var)`);

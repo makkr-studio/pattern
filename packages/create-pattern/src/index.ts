@@ -142,6 +142,22 @@ const normProvider = (id: string): string => (id.startsWith("@ai-sdk/") ? id : "
 /** The version range for a provider package (falls back to latest for an unknown one). */
 const providerRange = (pkg: string): string => AI_PROVIDERS.find((p) => p.value === pkg)?.range ?? "latest";
 
+/** The model aliases an AI pack can use — one per modality. `default` (text) is the
+ *  only one strictly required; the rest unlock image/speech/transcription ops. */
+const AI_ALIASES: Array<[string, string]> = [
+  ["default", "default text model (required)"],
+  ["image", "image generation"],
+  ["speech", "text-to-speech"],
+  ["transcription", "speech-to-text"],
+];
+/** "Next steps" lines suggesting the model aliases to create for an AI pack. */
+function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
+  return [
+    `${pc.cyan("→")} create model aliases in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— each brings its own key (vault or env var):")}`,
+    ...items.map(([n, d]) => `     ${pc.bold(n)}${" ".repeat(Math.max(1, 15 - n.length))}${pc.dim(d)}`),
+  ];
+}
+
 /** One-line technical role per mod — shown beside each in the manifest card. */
 const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-admin": "visual editor, run traces, /admin control plane",
@@ -278,7 +294,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        `${pc.cyan("→")} create a ${pc.bold("default")} alias in admin → Settings → AI Providers`,
+        ...aliasLines(),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/summarize -H 'content-type: application/json' -d '{"text":"…"}' ${pc.dim("— ai.text.generate, no agent")}`
           : `${pc.cyan("→")} build an AI workflow: ${pc.bold("ai.alias → ai.text.generate")} (see AGENTS.md)`,
@@ -317,6 +333,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
+        ...aliasLines(),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time (a linked sub-run)")}`
           : `${pc.cyan("→")} build an agentic workflow: ${pc.bold("agents.agent → agents.run")} (see AGENTS.md)`,
@@ -357,6 +374,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link`]
           : [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`]),
+        ...aliasLines(),
         examples
           ? `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} ${pc.dim("— the agent calls the get_time tool (a linked sub-run)")}`
           : `${pc.cyan("→")} add a tool workflow (see AGENTS.md), then ask the agent to call it`,

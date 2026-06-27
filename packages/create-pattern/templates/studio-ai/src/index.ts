@@ -21,4 +21,4 @@ const base = `http://localhost:${ports[0]}`;
 
 console.log(`◆ {{name}}`);
 console.log(`  Admin   ${base}/admin`);
-console.log(`  → create a "default" alias in admin → Settings → AI Providers, then POST ${base}/summarize`);
+console.log(`  POST    ${base}/summarize`);
