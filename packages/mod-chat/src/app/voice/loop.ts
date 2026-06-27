@@ -46,7 +46,29 @@ const EMOJI_RE = /\p{Extended_Pictographic}(\u200d\p{Extended_Pictographic}|[\uF
 // make some voices emit odd noises.
 const EMOJI_STRIP_RE = /[\p{Extended_Pictographic}\u200d\uFE0F\u{1F3FB}-\u{1F3FF}]/gu;
 function stripEmoji(text: string): string {
-  return text.replace(EMOJI_STRIP_RE, "").replace(/\s{2,}/g, " ").trim();
+  return text
+    .replace(EMOJI_STRIP_RE, "")
+    .replace(/ +([.,])/g, "$1") // an emoji between a word and its period leaves a stray space
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Strip Markdown syntax so neither the captions nor the TTS read out literal
+// asterisks, backticks, hashes, or link URLs. Emojis are preserved here (they're
+// removed separately, after we've measured their position for the morph timing).
+function stripMarkdown(text: string): string {
+  let t = text;
+  t = t.replace(/```[^\n]*\n?/g, ""); // fenced-code delimiters (keep the inner lines)
+  t = t.replace(/`([^`]+)`/g, "$1"); // inline code -> its text
+  t = t.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1"); // image -> alt
+  t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"); // link -> label
+  t = t.replace(/(\*\*\*|\*\*|\*|___|__|_|~~)(.+?)\1/g, "$2"); // emphasis -> inner text
+  t = t.replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, ""); // headings
+  t = t.replace(/^[ \t]{0,3}>[ \t]?/gm, ""); // blockquotes
+  t = t.replace(/^[ \t]{0,3}([-*+]|\d+[.)])[ \t]+/gm, ""); // list markers
+  t = t.replace(/^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/gm, ""); // horizontal rules
+  t = t.replace(/[*_`#]+/g, ""); // stray leftover emphasis/heading chars
+  return t.replace(/[ \t]{2,}/g, " ").replace(/\s*\n\s*/g, " ").trim();
 }
 
 // Mood \u2192 a voice-tone instruction for promptable TTS (e.g. gpt-4o-mini-tts). The
@@ -71,14 +93,92 @@ function toneFor(emotion: string): string {
 // A pool of fun glyphs to sprinkle into a tool's emoji cycle for variety.
 const RANDOM_POOL = ["\u2728", "\uD83C\uDF08", "\uD83E\uDE84", "\uD83D\uDCAB", "\uD83C\uDF87", "\uD83C\uDF1F", "\uD83D\uDD2E", "\uD83C\uDF86"];
 
-// Where to cut the next TTS chunk from the streaming buffer (0 = wait for more).
-// ONLY at natural pause points (sentence end, newline, or a colon followed by a
-// space), so the audio never breaks mid-clause. A run-on with no boundary is sent
-// whole at the end of the turn. The subtitle display is decoupled from this: the
-// caption is the chunk's text, shown in a 2-line window that scrolls over its audio.
-function ttsCut(buf: string): number {
-  const m = buf.match(/[.!?\u2026]\s|:\s|\n/);
-  return m && m.index !== undefined ? m.index + m[0].length : 0;
+// Abbreviations (FR + EN) whose trailing period does NOT end a sentence, so we
+// don't cut "Bonjour M. Beaumatin" into two odd-sounding TTS chunks. Single
+// letters (initials like "J. K.") are handled separately.
+const ABBREV = new Set([
+  "m", "mm", "mme", "mlle", "mr", "mrs", "ms", "dr", "pr", "prof", "st", "ste", "sgt", "lt", "col", "gen", "capt",
+  "etc", "vs", "cf", "al", "ca", "env", "approx", "no", "nos", "art", "vol", "p", "pp", "fig", "ed", "\u00e9d", "r\u00e9f",
+  "jr", "sr", "inc", "ltd", "co", "corp", "dept", "univ", "ave", "blvd", "bd", "t\u00e9l", "av",
+  "jan", "feb", "f\u00e9v", "mar", "apr", "avr", "jun", "juin", "jul", "juil", "aug", "ao\u00fbt", "sep", "sept", "oct", "nov", "dec", "d\u00e9c",
+  "i.e", "e.g", "a.m", "p.m",
+]);
+
+const SENT_END = /[.!?\u2026]/;
+
+/** True if the period at `dotIdx` belongs to a known abbreviation or an initial. */
+function isAbbrevDot(buf: string, dotIdx: number): boolean {
+  let j = dotIdx - 1;
+  while (j >= 0 && /[\p{L}.]/u.test(buf[j]!)) j--;
+  const word = buf.slice(j + 1, dotIdx);
+  if (!word) return false;
+  if (word.length === 1) return /\p{Lu}/u.test(word); // an initial like "J." (uppercase), not "14h."
+  return ABBREV.has(word.toLowerCase());
+}
+
+// Sentence-boundary detection over the streaming buffer. Returns the index to cut
+// at (everything before it is one or more complete sentences), or 0 to wait for
+// more text. Cuts only at confident boundaries \u2014 a sentence terminator followed by
+// whitespace, skipping abbreviations / initials / decimals (the terminator must be
+// followed by space, so "3.14" never splits) \u2014 or at a line break. When `atEnd` is
+// set (the turn finished) it flushes whatever is left. This keeps every TTS chunk a
+// natural utterance, so the voice never pauses mid-clause.
+function nextSentenceCut(buf: string, atEnd: boolean): number {
+  for (let i = 0; i < buf.length; i++) {
+    const ch = buf[i]!;
+    if (ch === "\n") {
+      let k = i + 1;
+      while (k < buf.length && /[ \t\n]/.test(buf[k]!)) k++;
+      return k;
+    }
+    if (!SENT_END.test(ch)) continue;
+    let end = i;
+    while (end + 1 < buf.length && SENT_END.test(buf[end + 1]!)) end++; // "?!", "..."
+    const after = buf[end + 1];
+    if (after === undefined) return atEnd ? buf.length : 0; // need the next char to judge
+    if (!/\s/u.test(after)) {
+      i = end;
+      continue;
+    } // e.g. "U.S.A" mid-token, "3.14"
+    if (ch === ".") {
+      if (isAbbrevDot(buf, i)) {
+        i = end;
+        continue;
+      }
+      // Unknown abbreviation guard: a real sentence starts with a capital / digit /
+      // opening quote / emoji. If the next token starts lowercase, assume it's still
+      // the same sentence and keep going (prefer a long chunk over a mid-clause cut).
+      let k = end + 1;
+      while (k < buf.length && /\s/u.test(buf[k]!)) k++;
+      if (k >= buf.length) return atEnd ? buf.length : 0;
+      const nx = buf.slice(k, k + 2);
+      const startsNew = /^[\p{Lu}\p{N}"'\u00ab(\u00a1\u00bf\[]/u.test(nx) || EMOJI_RE.test(nx);
+      EMOJI_RE.lastIndex = 0;
+      if (!startsNew) {
+        i = end;
+        continue;
+      }
+    }
+    let k = end + 1;
+    while (k < buf.length && /[ \t]/.test(buf[k]!)) k++;
+    return k;
+  }
+  return atEnd && buf.trim() ? buf.length : 0;
+}
+
+/** Each emoji in a (markdown-stripped) chunk with its fractional position among the
+ *  SPOKEN characters, so the avatar can morph to it roughly when the voice reaches
+ *  that point. Position is measured before the emoji is stripped from the audio. */
+function emojiTimeline(md: string): Array<{ glyph: string; frac: number }> {
+  const spokenTotal = md.replace(EMOJI_STRIP_RE, "").length || 1;
+  const out: Array<{ glyph: string; frac: number }> = [];
+  EMOJI_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = EMOJI_RE.exec(md)) !== null) {
+    const before = md.slice(0, m.index).replace(EMOJI_STRIP_RE, "").length;
+    out.push({ glyph: m[0], frac: Math.min(1, before / spokenTotal) });
+  }
+  return out;
 }
 
 function imageRefOf(v: unknown): { blobId: string } | null {
@@ -100,15 +200,16 @@ export interface VoiceLoopCallbacks {
 }
 
 interface TtsChunk {
-  speak: string; // emoji-stripped text sent to the TTS
-  caption: string; // what to show as the synced subtitle (also emoji-stripped)
+  speak: string; // markdown- and emoji-stripped text sent to the TTS
+  caption: string; // synced subtitle (same clean text — no markdown, no emoji)
+  emojis: Array<{ glyph: string; frac: number }>; // emoji morphs, by playback fraction
   tone?: string; // voice-tone instruction (promptable TTS)
 }
 
 /** Sequential TTS player with an analyser for the avatar's "speaking" reaction.
- *  Reports the spoken chunk's caption on start, so subtitles track the audio.
- *  Emoji display is handled separately (paced over the whole reply), so emoji
- *  clusters that fall between spoken chunks are not lost. */
+ *  Reports the spoken chunk's caption on start, so subtitles track the audio, and
+ *  exposes the playing chunk + progress so the loop can fire each emoji morph when
+ *  the voice reaches its position in the sentence. */
 class TtsPlayer {
   readonly analyser: AnalyserNode;
   private audio = new Audio();
@@ -117,6 +218,7 @@ class TtsPlayer {
   // generation is pipelined with playback and there is no gap between chunks.
   private queue: Array<{ chunk: TtsChunk; url: Promise<string | null> }> = [];
   private playing = false;
+  current: TtsChunk | null = null; // the chunk currently playing (for emoji timing)
 
   constructor(
     private onStart: (chunk: TtsChunk) => void,
@@ -144,10 +246,7 @@ class TtsPlayer {
     return Math.min(1, Math.max(0, this.audio.currentTime / d));
   }
 
-  enqueue(text: string, tone?: string): void {
-    const speak = stripEmoji(text);
-    if (!speak) return; // nothing speakable (e.g. an emoji-only fragment)
-    const chunk: TtsChunk = { speak, caption: speak, tone }; // caption is emoji-free
+  enqueue(chunk: TtsChunk): void {
     this.queue.push({ chunk, url: this.fetchUrl(chunk) });
     if (!this.playing) void this.next();
   }
@@ -165,6 +264,7 @@ class TtsPlayer {
     const item = this.queue.shift();
     if (!item) {
       this.playing = false;
+      this.current = null;
       this.onEnd();
       return;
     }
@@ -175,6 +275,7 @@ class TtsPlayer {
       return;
     }
     this.audio.src = url;
+    this.current = item.chunk;
     this.onStart(item.chunk);
     try {
       await this.ctx.resume();
@@ -188,6 +289,7 @@ class TtsPlayer {
     this.queue = [];
     this.audio.pause();
     this.playing = false;
+    this.current = null;
   }
 
   dispose(): void {
@@ -206,7 +308,9 @@ export class VoiceLoop {
   private turnActive = false;
   private turnDone = true;
   private assistantBuf = ""; // pending text not yet handed to the TTS (gets sliced)
-  private replyText = ""; // the whole reply so far (never sliced) for emoji + mood scans
+  private replyText = ""; // the whole reply so far (never sliced) for the mood scan
+  private pendingEmojis: string[] = []; // emojis from silent gaps, ride the next spoken chunk
+  private firedIdx = 0; // how many of the current chunk's emojis have morphed
   private morphTimer: ReturnType<typeof setTimeout> | null = null;
   private toolCycleTimer: ReturnType<typeof setInterval> | null = null;
   private captionTimer: ReturnType<typeof setTimeout> | null = null; // delayed subtitle fade-out
@@ -214,11 +318,6 @@ export class VoiceLoop {
   // Client-side auto-expression bookkeeping.
   private lastEmotion = "";
   private lastEmotionAt = 0;
-  // Every emoji in the reply, paced through the avatar over the speaking time.
-  private emojiQueue: string[] = [];
-  private emojiSeen = 0; // how many of replyText's emojis are already queued
-  private emojiTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastSpokeAt = 0; // for a short grace tail after speech ends
   private micBuf = new Float32Array(1024);
   private micFreq = new Uint8Array(512);
   private ttsBuf = new Float32Array(1024);
@@ -235,10 +334,9 @@ export class VoiceLoop {
           clearTimeout(this.captionTimer);
           this.captionTimer = null;
         }
-        this.lastSpokeAt = Date.now();
+        this.firedIdx = 0; // restart this chunk's emoji timeline
         this.setState("speaking");
         this.cb.onCaption(chunk.caption); // subtitle tracks the spoken chunk
-        this.scheduleEmoji(); // make sure the emoji pacer is running while we speak
       },
       () => this.onTtsEnd(),
     );
@@ -269,7 +367,6 @@ export class VoiceLoop {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.stopToolCycle();
-    if (this.emojiTimer) clearTimeout(this.emojiTimer);
     if (this.captionTimer) clearTimeout(this.captionTimer);
     if (this.morphTimer) clearTimeout(this.morphTimer);
     this.tts.dispose();
@@ -316,12 +413,7 @@ export class VoiceLoop {
       if (this.turnActive) void chatStore.stop();
       this.assistantBuf = "";
       this.replyText = "";
-      this.emojiQueue = [];
-      this.emojiSeen = 0;
-    }
-    if (this.emojiTimer) {
-      clearTimeout(this.emojiTimer);
-      this.emojiTimer = null;
+      this.pendingEmojis = [];
     }
     if (this.captionTimer) {
       clearTimeout(this.captionTimer);
@@ -341,12 +433,7 @@ export class VoiceLoop {
       if (!said) return this.backToListening();
       this.assistantBuf = "";
       this.replyText = "";
-      this.emojiQueue = [];
-      this.emojiSeen = 0;
-      if (this.emojiTimer) {
-        clearTimeout(this.emojiTimer);
-        this.emojiTimer = null;
-      }
+      this.pendingEmojis = [];
       this.lastEmotion = "";
       this.cb.onCaption("");
       // React to the user's own tone right away (so the avatar moves before the reply).
@@ -363,10 +450,7 @@ export class VoiceLoop {
       });
       this.turnActive = false;
       this.turnDone = true;
-      if (this.assistantBuf.trim()) {
-        this.tts.enqueue(this.assistantBuf, toneFor(this.lastEmotion || "neutral"));
-        this.assistantBuf = "";
-      }
+      this.pumpSpeech(true); // flush whatever's left as final sentence(s)
       if (!this.tts.active) this.backToListening();
     } catch {
       this.turnActive = false;
@@ -379,9 +463,8 @@ export class VoiceLoop {
     if (ev.type === "text.delta") {
       this.assistantBuf += ev.delta;
       this.replyText += ev.delta;
-      this.collectEmojis();
       this.autoExpress();
-      this.maybeSpeakSentence();
+      this.pumpSpeech(false);
     } else if (ev.type === "tool.activity") {
       if (ev.toolName === "express") {
         this.onExpress((ev.phase === "start" ? ev.args : ev.result) as { emotion?: string; emoji?: string } | undefined);
@@ -401,45 +484,44 @@ export class VoiceLoop {
     }
   }
 
-  private maybeSpeakSentence(): void {
-    // Flush whole natural segments to the TTS as they complete (never mid-clause).
+  /** Flush every complete sentence from the buffer into the TTS queue. `atEnd`
+   *  (turn finished) flushes the remainder too. Each chunk is markdown- and
+   *  emoji-stripped for both the audio and the caption; its emojis are kept as a
+   *  playback-fraction timeline so the avatar morphs to them in step with the voice. */
+  private pumpSpeech(atEnd: boolean): void {
     for (;;) {
-      const cut = ttsCut(this.assistantBuf);
+      const cut = nextSentenceCut(this.assistantBuf, atEnd);
       if (cut <= 0) break;
-      const chunk = this.assistantBuf.slice(0, cut).trim();
+      const raw = this.assistantBuf.slice(0, cut);
       this.assistantBuf = this.assistantBuf.slice(cut);
-      if (/[\p{L}\p{N}]/u.test(chunk)) this.tts.enqueue(chunk, toneFor(this.lastEmotion || "neutral"));
+      this.enqueueChunk(raw);
     }
   }
 
-  /** Queue every NEW emoji from the reply so far (clusters included), in order. */
-  private collectEmojis(): void {
-    const all = this.replyText.match(EMOJI_RE) ?? [];
-    while (this.emojiSeen < all.length) {
-      const e = all[this.emojiSeen++];
-      if (e) this.emojiQueue.push(e);
+  private enqueueChunk(raw: string): void {
+    const md = stripMarkdown(raw); // markdown gone, emojis still in (for positioning)
+    const timeline = emojiTimeline(md);
+    const speak = stripEmoji(md);
+    if (!/[\p{L}\p{N}]/u.test(speak)) {
+      // No speakable text (e.g. an emoji-only line): carry its emojis to the next
+      // spoken chunk so they still show, riding its start.
+      for (const e of timeline) this.pendingEmojis.push(e.glyph);
+      return;
     }
+    const emojis = [...this.pendingEmojis.map((glyph) => ({ glyph, frac: 0 })), ...timeline];
+    this.pendingEmojis = [];
+    this.tts.enqueue({ speak, caption: speak, emojis, tone: toneFor(this.lastEmotion || "neutral") });
   }
 
-  /** Pace ALL the reply's emojis through the avatar, faster when many are queued,
-   *  with a short grace tail so a late cluster still finishes after the audio. */
-  private scheduleEmoji(): void {
-    if (this.emojiTimer || !this.emojiQueue.length) return;
-    const n = this.emojiQueue.length;
-    const delay = n > 20 ? 480 : n > 12 ? 650 : n > 6 ? 950 : 1500;
-    this.emojiTimer = setTimeout(() => {
-      this.emojiTimer = null;
-      const live = this.tts.active || this.state === "speaking" || Date.now() - this.lastSpokeAt < 2800;
-      if (!live) {
-        this.emojiQueue = []; // turn is over: drop any leftovers and stop
-        return;
-      }
-      if (!this.presenting && !this.toolCycleTimer) {
-        const e = this.emojiQueue.shift();
-        if (e) this.transientMorph(emojiTarget(e, 12000), 1700);
-      }
-      this.scheduleEmoji();
-    }, delay);
+  /** Morph the avatar to each of the current chunk's emojis as the voice reaches
+   *  its position (driven by audio playback progress, 0..1). */
+  private fireEmojis(progress: number): void {
+    const cur = this.tts.current;
+    if (!cur) return;
+    while (this.firedIdx < cur.emojis.length && progress >= cur.emojis[this.firedIdx]!.frac) {
+      const e = cur.emojis[this.firedIdx++]!;
+      if (!this.presenting && !this.toolCycleTimer) this.transientMorph(emojiTarget(e.glyph, 12000), 1500);
+    }
   }
 
   /** Shift the gradient toward a mood, subtly (part-way from the brand gradient). */
@@ -551,7 +633,9 @@ export class VoiceLoop {
     if (this.state === "speaking") {
       level = rmsOf(this.tts.analyser, this.ttsBuf) * 4;
       bands = bandsOf(this.tts.analyser, this.ttsFreq);
-      this.cb.onCaptionScroll?.(this.tts.progress()); // scroll the subtitle with the audio
+      const p = this.tts.progress();
+      this.cb.onCaptionScroll?.(p); // scroll the subtitle with the audio
+      this.fireEmojis(p); // morph to each emoji as the voice reaches it
     } else if ((this.state === "listening" || this.state === "idle") && this.micAnalyser) {
       level = rmsOf(this.micAnalyser, this.micBuf) * 4;
       bands = bandsOf(this.micAnalyser, this.micFreq);
