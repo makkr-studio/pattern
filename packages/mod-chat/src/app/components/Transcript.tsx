@@ -190,8 +190,12 @@ function ErrorCard({ seg, onRetry }: { seg: Extract<Segment, { kind: "error" }>;
   );
 }
 
+// Per-message TTS cache: re-clicking "listen" replays the same generated audio
+// instead of regenerating it. Keyed by turn id, session-lifetime (cleared on reload).
+const speechCache = new Map<string, string>(); // turnId -> blobId
+
 /** Play an assistant turn aloud (text-to-speech via the "speech" alias). */
-function SpeakButton({ text }: { text: string }) {
+function SpeakButton({ text, messageId }: { text: string; messageId: string }) {
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   async function toggle() {
@@ -202,7 +206,11 @@ function SpeakButton({ text }: { text: string }) {
     }
     setState("loading");
     try {
-      const { blobId } = await api.speech(text);
+      let blobId = speechCache.get(messageId);
+      if (!blobId) {
+        ({ blobId } = await api.speech(text));
+        speechCache.set(messageId, blobId);
+      }
       const audio = new Audio(api.blobs.url(blobId));
       audioRef.current = audio;
       audio.onended = () => setState("idle");
@@ -254,7 +262,7 @@ function AgentTurn({ turn, live }: { turn: Turn; live: boolean }) {
         if (seg.kind === "approval") return <ApprovalCard key={i} seg={seg} turn={turn} live={live} />;
         return <ErrorCard key={i} seg={seg} onRetry={status !== "running" ? retry : undefined} />;
       })}
-      {!live && status === "complete" && spokenText && <SpeakButton text={spokenText} />}
+      {!live && status === "complete" && spokenText && <SpeakButton text={spokenText} messageId={turn.id} />}
       {status === "cancelled" && (
         <div className="mt-1 text-[12.5px] italic" style={{ color: "var(--fg-faint)" }}>
           stopped
