@@ -1,25 +1,17 @@
 /**
- * A READ-ONLY workflow canvas for docs embeds — the admin's graph language
- * (port-kind colors, glass nodes, dashed control edges) without any editing.
- * Layout + flow-building are a trimmed copy of the admin editor's graph.ts;
- * the node is deliberately minimal (title, type, port handles, comment).
- * Loaded lazily so xyflow stays out of the reading bundle.
+ * A READ-ONLY workflow canvas for docs embeds, rendered in the SAME visual
+ * language as the marketing site: glowing bezier wires over category-tinted
+ * glass nodes (icons, schema-typed port dots, control notches). It's a plain
+ * SVG layer (the site's StaticGraph) — no xyflow, no animation — fit to the
+ * embed width, with a fullscreen view for big graphs. Loaded lazily.
  */
 
-import React, { useMemo } from "react";
-import {
-  Background,
-  BackgroundVariant,
-  Handle,
-  Position,
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge as RFEdge,
-  type Node as RFNode,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Maximize2, X } from "lucide-react";
 import type { OpInfo, PortInfo } from "../../shared/types";
+import { StaticGraph } from "../graph/StaticGraph";
+import { graphBounds } from "../graph/geometry";
+import type { MiniEdgeSpec, MiniGraph, MiniNodeSpec, MiniPort, PortKind } from "../graph/types";
 
 export interface WorkflowDocLite {
   id?: string;
@@ -35,82 +27,11 @@ export interface WorkflowDocLite {
   edges: Array<{ from: { node: string; port: string }; to: { node: string; port: string } }>;
 }
 
-type OpMap = Map<string, OpInfo>;
-
 const CONTROL_IN = "in";
 const CONTROL_OUT = "out";
-const FALLBACK: PortInfo["kind"] = "value";
 
-interface NodeData extends Record<string, unknown> {
-  op: string;
-  title?: string;
-  comment?: string;
-  inputs: PortInfo[];
-  outputs: PortInfo[];
-  boundary?: "trigger" | "outgate";
-}
-
-/** Ports = the op's declared ports ∪ ports referenced by edges (dynamic arity). */
-function handlesFor(nodeId: string, op: OpInfo | undefined, doc: WorkflowDocLite) {
-  const inputs = new Map<string, PortInfo>();
-  const outputs = new Map<string, PortInfo>();
-  for (const p of op?.inputs ?? []) inputs.set(p.name, p);
-  for (const p of op?.configInputs ?? []) inputs.set(p.name, p);
-  for (const p of op?.outputs ?? []) outputs.set(p.name, p);
-  for (const name of op?.controlOut ?? []) outputs.set(name, { name, kind: "control" });
-  for (const e of doc.edges) {
-    if (e.to.node === nodeId && !inputs.has(e.to.port)) {
-      inputs.set(e.to.port, { name: e.to.port, kind: e.to.port === CONTROL_IN ? "control" : FALLBACK });
-    }
-    if (e.from.node === nodeId && !outputs.has(e.from.port)) {
-      outputs.set(e.from.port, { name: e.from.port, kind: e.from.port === CONTROL_OUT ? "control" : FALLBACK });
-    }
-  }
-  // Only render ports that are wired or declared — keep embed nodes quiet.
-  const wiredIn = new Set(doc.edges.filter((e) => e.to.node === nodeId).map((e) => e.to.port));
-  const wiredOut = new Set(doc.edges.filter((e) => e.from.node === nodeId).map((e) => e.from.port));
-  return {
-    inputs: [...inputs.values()].filter((p) => wiredIn.has(p.name) || p.required),
-    outputs: [...outputs.values()].filter((p) => wiredOut.has(p.name)),
-  };
-}
-
-function portColor(kind: PortInfo["kind"]): string {
-  return kind === "value"
-    ? "var(--color-port-value)"
-    : kind === "stream"
-      ? "var(--color-port-stream)"
-      : "var(--color-port-control)";
-}
-
-function edgeStyle(kind: PortInfo["kind"]): React.CSSProperties {
-  const c = portColor(kind);
-  return {
-    stroke: c,
-    strokeWidth: 2,
-    strokeDasharray: kind === "control" ? "5 5" : undefined,
-    // A soft glow so the wires read "lit", like the site/admin canvas.
-    filter: `drop-shadow(0 0 4px color-mix(in srgb, ${c} 55%, transparent))`,
-  };
-}
-
-/** A glowing port dot, colored by kind (matches the admin/site node). */
-function dotStyle(kind: PortInfo["kind"], side: "left" | "right"): React.CSSProperties {
-  const c = portColor(kind);
-  return {
-    position: "relative",
-    transform: "none",
-    width: 9,
-    height: 9,
-    border: "none",
-    borderRadius: "50%",
-    background: c,
-    boxShadow: `0 0 6px color-mix(in srgb, ${c} 70%, transparent)`,
-    [side]: -4,
-  };
-}
-
-/** Longest-path columns + stacked rows — enough to read a pipeline. */
+/** Longest-path columns + stacked rows — enough to read a pipeline. Spacing is
+ *  sized for the (taller) site node so columns/rows don't collide. */
 function autoLayout(doc: WorkflowDocLite): Map<string, { x: number; y: number }> {
   const depth = new Map<string, number>();
   const indeg = new Map<string, number>();
@@ -134,129 +55,141 @@ function autoLayout(doc: WorkflowDocLite): Map<string, { x: number; y: number }>
     const d = depth.get(n.id) ?? 0;
     const row = perCol.get(d) ?? 0;
     perCol.set(d, row + 1);
-    pos.set(n.id, { x: 40 + d * 260, y: 40 + row * 150 });
+    pos.set(n.id, { x: 40 + d * 300, y: 40 + row * 210 });
   }
   return pos;
 }
 
-function DocsOpNode({ data }: NodeProps<RFNode<NodeData>>) {
-  const rows = Math.max(data.inputs.length, data.outputs.length);
-  // Boundary nodes get the neon-cyan accent; the rest a calm violet — the same
-  // visual language as the site/admin canvas (glass surface + accent border).
-  const accent = data.boundary ? "var(--color-neon-cyan)" : "var(--color-neon-violet)";
+const toMiniPort = (p: PortInfo): MiniPort => ({ name: p.name, kind: p.kind, schemaType: p.dataType, required: p.required });
+
+/** Build a static MiniGraph (site renderer's input) from a workflow doc + ops:
+ *  only declared-required or wired ports show, config inputs stay separate (square
+ *  dots), and each edge takes its source port's kind for color/dash. */
+export function workflowToMiniGraph(doc: WorkflowDocLite, ops: OpInfo[]): MiniGraph {
+  const opMap = new Map(ops.map((o) => [o.type, o]));
+  const layout = autoLayout(doc);
+
+  const nodes: MiniNodeSpec[] = doc.nodes.map((n) => {
+    const op = opMap.get(n.op);
+    const wiredIn = new Set(doc.edges.filter((e) => e.to.node === n.id).map((e) => e.to.port));
+    const wiredOut = new Set(doc.edges.filter((e) => e.from.node === n.id).map((e) => e.from.port));
+
+    const configInputs = (op?.configInputs ?? []).filter((p) => wiredIn.has(p.name) || p.required).map(toMiniPort);
+    const inputs = (op?.inputs ?? []).filter((p) => wiredIn.has(p.name) || p.required).map(toMiniPort);
+    // Edge-referenced inputs the op doesn't declare (dynamic arity).
+    const declaredIn = new Set([...(op?.inputs ?? []), ...(op?.configInputs ?? [])].map((p) => p.name));
+    for (const port of wiredIn) if (!declaredIn.has(port)) inputs.push({ name: port, kind: port === CONTROL_IN ? "control" : "value" });
+
+    const outputs = (op?.outputs ?? []).filter((p) => wiredOut.has(p.name)).map(toMiniPort);
+    const declaredOut = new Set([...(op?.outputs ?? []).map((p) => p.name), ...(op?.controlOut ?? [])]);
+    for (const port of wiredOut) if (!declaredOut.has(port) && port !== CONTROL_OUT) outputs.push({ name: port, kind: "value" });
+    const controlOuts = (op?.controlOut ?? []).filter((co) => wiredOut.has(co));
+
+    return {
+      id: n.id,
+      op: n.op,
+      title: n.title,
+      boundary: op?.boundary,
+      configInputs,
+      inputs,
+      outputs,
+      controlOuts,
+      pos: n.ui ?? layout.get(n.id) ?? { x: 0, y: 0 },
+    };
+  });
+
+  const kindOf = (nodeId: string, port: string): PortKind => {
+    const node = doc.nodes.find((x) => x.id === nodeId);
+    const op = node && opMap.get(node.op);
+    const found = op?.outputs.find((p) => p.name === port);
+    if (found) return found.kind;
+    if (port === CONTROL_OUT || op?.controlOut.includes(port)) return "control";
+    return "value";
+  };
+  const edges: MiniEdgeSpec[] = doc.edges.map((e, i) => ({ id: `e${i}`, from: e.from, to: e.to, kind: kindOf(e.from.node, e.from.port) }));
+
+  return { nodes, edges };
+}
+
+/** Render a graph scaled to fit the available width (and an optional max height),
+ *  never magnified past 1:1. Reserves the scaled height so layout stays correct. */
+function GraphFit({ graph, maxHeight }: { graph: MiniGraph; maxHeight: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el);
+    setW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const b = graphBounds(graph);
+  const scale = Math.min(1, w > 0 ? w / b.width : 1, maxHeight > 0 ? maxHeight / b.height : 1);
   return (
-    <div
-      className="node-surface relative overflow-visible rounded-xl text-[11px]"
-      style={{
-        minWidth: 184,
-        border: `1px solid color-mix(in srgb, ${accent} ${data.boundary ? 60 : 38}%, var(--hairline))`,
-        boxShadow: "var(--glass-shadow)",
-      }}
-    >
-      <div
-        className="flex items-center gap-2 rounded-t-xl border-b px-3 py-2 hairline"
-        style={{ background: `color-mix(in srgb, ${accent} 12%, transparent)` }}
-      >
-        <div className="min-w-0">
-          <div className="truncate font-medium leading-tight" style={{ fontSize: 12 }}>
-            {data.title ?? data.op}
-          </div>
-          <div className="truncate font-mono text-[9.5px] text-muted">{data.op}</div>
-        </div>
-        {data.boundary && (
-          <span
-            className="ml-auto shrink-0 rounded px-1 py-0.5 text-[9px] uppercase tracking-wide"
-            style={{ background: "var(--color-neon-cyan)", color: "#000" }}
-          >
-            {data.boundary === "trigger" ? "trig" : "out"}
-          </span>
-        )}
+    <div ref={ref} className="flex w-full justify-center" style={{ height: b.height * scale }}>
+      <div style={{ transform: `scale(${scale})`, transformOrigin: "top center", width: b.width, height: b.height }}>
+        <StaticGraph graph={graph} />
       </div>
-      <div className="relative px-3 py-2" style={{ minHeight: rows * 20 }}>
-        {data.inputs.map((p, i) => (
-          <div key={p.name} className="absolute left-0 flex items-center gap-1.5" style={{ top: 8 + i * 20 }}>
-            <Handle type="target" id={p.name} position={Position.Left} isConnectable={false} style={dotStyle(p.kind, "left")} />
-            <span className="font-mono text-muted">
-              {p.name}
-              {p.required && <span className="text-[var(--color-neon-amber)]">*</span>}
-            </span>
-          </div>
-        ))}
-        {data.outputs.map((p, i) => (
-          <div key={p.name} className="absolute right-0 flex items-center gap-1.5" style={{ top: 8 + i * 20 }}>
-            <span className="font-mono text-muted">{p.name}</span>
-            <Handle type="source" id={p.name} position={Position.Right} isConnectable={false} style={dotStyle(p.kind, "right")} />
-          </div>
-        ))}
-      </div>
-      {data.comment && <div className="border-t px-3 py-1.5 text-[10px] text-muted hairline">{data.comment}</div>}
     </div>
   );
 }
 
-const nodeTypes = { docsOp: DocsOpNode };
-
 export default function WorkflowGraph({ doc, ops }: { doc: WorkflowDocLite; ops: OpInfo[] }) {
-  const { nodes, edges } = useMemo(() => {
-    const opMap: OpMap = new Map(ops.map((o) => [o.type, o]));
-    const layout = autoLayout(doc);
-    const nodes: RFNode<NodeData>[] = doc.nodes.map((n) => {
-      const op = opMap.get(n.op);
-      const { inputs, outputs } = handlesFor(n.id, op, doc);
-      return {
-        id: n.id,
-        type: "docsOp",
-        position: n.ui ?? layout.get(n.id) ?? { x: 0, y: 0 },
-        data: { op: n.op, title: n.title, comment: n.comment, inputs, outputs, boundary: op?.boundary },
-        draggable: false,
-        connectable: false,
-        selectable: false,
-      };
-    });
-    const kindOf = (nodeId: string, port: string): PortInfo["kind"] => {
-      const node = doc.nodes.find((x) => x.id === nodeId);
-      const op = node && opMap.get(node.op);
-      const found = op?.outputs.find((p) => p.name === port);
-      if (found) return found.kind;
-      if (port === CONTROL_OUT || op?.controlOut.includes(port)) return "control";
-      return FALLBACK;
+  const graph = useMemo(() => workflowToMiniGraph(doc, ops), [doc, ops]);
+  const [full, setFull] = useState(false);
+
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFull(false);
     };
-    const edges: RFEdge[] = doc.edges.map((e, i) => {
-      const kind = kindOf(e.from.node, e.from.port);
-      return {
-        id: `e${i}`,
-        source: e.from.node,
-        target: e.to.node,
-        sourceHandle: e.from.port,
-        targetHandle: e.to.port,
-        type: "default",
-        animated: kind === "stream",
-        style: edgeStyle(kind),
-        focusable: false,
-      };
-    });
-    return { nodes, edges };
-  }, [doc, ops]);
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [full]);
+
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
 
   return (
-    <div className="glass my-5 overflow-hidden rounded-2xl" style={{ height: Math.min(460, 150 + doc.nodes.length * 40) }}>
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.15 }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          zoomOnScroll={false}
-          preventScrolling={false}
-          proOptions={{ hideAttribution: true }}
+    <>
+      <div className="glass relative my-5 overflow-hidden rounded-2xl p-5">
+        <button
+          type="button"
+          onClick={() => setFull(true)}
+          className="absolute right-2.5 top-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/10"
+          title="View fullscreen"
+          aria-label="View workflow fullscreen"
         >
-          <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--hairline)" />
-        </ReactFlow>
-      </ReactFlowProvider>
-    </div>
+          <Maximize2 size={15} />
+        </button>
+        <GraphFit graph={graph} maxHeight={460} />
+      </div>
+
+      {full && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-6"
+          style={{ background: "rgba(4,4,9,0.86)", backdropFilter: "blur(4px)" }}
+          onClick={() => setFull(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setFull(false)}
+            className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10"
+            aria-label="Close fullscreen"
+            title="Close (Esc)"
+          >
+            <X size={20} />
+          </button>
+          <div className="max-h-full w-full max-w-[94vw] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <GraphFit graph={graph} maxHeight={vh * 0.86} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
