@@ -235,8 +235,12 @@ interface TtsChunk {
   speak: string; // markdown- and emoji-stripped text sent to the TTS
   caption: string; // synced subtitle (same clean text — no markdown, no emoji)
   emojis: Array<{ glyph: string; frac: number }>; // emoji morphs, by playback fraction
+  estDuration: number; // seconds, estimated from text length (fallback when duration is unknown)
   tone?: string; // voice-tone instruction (promptable TTS)
 }
+
+// Rough TTS speaking rate (characters per second) for the duration estimate below.
+const TTS_CHARS_PER_SEC = 16;
 
 /** Sequential TTS player with an analyser for the avatar's "speaking" reaction.
  *  Reports the spoken chunk's caption on start, so subtitles track the audio, and
@@ -271,11 +275,17 @@ class TtsPlayer {
     return this.playing || this.queue.length > 0;
   }
 
-  /** Playback progress of the current chunk, 0..1 (0 if nothing is playing). */
+  /** Playback progress of the current chunk, 0..1 (0 if nothing is playing).
+   *  HTTP/blob audio often reports duration=Infinity until fully buffered, which
+   *  would freeze progress near 0; in that case fall back to the text-length
+   *  estimate so emoji timing and caption scroll still track the voice. */
   progress(): number {
+    if (!this.playing) return 0;
+    const t = this.audio.currentTime;
     const d = this.audio.duration;
-    if (!this.playing || !isFinite(d) || d <= 0) return 0;
-    return Math.min(1, Math.max(0, this.audio.currentTime / d));
+    if (isFinite(d) && d > 0) return Math.min(1, Math.max(0, t / d));
+    const est = this.current?.estDuration ?? 0;
+    return est > 0 ? Math.min(1, t / est) : 0;
   }
 
   enqueue(chunk: TtsChunk): void {
@@ -549,7 +559,8 @@ export class VoiceLoop {
     const emojis = [...this.pendingEmojis.map((glyph) => ({ glyph, frac: 0 })), ...timeline];
     this.pendingEmojis = [];
     spreadEmojiFracs(emojis); // give consecutive emojis distinct moments
-    this.tts.enqueue({ speak, caption: speak, emojis, tone: toneFor(this.lastEmotion || "neutral") });
+    const estDuration = Math.max(1, speak.length / TTS_CHARS_PER_SEC);
+    this.tts.enqueue({ speak, caption: speak, emojis, estDuration, tone: toneFor(this.lastEmotion || "neutral") });
   }
 
   /** Morph the avatar to each of the current chunk's emojis as the voice reaches
