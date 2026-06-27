@@ -113,6 +113,33 @@ and is never offered to the model as a callable tool.
 `stream` port with `mode: "sse"` to stream tokens, or into a persistence sink.
 Tee it with `core.stream.split` to do both at once.
 
+### Generate media in a tool
+
+`@pattern-js/mod-ai` ships capability ops beyond text: `ai.image.generate`,
+`ai.speech.generate`, `ai.video.generate`. They output **raw media**
+(`{ bytes, mime }`) and **don't save** — wire the output into `store.blob.put`
+(its `ref` output is a `MediaRef` served at `/store/blobs/:id`) when you want to
+keep it. Resolve a matching alias (`image`, `speech`, …) with `ai.alias`.
+
+## Serve a custom frontend
+
+A standalone user-facing SPA is just a workflow: register your built assets as a
+named filesystem in a mod's `setup` (`provideFilesystem(engine, "my-app",
+localFs("./app/dist"))`), then declare the app trio `boundary.http.app` →
+`core.app.static` (`filesystem: "my-app"`, `spaFallback: "index.html"`) →
+`boundary.http.app.serve`. `filesystem` is the registered **name**, not a path;
+the app resolves once at registration (rebuilt SPA → restart; in dev run Vite and
+proxy `/api` + `/auth`). No stack is imposed, but the admin is built with React,
+Tailwind, motion.dev (the `motion` package) and lucide — a tested starting point
+if you have no preference.
+
+## Hybrid execution
+
+This project ships a small worker pool (`workers` in `pattern.config.json`), so
+the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
+(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+instead of the host event loop; remove the `workers` field to go back to inline.
+
 ## Where things live
 
 - `workflows/` — file workflows (agentic flows, tools); editable, committed

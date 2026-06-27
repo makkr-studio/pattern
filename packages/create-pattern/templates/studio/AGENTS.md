@@ -109,11 +109,13 @@ work, which is already free during its awaits. A workflow only stalls the loop
 workflow's **`offload`** flag (editor → toolbar gear → *Workflow settings*, or
 `"offload": true` in the JSON) to run that whole workflow on a worker pool
 instead. Tag a compute-bound op `cpuHeavy: true` and the editor nudges toward
-Offload. Enable the pool in `pattern.config.json`: `"workers": 2` (number =
-size, or `{ "size", "mods" }`); with none configured, `offload` is a no-op.
-Offloaded runs use the worker's own services, can't reach live WebSocket
-sockets, and aren't pausable. (`@pattern-js/mod-docs` → *Projects & mods* →
-*Execution model* is the full version.)
+Offload. This project already ships a small pool (`workers` in
+`pattern.config.json`), so the admin's Process page reads **hybrid** and an
+`offload` workflow runs there out of the box — tune the `{ size, mods }` or drop
+back to inline by removing the field. Offloaded runs use the worker's own
+services, can't reach live WebSocket sockets, and aren't pausable.
+(`@pattern-js/mod-docs` → *Projects & mods* → *Execution model* is the full
+version.)
 
 ## Recipe: serve your own frontend
 
@@ -124,7 +126,9 @@ declare the app trio `boundary.http.app` → `core.app.static`
 (`filesystem: "my-app"`) → `boundary.http.app.serve`. `filesystem` is the
 registered **name**, not a path; the app resolves once at registration (rebuilt
 SPA → restart; in dev, run Vite and proxy `/api` + `/auth` to the backend).
-The admin SPA you're looking at is exactly this trio.
+The admin SPA you're looking at is exactly this trio. No stack is imposed, but the
+admin and chat apps are built with React, Tailwind, motion.dev (the `motion`
+package) and lucide — a tested starting point if you have no preference.
 
 ## Recipe: add an op
 
@@ -195,11 +199,16 @@ query (GET) or JSON body (POST). `mods/quotes.mjs` is a complete worked example.
   table is the feedback); set `result: "show"` when the route's return value is
   for the operator — objects render as labeled rows and a `copy` key becomes
   a copyable field (relative paths get the origin prepended).
-- **Tier-2 page** (full React): `{ path, remote: "/ext/my-page.js" }` — an ESM
-  file you serve yourself (e.g. a `boundary.http.app` mount). It reads
-  `globalThis.__PATTERN_ADMIN__` for the shared `React`, `api` client, and the
-  glass `ui` kit, and default-exports a component. Reach for Tier-2 only when a
-  declarative view can't express the page.
+- **Tier-2 page** (full React): `{ path, module }` where `module` is the page's
+  ESM **source** (a string); its default export is the component. The admin serves
+  that source from its own same-origin route and `import()`s it — no workflow, no
+  asset mount, no CSP relaxation (a plain `script-src 'self'` covers it). It reads
+  its dependencies off `globalThis.__PATTERN_ADMIN__` — `React`, `api` (the client),
+  the glass `ui` kit, `motion` (motion.dev) and `lucide` — so it uses the admin's
+  exact stack with no bundler. **Never bundle your own React** (two Reacts break
+  hooks); need JSX/libraries → build a single-file ESM bundle with React
+  externalized to the global and assign the built string to `module`. Reach for
+  Tier-2 only when a declarative view can't express the page.
 
 ## Recipe: add login & users (identity)
 

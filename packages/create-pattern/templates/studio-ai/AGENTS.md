@@ -32,8 +32,8 @@ tools in a loop, that's the **mod-agents** layer — a different modpack.)
 - **`ai.text.generate`** / **`ai.text.stream`** — `prompt` XOR `messages` (+ `system`); out `text`, `usage`. Stream emits tokens live.
 - **`ai.object.generate`** — give a JSON-Schema `schema`; out a typed `object`. Structured extraction.
 - **`ai.embed`** / **`ai.embed.many`** — text → vector(s) (use an embedding alias).
-- **`ai.image.generate`** — `prompt` (+ optional input `image` for image-to-image, provider-dependent) → a `MediaRef` (served at `/store/blobs/:id`).
-- **`ai.speech.generate`** (TTS), **`ai.transcribe`** (STT), **`ai.video.generate`** — audio/video in the blob store as `MediaRef`s.
+- **`ai.image.generate`** — `prompt` (+ optional input `image` for image-to-image, provider-dependent) → raw media (`{ bytes, mime }`). The generation ops **don't save** — wire the output into `store.blob.put` to persist it (its `ref` output is a `MediaRef` served at `/store/blobs/:id`).
+- **`ai.speech.generate`** (TTS), **`ai.video.generate`** — likewise output raw media; persist with an explicit `store.blob.put` node. **`ai.transcribe`** (STT) takes audio in, returns `text` (+ segments).
 
 ## Recipe — an AI route
 
@@ -49,6 +49,25 @@ request into the op's inputs and the op's output into the response body. Want it
 editor/CLI-only instead of HTTP? Swap the `boundary.http.request`/`response`
 pair for `boundary.manual`/`boundary.return` and run it from the admin's Runs
 view or `engine.run("<id>", { input })`.
+
+## Serve a custom frontend
+
+A standalone user-facing SPA is just a workflow: register your built assets as a
+named filesystem in a mod's `setup` (`provideFilesystem(engine, "my-app",
+localFs("./app/dist"))`), then declare the app trio `boundary.http.app` →
+`core.app.static` (`filesystem: "my-app"`, `spaFallback: "index.html"`) →
+`boundary.http.app.serve`. `filesystem` is the registered **name**, not a path;
+the app resolves once at registration (rebuilt SPA → restart; in dev run Vite and
+proxy `/api` + `/auth` to the backend). No stack is imposed, but the admin is
+built with React, Tailwind, motion.dev (the `motion` package) and lucide — a
+tested starting point if you have no preference.
+
+## Hybrid execution
+
+This project ships a small worker pool (`workers` in `pattern.config.json`), so
+the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
+(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+instead of the host event loop; remove the `workers` field to go back to inline.
 
 ## Where things live
 

@@ -79,7 +79,11 @@ Approve/Deny in the chat (HITL).
 Adding your own REST routes or a custom frontend alongside the chat? The
 bundled docs (`@pattern-js/mod-docs` → `/docs`) cover the discipline: *Designing
 your API* (one workflow per action, ops stay HTTP-free, decompose inputs / keep
-outputs whole) and *Create an app* (serving a built SPA via the app trio).
+outputs whole) and *Create an app* (serving a built SPA via the app trio:
+`boundary.http.app` → `core.app.static` → `boundary.http.app.serve`, assets
+registered with `provideFilesystem`). No stack is imposed, but this chat app and
+the admin are built with React, Tailwind, motion.dev (the `motion` package) and
+lucide — a tested starting point if you have no preference.
 
 ### Tune the agent (instructions, model)
 
@@ -123,6 +127,14 @@ included.
 Drop an `agents.history.compact` node between `chat.turn.begin`'s `history`
 output and `agents.run`'s `history` input. Compaction is a visible node — you
 SEE when memory squeezes.
+
+## Hybrid execution
+
+This project ships a small worker pool (`workers` in `pattern.config.json`), so
+the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
+(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+instead of the host event loop; remove the `workers` field to go back to inline.
+The chat turn pipeline itself stays inline (it streams and holds a lease).
 
 ## Where things live
 

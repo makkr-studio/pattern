@@ -8,8 +8,9 @@ through it). It is the only mod that imports the [Vercel AI SDK](https://ai-sdk.
 so every provider quirk, streaming detail, and the MCP client live behind one
 seam you never have to touch.
 
-Install it alongside `@pattern-js/mod-agents` (for agents) and, for generated
-media, `@pattern-js/mod-store` (bytes land in its blob store). Provider keys live
+Install it alongside `@pattern-js/mod-agents` (for agents) and, to persist
+generated media, `@pattern-js/mod-store` (wire a generation op into its
+`store.blob.put` — the ops themselves stay storage-agnostic). Provider keys live
 in `@pattern-js/mod-vault`.
 
 ## Two ways to pick a model
@@ -61,9 +62,12 @@ vars; an alias just references them by name and source.
 ## The modality ops
 
 All take a `model` (required) and write their result on named outputs. Text-ish
-ops accept `prompt` XOR `messages` plus an optional `system`. Generated media
-(image/audio/video) lands in the blob store and comes back as a **`MediaRef`**
-(`{ blobId, mime }`), served at `GET /store/blobs/:id` — never base64 on a port.
+ops accept `prompt` XOR `messages` plus an optional `system`. The generation ops
+(image/audio/video) output **raw media** (`{ bytes, mime, kind }`) and **don't
+save** — keeping the save out of the op means mod-ai never assumes a blob store.
+Wire the output into `store.blob.put` to persist it: its `ref` output is a
+**`MediaRef`** (`{ blobId, mime }`) served at `GET /store/blobs/:id`. (One node:
+`ai.image.generate.image → store.blob.put.data`, then `store.blob.put.ref` onward.)
 
 | Op | Out | Notes |
 |---|---|---|
@@ -72,13 +76,13 @@ ops accept `prompt` XOR `messages` plus an optional `system`. Generated media
 | `ai.object.generate` | `object`, `usage` | give a JSON-Schema `schema` |
 | `ai.object.stream` | `partialStream` (stream), `object` | partials as they complete |
 | `ai.embed` / `ai.embed.many` | `embedding(s)`, `usage` | use an `embedding` model |
-| `ai.image.generate` | `image`/`images` (MediaRef), `progress` | `n`, `size`, `aspectRatio`, `seed` |
-| `ai.speech.generate` | `audio` (MediaRef) | `voice`, `speed` |
+| `ai.image.generate` | `image`/`images` (raw media), `progress` | persist with `store.blob.put`; `n`, `size`, `aspectRatio`, `seed` |
+| `ai.speech.generate` | `audio` (raw media) | persist with `store.blob.put`; `voice`, `speed` |
 | `ai.transcribe` | `text`, `segments`, `language`, `durationMs` | pass a MediaRef or raw bytes |
-| `ai.video.generate` | `video`/`videos` (MediaRef), `progress` | long-running (minutes); gateway-first |
+| `ai.video.generate` | `video`/`videos` (raw media), `progress` | persist with `store.blob.put`; long-running (minutes); gateway-first |
 
 **Long-running generation** (image, video): the op returns immediately with a
-`progress` **stream** (`start` → `done`) and settles the `MediaRef` when ready,
+`progress` **stream** (`start` → `done`) and settles the media when ready,
 and it honors `ctx.signal` so editor Stop / cancel aborts it. Video forces an
 extended 15-minute fetch timeout (it routinely takes minutes).
 

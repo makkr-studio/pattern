@@ -136,7 +136,9 @@ restart — in dev, run the frontend's own dev server (Vite) for HMR and proxy
 resolve to the dev origin). `app/dist` must exist at boot, so build it first.
 (`@pattern-js/mod-admin` is the living example of this same trio — it just
 registers imperatively because it ships as a package; an app author declares the
-workflow file instead.)
+workflow file instead.) No stack is imposed, but the admin and chat apps are built
+with React, Tailwind, motion.dev (the `motion` package) and lucide — a tested
+starting point if you have no preference.
 
 ## Recipe: add an op
 
