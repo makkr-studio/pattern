@@ -67,6 +67,18 @@ export const mediaRefSchema = z.object({
 });
 export type MediaRef = z.infer<typeof mediaRefSchema>;
 
+/** Raw generated media held in memory — NOT persisted. The generation ops
+ *  (ai.image/speech/video.generate) output this; persist it explicitly by wiring
+ *  it into `store.blob.put` (which returns a MediaRef). Keeping the save out of the
+ *  op means mod-ai never assumes a blob store is present. */
+export const mediaSchema = z.object({
+  // Widened over the buffer backing so provider SDK bytes (Uint8Array<ArrayBufferLike>) assign cleanly.
+  bytes: z.custom<Uint8Array<ArrayBufferLike>>((v) => v instanceof Uint8Array),
+  mime: z.string(),
+  kind: z.enum(["image", "audio", "video"]),
+});
+export type Media = z.infer<typeof mediaSchema>;
+
 /** A thin progress channel for long-running (image/video) generations. */
 export const genProgressSchema = z.object({
   phase: z.enum(["start", "poll", "done"]),

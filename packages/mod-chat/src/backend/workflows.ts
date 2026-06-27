@@ -525,14 +525,16 @@ export function imageToolWorkflow(_opts: ResolvedChatOptions): Workflow {
         comment: 'The "image" alias — create it in Settings → AI Providers (e.g. openai · gpt-image-1).',
         ui: { x: 300, y: 300 },
       },
-      { id: "gen", op: "ai.image.generate", config: { n: 1 }, comment: "Generate the image; bytes land in the blob store.", ui: { x: 580, y: 180 } },
-      { id: "out", op: "boundary.tool.return", ui: { x: 860, y: 180, pair: "in" } },
+      { id: "gen", op: "ai.image.generate", config: { n: 1 }, comment: "Generate the image (raw bytes + mime).", ui: { x: 560, y: 180 } },
+      { id: "put", op: "store.blob.put", comment: "Persist it explicitly; `ref` is the MediaRef the chat UI renders inline.", ui: { x: 760, y: 180 } },
+      { id: "out", op: "boundary.tool.return", ui: { x: 960, y: 180, pair: "in" } },
     ],
     edges: [
       { from: { node: "in", port: "args" }, to: { node: "prompt", port: "object" } },
       { from: { node: "prompt", port: "out" }, to: { node: "gen", port: "prompt" } },
       { from: { node: "model", port: "model" }, to: { node: "gen", port: "model" } },
-      { from: { node: "gen", port: "image" }, to: { node: "out", port: "result" } },
+      { from: { node: "gen", port: "image" }, to: { node: "put", port: "data" } },
+      { from: { node: "put", port: "ref" }, to: { node: "out", port: "result" } },
     ],
   };
 }
@@ -668,13 +670,14 @@ export function transcribeRouteWorkflow(opts: ResolvedChatOptions): Workflow {
 
 /**
  * Text-to-speech for assistant messages: { text } → `ai.speech.generate` (the
- * "speech" alias) → a MediaRef the SPA plays from /store/blobs/:id.
+ * "speech" alias) → `store.blob.put` → a MediaRef the SPA plays from
+ * /store/blobs/:id. The save is an explicit node, not baked into the op.
  */
 export function speechRouteWorkflow(opts: ResolvedChatOptions): Workflow {
   return {
     id: "chat.route.speech",
     name: `Chat · POST ${opts.mount}/api/:ns/speech`,
-    description: 'Text-to-speech: { text } → ai.speech.generate → a MediaRef the SPA plays. Resolves the "speech" alias.',
+    description: 'Text-to-speech: { text } → ai.speech.generate → store.blob.put → a MediaRef the SPA plays. Resolves the "speech" alias.',
     source: "code",
     nodes: [
       {
@@ -687,7 +690,8 @@ export function speechRouteWorkflow(opts: ResolvedChatOptions): Workflow {
       { id: "instr", op: "core.object.get", config: { path: "instructions" }, comment: "Optional voice-tone steering for promptable TTS.", ui: { x: 280, y: 220 } },
       { id: "model", op: "ai.alias", config: { alias: "speech" }, comment: 'The "speech" alias (e.g. openai · gpt-4o-mini-tts).', ui: { x: 280, y: 340 } },
       { id: "sp", op: "ai.speech.generate", ui: { x: 540, y: 240 } },
-      { id: "out", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 800, y: 240 } },
+      { id: "put", op: "store.blob.put", comment: "Persist the audio explicitly; `ref` (a MediaRef with blobId) goes back to the SPA, which plays /store/blobs/:id.", ui: { x: 760, y: 240 } },
+      { id: "out", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 980, y: 240 } },
     ],
     edges: [
       { from: { node: "in", port: "body" }, to: { node: "text", port: "object" } },
@@ -695,7 +699,8 @@ export function speechRouteWorkflow(opts: ResolvedChatOptions): Workflow {
       { from: { node: "text", port: "out" }, to: { node: "sp", port: "text" } },
       { from: { node: "instr", port: "out" }, to: { node: "sp", port: "instructions" } },
       { from: { node: "model", port: "model" }, to: { node: "sp", port: "model" } },
-      { from: { node: "sp", port: "audio" }, to: { node: "out", port: "body" } },
+      { from: { node: "sp", port: "audio" }, to: { node: "put", port: "data" } },
+      { from: { node: "put", port: "ref" }, to: { node: "out", port: "body" } },
     ],
   };
 }

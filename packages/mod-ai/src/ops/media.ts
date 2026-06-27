@@ -3,8 +3,8 @@
 import { required, stream, value, z, type OpDefinition } from "@pattern-js/core";
 import { modelRefSchema } from "@pattern-js/mod-agents";
 import { generateImage, generateSpeech, generateVideo, transcribe } from "../sdk.js";
-import { genProgressSchema, mediaRefSchema, segmentSchema, type GenProgress, type MediaRef } from "../types.js";
-import { maybe, mediaBytes, providerService, putMedia } from "./shared.js";
+import { genProgressSchema, mediaRefSchema, mediaSchema, segmentSchema, type GenProgress, type Media, type MediaRef } from "../types.js";
+import { maybe, mediaBytes, providerService } from "./shared.js";
 
 /** Emit start → (await the work) → done. A thin progress channel for long jobs. */
 function progressStream(work: Promise<unknown>): ReadableStream<GenProgress> {
@@ -36,7 +36,8 @@ export const imageGenerate: OpDefinition = {
   title: "ai.image.generate",
   description:
     "Generate image(s) from a prompt. Optionally pass input image(s) for image-to-image / editing — this is provider-dependent " +
-    "(forwarded via providerOptions; honored by providers that accept image input, ignored otherwise). Bytes land in the blob store; outputs are MediaRefs.",
+    "(forwarded via providerOptions; honored by providers that accept image input, ignored otherwise). Outputs raw media (bytes + mime); " +
+    "wire it into store.blob.put to persist it (yielding a MediaRef).",
   config: z.object({
     n: z.number().int().positive().default(1),
     size: z.string().optional(),
@@ -53,8 +54,8 @@ export const imageGenerate: OpDefinition = {
     images: value(z.array(mediaRefSchema)),
   },
   outputs: {
-    image: value(mediaRefSchema),
-    images: value(z.array(mediaRefSchema)),
+    image: value(mediaSchema),
+    images: value(z.array(mediaSchema)),
     progress: stream(genProgressSchema),
   },
   execute: async (ctx) => {
@@ -78,7 +79,7 @@ export const imageGenerate: OpDefinition = {
       providerOptions[key] = { ...(providerOptions[key] ?? {}), image: urls[0], images: urls };
     }
 
-    const refs = (async () => {
+    const media = (async () => {
       const r = await generateImage({
         model,
         prompt,
@@ -92,12 +93,12 @@ export const imageGenerate: OpDefinition = {
         ...(providerOptions ? { providerOptions: providerOptions as any } : {}),
         abortSignal: ctx.signal,
       });
-      return Promise.all(r.images.map((img) => putMedia(ctx, img.uint8Array, img.mediaType, "image")));
+      return r.images.map((img): Media => ({ bytes: img.uint8Array, mime: img.mediaType, kind: "image" }));
     })();
     return {
-      image: refs.then((rs: MediaRef[]) => rs[0]),
-      images: refs,
-      progress: progressStream(refs),
+      image: media.then((m) => m[0]),
+      images: media,
+      progress: progressStream(media),
     };
   },
 };
@@ -105,12 +106,12 @@ export const imageGenerate: OpDefinition = {
 export const speechGenerate: OpDefinition = {
   type: "ai.speech.generate",
   title: "ai.speech.generate",
-  description: "Synthesize speech (TTS) from text. Audio bytes land in the blob store; output is a MediaRef.",
+  description: "Synthesize speech (TTS) from text. Outputs raw audio (bytes + mime); wire it into store.blob.put to persist it (yielding a MediaRef).",
   config: z.object({ voice: z.string().optional(), speed: z.number().optional(), format: z.string().optional() }),
   // `instructions` steers the voice tone/style on providers that support it
   // (e.g. OpenAI gpt-4o-mini-tts: "Speak warmly and excitedly").
   inputs: { model: required(modelRefSchema), text: required(z.string()), instructions: value(z.string()) },
-  outputs: { audio: value(mediaRefSchema) },
+  outputs: { audio: value(mediaSchema) },
   execute: async (ctx) => {
     const [modelRef, text, instructions] = await Promise.all([
       ctx.input.value("model"),
@@ -127,7 +128,7 @@ export const speechGenerate: OpDefinition = {
       instructions: instructions && instructions.trim() ? instructions : undefined,
       abortSignal: ctx.signal,
     });
-    return { audio: await putMedia(ctx, r.audio.uint8Array, r.audio.mediaType, "audio") };
+    return { audio: { bytes: r.audio.uint8Array, mime: r.audio.mediaType, kind: "audio" } satisfies Media };
   },
 };
 
@@ -166,7 +167,8 @@ export const videoGenerate: OpDefinition = {
   type: "ai.video.generate",
   title: "ai.video.generate",
   description:
-    "Generate video from a prompt (optionally an image for image-to-video). Long-running (minutes): progress streams start/done, bytes land in the blob store. Gateway-first.",
+    "Generate video from a prompt (optionally an image for image-to-video). Long-running (minutes): progress streams start/done. Outputs raw " +
+    "media (bytes + mime); wire it into store.blob.put to persist it (yielding a MediaRef). Gateway-first.",
   config: z.object({
     n: z.number().int().positive().default(1),
     durationSeconds: z.number().int().positive().optional(),
@@ -174,15 +176,15 @@ export const videoGenerate: OpDefinition = {
   }),
   inputs: { model: required(modelRefSchema), prompt: required(z.string()), image: value(mediaRefSchema) },
   outputs: {
-    video: value(mediaRefSchema),
-    videos: value(z.array(mediaRefSchema)),
+    video: value(mediaSchema),
+    videos: value(z.array(mediaSchema)),
     progress: stream(genProgressSchema),
   },
   execute: async (ctx) => {
     const [modelRef, prompt] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("prompt")]);
     const model = await providerService(ctx).videoModel(modelRefSchema.parse(modelRef), ctx);
     const cfg = ctx.config as { n: number; durationSeconds?: number; aspectRatio?: string };
-    const refs = (async () => {
+    const media = (async () => {
       const r = await generateVideo({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         model: model as any,
@@ -195,12 +197,12 @@ export const videoGenerate: OpDefinition = {
         abortSignal: ctx.signal,
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return Promise.all((r.videos as any[]).map((v) => putMedia(ctx, v.uint8Array, v.mediaType ?? "video/mp4", "video")));
+      return (r.videos as any[]).map((v): Media => ({ bytes: v.uint8Array, mime: v.mediaType ?? "video/mp4", kind: "video" }));
     })();
     return {
-      video: refs.then((rs: MediaRef[]) => rs[0]),
-      videos: refs,
-      progress: progressStream(refs),
+      video: media.then((m) => m[0]),
+      videos: media,
+      progress: progressStream(media),
     };
   },
 };
