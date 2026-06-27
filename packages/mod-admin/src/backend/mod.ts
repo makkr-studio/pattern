@@ -31,6 +31,10 @@ import { endpointWorkflows, stampRequireAuth, uiPageRoute } from "./workflows/in
 import { ASSETS_FS, registerAdminServices } from "./services.js";
 import { adminFrontend } from "./frontend.js";
 
+/** Default Runs exclusion regex: hide the admin's own `admin.*` API runs until the
+ *  user configures their own (Settings → Observability). */
+const DEFAULT_RUN_EXCLUDE = "^admin\\.";
+
 export interface AdminModOptions {
   /** Where to mount the admin (UI + API live under here). Default "/admin". */
   mount?: string;
@@ -182,16 +186,17 @@ export function adminMod(options: AdminModOptions = {}): PatternMod {
       controlPlane = cp;
       // Re-apply persisted admin settings (run retention / exclusion regex /
       // I/O sampling) — best-effort: a bad stored pattern must never block boot.
+      // With nothing saved yet, default the exclusion to the admin's own API runs
+      // so the Runs page narrates YOUR workflows out of the box, not itself. A
+      // saved value wins, including an explicit empty (which means "show all").
       const saved = await store.getAdminConfig();
       const obs = (saved?.observability ?? null) as { capacity?: number; exclude?: string | null; sampleIo?: boolean } | null;
-      if (obs) {
-        try {
-          if (obs.capacity != null) sink.setCapacity(obs.capacity);
-          sink.setExclude(obs.exclude ?? null);
-          if (obs.sampleIo != null) engine.setIoSampling(Boolean(obs.sampleIo));
-        } catch (err) {
-          console.error("[pattern] ignoring bad persisted observability settings:", err);
-        }
+      try {
+        if (obs?.capacity != null) sink.setCapacity(obs.capacity);
+        sink.setExclude(obs ? (obs.exclude ?? null) : DEFAULT_RUN_EXCLUDE);
+        if (obs?.sampleIo != null) engine.setIoSampling(Boolean(obs.sampleIo));
+      } catch (err) {
+        console.error("[pattern] ignoring bad persisted observability settings:", err);
       }
     },
     // Bootstrap in `ready`, not `setup`: stored workflows may use ops from mods
