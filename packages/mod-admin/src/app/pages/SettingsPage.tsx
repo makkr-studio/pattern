@@ -6,7 +6,7 @@ import { useManifest } from "../lib/queries";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import { sfx } from "../lib/sfx";
 import { readSettings, writeSettings, DEFAULT_SETTINGS, type AdminSettings } from "../lib/settings";
-import { Badge, GlassPanel, NeonButton, PageHeader } from "../components/ui";
+import { GlassPanel, NeonButton, PageHeader } from "../components/ui";
 import { Sun, Moon, SunMoon, Volume2, VolumeX } from "../components/icon";
 
 const DRAFT_KEY = "pattern.admin.editor.draft";
@@ -337,27 +337,6 @@ export function SettingsPage() {
         {(manifest?.settings ?? []).map(({ mod, section }) => (
           <ModSettingsSection key={`${mod}:${section.id}`} mod={mod} section={section} flash={flash} />
         ))}
-
-        <Section title="Runtime" hint="Read-only — these belong to the host process, not this browser.">
-          <Row label="Node">
-            <span className="font-mono text-xs">{stats?.process.node ?? "…"} · pid {stats?.process.pid ?? "…"}</span>
-          </Row>
-          <Row label="Host CPU cores">
-            <span className="font-mono text-xs">{stats?.host.cpus ?? "…"}</span>
-          </Row>
-          <Row label="Run transport">
-            <Badge hue={stats?.transport.kind === "worker-pool" ? 150 : 200}>
-              {stats?.transport.kind ?? "…"}{stats?.transport.size ? ` × ${stats.transport.size}` : ""}
-            </Badge>
-          </Row>
-          <p className="text-muted text-[11px] leading-relaxed">
-            The engine's worker pool is sized where the engine is built:{" "}
-            <code className="font-mono">new Engine({"{"} transport: new WorkerPoolTransport({"{"} size {"}"}) {"}"})</code>
-            {" "}— default <code className="font-mono">cores − 1</code>. The admin's own runs stay in-process by design
-            (its ops need in-process services), so a pooled engine for user workflows is a host-level choice. The
-            benchmark above spins its own temporary pool and doesn't touch this engine.
-          </p>
-        </Section>
       </div>
     </>
   );
