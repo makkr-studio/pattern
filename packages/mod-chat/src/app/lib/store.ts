@@ -168,7 +168,10 @@ class ChatStore {
    * model defaults to the persisted selection; `onEvent` lets a surface (voice
    * mode) observe the live event stream while the store still records history.
    */
-  async send(content: MessagePart[], opts?: { model?: string; onEvent?: (ev: TurnEvent) => void }): Promise<string | null> {
+  async send(
+    content: MessagePart[],
+    opts?: { model?: string; avatar?: boolean; onEvent?: (ev: TurnEvent) => void },
+  ): Promise<string | null> {
     let conversationId = this.state.currentId;
     if (!conversationId) {
       try {
@@ -196,7 +199,7 @@ class ChatStore {
 
     const model = opts?.model ?? this.state.selectedModel ?? undefined;
     try {
-      await this.consume(streamTurn(conversationId, content, turnId, model), turnId, opts?.onEvent);
+      await this.consume(streamTurn(conversationId, content, turnId, model, opts?.avatar), turnId, opts?.onEvent);
     } catch (err) {
       const e = err as { status?: number; body?: { activeTurnId?: string } };
       if (e.status === 409) {

@@ -88,9 +88,11 @@ Beyond the transcript, the SPA ships a polished UX with no configuration:
 - **Smart dictation.** The composer mic uses the same VAD: speak, and it stops
   and transcribes itself, with a live waveform while listening.
 
-The avatar's tone and emoji morphs are driven by a silent `express` tool the
-agent may call. It rides the normal tool-event stream (so it persists and
-replays) but is hidden from the transcript and consumed only by voice mode.
+Voice turns post with `avatar: true`, and the turn pipeline wires that flag (via
+`core.value.select` → the agent's `instructions` input) into a spoken, emoji-rich
+instruction style — short, conversational, no markdown — while normal text turns
+keep the configured instructions. The avatar's color follows the reply's mood,
+detected client-side from the streamed text (no model tool call needed).
 
 ## Reliability model
 

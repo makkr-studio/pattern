@@ -242,7 +242,9 @@ export class Canvas2DAvatar implements Avatar {
     const mc = this.morph?.colors;
     const mix = e.morphMix;
     const mcCount = mc ? mc.length / 3 : 0;
-    const dotR = Math.max(0.5, Math.min(W, H) * (this.curState === "presenting" ? 0.00086 : 0.00072));
+    // Tighter dots overall (a stronger point-cloud read); kept larger while
+    // presenting a picture so the colored cloud reads as filled.
+    const dotR = Math.max(0.5, Math.min(W, H) * (this.curState === "presenting" ? 0.00086 : 0.00056));
 
     const ang = this.t * 0.05;
     const gcos = Math.cos(ang);

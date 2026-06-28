@@ -28,6 +28,9 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
   const [caption, setCaption] = useState("");
   const [capOn, setCapOn] = useState(false);
   const [toolLabel, setToolLabel] = useState<string | null>(null);
+  const [pictureUrl, setPictureUrl] = useState<string | null>(null); // full image crossfaded over the cloud
+  const [pictureOn, setPictureOn] = useState(false);
+  const [pictureBox, setPictureBox] = useState<{ w: number; h: number } | null>(null); // cloud footprint, px
   const [error, setError] = useState<string | null>(null);
   const [backend, setBackend] = useState<"webgpu" | "canvas2d" | null>(null);
   const [shown, setShown] = useState(false);
@@ -83,6 +86,18 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
             inner.style.transform = `translateY(${overflow > 2 ? -overflow * p : 0}px)`;
           },
           onToolLabel: setToolLabel,
+          // Crossfade the full generated picture up over the dotted cloud, then back.
+          // Sizing happens on load (so the <img> matches the cloud's footprint
+          // exactly); the fade-in only then triggers, for a smooth, aligned reveal.
+          onPicture: (url: string | null) => {
+            if (url) {
+              setPictureOn(false);
+              setPictureBox(null);
+              setPictureUrl(url);
+            } else {
+              setPictureOn(false);
+            }
+          },
           onError: setError,
         },
         () => chatStore.getState().selectedModel ?? undefined,
@@ -112,11 +127,52 @@ export default function VoiceMode({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Size the full picture to the dotted cloud's exact on-screen footprint. Both
+  // renderers fit the cloud to min(width,height): WebGPU draws at world·0.82·asp,
+  // canvas2d at min(W,H)·0.4 (≈0.80 full-width). The image's aspect ratio sets how
+  // much of that square it fills (px,py ≤ 1), so the <img> lands right on the dots.
+  const measurePicture = (img: HTMLImageElement) => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const r = wrap.getBoundingClientRect();
+    const minDim = Math.min(r.width, r.height);
+    const ar = img.naturalWidth / Math.max(1, img.naturalHeight);
+    const px = ar >= 1 ? 1 : ar;
+    const py = ar >= 1 ? 1 / ar : 1;
+    const fit = backend === "canvas2d" ? 0.8 : 0.82;
+    setPictureBox({ w: px * fit * minDim, h: py * fit * minDim });
+  };
+
   return (
     <div className="fixed inset-0 z-[60] transition-opacity duration-300" style={{ background: "#050407", opacity: shown ? 1 : 0 }}>
       <div ref={wrapRef} className="absolute inset-0">
         <canvas ref={canvasRef} className="block h-full w-full" />
       </div>
+
+      {pictureUrl && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <img
+            src={pictureUrl}
+            alt=""
+            onLoad={(e) => {
+              measurePicture(e.currentTarget);
+              requestAnimationFrame(() => setPictureOn(true)); // fade in only once sized
+            }}
+            onTransitionEnd={() => {
+              if (!pictureOn) setPictureUrl(null); // unmount once fully faded back to the cloud
+            }}
+            className="rounded-xl"
+            style={{
+              width: pictureBox ? `${pictureBox.w}px` : undefined,
+              height: pictureBox ? `${pictureBox.h}px` : undefined,
+              objectFit: "contain",
+              opacity: pictureOn ? 1 : 0,
+              transition: "opacity 1100ms ease-in-out",
+              boxShadow: "0 20px 80px rgba(0,0,0,0.5)",
+            }}
+          />
+        </div>
+      )}
 
       <div className="absolute inset-x-0 top-0 flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2 text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>

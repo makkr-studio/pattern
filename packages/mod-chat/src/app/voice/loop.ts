@@ -13,6 +13,15 @@ import type { TurnEvent } from "../lib/types";
 import type { Avatar, AvatarState } from "./avatar";
 import { emotionGradient, emojiTarget, imageTarget, BRAND_A, BRAND_B, lerpRGB } from "./avatar";
 
+// Picture-reveal timeline (ms). The dots first fly into the generated image as a
+// colored point cloud (ASSEMBLE); then the full crisp picture crossfades up over
+// the cloud so it can be seen clearly (FULL); then it fades back to the dotted
+// cloud, which lingers (SETTLE) before dissolving on to the next state. The
+// crossfade duration lives on the <img> in VoiceMode and is folded into FULL.
+const PRESENT_ASSEMBLE = 1900;
+const PRESENT_FULL = 4200;
+const PRESENT_SETTLE = 1900;
+
 // While a tool runs, cycle through a few glyphs to convey "working / waiting".
 const TOOL_CYCLE: Record<string, string[]> = {
   generate_image: ["🎨", "🖌️", "🖼️", "⏳"],
@@ -22,7 +31,7 @@ const TOOL_CYCLE: Record<string, string[]> = {
 };
 
 // Lightweight client-side emotion detection from the streamed reply, so the avatar
-// shifts color on its own — no model "express" call required.
+// shifts color on its own as the reply streams.
 const EMOTION_WORDS: Array<[RegExp, string]> = [
   [/\b(amazing|awesome|incredible|fantastic|wow|excellent|brilliant|love it|thrill|can't wait|let's go)\b/i, "excited"],
   [/\b(happy|glad|great|wonderful|delighted|cheer|yay|congrat|perfect|nice work)\b/i, "happy"],
@@ -228,6 +237,9 @@ export interface VoiceLoopCallbacks {
   /** 0..1 progress through the current spoken line, for scrolling the subtitle. */
   onCaptionScroll?: (progress: number) => void;
   onToolLabel: (label: string | null) => void;
+  /** Crossfade the full generated picture in (a url) or back out (null) over the
+   *  dotted point cloud, so the user can see the image clearly mid-reveal. */
+  onPicture?: (url: string | null) => void;
   onError?: (msg: string) => void;
 }
 
@@ -356,6 +368,7 @@ export class VoiceLoop {
   private morphTimer: ReturnType<typeof setTimeout> | null = null;
   private toolCycleTimer: ReturnType<typeof setInterval> | null = null;
   private captionTimer: ReturnType<typeof setTimeout> | null = null; // delayed subtitle fade-out
+  private presentTimers: Array<ReturnType<typeof setTimeout>> = []; // picture-reveal phases
   private presenting = false;
   // Client-side auto-expression bookkeeping.
   private lastEmotion = "";
@@ -411,6 +424,8 @@ export class VoiceLoop {
     this.stopToolCycle();
     if (this.captionTimer) clearTimeout(this.captionTimer);
     if (this.morphTimer) clearTimeout(this.morphTimer);
+    this.clearPresentTimers();
+    this.cb.onPicture?.(null);
     this.tts.dispose();
     this.vad?.destroy();
     if (this.turnActive) void chatStore.stop();
@@ -434,8 +449,15 @@ export class VoiceLoop {
       clearTimeout(this.morphTimer);
       this.morphTimer = null;
     }
+    this.clearPresentTimers();
+    if (this.presenting) this.cb.onPicture?.(null);
     this.presenting = false;
     this.avatar.set({ morph: null });
+  }
+
+  private clearPresentTimers(): void {
+    for (const t of this.presentTimers) clearTimeout(t);
+    this.presentTimers = [];
   }
 
   /** A transient morph that reverts after `ms` (unless replaced sooner). */
@@ -494,6 +516,7 @@ export class VoiceLoop {
       this.turnDone = false;
       await chatStore.send([{ type: "text", text: said }], {
         model: this.getModel(),
+        avatar: true, // voice mode → spoken, emoji-flavored instructions in the pipeline
         onEvent: (ev) => this.onEvent(ev),
       });
       this.turnActive = false;
@@ -514,9 +537,7 @@ export class VoiceLoop {
       this.autoExpress();
       this.pumpSpeech(false);
     } else if (ev.type === "tool.activity") {
-      if (ev.toolName === "express") {
-        this.onExpress((ev.phase === "start" ? ev.args : ev.result) as { emotion?: string; emoji?: string } | undefined);
-      } else if (ev.phase === "start") {
+      if (ev.phase === "start") {
         this.onToolStart(ev.toolName);
       } else {
         const img = imageRefOf(ev.result);
@@ -581,9 +602,9 @@ export class VoiceLoop {
   }
 
   /**
-   * Drive the gradient from the reply text itself, so the avatar stays alive
-   * without the model having to call `express`: re-read the mood frequently and
-   * shift the gradient toward it (emojis are handled separately by the pacer).
+   * Drive the gradient from the reply text itself, so the avatar stays alive and
+   * shifts color with the mood: re-read the emotion frequently and ease the
+   * gradient toward it (emojis are handled separately by the pacer).
    */
   private autoExpress(): void {
     const now = Date.now();
@@ -593,17 +614,6 @@ export class VoiceLoop {
     if (emo && emo !== this.lastEmotion) {
       this.lastEmotion = emo;
       this.setMood(emo, 0.85);
-    }
-  }
-
-  private onExpress(data?: { emotion?: string; emoji?: string }): void {
-    if (!data || typeof data !== "object") return;
-    if (data.emotion) {
-      this.lastEmotion = data.emotion;
-      this.setMood(data.emotion, 0.9);
-    }
-    if (data.emoji && !this.presenting) {
-      this.transientMorph(emojiTarget(data.emoji, 12000), 4200);
     }
   }
 
@@ -645,19 +655,27 @@ export class VoiceLoop {
   private async onImage(blobId: string): Promise<void> {
     this.stopToolCycle();
     try {
-      const target = await imageTarget(api.blobs.url(blobId), 40000);
+      const url = api.blobs.url(blobId);
+      const target = await imageTarget(url, 40000);
       if (this.disposed) return;
       this.presenting = true;
       this.cb.onToolLabel(null);
+      this.cb.onPicture?.(null); // ensure a clean dotted assembly (hide any prior reveal)
       this.setState("presenting");
       this.avatar.set({ morph: target });
       if (this.morphTimer) clearTimeout(this.morphTimer);
-      this.morphTimer = setTimeout(() => {
-        this.morphTimer = null;
+      this.morphTimer = null;
+      this.clearPresentTimers();
+      // Reveal timeline: dots assemble → crossfade the full picture up so it can be
+      // seen clearly → fade back to the dotted cloud (it lingers) → dissolve onward.
+      const at = (ms: number, fn: () => void) => this.presentTimers.push(setTimeout(fn, ms));
+      at(PRESENT_ASSEMBLE, () => this.cb.onPicture?.(url));
+      at(PRESENT_ASSEMBLE + PRESENT_FULL, () => this.cb.onPicture?.(null));
+      at(PRESENT_ASSEMBLE + PRESENT_FULL + PRESENT_SETTLE, () => {
         this.presenting = false;
         this.avatar.set({ morph: null });
         this.setState(this.tts.active ? "speaking" : this.vad ? "listening" : "idle");
-      }, 9000);
+      });
     } catch {
       /* image unreachable — ignore the reveal */
     }

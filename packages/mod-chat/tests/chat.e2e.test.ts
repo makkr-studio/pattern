@@ -326,7 +326,7 @@ describe("chat over HTTP (scripted model)", () => {
   });
 });
 
-describe("model switcher + express avatar signal", () => {
+describe("model switcher + voice avatar", () => {
   it("GET /models lists language aliases only, with secrets stripped", async () => {
     const { base, engine } = await boot([]);
     // Override the alias source (duck-typed off the aiConfig service) with a mix
@@ -362,27 +362,29 @@ describe("model switcher + express avatar signal", () => {
     expect(sseEvents(await res.text()).at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
   });
 
-  it("express is a callable (non-guardrail) tool that echoes its args to the stream", async () => {
+  it("avatar turns get spoken-style instructions; normal turns don't (per-turn agent.instructions)", async () => {
     const { base, engine } = await boot([
-      { kind: "tool_call", name: "express", callId: "e1", args: { emotion: "excited", emoji: "🎉" } },
-      { kind: "text", text: "Great news!" },
+      { kind: "text", text: "normal reply" },
+      { kind: "text", text: "voice reply" },
     ]);
-    const svc = engine.service<AgentsService>(AGENTS_SERVICE)!;
-    expect(svc.getWorkflowTool("express")?.guardrail).toBeFalsy();
-
+    const calls = engine.service<{ calls: Array<{ system?: string }> }>(AI_MODEL_SERVICE)!.calls;
     const { id, cookie } = await createConversation(base);
-    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ content: [{ type: "text", text: "news?" }] }),
-    });
-    const events = sseEvents(await res.text());
-    const done = events.find(
-      (e) => e.type === "tool.activity" && (e as { toolName: string }).toolName === "express" && (e as { phase: string }).phase === "done",
-    ) as { result?: { emoji?: string } } | undefined;
-    expect(done?.result?.emoji).toBe("🎉");
-    expect(events.at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
+    const post = (body: object) =>
+      fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      }).then((r) => r.text());
+
+    // Normal turn: instructions stay the configured (display-style) ones.
+    await post({ content: [{ type: "text", text: "hi" }] });
+    expect(calls.at(-1)!.system).not.toContain("VOICE MODE");
+
+    // Avatar turn: the body flag swaps in the spoken, emoji-flavored instructions.
+    await post({ content: [{ type: "text", text: "hi by voice" }], avatar: true });
+    expect(calls.at(-1)!.system).toContain("VOICE MODE");
   });
+
 });
 
 describe("admin Chats surface", () => {

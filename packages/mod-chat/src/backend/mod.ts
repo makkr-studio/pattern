@@ -22,7 +22,6 @@ import {
   approvalPipelineWorkflow,
   blobUploadWorkflow,
   crudWorkflows,
-  expressToolWorkflow,
   guardrailToolWorkflow,
   imageToolWorkflow,
   researcherToolWorkflow,
@@ -137,7 +136,6 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
           guardrailToolWorkflow(opts),
           // Capability showcases (auto-discovered as agent tools / SPA routes):
           imageToolWorkflow(opts), // generate_image tool → rendered inline in chat
-          expressToolWorkflow(opts), // silent avatar signal → drives the voice mode
           researcherToolWorkflow(opts), // research tool: an agent-as-tool example
           transcribeRouteWorkflow(opts), // mic → speech-to-text
           speechRouteWorkflow(opts), // assistant message → text-to-speech

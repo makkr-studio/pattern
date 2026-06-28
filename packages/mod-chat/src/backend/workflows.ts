@@ -55,15 +55,21 @@ function modelInjection(
 }
 
 /**
- * Appended to the chat agent's instructions: the silent `express` avatar signal.
- * Optional and zero-cost when skipped — the model only calls it when expressive
- * value is real, so plain factual replies stay fast.
+ * Appended to the agent's instructions ONLY on voice/avatar turns (the SPA sends
+ * `avatar: true` in the turn body). Switches the agent from a "display text" style
+ * to a spoken, conversational one. Wired in per-turn via core.value.select →
+ * agents.agent.instructions, so normal text turns are unaffected.
  */
-const EXPRESS_NOTE =
-  "\n\nYou also have a silent `express` tool that drives an optional on-screen avatar during voice " +
-  "conversations. When it genuinely adds value, you may call it once at the very start of a reply with " +
-  "your tone: a short emotion label, optionally a fitting emoji or shape. It is invisible, never replaces " +
-  "or delays your answer, and is entirely optional. Skip it for plain, factual replies.";
+const AVATAR_NOTE =
+  "\n\nVOICE MODE: your reply is spoken aloud and shown as a voice avatar, so talk like a person in " +
+  "conversation, not like a document. Keep it short and flowing — usually one to three sentences. Do not " +
+  "use markdown or any visual structure: no headings, bullet or numbered lists, tables, or code blocks, and " +
+  "avoid links and long enumerations; if you'd list things, weave them into a natural sentence instead. Use " +
+  "warm, plain, spoken language and contractions.\n\nEmojis are part of how you talk here: put at least one " +
+  "in almost every reply to carry the emotion, and often two. Weave them inside a sentence or at its very " +
+  "start (only rarely at the very end). Don't narrate a flat, emoji-less answer — let a little feeling show. " +
+  "The only limit is taste: rarely more than two or three, and skip them entirely only for genuinely somber " +
+  "or serious moments.";
 
 interface RouteSpec {
   id: string;
@@ -326,10 +332,28 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         op: "agents.agent",
         config: {
           name: agent.name,
-          instructions: agent.instructions + EXPRESS_NOTE,
+          instructions: agent.instructions,
         },
         comment: "THE agent. Edit instructions here; the model comes from resolveModel (per-turn alias → pin → default).",
         ui: { x: 1140, y: 60 },
+      },
+      // Voice/avatar turns (body `avatar: true`) get a spoken, conversational
+      // instruction style. avatarInstr holds the full avatar prompt; pickInstr
+      // feeds it into agent.instructions only when avatarOn, else leaves the input
+      // unwired (undefined) so the agent keeps its configured instructions.
+      {
+        id: "avatarInstr",
+        op: "core.const.string",
+        config: { value: agent.instructions + AVATAR_NOTE },
+        comment: "Spoken-style instructions used only on voice/avatar turns.",
+        ui: { x: 660, y: 540 },
+      },
+      { id: "avatarOn", op: "core.cast.toBoolean", comment: "body.avatar → a definite boolean (missing ⇒ false).", ui: { x: 660, y: 440 } },
+      {
+        id: "pickInstr",
+        op: "core.value.select",
+        comment: "avatarOn ? avatar instructions : (unwired ⇒ the agent's configured instructions).",
+        ui: { x: 900, y: 480 },
       },
       ...aModel.nodes,
       {
@@ -369,7 +393,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
       // id from the cookies port. The conflict/not-found path maps begin's
       // httpOutcome to a status.
       { id: "ex_params", op: "core.object.extract", config: { keys: ["id"] }, ui: { x: 240, y: 60 } },
-      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId", "model"] }, ui: { x: 240, y: 180 } },
+      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId", "model", "avatar"] }, ui: { x: 240, y: 180 } },
       { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 240, y: 300 } },
       { id: "errStatus", op: "boundary.http.status", ui: { x: 680, y: 440 } },
     ],
@@ -400,6 +424,12 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
       ...aModel.edges,
       { from: { node: "ex_body", port: "model" }, to: { node: "resolveModel", port: "alias" } },
       { from: { node: "resolveModel", port: "model" }, to: { node: "agent", port: "model" } },
+      // Per-turn instruction style: body.avatar → bool → select avatar instructions
+      // (or leave unwired) → the agent's instructions input (overrides config).
+      { from: { node: "ex_body", port: "avatar" }, to: { node: "avatarOn", port: "value" } },
+      { from: { node: "avatarOn", port: "out" }, to: { node: "pickInstr", port: "cond" } },
+      { from: { node: "avatarInstr", port: "out" }, to: { node: "pickInstr", port: "then" } },
+      { from: { node: "pickInstr", port: "out" }, to: { node: "agent", port: "instructions" } },
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
       { from: { node: "begin", port: "input" }, to: { node: "run", port: "input" } },
       { from: { node: "begin", port: "history" }, to: { node: "run", port: "history" } },
@@ -447,7 +477,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
         op: "agents.agent",
         config: {
           name: opts.agent.name,
-          instructions: opts.agent.instructions + EXPRESS_NOTE,
+          instructions: opts.agent.instructions,
         },
         comment: "Must reify the same agent shape as the turn pipeline.",
       },
@@ -536,48 +566,6 @@ export function imageToolWorkflow(_opts: ResolvedChatOptions): Workflow {
       { from: { node: "gen", port: "image" }, to: { node: "put", port: "data" } },
       { from: { node: "put", port: "ref" }, to: { node: "out", port: "result" } },
     ],
-  };
-}
-
-/**
- * The avatar signal: a silent, callable `express` tool that simply ECHOES its
- * args back as the tool result. The model calls it to surface its emotional tone
- * (and optionally a fitting emoji/shape) to the fullscreen voice avatar. It rides
- * the normal `tool.activity` event protocol — reaching the client live (SSE) and
- * persisted by the sink — but the transcript filters it out (`segmentsOf`), so it
- * never shows as a tool bud. No model/IO work: the echo is instant.
- */
-export function expressToolWorkflow(_opts: ResolvedChatOptions): Workflow {
-  return {
-    id: "chat.tool.express",
-    name: "Chat · tool · express (avatar signal)",
-    description:
-      "A silent tool the chat agent calls to drive the on-screen voice avatar: it echoes { emotion, emoji, shape } " +
-      "straight back as the tool result. Filtered out of the transcript; consumed by the fullscreen voice mode.",
-    source: "code",
-    nodes: [
-      {
-        id: "in",
-        op: "boundary.tool",
-        config: {
-          name: "express",
-          description:
-            "Silently signal your emotional tone to an on-screen avatar (voice mode). Produces no visible output and " +
-            "never replaces your reply. Optional. Use at most once, at the start of a reply.",
-          params: {
-            type: "object",
-            properties: {
-              emotion: { type: "string", description: "A short tone label, e.g. neutral, happy, thinking, concerned, excited, playful." },
-              emoji: { type: "string", description: "One fitting emoji (optional)." },
-              shape: { type: "string", description: "An abstract shape word the avatar may morph into, e.g. spiral, star, wave (optional)." },
-            },
-          },
-        },
-        ui: { x: 40, y: 160, pair: "out" },
-      },
-      { id: "out", op: "boundary.tool.return", ui: { x: 360, y: 160, pair: "in" } },
-    ],
-    edges: [{ from: { node: "in", port: "args" }, to: { node: "out", port: "result" } }],
   };
 }
 

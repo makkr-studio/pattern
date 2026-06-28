@@ -121,11 +121,12 @@ export async function* streamTurn(
   content: MessagePart[],
   turnId: string,
   model?: string,
+  avatar?: boolean,
 ): AsyncGenerator<TurnEvent> {
   const res = await fetch(`${NS}/conversations/${conversationId}/turns`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify(model ? { turnId, content, model } : { turnId, content }),
+    body: JSON.stringify({ turnId, content, ...(model ? { model } : {}), ...(avatar ? { avatar: true } : {}) }),
   });
   if (!res.ok || !res.body) {
     let body: unknown = {};
