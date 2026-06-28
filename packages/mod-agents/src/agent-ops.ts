@@ -41,7 +41,8 @@ const agentOp: OpDefinition = {
   title: "agents.agent",
   description:
     "Define an agent (a value — wire it into agents.run, a handoff, or a tool). Wire a model from ai.model; " +
-    "tools/guardrails/handoffs wire in as inputs. No model = the configured default.",
+    "name/instructions default to config but can be wired at runtime to vary them per request (a wired value " +
+    "overrides config); tools/guardrails/handoffs wire in as inputs. No model = the configured default.",
   config: z.object({
     name: z.string().min(1),
     /** The system prompt: what this agent does and how it answers. */
@@ -49,11 +50,13 @@ const agentOp: OpDefinition = {
     /** Shown to other agents deciding whether to hand off to this one. */
     handoffDescription: z.string().optional(),
   }),
-  configInputs: {
+  inputs: {
+    // name + instructions are config by default but ALSO wireable at runtime —
+    // a wired value (even one derived from the request) overrides the config, so
+    // a pipeline can vary an agent's identity per turn (e.g. chat's voice mode
+    // swaps in spoken-style instructions). Unwired ⇒ the config value stands.
     name: value(z.string()),
     instructions: value(z.string()),
-  },
-  inputs: {
     model: value(modelRefSchema),
     tools: value(toolsetSchema),
     guardrails: value(), // GuardrailDescriptor | GuardrailDescriptor[]
@@ -62,7 +65,9 @@ const agentOp: OpDefinition = {
   outputs: { agent: value(agentSchema) },
   execute: async (ctx) => {
     const cfg = ctx.config as { name: string; instructions: string; handoffDescription?: string };
-    const [model, tools, guardrailsIn, handoffsIn] = await Promise.all([
+    const [nameIn, instructionsIn, model, tools, guardrailsIn, handoffsIn] = await Promise.all([
+      maybe<string>(ctx, "name"),
+      maybe<string>(ctx, "instructions"),
       maybe<ModelRef>(ctx, "model"),
       maybe<ToolsetDescriptor>(ctx, "tools"),
       maybe<unknown>(ctx, "guardrails"),
@@ -72,8 +77,8 @@ const agentOp: OpDefinition = {
     const handoffs = asArray<AgentDescriptor>(handoffsIn).map((h) => agentSchema.parse(h));
     const agent: AgentDescriptor = {
       kind: "agent",
-      name: cfg.name,
-      instructions: cfg.instructions,
+      name: nameIn ?? cfg.name,
+      instructions: instructionsIn ?? cfg.instructions,
       model: model ? modelRefSchema.parse(model) : undefined,
       handoffDescription: cfg.handoffDescription,
       tools,
