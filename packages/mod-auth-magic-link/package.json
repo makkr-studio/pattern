@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-auth-magic-link",
-  "version": "0.2.39",
+  "version": "0.2.40",
   "description": "Email magic-link login for Pattern — the reference identity provider mod. One op, one route, one login method; tokens delivered via the identity.deliverToken hook (console fallback = zero-config dev login).",
   "type": "module",
   "license": "MIT",

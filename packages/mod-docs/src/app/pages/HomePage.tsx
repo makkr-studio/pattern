@@ -7,6 +7,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Page } from "../lib/api";
 import { Markdown } from "../lib/md";
+import { InternalLink, makeResolveLink } from "../lib/links";
 import { useDocs } from "../shell/Shell";
 
 export function HomePage() {
@@ -23,7 +24,15 @@ export function HomePage() {
 
   return (
     <div className="mx-auto max-w-[72ch] px-5 py-8 md:px-10">
-      {page ? <Markdown text={page.markdown} /> : <div className="text-[13px] text-muted">loading…</div>}
+      {page ? (
+        <Markdown
+          text={page.markdown}
+          InternalLink={InternalLink}
+          resolveLink={makeResolveLink(handbook?.slug, handbook!.slug, handbook!.index, handbook!.index)}
+        />
+      ) : (
+        <div className="text-[13px] text-muted">loading…</div>
+      )}
 
       {others.length > 0 && (
         <section className="mt-12">

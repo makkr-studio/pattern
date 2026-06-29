@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, hasAdminAccess } from "../lib/api";
 import { Markdown } from "../lib/md";
+import { InternalLink, makeResolveLink } from "../lib/links";
 import { highlight } from "../lib/highlight";
 import { useDocs } from "../shell/Shell";
 import type { OpInfo, PortInfo } from "../../shared/types";
@@ -115,6 +116,8 @@ export function OpPage() {
   }
   if (!data) return <div className="px-8 py-10 text-[13px] text-muted">loading…</div>;
   const { info, prose } = data;
+  // The chapter that owns this op, so relative links in its prose resolve there.
+  const opChapter = info.mod ? manifest.chapters.find((c) => c.mod === info.mod) : undefined;
 
   return (
     <div className="mx-auto max-w-[78ch] px-5 py-8 md:px-10">
@@ -137,7 +140,16 @@ export function OpPage() {
 
       {prose && (
         <div className="glass mt-5 rounded-2xl px-5 py-4">
-          <Markdown text={prose} />
+          <Markdown
+            text={prose}
+            InternalLink={InternalLink}
+            resolveLink={makeResolveLink(
+              manifest.chapters[0]?.slug,
+              opChapter?.slug ?? manifest.chapters[0]?.slug ?? "",
+              `ops/${info.type}.md`,
+              opChapter?.index ?? "index.md",
+            )}
+          />
         </div>
       )}
 
