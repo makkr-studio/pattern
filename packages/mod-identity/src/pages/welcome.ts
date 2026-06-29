@@ -14,8 +14,7 @@ export function renderWelcomePage(opts: { email: string; name?: string | null; m
     "Signed in",
     `<h1>You're in ✦</h1>
 <p>Signed in as <strong>${escapeHtml(who)}</strong>.</p>
-<p>This instance has no frontend registered, so there's nowhere to redirect you —
-your session cookie is set and every protected route now answers to you.</p>
+<p>This instance has no frontend registered, so there's nowhere to redirect you. Your session cookie is set and every protected route now answers to you.</p>
 <form method="post" action="${escapeHtml(opts.mount)}/logout"><button type="submit">Sign out</button></form>
 <p class="hint">Apps advertise a post-login home via the <code>AUTH_HOME_URL</code> service
 (the admin mod does this automatically).</p>`,

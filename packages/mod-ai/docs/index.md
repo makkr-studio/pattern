@@ -2,35 +2,35 @@
 
 The capability layer. It gives your workflows **text, structured output,
 embeddings, image, speech (TTS), transcription (STT), and video** generation
-across **any provider** — directly or through the Vercel AI Gateway — and it is
-the **model provider** that powers `@pattern-js/mod-agents` (agents call models
+across **any provider**, directly or through the Vercel AI Gateway. It is the
+**model provider** that powers `@pattern-js/mod-agents` (agents call models
 through it). It is the only mod that imports the [Vercel AI SDK](https://ai-sdk.dev),
 so every provider quirk, streaming detail, and the MCP client live behind one
 seam you never have to touch.
 
 Install it alongside `@pattern-js/mod-agents` (for agents) and, to persist
 generated media, `@pattern-js/mod-store` (wire a generation op into its
-`store.blob.put` — the ops themselves stay storage-agnostic). Provider keys live
+`store.blob.put`; the ops themselves stay storage-agnostic). Provider keys live
 in `@pattern-js/mod-vault`.
 
 ## Two ways to pick a model
 
-Every capability op (and every agent) takes a **model reference** — a value, like
+Every capability op (and every agent) takes a **model reference**: a value, like
 the agent value `agents.agent` builds. Two ops produce one.
 
-**`ai.model`** — define a model inline. Routing is explicit and first-class:
+**`ai.model`** defines a model inline. Routing is explicit and first-class:
 
 | Routing | What it is | Model id |
 |---|---|---|
 | `direct` | a native provider SDK + that provider's key | bare, e.g. `gpt-5` |
-| `gateway` | the **Vercel AI Gateway** — one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5` |
+| `gateway` | the **Vercel AI Gateway**: one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5` |
 
 ```json
 { "id": "model", "op": "ai.model",
   "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5" } }
 ```
 
-**`ai.alias`** — resolve a model configured in Settings by name:
+**`ai.alias`** resolves a model configured in Settings by name:
 
 ```json
 { "id": "model", "op": "ai.alias", "config": { "alias": "default" } }
@@ -64,7 +64,7 @@ vars; an alias just references them by name and source.
 All take a `model` (required) and write their result on named outputs. Text-ish
 ops accept `prompt` XOR `messages` plus an optional `system`. The generation ops
 (image/audio/video) output **raw media** (`{ bytes, mime, kind }`) and **don't
-save** — keeping the save out of the op means mod-ai never assumes a blob store.
+save**: keeping the save out of the op means mod-ai never assumes a blob store.
 Wire the output into `store.blob.put` to persist it: its `ref` output is a
 **`MediaRef`** (`{ blobId, mime }`) served at `GET /store/blobs/:id`. (One node:
 `ai.image.generate.image → store.blob.put.data`, then `store.blob.put.ref` onward.)
@@ -93,18 +93,18 @@ Verify exact ports any time: `npx pattern ops ai.image.generate`.
 `mod-ai` provides the neutral model service `@pattern-js/mod-agents` calls. So an
 agent is provider-agnostic: wire an `ai.model` into `agents.agent.model` (or rely
 on the default), and `agents.run` works against OpenAI, Anthropic, Google, a
-gateway model, anything. There is no per-provider agents mod anymore.
+gateway model, anything.
 
-## MCP — both directions
+## MCP: both directions
 
-**Consume MCP servers** (client): `agents.mcp.server` (in mod-agents) builds a
+**Consume MCP servers** (client): `agents.mcp.client` (in mod-agents) builds a
 toolset from an MCP server; `mod-ai` connects to it with the official MCP SDK
 (http StreamableHTTP or stdio, pooled) so the agent can call its tools.
 
-**Be an MCP server** (server): `mod-ai` mounts **`POST /mcp`** — a stateless
+**Be an MCP server** (server): `mod-ai` mounts **`POST /mcp`**: a stateless
 StreamableHTTP JSON-RPC endpoint that exposes your `boundary.tool` workflows to
 external MCP clients (Claude Desktop, other agents). `tools/list` reads the tool
-registry; `tools/call` runs the tool workflow via `ctx.invoke` — a linked
+registry; `tools/call` runs the tool workflow via `ctx.invoke`, a linked
 sub-run with the same validation + tracing as an agent's own tool call. Narrow
 which tools are exposed by building your own route around `ai.mcp.serve`
 (`config.tools`).

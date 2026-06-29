@@ -43,7 +43,7 @@ const storePut: OpDefinition = {
   type: "store.put",
   title: "store.put",
   description:
-    "Write a document. Upsert without `version`; compare-and-swap with it (ok:false on a lost race — re-read and retry).",
+    "Write a document. Upsert without `version`; compare-and-swap with it (ok:false on a lost race; re-read and retry).",
   config: collectionConfig,
   inputs: { id: required(z.string()), data: required(recordSchema), version: value(z.number()) },
   outputs: { ok: value(z.boolean()), version: value(z.number().nullable()) },
@@ -61,7 +61,7 @@ const storePut: OpDefinition = {
 const storePatch: OpDefinition = {
   type: "store.patch",
   title: "store.patch",
-  description: "Shallow-merge a patch into a document (CAS — version required).",
+  description: "Shallow-merge a patch into a document (CAS: version required).",
   config: collectionConfig,
   inputs: {
     id: required(z.string()),
@@ -146,7 +146,7 @@ const blobPut: OpDefinition = {
   description:
     "Store binary data and get back its id, meta, and a ready-to-use MediaRef (`ref`). Accepts a bytes value, a byte stream " +
     "(e.g. a streamed request body), a data URL or plain string, or a media payload from a generation op " +
-    "(ai.image/speech/video.generate output `{ bytes, mime, kind }`) — this is the explicit save those ops leave to the workflow.",
+    "(ai.image/speech/video.generate output `{ bytes, mime, kind }`). This is the explicit save those ops leave to the workflow.",
   inputs: {
     data: value(),
     bytes: stream(),
@@ -263,7 +263,7 @@ const leaseAcquire: OpDefinition = {
   type: "store.lease.acquire",
   title: "store.lease.acquire",
   description:
-    "Claim a TTL'd lease (owner defaults to this runId; auto-released when the run settles). Conflict → ok:false + current owner — branch, don't throw.",
+    "Claim a TTL'd lease (owner defaults to this runId; auto-released when the run settles). Conflict → ok:false + current owner; branch on it instead of throwing.",
   config: leaseConfig,
   inputs: { key: value(z.string()), owner: value(z.string()), ttlMs: value(z.number()) },
   outputs: leaseOutputs,

@@ -259,7 +259,7 @@ export class DocsContent {
    */
   async llmsText(): Promise<string> {
     const parts: string[] = [
-      "# Pattern — documentation (llms.txt)",
+      "# Pattern documentation (llms.txt)",
       "",
       "Everything below is the full documentation of THIS Pattern installation,",
       "concatenated for machine readers. Chapters come from installed mods.",

@@ -2,8 +2,10 @@
 
 The persistence brick for [Pattern](../../README.md): **document collections**
 with declared-index queries, a **blob store** for bytes (images, files), and
-**leases** for cooperative concurrency. SQLite locally, behind drivers — a
-different persistence layer is an adapter, not a rewrite.
+**leases** for cooperative concurrency. SQLite locally, behind drivers, so a
+different persistence layer drops in as an adapter.
+
+**Links:** [pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/mod-store)
 
 ```bash
 npm install @pattern-js/mod-store
@@ -11,14 +13,13 @@ npm install @pattern-js/mod-store
 
 ## When to use / when not
 
-Reach for it when a workflow needs state that **outlives a single run** — records
+Reach for it when a workflow needs state that **outlives a single run**: records
 you'll read back and query (conversations, users, jobs), uploaded bytes you'll
 serve later, or a "only one of these at a time" lock across concurrent runs.
 
-It is **not** a general SQL database and not a cache: no joins, no ad-hoc `WHERE`
-(you query only declared indexes), no query language. For rich relational
-queries, analytics, or full-text search, wrap a real database in your own mod. For
-per-run scratch, just pass it along edges.
+Queries run on declared indexes only: no joins, no ad-hoc `WHERE`, no query
+language. For rich relational queries, analytics, or full-text search, wrap a
+real database in your own mod. For per-run scratch, pass it along edges.
 
 ## Config
 

@@ -5,7 +5,7 @@ order: 9
 
 # Author a workflow in JSON
 
-A workflow is just a JSON document. You don't need the admin — drop a `.json`
+A workflow is a JSON document. You don't need the admin: drop a `.json`
 file into your project's `workflows/` directory and the host loads it. This is
 the same format the editor reads and writes, so the two are interchangeable.
 
@@ -13,7 +13,7 @@ the same format the editor reads and writes, so the two are interchangeable.
 
 ```jsonc
 {
-  "id": "greeting",            // unique, stable — treat it like a route name
+  "id": "greeting",            // unique, stable; treat it like a route name
   "name": "Hello, Pattern",    // human label (optional)
   "nodes": [
     { "id": "in",    "op": "boundary.manual", "config": { "outputs": ["name"] } },
@@ -27,22 +27,22 @@ the same format the editor reads and writes, so the two are interchangeable.
 }
 ```
 
-- **nodes** — each is an instance of an op: a local `id`, the `op` type, and an
+- **nodes** are op instances: a local `id`, the `op` type, and an
   optional `config` validated against that op's schema. An optional `ui: { x, y }`
   holds the canvas position (data-only; ignored at runtime). Optional `title` and
   `comment` are self-documenting annotations.
-- **edges** — connect one node's output port to another's input port. The
+- **edges** connect one node's output port to another's input port. The
   [edge kind](../concepts.md#ports-and-the-three-edge-kinds) is *derived* from the
   ports: value→value is a barrier, stream→stream is concurrent, control→control is
   a dataless sequencing pulse. You never declare the kind.
 
-To find a port's name and kind, consult the op in the [op reference](/docs/ops)
-(or `pattern ops <type>` in the terminal) — it lists every input/output port.
+To find a port's name and kind, consult the op in the [op reference](/ops)
+(or `pattern ops <type>` in the terminal): it lists every input/output port.
 
 ## Make it an HTTP route
 
-The only change from "runs once" to "is a URL" is the boundary pair. The route —
-method, path, CORS, auth, body/query validation — is **declared in the trigger's
+The only change from "runs once" to "is a URL" is the boundary pair. The route
+(method, path, CORS, auth, body/query validation) is **declared in the trigger's
 config**, never in code:
 
 ```workflow
@@ -66,7 +66,7 @@ config**, never in code:
 `boundary.http.request` exposes `params`, `query`, `body`, `headers`, … as output
 ports; pull the one field you need with `core.object.get` (here the route's
 `:name` arrives in `params`) and keep the rest of the graph HTTP-free. The host
-**derives its route table by scanning workflows** — add the file and `GET
+**derives its route table by scanning workflows**: add the file and `GET
 /hello/:name` is live. See [Designing your API](designing-your-api.md) for the
 discipline that keeps a clean REST surface.
 
@@ -78,10 +78,10 @@ pattern graph    workflows/hello-http.json    # print the graph in the terminal
 pattern dev      src/index.ts                 # run with --watch hot-reload
 ```
 
-`pattern dev` watches your files and re-derives routes on every save — edit the
+`pattern dev` watches your files and re-derives routes on every save: edit the
 JSON, hit the URL, repeat. Validation is your friend: it names the offending
-node/port (an unknown op, a kind mismatch, a missing trigger, a cycle) instead of
-failing at runtime.
+node/port (an unknown op, a kind mismatch, a missing trigger, a cycle) before
+anything runs.
 
 ```bash
 curl localhost:3000/hello/world      # {"message":"Hello, world!"}
@@ -91,5 +91,5 @@ curl localhost:3000/hello/world      # {"message":"Hello, world!"}
 
 Hand-authoring is great for version-controlled, code-reviewed workflows and for
 anything an agent generates. For exploring the op palette, wiring by drag, live
-validation, and watching runs replay, use the [visual editor](workflow-in-the-admin.md)
-— and export back to a file when you're happy.
+validation, and watching runs replay, use the [visual editor](workflow-in-the-admin.md),
+and export back to a file when you're happy.

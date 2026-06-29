@@ -1,15 +1,15 @@
 # {{name}}
 
-Build **agentic workflows** on [Pattern](https://github.com/makkr-studio/pattern): graphs
+Build **agentic workflows** on [Pattern](https://pattern-js.dev): graphs
 that wire an agent (`agents.agent`) into a runner (`agents.run`), with tools
-that are themselves workflows. No chat UI — you build and run them in the
+that are themselves workflows. No chat UI; you build and run them in the
 visual editor, and every tool call is a traced sub-run.
 
 ```sh
 npm run dev
 ```
 
-- **Admin** → http://localhost:3000/admin — editor, run traces, versioned
+- **Admin** → http://localhost:3000/admin: editor, run traces, versioned
   workflow store, data browser, secrets.
 - **Example** → `POST /ask` runs an agent that can call the `get_time` tool:
 
@@ -20,11 +20,14 @@ npm run dev
 
 ## The API key
 
-Set `OPENAI_API_KEY` in `.env` (copied from `.env.example`, gitignored, loaded
-on boot — real env wins). Or store it encrypted on the admin **Secrets** page
-(System → Secrets) as a secret named `OPENAI_API_KEY`; the agent ops find it
-there with no wiring. The vault's master key (`PATTERN_VAULT_KEY`) lives in
-`.env` — generate it ONCE with `openssl rand -base64 32`.
+Pick a provider when you wire the model (`ai.model` config `{ provider, modelId }`),
+or set a `default` alias in admin → **Settings → AI Providers**. A model wired
+inline resolves that provider's conventional key by name (for OpenAI that's
+`OPENAI_API_KEY`) from `.env` (copied from `.env.example`, gitignored, loaded on
+boot, real env wins) or a vault secret of that name (admin → **Secrets**, masked
+out of run samples). Gateway routing uses one `AI_GATEWAY_API_KEY`. The vault's
+master key (`PATTERN_VAULT_KEY`) lives in `.env`; generate it ONCE with
+`openssl rand -base64 32`.
 
 ## The shape of an agentic workflow
 
@@ -45,7 +48,7 @@ agents.tools.workflows (toolset) → agents.agent → agents.run → boundary.ht
 {{name}}/
   pattern.config.json    # mods: admin + agents + ai + store + vault
   workflows/
-    agent-answer.json    # POST /ask — the agentic workflow (canonical shape)
+    agent-answer.json    # POST /ask, the agentic workflow (canonical shape)
     tool-time.json       # a boundary.tool the agent can call
   src/index.ts           # loadProject() → start()
   .env.example           # OPENAI_API_KEY, PATTERN_VAULT_KEY
@@ -54,9 +57,9 @@ agents.tools.workflows (toolset) → agents.agent → agents.run → boundary.ht
 
 ## Next steps
 
-- **Add a tool** — drop a `boundary.tool` → … → `boundary.tool.return` workflow
+- **Add a tool**: drop a `boundary.tool` → … → `boundary.tool.return` workflow
   into `workflows/`; the agent discovers it automatically.
-- **Add a guardrail**, **stream the run** over SSE, or run it from the editor —
+- **Add a guardrail**, **stream the run** over SSE, or run it from the editor:
   `AGENTS.md` has the recipes (your coding agent reads it too).
 - **The handbook** at `/docs` (add `@pattern-js/mod-docs` if you didn't): the
   *Agents & chat* and *Designing your API* guides go deeper.

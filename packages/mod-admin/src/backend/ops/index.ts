@@ -200,7 +200,7 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
  */
 const parkedCode = new Map<string, Workflow>();
 
-const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow — code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
+const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow; code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
   const slug = str(args.slug, "slug");
   const enabled = Boolean(args.enabled);
   if (enabled) {

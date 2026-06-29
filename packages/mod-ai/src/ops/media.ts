@@ -35,7 +35,7 @@ export const imageGenerate: OpDefinition = {
   type: "ai.image.generate",
   title: "ai.image.generate",
   description:
-    "Generate image(s) from a prompt. Optionally pass input image(s) for image-to-image / editing — this is provider-dependent " +
+    "Generate image(s) from a prompt. Optionally pass input image(s) for image-to-image or editing. This is provider-dependent " +
     "(forwarded via providerOptions; honored by providers that accept image input, ignored otherwise). Outputs raw media (bytes + mime); " +
     "wire it into store.blob.put to persist it (yielding a MediaRef).",
   config: z.object({

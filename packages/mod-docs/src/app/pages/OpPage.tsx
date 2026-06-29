@@ -176,7 +176,18 @@ export function OpPage() {
               {info.usedByWorkflows.slice(0, 6).map((id, i) => (
                 <React.Fragment key={id}>
                   {i > 0 && ", "}
-                  <code>{id}</code>
+                  {admin ? (
+                    <a
+                      href={`${manifest.adminMount}/editor/${id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[var(--color-neon-cyan)] underline underline-offset-2"
+                    >
+                      <code>{id}</code>
+                    </a>
+                  ) : (
+                    <code>{id}</code>
+                  )}
                 </React.Fragment>
               ))}
               {info.usedByWorkflows.length > 6 && " …"}
@@ -185,7 +196,7 @@ export function OpPage() {
         </span>
         {admin && (
           <a
-            href={`${manifest.adminMount}/ops`}
+            href={`${manifest.adminMount}/ops/${info.type}`}
             target="_blank"
             rel="noreferrer"
             className="text-[var(--color-neon-cyan)] underline underline-offset-2"

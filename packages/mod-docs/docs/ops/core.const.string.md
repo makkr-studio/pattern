@@ -1,1 +1,1 @@
-Emit a fixed string literal — a prompt fragment, a header value, a default label — set in `config.value`. Having no inputs, it runs immediately at the start of a run; feed it into `core.cast.coalesce` as a guaranteed fallback.
+Emit a fixed string literal (a prompt fragment, a header value, or a default label) set in `config.value`. Having no inputs, it runs immediately at the start of a run; feed it into `core.cast.coalesce` as a guaranteed fallback.

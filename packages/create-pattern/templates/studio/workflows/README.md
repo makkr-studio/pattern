@@ -1,6 +1,6 @@
 # workflows/
 
-Drop `*.json` workflow files here — they register at boot (hot-reloaded by
+Drop `*.json` workflow files here; they register at boot (hot-reloaded by
 `npm run dev`) and show up in the admin as read-only (fork to edit a copy).
 
 Workflows you author **in the admin** live in `./.pattern` instead, with

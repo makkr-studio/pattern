@@ -28,7 +28,7 @@ const greetings = [
 const greetingsList: OpDefinition = {
   type: "sample.greetings.list",
   title: "sample.greetings.list",
-  description: "Returns a static list of greetings (a declarative-page data source). A PURE op with a NAMED output — fronted by its own route below.",
+  description: "Returns a static list of greetings (a declarative-page data source). A PURE op with a NAMED output, fronted by its own route below.",
   inputs: {},
   outputs: { greetings: value(z.array(z.object({ id: z.string(), language: z.string(), text: z.string() }))) },
   execute: async () => ({ greetings }),

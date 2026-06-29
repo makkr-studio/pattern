@@ -1,1 +1,1 @@
-Use to constrain a value to a range in one node instead of nesting `core.math.max` and `core.math.min` — bound a retry count, a percentage, or a coordinate. The bounds are inputs, so wire literals from `core.const.number` or compute them upstream.
+Use to constrain a value to a range in one node (combines `core.math.max` and `core.math.min`): bound a retry count, a percentage, or a coordinate. The bounds are inputs, so wire literals from `core.const.number` or compute them upstream.

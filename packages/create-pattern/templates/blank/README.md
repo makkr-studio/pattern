@@ -1,6 +1,6 @@
 # {{name}}
 
-A minimal [Pattern](https://github.com/makkr-studio/pattern) project — the **blank** modpack: just
+A minimal [Pattern](https://pattern-js.dev) project, the **blank** modpack: just
 the engine, one workflow, zero ceremony.
 
 ```bash
@@ -27,5 +27,5 @@ npx pattern ops                          # every op you can wire
 npx pattern graph workflows/greeting.json
 ```
 
-Working with a coding agent? It already knows what to do — `AGENTS.md` carries
+Working with a coding agent? It already knows what to do; `AGENTS.md` carries
 the op-authoring and workflow contracts.

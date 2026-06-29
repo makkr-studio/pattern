@@ -1,1 +1,1 @@
-The crisp way to pluck the head of a list — typically the top hit after a `core.array.sort`. Yields `undefined` on an empty array, so guard with `core.array.length` first if downstream ops require a value.
+The crisp way to pluck the head of a list, typically the top hit after a `core.array.sort`. Yields `undefined` on an empty array, so guard with `core.array.length` first if downstream ops require a value.

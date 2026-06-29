@@ -54,8 +54,6 @@ interface Modpack {
   env: string[];
   /** Key generated paths shown as the card's file tree. */
   generates: (examples: boolean) => string[];
-  /** A workflow file to render as an inline graph (when examples are on). */
-  showcase?: string;
   /**
    * Auth is a DIMENSION, not a pack: packs that serve HTTP can opt into the
    * identity brick (magic-link login, users/sessions, secured admin). Absent
@@ -158,6 +156,29 @@ function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
   ];
 }
 
+/** The vault line for an AI pack. Provider keys are added per alias (vault or
+ *  env) on the AI Providers page, so we only flag the auto-generated vault key. */
+function vaultLine(vaultKey: boolean): string {
+  return vaultKey
+    ? `${pc.cyan("→")} a vault key was generated in ${pc.bold(".env")} ${pc.dim("— it encrypts the provider keys you add")}`
+    : `${pc.dim("$")} cp .env.example .env ${pc.dim("— then add a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`;
+}
+
+/** A pack-aware "make it yours" tip — fork the thing that defines the agent. */
+function personalizeLine(packId: string): string | null {
+  switch (packId) {
+    case "agent-chat":
+      return `${pc.cyan("→")} make it yours: ${pc.dim("fork the turn pipeline in the admin editor — swap the model, instructions, tools or guardrails")}`;
+    case "agentic":
+      return `${pc.cyan("→")} make it yours: ${pc.dim("fork the agent workflow (agents.agent → agents.run) — change the model, instructions or tools")}`;
+    case "studio-ai":
+    case "studio":
+      return `${pc.cyan("→")} make it yours: ${pc.dim("fork an example workflow in the editor and rewire it")}`;
+    default:
+      return null;
+  }
+}
+
 /** One-line technical role per mod — shown beside each in the manifest card. */
 const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-admin": "visual editor, run traces, /admin control plane",
@@ -165,7 +186,7 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-ai": "AI capabilities (text/image/embed/stt/tts/video) + the model provider",
   "@pattern-js/mod-agents + mod-ai": "agent ops + AI capabilities on any provider/model",
   "@pattern-js/mod-store": "durable state (sqlite): conversations, blobs, leases",
-  "@pattern-js/mod-vault": "encrypted secrets — holds OPENAI_API_KEY",
+  "@pattern-js/mod-vault": "encrypted secrets — holds your provider keys",
   "@pattern-js/mod-chat": "the /chat product; its turn pipeline is a workflow",
   "@pattern-js/mod-identity": "users, sessions, roles → scopes",
   "@pattern-js/mod-auth-magic-link": "magic-link login (console fallback in dev)",
@@ -188,7 +209,6 @@ const MODPACKS: Modpack[] = [
     serves: () => [],
     env: [],
     generates: (ex) => (ex ? ["workflows/greeting.json", "src/index.ts"] : ["workflows/ (your workflows)", "src/index.ts"]),
-    showcase: "workflows/greeting.json",
     next: ({ name, runCmd, installed, installLine, examples }) =>
       [
         `${pc.dim("$")} cd ${name}`,
@@ -212,7 +232,6 @@ const MODPACKS: Modpack[] = [
       ex
         ? ["workflows/hello.json + echo, shout, health", "mods/uppercase.mjs", "src/index.ts"]
         : ["workflows/ (your routes)", "mods/ (your ops)", "src/index.ts"],
-    showcase: "workflows/hello.json",
     // APIs often start behind a gateway — opt in with one keystroke.
     auth: { default: false },
     docs: { default: true },
@@ -274,21 +293,18 @@ const MODPACKS: Modpack[] = [
     mods: ["@pattern-js/mod-ai", "@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-admin"],
     exampleSummary: "an AI workflow (POST /summarize → ai.text.generate, no agent)",
     serves: (ex) => (ex ? ["/admin", "/summarize"] : ["/admin"]),
-    env: ["OPENAI_API_KEY", "PATTERN_VAULT_KEY"],
+    env: ["PATTERN_VAULT_KEY"],
     generates: (ex) =>
       ex
         ? ["workflows/summarize.json", "src/index.ts", ".env.example"]
         : ["workflows/ (your AI flows)", "src/index.ts", ".env.example"],
-    showcase: "workflows/summarize.json",
     auth: { default: true },
     docs: { default: true },
     next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        vaultKey
-          ? `${pc.cyan("→")} set ${pc.bold("OPENAI_API_KEY")} in ${pc.bold(".env")} ${pc.dim("(vault key already generated — or use the admin Secrets page)")}`
-          : `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY + a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`,
+        vaultLine(vaultKey),
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         ...(auth
@@ -313,21 +329,18 @@ const MODPACKS: Modpack[] = [
     ],
     exampleSummary: "an agentic workflow (POST /ask → agent + tool) + a get_time tool",
     serves: (ex) => (ex ? ["/admin", "/ask"] : ["/admin"]),
-    env: ["OPENAI_API_KEY", "PATTERN_VAULT_KEY"],
+    env: ["PATTERN_VAULT_KEY"],
     generates: (ex) =>
       ex
         ? ["workflows/agent-answer.json", "workflows/tool-time.json", "src/index.ts", ".env.example"]
         : ["workflows/ (your agentic flows)", "src/index.ts", ".env.example"],
-    showcase: "workflows/agent-answer.json",
     auth: { default: true },
     docs: { default: true },
     next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        vaultKey
-          ? `${pc.cyan("→")} set ${pc.bold("OPENAI_API_KEY")} in ${pc.bold(".env")} ${pc.dim("(vault key already generated — or use the admin Secrets page)")}`
-          : `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY + a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`,
+        vaultLine(vaultKey),
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         ...(auth
@@ -353,21 +366,18 @@ const MODPACKS: Modpack[] = [
     ],
     exampleSummary: "two example chat tools (get_time, get_weather)",
     serves: () => ["/chat", "/admin"],
-    env: ["OPENAI_API_KEY", "PATTERN_VAULT_KEY"],
+    env: ["PATTERN_VAULT_KEY"],
     generates: (ex) =>
       ex
         ? ["workflows/tool-time.json", "workflows/tool-weather.json", "src/index.ts", ".env.example"]
         : ["workflows/ (your tools)", "src/index.ts", ".env.example"],
-    showcase: "workflows/tool-time.json",
     auth: { default: true },
     docs: { default: true },
     next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
-        vaultKey
-          ? `${pc.cyan("→")} set ${pc.bold("OPENAI_API_KEY")} in ${pc.bold(".env")} ${pc.dim("(vault key already generated — or use the admin Secrets page)")}`
-          : `${pc.dim("$")} cp .env.example .env ${pc.dim("— set OPENAI_API_KEY + a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`,
+        vaultLine(vaultKey),
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         `${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`,
@@ -556,19 +566,6 @@ function previewManifest(flags: Flags): void {
   console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
 }
 
-/** Render the seeded showcase workflow as a terminal graph (examples + installed). */
-function showcaseGraph(name: string, pack: Modpack, examples: boolean, installed: boolean): string | null {
-  if (!examples || !pack.showcase || !installed) return null;
-  const dir = resolve(process.cwd(), name);
-  try {
-    const res = spawnSync("npx", ["pattern", "graph", pack.showcase], { cwd: dir, encoding: "utf8" });
-    if (res.status === 0 && res.stdout?.trim()) return res.stdout.replace(/\s+$/, "");
-  } catch {
-    /* the inline graph is a nicety — never block scaffolding on it */
-  }
-  return null;
-}
-
 function listPacks(): void {
   console.log(`\n${pc.bold("Modpacks")} — a ladder; each rung adds one capability:\n`);
   for (const pack of LADDER.map((id) => packOrThrow(id))) {
@@ -674,7 +671,7 @@ function packNeedsVault(pack: Modpack): boolean {
 /**
  * Write `.env` from `.env.example` with a freshly generated PATTERN_VAULT_KEY —
  * the vault's master key (random, local, what `openssl rand -base64 32` gives).
- * Leaves OPENAI_API_KEY blank: that's the user's real secret to fill in. `.env`
+ * Provider keys stay blank — you add them per model alias (vault or env). `.env`
  * is gitignored. No-op if the template has no `.env.example`.
  */
 async function applyVaultKey(targetDir: string): Promise<void> {
@@ -1035,14 +1032,13 @@ async function runInteractive(flags: Flags): Promise<void> {
     ].join("\n"),
     "Next steps",
   );
-  // The example you'll touch first, as a graph — workflows are data, so show it.
-  const graph = showcaseGraph(String(name), pack, examples, install);
-  if (graph) p.note(graph, `${pack.showcase} ${pc.dim("· open this first")}`);
+  const personalize = personalizeLine(pack.id);
   p.note(
     [
+      ...(personalize ? [personalize, ""] : []),
       `${pc.dim("Workflows are JSON graphs of typed ops; ops carry the code; mods bundle both.")}`,
       `${pc.dim("$")} npx pattern ops          ${pc.dim("every op you can wire — never guess")}`,
-      `${pc.dim("$")} npx pattern graph <wf>   ${pc.dim("any workflow, as a terminal graph")}`,
+      `${pc.dim("$")} npx pattern graph <wf>   ${pc.dim("render any workflow as a terminal graph")}`,
       "",
       `${pc.green("✦")} Coding with an agent? It reads ${pc.bold("AGENTS.md")} — ops, routes & admin pages, by recipe.`,
     ].join("\n"),
@@ -1065,14 +1061,9 @@ async function runHeadless(flags: Flags): Promise<void> {
   );
   await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples, vaultKey, providers });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
-  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (set OPENAI_API_KEY there).`);
+  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Settings → AI Providers).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
   for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
-  const graph = showcaseGraph(name, pack, examples, flags.install);
-  if (graph) {
-    console.log(`\n${pack.showcase} (open this first):\n`);
-    console.log(graph);
-  }
 }
 
 async function scaffold(opts: {

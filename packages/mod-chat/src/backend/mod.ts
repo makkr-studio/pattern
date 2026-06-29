@@ -61,7 +61,7 @@ const chatAppOp: OpDefinition = {
     "The chat SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount. " +
     "`namespace` scopes this instance's data on the SHARED backend at `api` (decoupled from where the SPA mounts); " +
     "`accent`/`title` brand it. All ride the app descriptor's `manifest`, injected as `window.__APP__` into the " +
-    "served index.html — so one bundle is hosted many times, each branded and data-partitioned, no route duplication.",
+    "served index.html, so one bundle is hosted many times, each branded and data-partitioned, no route duplication.",
   reusable: true,
   inputs: {},
   outputs: { app: value(boundaries.appDescriptorSchema) },

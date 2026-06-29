@@ -1,1 +1,1 @@
-Draw a random number in `[min, max)` from config, optionally floored to an integer. It is non-deterministic, so a replay will not reproduce the same value — keep it out of pure/cacheable paths. Pair with `core.random.pick` to choose from a fixed set rather than a numeric range.
+Draw a random number in `[min, max)` from config, optionally floored to an integer. It is non-deterministic, so a replay will not reproduce the same value. Keep it out of pure/cacheable paths. Pair with `core.random.pick` when choosing from a fixed set.

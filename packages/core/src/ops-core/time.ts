@@ -25,7 +25,7 @@ export const timeOps: OpDefinition[] = [
   defineOp({
     type: "core.time.delay",
     title: "core.time.delay",
-    description: "Waits `ms` (config or input) then passes `value` through. Abort-aware — a cancelled run clears the timer.",
+    description: "Waits `ms` (config or input) then passes `value` through. Abort-aware: a cancelled run clears the timer.",
     inputs: { value: value(), ms: value(num) },
     outputs: { out: value() },
     config: z.object({ ms: z.number().int().nonnegative().default(1000) }),

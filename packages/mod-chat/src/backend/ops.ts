@@ -306,7 +306,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
     type: "chat.turn.begin",
     title: "chat.turn.begin",
     description:
-      "Turn pipeline entry: scope-check, claim the conversation lease (owner = this run — auto-released on settle), " +
+      "Turn pipeline entry: scope-check, claim the conversation lease (owner = this run, auto-released on settle), " +
       "persist the user message, hand history + input to the agent. Conflict → ok:false + an httpOutcome the workflow maps.",
     reusable: false,
     config: z.object({

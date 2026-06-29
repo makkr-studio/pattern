@@ -40,7 +40,7 @@ const agentOp: OpDefinition = {
   type: "agents.agent",
   title: "agents.agent",
   description:
-    "Define an agent (a value — wire it into agents.run, a handoff, or a tool). Wire a model from ai.model; " +
+    "Define an agent (a value you wire into agents.run, a handoff, or a tool). Wire a model from ai.model; " +
     "name/instructions default to config but can be wired at runtime to vary them per request (a wired value " +
     "overrides config); tools/guardrails/handoffs wire in as inputs. No model = the configured default.",
   config: z.object({
@@ -228,7 +228,7 @@ const compactOp: OpDefinition = {
   type: "agents.history.compact",
   title: "agents.history.compact",
   description:
-    "Squeeze a long history: items beyond keepRecent are summarized into one message (a visible node — you SEE when memory compresses). Wire a model from ai.model or use the default.",
+    "Squeeze a long history: items beyond keepRecent are summarized into one message (a visible node, so you SEE when memory compresses). Wire a model from ai.model or use the default.",
   config: z.object({
     /** Compact only when the history exceeds this many items. */
     threshold: z.number().int().positive().default(60),
@@ -262,14 +262,14 @@ const compactOp: OpDefinition = {
   },
 };
 
-/* ── agents.mcp.server ─────────────────────────────────────────────────── */
+/* ── agents.mcp.client ─────────────────────────────────────────────────── */
 
 const mcpOp: OpDefinition = {
-  type: "agents.mcp.server",
-  title: "agents.mcp.server",
+  type: "agents.mcp.client",
+  title: "agents.mcp.client",
   description:
-    "An MCP server as a toolset value (connection pooled by mod-ai). http: url (+headers) · stdio: command (+args). " +
-    'For stdio you can paste a WHOLE command line into `command` (e.g. "docker mcp gateway run --profile X") — it is ' +
+    "Connect to an MCP server and expose its tools as a toolset value (connection pooled by mod-ai). http: url (+headers) · stdio: command (+args). " +
+    'For stdio you can paste a WHOLE command line into `command` (e.g. "docker mcp gateway run --profile X"); it is ' +
     "tokenized automatically; `args` are appended.",
   config: z.object({
     transport: z.enum(["http", "stdio"]).default("http"),

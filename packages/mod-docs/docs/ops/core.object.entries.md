@@ -1,1 +1,1 @@
-Own `[key, value]` pairs as an array — the bridge into array ops when you need both key and value (e.g. `core.array.map` over entries, then `core.object.fromEntries` to rebuild). Inverse of `core.object.fromEntries`.
+Own `[key, value]` pairs as an array: the bridge into array ops when you need both key and value (e.g. `core.array.map` over entries, then `core.object.fromEntries` to rebuild). Inverse of `core.object.fromEntries`.

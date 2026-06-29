@@ -12,7 +12,7 @@ export function renderBootstrapPage(opts: { token: string; mount: string; error?
   return layout(
     "Welcome to Pattern",
     `<h1>Create the first account</h1>
-<p>This one-time link sets up the owner of this Pattern instance${opts.error ? "" : " — it becomes an admin"}.</p>
+<p>This one-time link sets up the owner of this Pattern instance${opts.error ? "" : ", which becomes an admin"}.</p>
 ${errorBanner(opts.error)}
 <form method="post" action="${escapeHtml(opts.mount)}/bootstrap">
 <label for="email">Your email</label>

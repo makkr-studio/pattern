@@ -9,6 +9,7 @@ import { DocPage } from "./pages/DocPage";
 import { OpsIndexPage } from "./pages/OpsIndexPage";
 import { OpPage } from "./pages/OpPage";
 import { ModsPage } from "./pages/ModsPage";
+import { appBoot } from "./lib/config";
 import "./index.css";
 
 const router = createBrowserRouter(
@@ -27,7 +28,9 @@ const router = createBrowserRouter(
       ],
     },
   ],
-  { basename: "/docs" },
+  // The mount the host serves this bundle under (window.__APP__.mount), so the
+  // same build works whether docs sit at /docs or any other configured mount.
+  { basename: appBoot.mount },
 );
 
 createRoot(document.getElementById("root")!).render(

@@ -1,8 +1,10 @@
 # Copied to `.env` (gitignored), loaded automatically on boot — existing
 # environment variables always win over this file.
 
-# The agent's model key. Or store it encrypted: admin → System → Secrets, as a
-# secret NAMED OPENAI_API_KEY — the agent ops find it there with no wiring.
+# Provider keys are set per model alias in admin → Settings → AI Providers, each
+# sourced from the vault (encrypted) or an env var you name. To use an env var,
+# define it here — OPENAI_API_KEY below is just a common example. The Vercel AI
+# Gateway uses a single AI_GATEWAY_API_KEY instead.
 OPENAI_API_KEY=
 
 # The vault's master key. Generate ONCE: openssl rand -base64 32

@@ -68,7 +68,7 @@ async function ownerLabel(ctx: OpContext, doc: ConversationDoc): Promise<string>
 
 const conversationsList = adminOp(
   "chat.admin.conversations",
-  "All chat conversations — user-owned and guest — newest first (admin).",
+  "All chat conversations (user-owned and guest), newest first (admin).",
   { in: { limit: z.number().optional(), offset: z.number().optional() }, out: "conversations" },
   async (args, ctx) => {
     const svc = stores(ctx);
@@ -150,7 +150,7 @@ const turnsList = adminOp("chat.admin.turns", "A conversation's turns, oldest fi
   return rows.map(turnRow);
 });
 
-const turnGet = adminOp("chat.admin.turn", "One turn's full doc — the event log (admin).", { in: { id: z.string() }, out: "turn" }, async (args, ctx) => {
+const turnGet = adminOp("chat.admin.turn", "One turn's full doc: the event log (admin).", { in: { id: z.string() }, out: "turn" }, async (args, ctx) => {
   const row = await stores(ctx).docs.get(TURNS, String(args.id ?? ""));
   return row ?? { error: "turn not found" };
 });

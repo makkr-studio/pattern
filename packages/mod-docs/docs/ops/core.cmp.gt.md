@@ -1,1 +1,1 @@
-A threshold test — use it to drive a `core.flow.branch` or `core.flow.gate` when `a` exceeds `b`. Comparison uses JS `>`, so feed it numbers (run strings through `core.cast.toNumber` first); for the inclusive bound use `core.cmp.gte`.
+A threshold test: use it to drive a `core.flow.branch` or `core.flow.gate` when `a` exceeds `b`. Comparison uses JS `>`, so feed it numbers (run strings through `core.cast.toNumber` first); for the inclusive bound use `core.cmp.gte`.

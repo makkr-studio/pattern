@@ -12,13 +12,13 @@ import { ADMIN_CONTROL_PLANE, type ControlPlane } from "@pattern-js/mod-admin";
 const hello: Workflow = {
   id: "hello",
   name: "Hello endpoint",
-  description: "GET /hello/:name — the smallest possible route: trigger → template → response.",
+  description: "GET /hello/:name, the smallest possible route: trigger → template → response.",
   nodes: [
     {
       id: "in",
       op: "boundary.http.request",
       title: "GET /hello/:name",
-      comment: "The route lives HERE, in config — no route table anywhere. `:name` is captured into the **params** output.",
+      comment: "The route lives HERE, in config; no route table anywhere. `:name` is captured into the **params** output.",
       config: { method: "GET", path: "/hello/:name", cors: true },
       ui: { x: 40, y: 120 },
     },
@@ -26,7 +26,7 @@ const hello: Workflow = {
       id: "greet",
       op: "core.string.template",
       title: "Build greeting",
-      comment: "Interpolates `{{ name }}` from params. Value edges are barriers — this waits for the request.",
+      comment: "Interpolates `{{ name }}` from params. Value edges are barriers, so this waits for the request.",
       config: { template: "Hello, {{ name }}! 👋" },
       ui: { x: 360, y: 120 },
     },
@@ -47,7 +47,7 @@ const hello: Workflow = {
 const quote: Workflow = {
   id: "quote",
   name: "Quote endpoint",
-  description: "GET /quote — uses an op contributed by the app-local mod (mods/quotes.mjs).",
+  description: "GET /quote, using an op contributed by the app-local mod (mods/quotes.mjs).",
   nodes: [
     {
       id: "in",
@@ -60,7 +60,7 @@ const quote: Workflow = {
       id: "pick",
       op: "app.quotes.random",
       title: "Random quote",
-      comment: "An op from `mods/quotes.mjs` — your own code, first-class next to `core.*`. Objects serialize to JSON automatically.",
+      comment: "An op from `mods/quotes.mjs`: your own code, first-class next to `core.*`. Objects serialize to JSON automatically.",
       ui: { x: 360, y: 120 },
     },
     {
@@ -85,7 +85,7 @@ const showcase: Workflow = {
       id: "go",
       op: "boundary.manual",
       title: "Manual trigger",
-      comment: "Run from the editor ▶ — `n` is the fibonacci index (defaults to 34 when empty).",
+      comment: "Run from the editor ▶. `n` is the fibonacci index (defaults to 34 when empty).",
       config: { outputs: ["n"] },
       ui: { x: 40, y: 120 },
     },
@@ -101,7 +101,7 @@ const showcase: Workflow = {
       id: "fib",
       op: "core.math.fib",
       title: "Crunch",
-      comment: "Naive recursive fibonacci — a **busy** span: the CPU-bound bar.",
+      comment: "Naive recursive fibonacci, a **busy** span: the CPU-bound bar.",
       ui: { x: 640, y: 120 },
     },
     {

@@ -2,8 +2,8 @@
 
 `@pattern-js/mod-store` is the persistence brick: **document collections** with
 declared-index queries, a **blob store** for bytes (images, files), and
-**leases** for cooperative concurrency. SQLite locally, behind drivers — a
-different persistence layer is an adapter, not a rewrite.
+**leases** for cooperative concurrency. SQLite locally, behind drivers, so a
+different persistence layer drops in as an adapter.
 
 ```jsonc
 { "mods": ["@pattern-js/mod-store"] }
@@ -16,12 +16,12 @@ records you'll read back and query (conversations, users, jobs), uploaded
 bytes you'll serve later, or a "only one of these at a time" lock across
 concurrent runs. It's the durable floor the app-level mods build on.
 
-It is **not** a general SQL database and not a cache. There's no join, no
-ad-hoc `WHERE` on arbitrary columns (you query only declared indexes — see
-[Data modeling](guides/data-modeling.md)), and no query language to learn.
-If you need rich relational queries, analytics, or full-text search, point a
-real database at the problem and wrap it in your own mod. If the data is
-per-run scratch, just pass it along edges — don't persist it.
+Queries run on declared indexes only: no joins, no ad-hoc `WHERE` on arbitrary
+columns, no query language to learn (you query the declared indexes; see
+[Data modeling](guides/data-modeling.md)). For rich relational queries,
+analytics, or full-text search, point a real database at the problem and wrap it
+in your own mod. If the data is per-run scratch, pass it along edges and skip
+persistence.
 
 ## Configure it
 
@@ -40,25 +40,26 @@ export default storeMod({
 });
 ```
 
-`storage: "memory"` keeps everything in-process — perfect for tests, gone on
+`storage: "memory"` keeps everything in-process: perfect for tests, gone on
 restart. The `.pattern-data/` paths are gitignored; never write the store into
 the committed `.pattern/` directory.
 
 ## Documents
 
 Collections declare their indexed fields up front (`ensureCollection({ name,
-indexes })` — idempotent, with backfill); queries filter on indexed fields
+indexes })`, idempotent, with backfill); queries filter on indexed fields
 only, by design. Writes support CAS (`put(collection, id, data,
-expectedVersion)`) so concurrent writers lose loudly instead of silently.
+expectedVersion)`) so a concurrent writer that loses the race fails loudly.
 
 Reach it from ops via the `storeService` service, or on the canvas with
 `store.get` / `store.put` / `store.patch` / `store.delete` / `store.query`.
 
 ## Blobs
 
-`store.blob.put` (bytes or stream in, id out) + `store.blob.get`; a shipped
-workflow serves `GET /store/blobs/:id` chunked. The chat app's image input
-rides on this. A blob-serve route is just four nodes:
+`store.blob.put` (a Media value, bytes, data-URL, or text in; a `MediaRef`
+`{ blobId, mime }` out) + `store.blob.get`; a shipped workflow serves
+`GET /store/blobs/:id` chunked. The chat app's image input rides on this. A
+blob-serve route is four nodes:
 
 ```workflow
 { "id": "store.route.blob",
@@ -81,11 +82,10 @@ rides on this. A blob-serve route is just four nodes:
 ## Leases
 
 `store.lease.acquire` is a CAS upsert: `{ ok: true, lease }` or `{ ok: false,
-owner, expiresAt }` — a VALUE you branch on, never an exception. Leases
-auto-release when their owning run settles (TTL as the crash backstop). The
-chat app's one-turn-per-conversation rule is exactly one lease node. Renew a
-held lease for long work (`store.lease.renew`) and drop it early with
-`store.lease.release`.
+owner, expiresAt }`, a VALUE you branch on. Leases auto-release when their
+owning run settles (TTL as the crash backstop). The chat app's
+one-turn-per-conversation rule is exactly one lease node. Renew a held lease for
+long work (`store.lease.renew`) and drop it early with `store.lease.release`.
 
 ## Integration
 

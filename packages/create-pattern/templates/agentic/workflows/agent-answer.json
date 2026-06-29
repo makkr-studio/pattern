@@ -1,7 +1,7 @@
 {
   "$schema": "pattern/workflow/v1",
   "id": "agent-answer",
-  "name": "POST /ask — agent answers (with a tool)",
+  "name": "POST /ask: agent answers (with a tool)",
   "description": "An agentic workflow as an HTTP route: pull the question, pick a model, build an agent + its toolset, run it, return the answer. Every tool call is a linked sub-run in the admin.",
   "nodes": [
     {

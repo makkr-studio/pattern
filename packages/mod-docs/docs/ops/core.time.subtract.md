@@ -1,1 +1,1 @@
-Shift an epoch-ms timestamp backward by a fixed duration — the mirror of `core.time.add`, handy for "since" windows like `core.time.now` minus `{ hours: 24 }`. Pure millisecond math, no calendar awareness.
+Shift an epoch-ms timestamp backward by a fixed duration: the mirror of `core.time.add`, handy for "since" windows like `core.time.now` minus `{ hours: 24 }`. Pure millisecond math, no calendar awareness.

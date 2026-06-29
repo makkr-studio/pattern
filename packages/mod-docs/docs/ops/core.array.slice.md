@@ -1,1 +1,1 @@
-Take a fixed window of a list (`config.start` to `config.end`, end exclusive) — e.g. the first page of results or trimming a head. For fixed-size batching into many sub-arrays use `core.array.chunk`; to split by a predicate use `core.array.partition`.
+Take a fixed window of a list (`config.start` to `config.end`, end exclusive), e.g. the first page of results or trimming a head. For fixed-size batching into many sub-arrays use `core.array.chunk`; to split by a predicate use `core.array.partition`.

@@ -1,8 +1,10 @@
 # @pattern-js/runtime-node
 
-The Node runtime adapter for [Pattern](../../README.md). Thin by design — it binds
+The Node runtime adapter for [Pattern](../../README.md). Thin by design: it binds
 external sources to boundary triggers and provides isolation. All platform code
 lives here so `@pattern-js/core` stays runtime-neutral.
+
+[pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/runtime-node)
 
 ```bash
 npm install @pattern-js/core @pattern-js/runtime-node
@@ -24,7 +26,7 @@ HTTP host. See [projects & mods](../mod-docs/docs/guides/projects-and-mods.md).
 
 Routing is **declarative**: the HTTP host derives routes from the
 `boundary.http.request` nodes of registered workflows (method/path/port/cors/
-body+query JSON-Schema all in config). No programmatic route table.
+body+query JSON-Schema all in config).
 
 ```ts
 import { Engine } from "@pattern-js/core";
@@ -45,7 +47,7 @@ const { ports } = await host.start();         // re-derives live as workflows ch
 
 ## Isolation: worker-thread pool
 
-A `RunTransport` that runs each workflow on a `node:worker_threads` worker — a
+A `RunTransport` that runs each workflow on a `node:worker_threads` worker, a
 drop-in for the in-process transport. Streamed out-gate results are reconstructed
 on the host; cancellation crosses the seam.
 
@@ -56,15 +58,17 @@ const engine = new Engine({ transport: new WorkerPoolTransport({ size: 4 }) });
 
 ## Also here
 
-- **`NodeConnectionRegistry`** — `ConnectionRegistry` bound to live WebSocket sockets (rooms, broadcast, streamed sends).
-- **Trace sinks** — `jsonlTraceSink(path)` and `sqliteTraceSink(path)` for persistence (core only emits).
-- **`loadMods(engine, specifiers)`** — load external plugin mods by module specifier.
-- **`pattern` CLI** — `pattern graph|validate|dev`.
+- **`NodeConnectionRegistry`**: `ConnectionRegistry` bound to live WebSocket sockets (rooms, broadcast, streamed sends).
+- **Trace persistence**: `jsonlTraceSink(path)` plus durable trace stores (`MemoryTraceStore`, `SqliteTraceStore`, `createTraceStore`). Core emits telemetry; the runtime persists it.
+- **`loadMods(engine, specifiers)`**: load external plugin mods by module specifier.
+- **`pattern` CLI**: `pattern ops|graph|validate|run|dev`.
 
 ## CLI
 
 ```bash
+pattern ops [query]              # list/inspect ops (project mods included)
 pattern graph workflow.json      # render the graph in the terminal
 pattern validate workflow.json   # located, human-readable validation errors
+pattern run workflow.json|id     # run a boundary.cli workflow once (records to the trace store)
 pattern dev [entry]              # run an entry with file-watch hot-reload
 ```

@@ -5,23 +5,23 @@ order: 80
 
 # Admin internals
 
-How `@pattern-js/mod-admin` and `@pattern-js/admin-sdk` are built — the design of record
+How `@pattern-js/mod-admin` and `@pattern-js/admin-sdk` are built: the design of record
 for the self-reflecting control surface. The section numbers (§1–§18) are stable
 anchors that the source comments reference. For the day-to-day "how do I extend the
 admin," start with the [Admin overview](index.md).
 
 ## 1. Principles
 
-1. **The admin is a mod.** A brick you `engine.use()`. No privileged position.
+1. **The admin is a mod.** An ordinary brick you `engine.use()`.
 2. **Total self-reflection.** Every admin endpoint is a Pattern workflow; every
-   capability is an op or an internal service. The framework exposes **no bespoke
-   API surface** — the admin's own backend is authored in the same primitives it
-   edits, so it appears in its own catalog and is editable inside itself.
+   capability is an op or an internal service. The admin's only API surface is
+   ordinary workflows: its backend is authored in the same primitives it edits, so
+   it appears in its own catalog and is editable inside itself.
 3. **The admin UI is served through the app boundary**, like any other app.
 4. **Extensibility first.** Other mods add pages, menu entries, and commands
-   through a small, stable surface — the adoption lever, so it gets first-class
+   through a small, stable surface (the adoption lever), so it gets first-class
    design.
-5. **Great UX/DX** — dark/light, modern glassmorphism with neon/glow accents. Stack:
+5. **Great UX/DX**: dark/light, modern glassmorphism with neon/glow accents. Stack:
    React 19 + Tailwind v4 + Motion.dev + `@xyflow/react`.
 
 ## 2. Engine seams the admin uses
@@ -37,9 +37,9 @@ The admin rests on a handful of small, generally-useful engine/runtime seams:
 | **In-process routing** | admin endpoint workflows and admin-driven test runs execute on the in-process transport (mod ops, `ctx.services`, hooks/events aren't available on the worker pool). |
 | **Admin auth seam** | the admin runs anonymous by default; one admin config `{ auth }` stamps `requireAuth` (+ scopes) onto every admin endpoint when an `AuthProvider` mod is installed. |
 | **Trace I/O sampling** | opt-in, capped, secret-masked span I/O that powers run-replay data peeks. |
-| **Doc fields** | optional `description` on the workflow and `ui?: { x; y }` per node (the canvas position, inline so a workflow is one self-contained file) — both data-only, never affecting execution. |
+| **Doc fields** | optional `description` on the workflow and `ui?: { x; y }` per node (the canvas position, inline so a workflow is one self-contained file). Both are data-only, leaving execution unaffected. |
 
-## 3. Architecture — how the admin self-reflects
+## 3. Architecture: how the admin self-reflects
 
 ```
 browser ──HTTP──► workflows authored in Pattern (the admin's API):
@@ -59,7 +59,7 @@ browser ──HTTP──► workflows authored in Pattern (the admin's API):
   (`admin.*`, §10) and **endpoint workflows** that map `http.request` → those ops →
   `http.response` (§11). That set *is* the admin API; being ordinary workflows, they
   appear in the catalog and are editable in the admin.
-- **ControlPlane is an internal service, not an API.** Persistence, versioning, and
+- **ControlPlane is an internal service.** Persistence, versioning, and
   enable-state live behind a `ControlPlane`/`WorkflowStore` interface registered in
   `setup(engine)`, with a filesystem inside it. Ops reach it via
   `ctx.services.adminControlPlane`; the only HTTP surface is the workflows.
@@ -74,16 +74,16 @@ browser ──HTTP──► workflows authored in Pattern (the admin's API):
 Every workflow carries a **source**: `code` (registered by a mod at boot), `file`
 (loaded from the store), or `db` (reserved). It governs editability:
 
-- **code** — read-only in the editor, fully inspectable, **forkable** (copy → a new
+- **code**: read-only in the editor, fully inspectable, **forkable** (copy → a new
   `file` workflow).
-- **file** — the authorable ones.
+- **file**: the authorable ones.
 
 Lifecycle: `draft → validate (collectIssues, the same checks the engine runs) →
 save version (immutable snapshot) → activate (route-conflict check → enabled & live
 → registerWorkflowAsync) → disable (unregister; the definition stays in the store)`.
-"Enabled/disabled" is **control-plane state**, not an engine concept. On a route
-conflict at activation the admin does **not** auto-resolve — it offers **cancel** or
-**swap** (disable the conflicting live workflow, activate this one).
+"Enabled/disabled" is **control-plane state**; the engine has no such concept. On a
+route conflict at activation the admin prompts the operator: **cancel**, or **swap**
+(disable the conflicting live workflow, activate this one).
 
 ## 5. Versioning
 
@@ -99,12 +99,12 @@ content-addressed dedupe.
 
 ## 6. Extension surface (the adoption lever)
 
-Two tiers — simple needs cost ~zero, complex needs stay possible.
+Two tiers: simple needs cost ~zero, complex needs stay possible.
 
-**Tier 1 — declarative pages (no build).** A mod declares a page as *data*, rendered
+**Tier 1: declarative pages (no build).** A mod declares a page as *data*, rendered
 by the admin's component kit: `view` kinds `table`, `form`, `chart`, `json`,
 `markdown`, `graph` (embed a workflow), `iframe`. Data sources are workflows/ops, so
-self-reflection holds — a declarative page is wiring, not a new API.
+self-reflection holds: a declarative page is wiring over existing endpoints.
 
 ```ts
 { menu: [{ category: "Observability", label: "My Metrics", icon: "activity", path: "/x/metrics", order: 20 }],
@@ -112,24 +112,27 @@ self-reflection holds — a declarative page is wiring, not a new API.
                                         columns: [/* … */] } }] }
 ```
 
-**Tier 2 — custom React pages (runtime ESM remotes).** For bespoke UIs a mod ships a
-built ESM bundle exposing a default-exported component; the admin `import()`s it at
-runtime (add a mod → its page appears, no admin rebuild). The bundle reads shared
-deps (React, the typed API client, the UI kit) off the `__PATTERN_ADMIN__` global so
-they aren't double-loaded; `@pattern-js/admin-sdk` types that global as
-`PatternAdminGlobal`. See [`@pattern-js/mod-sample`](/docs/sample) for the working proof
-— a Tier-1 page **and** a ⌘K command **and** a Tier-2 remote with zero admin-core
-changes.
+**Tier 2: custom React pages (ESM module).** For bespoke UIs a mod contributes a
+page's ESM source as a string (`pages: [{ path, module }]`) exposing a
+default-exported component. The admin serves that source from its own same-origin
+route (`GET /admin/api/ui/page/:slug`, `text/javascript`) and `import()`s it at
+runtime (add a mod → its page appears, no admin rebuild). Same-origin keeps it under
+a plain `script-src 'self'`, so the mod adds no workflow, asset mount, or CSP
+relaxation. The module reads shared deps (React, the typed API client, the UI kit,
+motion, lucide) off the `__PATTERN_ADMIN__` global so each loads once;
+`@pattern-js/admin-sdk` types that global as `PatternAdminGlobal`. See
+[`@pattern-js/mod-sample`](/sample) for the working proof: a Tier-1 page **and** a
+⌘K command **and** a Tier-2 module with zero admin-core changes.
 
 **`@pattern-js/admin-sdk`** is the stable surface: the typed API client, theme tokens, a
 glass UI kit (`GlassPanel`, `NeonButton`, `Table`, `FormFromSchema`, `JsonView`,
 `Markdown`, …), and menu/page/command helpers. The admin's own pages use this exact
-surface — dogfooding is the proof it's sufficient.
+surface. Dogfooding proves it sufficient.
 
 ## 7. Stack
 
-Frontend/dev deps live only in `mod-admin`/`admin-sdk`, never in `@pattern-js/core`;
-`admin-sdk` keeps React a **peer** dep. React 19 · Vite · Tailwind v4 (`@theme`
+Frontend/dev deps stay confined to `mod-admin`/`admin-sdk`, keeping `@pattern-js/core`
+free of them; `admin-sdk` keeps React a **peer** dep. React 19 · Vite · Tailwind v4 (`@theme`
 tokens) · Motion.dev · `@xyflow/react` 12 (the authoring canvas) · Zustand (canvas
 state + undo) · TanStack Query (server state) · React Router · a custom
 `FormFromSchema` (react-hook-form + `z.toJSONSchema()`) · lucide-react · Zod v4.
@@ -170,7 +173,7 @@ is a workflow with a single `boundary.http.app` node (`mount: "/admin"`,
 
 A glass **shell** built from the aggregated menu manifest; a **data layer** of
 TanStack Query hooks over a typed client (no hand-rolled fetch in pages); the
-**editor** — an `@xyflow/react` canvas with node types rendered from each
+**editor**: an `@xyflow/react` canvas with node types rendered from each
 `OpDefinition` (ports from `inputs`/`outputs`/`controlOut`) and edge types per kind
 (value solid, stream animated, control dotted/pulse), node positions from each node's
 `ui` block, a Zustand store with an undo/redo command stack, config forms via
@@ -211,10 +214,11 @@ state from stable ids.
 
 ## 18. Decisions of record
 
-1. Admin is a mod; total self-reflection; no bespoke API surface; UI served via
-   `boundary.http.app`.
-2. **Tier-2 pages are runtime ESM remotes** — shared deps off `__PATTERN_ADMIN__`,
-   never double-bundled; iframe is the escape hatch only.
+1. Admin is a mod; total self-reflection; the API surface is workflows only; UI
+   served via `boundary.http.app`.
+2. **Tier-2 pages are ESM modules served same-origin by the admin**: a mod
+   contributes the source string; the admin serves it under `script-src 'self'` and
+   `import()`s it, sharing deps off `__PATTERN_ADMIN__` so each loads once.
 3. **Node layout is an inline `ui` block per node** (data-only); the workflow stays
    one self-contained file.
 4. **Control-plane storage is an internal service** with a filesystem inside; the

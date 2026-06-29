@@ -60,7 +60,7 @@ export default function {{Title}}Page() {
     null,
     h(PageHeader, {
       title: "{{Title}}",
-      subtitle: "A Tier-2 page from {{pkgName}} — the admin's React, UI kit, motion & lucide, no bundler.",
+      subtitle: "A Tier-2 page from {{pkgName}}: the admin's React, UI kit, motion & lucide, no bundler.",
       actions: h(Badge, { hue: 280 }, "tier 2"),
     }),
     h(
@@ -73,7 +73,7 @@ export default function {{Title}}Page() {
           "p",
           { className: "text-muted text-sm flex items-center gap-2" },
           Icon && h(Icon, { size: 16 }),
-          "Loaded from the admin's shared stack — replace this with your UI.",
+          "Loaded from the admin's shared stack. Replace this with your UI.",
         ),
       ),
       h(NeonButton, { onClick: () => api.call("GET", "/{{name}}/items").then(setItems) }, "Load items"),

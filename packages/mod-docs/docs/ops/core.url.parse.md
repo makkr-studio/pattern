@@ -1,1 +1,1 @@
-Break a URL string into its parts (`protocol`, `host`, `pathname`, `query` as an object, etc.) so you can branch on or rewrite a piece. The `query` field is already decomposed — no need to also run `core.query.parse` on `search`. Throws on a non-absolute URL.
+Break a URL string into its parts (`protocol`, `host`, `pathname`, `query` as an object, etc.) so you can branch on or rewrite a piece. The `query` field is already decomposed; running `core.query.parse` on `search` is redundant. Throws on a non-absolute URL.

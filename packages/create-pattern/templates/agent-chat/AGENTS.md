@@ -1,23 +1,23 @@
-# Agent guide — {{name}} (Pattern · agent-chat modpack)
+# Agent guide: {{name}} (Pattern · agent-chat modpack)
 
 You are working in a **Pattern** project running a complete AI-agent chat:
-`/chat` is a product chat app whose every turn executes a **workflow** —
-`chat.turn.pipeline` — visible in the admin at `/admin`. The agent, its tools
+`/chat` is a product chat app whose every turn executes a **workflow**,
+`chat.turn.pipeline`, visible in the admin at `/admin`. The agent, its tools
 and its guardrails are graph nodes. Your job is usually one of: add a tool,
 tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
 
 ## Ground rules
 
 1. **Never guess op names or ports.** Ground truth is one command away:
-   - `npx pattern ops agents` — the agent ops (agent, run, tools, guardrail…)
-   - `npx pattern ops chat` — the chat pipeline ops
-   - `npx pattern ops <type>` — full ports + config detail for any op
+   - `npx pattern ops agents`: the agent ops (agent, run, tools, guardrail…)
+   - `npx pattern ops chat`: the chat pipeline ops
+   - `npx pattern ops <type>`: full ports + config detail for any op
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`.
 3. The chat agent needs a **model** and a **key**. The model is the default set
    in admin → Settings → AI Providers (or wire an `ai.model` node into the
    pipeline's `agents.agent.model`). The provider key resolves by name:
    `OPENAI_API_KEY` in `.env` (copied from `.env.example`; loaded automatically,
-   real env wins) → a vault secret of that name (admin → System → Secrets —
+   real env wins) → a vault secret of that name (admin → System → Secrets,
    masked out of run samples). Gateway routing uses one `AI_GATEWAY_API_KEY`
    instead. `PATTERN_VAULT_KEY` (the vault's master key) belongs in `.env`.
 4. Don't edit `./.pattern` by hand; `./.pattern-data` is runtime data
@@ -31,10 +31,10 @@ tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
   `agents.run` → SSE response + `chat.events.sink` (persists every event;
   the chat UI replays from the store on refresh).
 - **A tool is a workflow** starting with `boundary.tool` (name, description,
-  `params` as JSON Schema — engine-validated before your graph runs) and
+  `params` as JSON Schema, engine-validated before your graph runs) and
   ending with `boundary.tool.return` ({ result }). Every call shows up in the
   admin Runs page as a linked sub-run (↳) with sampled I/O.
-- Agents, toolsets and guardrails are **values on edges** — wire
+- Agents, toolsets and guardrails are **values on edges**; wire
   `agents.guardrail` or extra toolsets into the `agents.agent` node.
 
 ## Recipes
@@ -44,12 +44,12 @@ tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
 Create `workflows/tool-<name>.json` (see `tool-time.json` for the minimal
 shape, `tool-weather.json` for validated params + an outbound HTTP call):
 
-1. `boundary.tool` trigger — config `{ name, description, params? }`
+1. `boundary.tool` trigger: config `{ name, description, params? }`
 2. …your graph… (`args` output carries the validated arguments)
-3. `boundary.tool.return` — wire your result into `result`
+3. `boundary.tool.return`: wire your result into `result`
 
 A complete tool with validated params + an outbound call (this is
-`tool-weather.json` — the archetype to copy):
+`tool-weather.json`, the archetype to copy):
 
 ```json
 {
@@ -71,7 +71,7 @@ A complete tool with validated params + an outbound call (this is
 
 The engine validates `params` (JSON Schema) before the graph runs, so `args`
 carries clean arguments. Restart (or deploy from the admin) and the agent sees it
-immediately — the
+immediately; the
 pipeline's `agents.tools.workflows` node picks up every tool by default.
 Set `"needsApproval": true` on the trigger config to gate it behind a human
 Approve/Deny in the chat (HITL).
@@ -83,14 +83,14 @@ outputs whole) and *Create an app* (serving a built SPA via the app trio:
 `boundary.http.app` → `core.app.static` → `boundary.http.app.serve`, assets
 registered with `provideFilesystem`). No stack is imposed, but this chat app and
 the admin are built with React, Tailwind, motion.dev (the `motion` package) and
-lucide — a tested starting point if you have no preference.
+lucide: a tested starting point if you have no preference.
 
 ### Tune the agent (instructions, model)
 
 Open `/admin` → Workflows → `chat.turn.pipeline` → the `agents.agent` node:
 its config carries `instructions` (the model comes from Settings → AI Providers,
 or wire an `ai.model` node into the agent's `model` input). The built-in pipeline
-is a code workflow — **fork it** (Editor → Fork), edit your copy, then disable the
+is a code workflow; **fork it** (Editor → Fork), edit your copy, then disable the
 built-in from the catalog (Status toggle). Your fork's route takes over.
 
 ### Add a guardrail
@@ -99,7 +99,7 @@ A guardrail is a tool workflow returning `{ tripwire: boolean, info? }`.
 Wire it: add an `agents.guardrail` node (config: `tool` = the tool's name,
 `direction`: input|output) and connect its `guardrail` output into the
 `agents.agent` node's `guardrails` input. A tripped guardrail renders as an
-inline card in the chat — never a crash. Mark the tool's `boundary.tool`
+inline card in the chat. Mark the tool's `boundary.tool`
 config `guardrail: true` so it stays a guardrail and is never offered to the
 model as a callable tool.
 
@@ -117,7 +117,7 @@ By default guests chat anonymously (device-scoped conversations). To gate it:
 add `"@pattern-js/mod-identity"` and `"@pattern-js/mod-auth-magic-link"` to the
 mods in `pattern.config.json`, then set `CHAT_REQUIRE_AUTH=true` in `.env`
 (or a comma-separated scope list, e.g. `CHAT_REQUIRE_AUTH=member`). Anonymous
-visitors now get the chat's sign-in card (email → magic link — printed to the
+visitors now get the chat's sign-in card (email → magic link, printed to the
 console until you wire a mail delivery workflow). Unset the var to reopen.
 Admin → Chat → Conversations shows every conversation either way, guests
 included.
@@ -125,7 +125,7 @@ included.
 ### Compact long conversations
 
 Drop an `agents.history.compact` node between `chat.turn.begin`'s `history`
-output and `agents.run`'s `history` input. Compaction is a visible node — you
+output and `agents.run`'s `history` input. Compaction is a visible node; you
 SEE when memory squeezes.
 
 ## Hybrid execution
@@ -138,7 +138,7 @@ The chat turn pipeline itself stays inline (it streams and holds a lease).
 
 ## Where things live
 
-- `workflows/` — file workflows (tools, routes); editable, committed
-- `./.pattern` — admin-versioned workflows (committed)
-- `./.pattern-data` — sqlite + blobs (conversations, secrets); gitignored
+- `workflows/`: file workflows (tools, routes); editable, committed
+- `./.pattern`: admin-versioned workflows (committed)
+- `./.pattern-data`: sqlite + blobs (conversations, secrets); gitignored
 - Chat data: admin → Data → Collections (`chat.conversations`, `chat.turns`)

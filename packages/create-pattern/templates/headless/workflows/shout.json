@@ -18,7 +18,7 @@
     {
       "id": "shout",
       "op": "app.shout",
-      "comment": "An op from the app-local mod (mods/uppercase.mjs): UPPERCASE + '!'. Swap the mod, swap the behavior — the graph stays the same."
+      "comment": "An op from the app-local mod (mods/uppercase.mjs): UPPERCASE + '!'. Swap the mod, swap the behavior; the graph stays the same."
     },
     {
       "id": "out",

@@ -41,7 +41,7 @@ export const schemaValidate: OpDefinition = {
   title: "core.schema.validate",
   description:
     "Validates `value` against a schema (the `schema` input, else config.schema). Outputs " +
-    "{ valid, value (parsed/coerced), errors } — branch on `valid` with core.flow.branch.",
+    "{ valid, value (parsed/coerced), errors }. Branch on `valid` with core.flow.branch.",
   inputs: {
     value: required(),
     schema: value(jsonSchema),

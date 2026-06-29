@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, pageHref, type Chapter, type Page } from "../lib/api";
+import { appBoot } from "../lib/config";
 import { headingsOf, Markdown } from "../lib/md";
 import { useDocs } from "../shell/Shell";
 import { WorkflowEmbed } from "../components/WorkflowEmbed";
@@ -113,9 +114,22 @@ export function DocPage() {
           fence={(lang, body, key) => (lang === "workflow" ? <WorkflowEmbed key={key} source={body} /> : null)}
           resolveLink={(href) => {
             const [path, frag] = href.split("#");
+            const suffix = frag ? `#${frag}` : "";
+            // A relative `.md` link → the in-app route for that page.
             if (path && /\.md$/.test(path) && !/^[a-z]+:/.test(path) && !path.startsWith("/")) {
               const target = resolveRelative(file, path);
-              return { href: `${pageHref(primarySlug, chapter!.slug, target, chapter!.index)}${frag ? `#${frag}` : ""}`, internal: true };
+              return { href: `${pageHref(primarySlug, chapter!.slug, target, chapter!.index)}${suffix}`, internal: true };
+            }
+            // A root-relative in-app route (e.g. `/ops`, `/admin/internals`) →
+            // an internal Link, so the router prepends the configured mount and
+            // the link stays portable when docs are not served at `/docs`. A link
+            // that already carries the mount (legacy `/docs/...`) is stripped so
+            // the router doesn't prefix it twice.
+            if (path && path.startsWith("/") && !/^\/\//.test(path)) {
+              let route = path;
+              const m = appBoot.mount;
+              if (m && m !== "/" && (route === m || route.startsWith(`${m}/`))) route = route.slice(m.length) || "/";
+              return { href: `${route}${suffix}`, internal: true };
             }
             return { href };
           }}

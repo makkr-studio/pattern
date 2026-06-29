@@ -10,7 +10,7 @@ export const modelOp: OpDefinition = {
   type: "ai.model",
   title: "ai.model",
   description:
-    "Build a model reference (a value) to wire into any ai.* op or agents.agent. Define it inline — " +
+    "Build a model reference (a value) to wire into any ai.* op or agents.agent. Define it inline: " +
     'routing "gateway" (one key, "provider/model" ids) or "direct" (a single-key provider + its key). ' +
     "For multi-secret/structured providers (Azure, Bedrock, Vertex, …) configure an alias and use ai.alias.",
   config: z.object({

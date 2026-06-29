@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://pattern-js.dev"><b>pattern-js.dev</b></a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#the-idea">The idea</a> &nbsp;·&nbsp;
   <a href="#what-you-get">What you get</a> &nbsp;·&nbsp;
@@ -132,8 +133,9 @@ with an example op, a route, an admin page, a docs chapter, and a test.
 
 ## Docs
 
-The full handbook is served at `/docs`, and ships as markdown inside
-[`@pattern-js/mod-docs`](packages/mod-docs/docs).
+The full handbook is online at [pattern-js.dev](https://pattern-js.dev). It is also
+served at `/docs` in any project that installs `@pattern-js/mod-docs`, and ships as
+markdown inside [the package](packages/mod-docs/docs).
 
 - [Getting started](packages/mod-docs/docs/getting-started.md)
 - [Concepts](packages/mod-docs/docs/concepts.md) and [Architecture](packages/mod-docs/docs/architecture.md)

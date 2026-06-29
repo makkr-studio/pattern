@@ -5,14 +5,14 @@ order: 12
 
 # Authoring ops & mods
 
-Ops are where the code lives. They're plain functions over Web-standard APIs —
-no framework substrate. This is how you add your own, and bundle them as a mod.
+Ops are where the code lives. They're plain functions over Web-standard APIs,
+with no framework substrate. This is how you add your own, and bundle them as a mod.
 
-> **Reuse before you create.** Most "glue" is already an op — check the
-> [op reference](/docs/ops) (or `pattern ops <query>`) first. The base catalog
+> **Reuse before you create.** Most "glue" is already an op: check the
+> [op reference](/ops) (or `pattern ops <query>`) first. The base catalog
 > covers strings, objects, arrays, math, control flow, time, encoding, HTTP, and
 > streams. Author a new op when you have genuinely new *logic* or a new I/O
-> capability — not to wire existing ops together (that's a workflow).
+> capability. Wiring existing ops together is a workflow.
 
 ## A pure value op
 
@@ -65,12 +65,12 @@ export const lines = defineOp({
 });
 ```
 
-Keep ops **auth-free**: never read `ctx.principal` to allow/deny — authorization
+Keep ops **auth-free**: never read `ctx.principal` to allow/deny. Authorization
 is the trigger's job (`requireAuth` on the boundary), so the op stays callable
 from a CLI, a schedule, or another workflow. If an op reads sensitive data, set
-`sensitivity: "privileged"` on the definition: it's a *signal*, not a check (the
-op still never enforces), and the validator warns if a network trigger can reach
-it without `requireAuth`. See *Designing your API* for the full discipline.
+`sensitivity: "privileged"` on the definition: it's a *signal* the validator
+reads, the op itself never enforces, and the validator warns if a network trigger
+can reach it without `requireAuth`. See *Designing your API* for the full discipline.
 
 `OpContext` gives you:
 
@@ -82,7 +82,7 @@ it without `requireAuth`. See *Designing your API* for the full discipline.
 | `ctx.input.has(port)` | whether an input port is wired |
 | `ctx.pulse(controlOut)` | pulse a declared named control-out (control-flow ops); returns a promise that resolves when that branch's subgraph quiesces |
 | `ctx.principal` | the run identity (§9) |
-| `ctx.signal` | `AbortSignal` — stop producing when aborted |
+| `ctx.signal` | `AbortSignal`: stop producing when aborted |
 | `ctx.trace` / `ctx.log` | the node's OTel-shaped span / structured logging |
 | `ctx.params` | run-scoped parameters (read by `core.input`) |
 | `ctx.env` | injected environment map (read by `core.env`) |
@@ -91,10 +91,10 @@ it without `requireAuth`. See *Designing your API* for the full discipline.
 
 ### Authoring rules
 
-- Read value inputs via `ctx.input.value` — that's where barrier ordering happens.
+- Read value inputs via `ctx.input.value`: that's where barrier ordering happens.
 - Return streams quickly; they produce lazily. A *mixed* op returns streams immediately + value promises that resolve later.
-- **Control ports are mostly invisible.** Ordinary ops don't read `in` or fire `out` — the engine does. Only control-flow ops declare `controlOut` and call `ctx.pulse`.
-- No shared mutable globals across runs. Reach the outside only through `ctx` capabilities — that's what keeps distribution open.
+- **Control ports are mostly invisible.** Ordinary ops don't read `in` or fire `out`; the engine does. Only control-flow ops declare `controlOut` and call `ctx.pulse`.
+- No shared mutable globals across runs. Reach the outside only through `ctx` capabilities: that's what keeps distribution open.
 
 ## A control-flow op
 
@@ -117,7 +117,7 @@ export const isEven = defineOp({
 
 ## Dynamic-arity ports
 
-`inputs`/`outputs`/`controlOut` may be functions of parsed config — that's how
+`inputs`/`outputs`/`controlOut` may be functions of parsed config: that's how
 `core.stream.split` produces `out.0..n`:
 
 ```ts
@@ -151,10 +151,10 @@ const mod: PatternMod = {
   authProviders: [/* … */],
   hooks: [{ name: "post.beforeSave" }],
   setup(engine) { /* anything imperative */ },
-  ready(engine) { /* after every mod of the install batch — cross-mod work */ },
+  ready(engine) { /* after every mod of the install batch: cross-mod work */ },
 };
 
-export default mod;        // engine.use(mod)  — or loadMods(engine, ["my-mod"])
+export default mod;        // engine.use(mod), or loadMods(engine, ["my-mod"])
 ```
 
-Op `type` ids and hook names are stable contracts — treat them like a public API.
+Op `type` ids and hook names are stable contracts: treat them like a public API.

@@ -1,1 +1,1 @@
-Pad a string up to `config.length` with `fill`, on the `start` (default) or `end` side — for fixed-width fields like zero-padded numbers or aligned columns. A no-op when the value is already at or over `length`.
+Pad a string up to `config.length` with `fill`, on the `start` (default) or `end` side: for fixed-width fields like zero-padded numbers or aligned columns. A no-op when the value is already at or over `length`.

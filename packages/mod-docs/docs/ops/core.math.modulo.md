@@ -1,1 +1,1 @@
-Use for wrap-around or every-Nth logic — bucket an index, test divisibility by pairing `core.cmp.eq` against `0`. Like `core.math.divide` it has no special zero-divisor guard, so floor `b` first if it can be `0`.
+Use for wrap-around or every-Nth logic: bucket an index, test divisibility by pairing `core.cmp.eq` against `0`. Like `core.math.divide` it has no special zero-divisor guard, so floor `b` first if it can be `0`.

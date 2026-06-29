@@ -1,7 +1,7 @@
 /**
  * @pattern-js/mod-ai — the MCP client seam (AiMcpService).
  *
- * Resolves `agents.mcp.server` tool refs against real MCP servers using the
+ * Resolves `agents.mcp.client` tool refs against real MCP servers using the
  * official @modelcontextprotocol/sdk (the AI SDK dropped its built-in MCP
  * client in v6). Connections are LONG-LIVED (handshake + discovery are
  * expensive); runs are short — so we pool one client per descriptor for the

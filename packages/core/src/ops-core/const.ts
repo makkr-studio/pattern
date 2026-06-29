@@ -99,7 +99,7 @@ export const env = defineOp({
   title: "core.env",
   description:
     "Read an environment variable from ctx.env, with type casting and an optional default. " +
-    "The graph-level counterpart of the `$env` config sugar — wire it into a boundary's config port.",
+    "The graph-level counterpart of the `$env` config sugar; wire it into a boundary's config port.",
   inputs: {},
   outputs: { out: value(z.unknown()) },
   config: z.object({

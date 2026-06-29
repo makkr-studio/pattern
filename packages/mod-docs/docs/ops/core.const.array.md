@@ -1,1 +1,1 @@
-Emit a fixed list from `config.value` — a set of options, a seed collection to feed `core.array.map`, or the source for `core.random.pick`. For a top-level scalar or object literal, use the matching `core.const.*` op instead.
+Emit a fixed list from `config.value`: a set of options, a seed collection to feed `core.array.map`, or the source for `core.random.pick`. For a top-level scalar or object literal, use the matching `core.const.*` op.

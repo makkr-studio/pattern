@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/admin-sdk",
-  "version": "0.2.3",
+  "version": "0.2.39",
   "description": "Pattern admin SDK — the stable extension surface for admin UIs and mods (typed API client, menu/command helpers, shared protocol types).",
   "type": "module",
   "license": "MIT",
