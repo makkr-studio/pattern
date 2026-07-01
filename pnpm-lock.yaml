@@ -328,6 +328,31 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  packages/mod-auth-oidc:
+    dependencies:
+      '@pattern-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pattern-js/mod-identity':
+        specifier: workspace:*
+        version: link:../mod-identity
+      '@pattern-js/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
+      jose:
+        specifier: ^6.0.0
+        version: 6.2.3
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/mod-chat:
     dependencies:
       '@pattern-js/core':
@@ -446,6 +471,81 @@ importers:
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+
+  packages/mod-email:
+    dependencies:
+      '@pattern-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pattern-js/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@pattern-js/mod-auth-magic-link':
+        specifier: workspace:*
+        version: link:../mod-auth-magic-link
+      '@pattern-js/mod-identity':
+        specifier: workspace:*
+        version: link:../mod-identity
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/mod-email-resend:
+    dependencies:
+      '@pattern-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pattern-js/mod-email':
+        specifier: workspace:*
+        version: link:../mod-email
+      '@pattern-js/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/mod-email-smtp:
+    dependencies:
+      '@pattern-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pattern-js/mod-email':
+        specifier: workspace:*
+        version: link:../mod-email
+      '@pattern-js/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
+      nodemailer:
+        specifier: ^8.0.1
+        version: 8.0.11
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
 
   packages/mod-identity:
     dependencies:
@@ -1641,6 +1741,9 @@ packages:
   '@types/node@22.19.20':
     resolution: {integrity: sha512-6tELRwSDYWW9EdZhbeZmYGZ1/7Djkt+Ah3/ScEYT9cDord7UJzasR/4D3VONg9tQI5CDp+/CZC1AXj2pCFOvpw==}
 
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
+
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
@@ -2355,6 +2458,10 @@ packages:
   node-fetch@3.3.2:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  nodemailer@8.0.11:
+    resolution: {integrity: sha512-nrO/pDAUKl+wXX+lx16tDLbnm0fW6sK/x8mgohaCpg+CdCEl482bD4tCuAZk2DyliruiNTIZxRCoWkDqJEnAiA==}
+    engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -3718,6 +3825,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 22.19.20
+
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
       '@types/react': 19.2.17
@@ -4416,6 +4527,8 @@ snapshots:
       data-uri-to-buffer: 4.0.1
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
+
+  nodemailer@8.0.11: {}
 
   normalize-path@3.0.0: {}
 

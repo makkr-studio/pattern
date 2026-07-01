@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-agents",
-  "version": "0.2.40",
+  "version": "0.2.42",
   "description": "Neutral agent contracts for Pattern: agent/tool/guardrail descriptors that flow on edges, the boundary.tool workflow pair (engine-validated params), the modality-agnostic turn event protocol, and the tool registry — no model-provider dependency. Pair with @pattern-js/mod-ai (the model provider).",
   "type": "module",
   "license": "MIT",

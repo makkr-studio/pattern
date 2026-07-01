@@ -72,7 +72,7 @@ const quote: Workflow = {
   ],
   edges: [
     { from: { node: "in", port: "out" }, to: { node: "pick", port: "in" } },
-    { from: { node: "pick", port: "out" }, to: { node: "out", port: "body" } },
+    { from: { node: "pick", port: "quote" }, to: { node: "out", port: "body" } },
   ],
 };
 

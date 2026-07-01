@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/runtime-node",
-  "version": "0.2.40",
+  "version": "0.2.42",
   "description": "Pattern runtime adapter for Node — HTTP/WS host, worker-thread pool, connection registry, sqlite trace sink.",
   "type": "module",
   "license": "MIT",

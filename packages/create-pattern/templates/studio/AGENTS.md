@@ -229,7 +229,13 @@ Add the identity mods to `pattern.config.json`:
   path-only on the **server console**; `identity.users.invite` also returns the
   link as `copy` in its result. Sign-in links print there until you subscribe a
   workflow to the `identity.deliverToken` hook (`payload: { email, url, purpose,
-  delivered }`: send it, set `delivered: true`).
+  delivered }`: send it, set `delivered: true`). The turnkey subscriber:
+  install `@pattern-js/mod-email` plus a driver (`mod-email-resend` /
+  `mod-email-smtp`), list them in the mods, and create a `default` account in
+  admin → System → Email — its packaged `email.deliver-token` workflow then
+  claims the hook automatically (console again if you delete the account).
+  For "Continue with Google/Microsoft/Keycloak" buttons, add
+  `@pattern-js/mod-auth-oidc` via a small wrapper mod (see its README).
 - **The admin's `requireAuth` starts being ENFORCED.** It always *declared*
   `admin` scope (the editor shows it even before you add identity, with a "not
   enforced (no provider)" note); installing a provider flips it on, and a

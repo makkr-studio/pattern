@@ -73,6 +73,20 @@ interface Modpack {
 /** What the auth toggle adds (pack card lines + config wiring). */
 const AUTH_MODS = ["@pattern-js/mod-identity", "@pattern-js/mod-auth-magic-link"];
 
+/**
+ * Sign-in link DELIVERY (asked only when auth is on): console (the zero-config
+ * dev fallback) or real email — mod-email (the contract: accounts, email.send,
+ * the packaged deliverToken workflow) plus the chosen driver. Console stays
+ * the fallback until a "default" account exists in admin → System → Email, so
+ * either choice boots with zero config.
+ */
+const EMAIL_MOD = "@pattern-js/mod-email";
+const EMAIL_DRIVERS: Record<string, string> = {
+  resend: "@pattern-js/mod-email-resend",
+  smtp: "@pattern-js/mod-email-smtp",
+};
+type EmailDelivery = "console" | "resend" | "smtp";
+
 /** What the docs toggle adds: self-reflecting documentation at /docs. */
 const DOCS_MOD = "@pattern-js/mod-docs";
 
@@ -190,6 +204,9 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-chat": "the /chat product; its turn pipeline is a workflow",
   "@pattern-js/mod-identity": "users, sessions, roles → scopes",
   "@pattern-js/mod-auth-magic-link": "magic-link login (console fallback in dev)",
+  "@pattern-js/mod-email": "email accounts + email.send; delivers sign-in links",
+  "@pattern-js/mod-email-resend": "Resend driver for mod-email",
+  "@pattern-js/mod-email-smtp": "SMTP driver for mod-email (nodemailer)",
   "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
@@ -411,6 +428,8 @@ interface Flags {
   list: boolean;
   /** undefined = ask (interactive) / pack default (headless). */
   auth?: boolean;
+  /** Sign-in link delivery (auth packs only). undefined = ask / default console. */
+  email?: EmailDelivery;
   /** Same tri-state as auth. */
   docs?: boolean;
   /** undefined = ask (interactive) / default ON (headless). */
@@ -442,6 +461,11 @@ function parseFlags(argv: string[]): Flags {
     else if (a === "--no-git") flags.git = false;
     else if (a === "--auth") flags.auth = true;
     else if (a === "--no-auth") flags.auth = false;
+    else if (a === "--email") {
+      const v = argv[++i] as EmailDelivery;
+      if (!["console", "resend", "smtp"].includes(v)) throw new Error(`--email must be console, resend or smtp (got "${v ?? ""}")`);
+      flags.email = v;
+    }
     else if (a === "--docs") flags.docs = true;
     else if (a === "--no-docs") flags.docs = false;
     else if (a === "--examples") flags.examples = true;
@@ -493,10 +517,11 @@ function modPath(display: string): string {
  * and generated — mods + their roles, the file tree, the endpoints served, the
  * env it needs. Everything here is derived from the actual selections.
  */
-function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean, vaultKey = false): string {
-  // Mods, in install order: identity first (infra), pack mods, docs last.
+function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean, vaultKey = false, email: EmailDelivery = "console"): string {
+  // Mods, in install order: identity first (infra), email delivery, pack mods, docs last.
   const packMods = examples ? pack.mods : pack.mods.filter((m) => !m.includes("(app-local)"));
-  const modList = [...(auth ? AUTH_MODS : []), ...packMods, ...(docs ? [DOCS_MOD] : [])];
+  const emailMods = auth && email !== "console" ? [EMAIL_MOD, EMAIL_DRIVERS[email]!] : [];
+  const modList = [...(auth ? AUTH_MODS : []), ...emailMods, ...packMods, ...(docs ? [DOCS_MOD] : [])];
   const roleOf = (m: string) => MOD_ROLES[m] ?? "";
   const width = Math.max(0, ...modList.map((m) => modPath(m).length));
   const modLines = modList.length
@@ -525,9 +550,11 @@ function packCard(pack: Modpack, auth: boolean, docs: boolean, examples: boolean
 function resolveDims(
   pack: Modpack,
   flags: Flags,
-): { auth: boolean; docs: boolean; examples: boolean; vaultKey: boolean; providers: string[] } {
+): { auth: boolean; email: EmailDelivery; docs: boolean; examples: boolean; vaultKey: boolean; providers: string[] } {
+  const auth = pack.auth ? (flags.auth ?? pack.auth.default) : false;
   return {
-    auth: pack.auth ? (flags.auth ?? pack.auth.default) : false,
+    auth,
+    email: auth ? (flags.email ?? "console") : "console",
     docs: pack.docs ? (flags.docs ?? pack.docs.default) : false,
     examples: flags.examples ?? true,
     vaultKey: packNeedsVault(pack) ? (flags.vaultKey ?? true) : false,
@@ -553,12 +580,12 @@ function previewManifest(flags: Flags): void {
     return;
   }
   const pack = packOrThrow(flags.modpack ?? "studio");
-  const { auth, docs, examples, vaultKey } = resolveDims(pack, flags);
+  const { auth, email, docs, examples, vaultKey } = resolveDims(pack, flags);
   console.log(
-    `  ${pc.bold(pack.label)} ${pc.dim(`(${pack.id}${examples ? "" : ", no examples"}${auth ? ", auth" : ""}${docs ? ", docs" : ""})`)}\n`,
+    `  ${pc.bold(pack.label)} ${pc.dim(`(${pack.id}${examples ? "" : ", no examples"}${auth ? ", auth" : ""}${email !== "console" ? `, email ${email}` : ""}${docs ? ", docs" : ""})`)}\n`,
   );
   console.log(
-    packCard(pack, auth, docs, examples, vaultKey)
+    packCard(pack, auth, docs, examples, vaultKey, email)
       .split("\n")
       .map((l) => "  " + l)
       .join("\n"),
@@ -573,7 +600,7 @@ function listPacks(): void {
     console.log(`  ${pc.cyan(pack.id.padEnd(12))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
   console.log(
-    `\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples]")}`,
+    `\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth] [--email console|resend|smtp] [--docs|--no-docs] [--examples|--no-examples]")}`,
   );
   console.log(`  ${pc.dim("examples are included by default — pass --no-examples for a clean scaffold.")}\n`);
 }
@@ -660,6 +687,36 @@ async function applyAuth(targetDir: string, packId: string): Promise<void> {
 
   if (packId === "headless") {
     await writeFile(join(targetDir, "workflows", "whoami.json"), WHOAMI_WORKFLOW);
+  }
+}
+
+/**
+ * Flip sign-in link delivery to real email: mod-email + the chosen driver join
+ * the manifest right after the identity mods (they serve auth). Console stays
+ * the fallback until a "default" account exists in admin → System → Email, so
+ * the scaffold still boots with zero config. Runs AFTER applyAuth.
+ */
+async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<void> {
+  const driver = EMAIL_DRIVERS[delivery];
+  if (!driver) return; // "console" — the status quo
+
+  const pkgPath = join(targetDir, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
+  for (const mod of [EMAIL_MOD, driver]) pkg.dependencies[mod] = "^0.2.0";
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
+  cfg.mods = [...cfg.mods.slice(0, AUTH_MODS.length), EMAIL_MOD, driver, ...cfg.mods.slice(AUTH_MODS.length)];
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+  const envPath = join(targetDir, ".env.example");
+  if (existsSync(envPath)) {
+    const hint =
+      delivery === "resend"
+        ? "\n# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
+        : "\n# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
+    await writeFile(envPath, (await readFile(envPath, "utf8")) + hint);
   }
 }
 
@@ -943,6 +1000,26 @@ async function runInteractive(flags: Flags): Promise<void> {
     }
   }
 
+  // Sign-in link delivery — asked only when auth is on (the links must travel somehow).
+  let email: EmailDelivery = "console";
+  if (auth) {
+    if (flags.email !== undefined) {
+      email = flags.email;
+    } else {
+      const answer = await p.select({
+        message: `Sign-in link delivery? ${pc.dim("how magic links reach users — console works with zero config")}`,
+        initialValue: "console" as EmailDelivery,
+        options: [
+          { value: "console", label: "Console (dev)", hint: "links print to the server console — zero config" },
+          { value: "resend", label: "Resend", hint: "mod-email + the Resend driver; add the account in admin → System → Email" },
+          { value: "smtp", label: "SMTP", hint: "mod-email + the SMTP driver (nodemailer); any relay or local catcher" },
+        ],
+      });
+      if (p.isCancel(answer)) return cancel();
+      email = answer as EmailDelivery;
+    }
+  }
+
   // Docs is orthogonal too — same tri-state as auth.
   let docs = false;
   if (pack.docs) {
@@ -1009,7 +1086,7 @@ async function runInteractive(flags: Flags): Promise<void> {
   }
 
   // The pack card: what this modpack actually wires up.
-  p.note(packCard(pack, auth, docs, examples, vaultKey), `${pack.label} modpack`);
+  p.note(packCard(pack, auth, docs, examples, vaultKey, email), `${pack.label} modpack`);
 
   const pm =
     flags.pm ??
@@ -1022,12 +1099,17 @@ async function runInteractive(flags: Flags): Promise<void> {
 
   const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
 
-  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, docs, examples, vaultKey, providers });
+  await scaffold({ name: String(name), pack: pack.id, pm: pm as Pm, install, git: flags.git, auth, email, docs, examples, vaultKey, providers });
 
   const runCmd = pm === "npm" ? "npm run" : String(pm);
   p.note(
     [
       ...pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth, examples, vaultKey }),
+      ...(auth && email !== "console"
+        ? [
+            `${pc.cyan("→")} email: admin → ${pc.bold("System → Email")} ${pc.dim(`— create the "default" account (${email === "resend" ? "Resend API key" : "SMTP host + password"} via vault or env); sign-in links then send automatically (console until then)`)}`,
+          ]
+        : []),
       ...(docs ? [`${pc.cyan("→")} docs: ${pc.bold("http://localhost:3000/docs")} ${pc.dim("(public — DOCS_REQUIRE_AUTH gates it)")}`] : []),
     ].join("\n"),
     "Next steps",
@@ -1055,14 +1137,15 @@ async function runHeadless(flags: Flags): Promise<void> {
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
   // No prompt to ask — flags win, else the pack's default (studio ships locked).
-  const { auth, docs, examples, vaultKey, providers } = resolveDims(pack, flags);
+  const { auth, email, docs, examples, vaultKey, providers } = resolveDims(pack, flags);
   console.log(
-    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${examples ? "" : ", no examples"}${auth ? ", auth on" : ""}${docs ? ", docs on" : ""}${providers.length ? `, +${providers.length} provider(s)` : ""})`,
+    `create-pattern: scaffolding "${name}" with the "${pack.id}" modpack (${pm}${examples ? "" : ", no examples"}${auth ? ", auth on" : ""}${email !== "console" ? `, email ${email}` : ""}${docs ? ", docs on" : ""}${providers.length ? `, +${providers.length} provider(s)` : ""})`,
   );
-  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, docs, examples, vaultKey, providers });
+  await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, auth, email, docs, examples, vaultKey, providers });
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Settings → AI Providers).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console (magic links print there too).`);
+  if (auth && email !== "console") console.log(`Email delivery: create the "default" account in admin → System → Email — sign-in links then send via ${email} (console until then).`);
   for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
 }
 
@@ -1073,6 +1156,7 @@ async function scaffold(opts: {
   install: boolean;
   git: boolean;
   auth: boolean;
+  email: EmailDelivery;
   docs: boolean;
   examples: boolean;
   vaultKey: boolean;
@@ -1089,10 +1173,11 @@ async function scaffold(opts: {
   // Strip examples BEFORE auth (so auth's /whoami route survives the strip).
   if (!opts.examples) await applyNoExamples(targetDir, opts.pack, opts.name);
   if (opts.auth) await applyAuth(targetDir, opts.pack);
+  if (opts.auth) await applyEmail(targetDir, opts.email);
   if (opts.docs) await applyDocs(targetDir);
   if (opts.vaultKey) await applyVaultKey(targetDir);
   if (opts.providers?.length) await applyProviders(targetDir, opts.providers);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""})`);
+  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.auth && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""})`);
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });

@@ -118,7 +118,9 @@ add `"@pattern-js/mod-identity"` and `"@pattern-js/mod-auth-magic-link"` to the
 mods in `pattern.config.json`, then set `CHAT_REQUIRE_AUTH=true` in `.env`
 (or a comma-separated scope list, e.g. `CHAT_REQUIRE_AUTH=member`). Anonymous
 visitors now get the chat's sign-in card (email → magic link, printed to the
-console until you wire a mail delivery workflow). Unset the var to reopen.
+console until delivery is wired — install `@pattern-js/mod-email` plus a driver
+(`mod-email-resend` / `mod-email-smtp`) and create a `default` account in
+admin → System → Email; links then send automatically). Unset the var to reopen.
 Admin → Chat → Conversations shows every conversation either way, guests
 included.
 
