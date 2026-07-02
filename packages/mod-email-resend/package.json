@@ -1,7 +1,14 @@
 {
   "name": "@pattern-js/mod-email-resend",
-  "version": "0.2.42",
+  "version": "0.2.44",
   "description": "Resend driver for @pattern-js/mod-email — dependency-free (the Resend API is one fetch). Install it, create an account in admin → System → Email, and email.send delivers through Resend.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "email",
+    "resend",
+    "driver"
+  ],
   "type": "module",
   "license": "MIT",
   "exports": {

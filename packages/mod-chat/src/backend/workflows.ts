@@ -131,7 +131,9 @@ function route(spec: RouteSpec, requireAuth?: unknown): Workflow {
   edges.push({ from: { node: "status", port: "body" }, to: { node: "out", port: "body" } });
   if (io.cookiesPort) edges.push({ from: { node: "call", port: io.cookiesPort }, to: { node: "out", port: "cookies" } });
 
-  return { id: spec.id, name: `Chat · ${spec.method} ${spec.path}`, source: "code", nodes, edges };
+  // internal: plumbing — keep the catalog focused on the workflows worth
+  // forking (turn/approval pipelines, tools). "Show internal" reveals these.
+  return { id: spec.id, name: `Chat · ${spec.method} ${spec.path}`, source: "code", internal: true, nodes, edges };
 }
 
 export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
@@ -164,6 +166,7 @@ export function blobUploadWorkflow(opts: ResolvedChatOptions): Workflow {
     id: "chat.route.blobs",
     name: `Chat · POST ${opts.mount}/api/blobs`,
     source: "code",
+    internal: true,
     nodes: [
       {
         id: "in",
@@ -458,6 +461,10 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
   return {
     id: "chat.approval.pipeline",
     name: "Chat · approval pipeline",
+    description:
+      "Human-in-the-loop resume: POST an approve/deny decision for an interrupted turn → re-lease the conversation, " +
+      "replay the saved agent state with the decisions applied, and the SAME turn resumes streaming (SSE) while the " +
+      "sink persists. The sibling of the turn pipeline — fork them together if a namespace changes the agent.",
     source: "code",
     nodes: [
       {
@@ -468,10 +475,23 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
           path: `${opts.mount}/api/:ns/conversations/:id/turns/:turnId/approve`,
           ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}),
         },
+        ui: { x: 40, y: 240, pair: "ok" },
       },
-      { id: "begin", op: "chat.approval.begin", config: { ttlMs: opts.turnTtlMs } },
-      { id: "gate", op: "core.flow.branch" },
-      { id: "tools", op: "agents.tools.workflows", config: { tools: [] } },
+      {
+        id: "begin",
+        op: "chat.approval.begin",
+        config: { ttlMs: opts.turnTtlMs },
+        comment: "Scope check + re-lease + load the interrupted turn's saved state. Conflict → 409 path.",
+        ui: { x: 460, y: 240 },
+      },
+      { id: "gate", op: "core.flow.branch", ui: { x: 680, y: 240 } },
+      {
+        id: "tools",
+        op: "agents.tools.workflows",
+        config: { tools: [] },
+        comment: "Same toolset as the turn pipeline — the resumed run needs the tool that interrupted.",
+        ui: { x: 900, y: 60 },
+      },
       {
         id: "agent",
         op: "agents.agent",
@@ -480,17 +500,23 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
           instructions: opts.agent.instructions,
         },
         comment: "Must reify the same agent shape as the turn pipeline.",
+        ui: { x: 1140, y: 60 },
       },
       ...aModel.nodes,
-      { id: "resume", op: "agents.run.resume" },
-      { id: "sink", op: "chat.events.sink" },
-      { id: "ok", op: "boundary.http.response", config: { mode: "sse" } },
-      { id: "err", op: "boundary.http.response", config: { mode: "buffered" } },
+      {
+        id: "resume",
+        op: "agents.run.resume",
+        comment: "Replays the saved state with the decisions; streams the rest of the turn.",
+        ui: { x: 1380, y: 200 },
+      },
+      { id: "sink", op: "chat.events.sink", comment: "Persists events + history; notifies WS rooms.", ui: { x: 1620, y: 80 } },
+      { id: "ok", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 1620, y: 300, pair: "in" } },
+      { id: "err", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 900, y: 440 } },
       // Decompose into chat.approval.begin's pure ports: id + turnId from
       // params, the decision from the body, the device id from cookies.
-      { id: "ex_params", op: "core.object.extract", config: { keys: ["id", "turnId"] } },
-      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" } },
-      { id: "errStatus", op: "boundary.http.status" },
+      { id: "ex_params", op: "core.object.extract", config: { keys: ["id", "turnId"] }, ui: { x: 240, y: 120 } },
+      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 240, y: 320 } },
+      { id: "errStatus", op: "boundary.http.status", ui: { x: 680, y: 440 } },
     ],
     edges: [
       { from: { node: "in", port: "params" }, to: { node: "ex_params", port: "object" } },
@@ -704,6 +730,9 @@ export function spaWorkflow(inst: ResolvedInstance): Workflow {
   return {
     id: `chat.spa${suffix}`,
     name: `Chat · SPA${suffix ? ` (${inst.namespace})` : ""}`,
+    description:
+      `Serves the chat app at ${inst.mount} — the app trio (mount → branded bundle → serve) that turns a built ` +
+      "SPA into a route. Declare another instance in chatMod options for a second branded copy on the same backend.",
     source: "code",
     nodes: [
       { id: "mount", op: "boundary.http.app", config: { mount: inst.mount }, ui: { x: 60, y: 60, pair: "serve" } },

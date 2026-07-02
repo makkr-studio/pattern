@@ -12,7 +12,7 @@ interface Feature {
 const DX: Feature[] = [
   { icon: Workflow, title: "A visual editor", body: "Drag ops onto a canvas, wire their ports, and hit run. The same editor ships with every app you build." },
   { icon: Zap, title: "Live reload", body: "Save a workflow or an op and the engine picks it up. There is no build step sitting between you and a run." },
-  { icon: BookOpen, title: "~270 ops, documented", body: "Strings, math, http, streams, time, crypto, objects and more. The reference is generated from the live registry, so it never drifts." },
+  { icon: BookOpen, title: "Every op, documented", body: "175 core ops — strings, math, http, streams, time, crypto, objects — plus everything your mods add. The reference is generated from the live registry, so it never drifts." },
   { icon: Braces, title: "Typed end to end", body: "Ports carry types. The editor only lets you connect what fits, and a bad wire is caught before it runs." },
 ];
 

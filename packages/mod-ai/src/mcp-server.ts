@@ -121,10 +121,14 @@ export function mcpServerWorkflow(opts: { path?: string } = {}): Workflow {
   return {
     id: "ai.mcp.server",
     name: `AI · MCP server (POST ${path})`,
+    description:
+      `Exposes this app's tool workflows to MCP clients over HTTP at ${path}: the whole JSON-RPC message flows ` +
+      "into ai.mcp.serve, which lists and calls every boundary.tool workflow. Fork it to narrow the toolset " +
+      "(config.tools) or move the path.",
     nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: "POST", path } },
-      { id: "serve", op: "ai.mcp.serve" },
-      { id: "out", op: "boundary.http.response" },
+      { id: "in", op: "boundary.http.request", config: { method: "POST", path }, ui: { x: 60, y: 60, pair: "out" } },
+      { id: "serve", op: "ai.mcp.serve", comment: "MCP over JSON-RPC: initialize / tools/list / tools/call.", ui: { x: 340, y: 60 } },
+      { id: "out", op: "boundary.http.response", ui: { x: 620, y: 60, pair: "in" } },
     ],
     edges: [
       { from: { node: "in", port: "body" }, to: { node: "serve", port: "request" } },

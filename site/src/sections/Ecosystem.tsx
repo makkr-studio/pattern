@@ -1,4 +1,4 @@
-import { type LucideIcon, Bot, BookOpen, Database, KeyRound, MessagesSquare, Shield } from "lucide-react";
+import { type LucideIcon, Bot, BookOpen, Database, KeyRound, Mail, MessagesSquare, Shield, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { SectionShell } from "../components/SectionShell";
 import { GlowCard } from "../components/ui";
@@ -16,6 +16,8 @@ const MODS: Mod[] = [
   { icon: BookOpen, name: "Docs", pkg: "@pattern-js/mod-docs", body: "A self-documenting handbook and a generated op reference, served at /docs.", hue: 262 },
   { icon: Database, name: "Store", pkg: "@pattern-js/mod-store", body: "Durable storage, blobs, turn documents, and per-turn leases.", hue: 330 },
   { icon: KeyRound, name: "Vault", pkg: "@pattern-js/mod-vault", body: "Secrets and API keys, resolved straight into the ops that need them.", hue: 258 },
+  { icon: Users, name: "Identity", pkg: "@pattern-js/mod-identity", body: "Users, sessions and roles — sign in by magic link or any OIDC provider.", hue: 152 },
+  { icon: Mail, name: "Email", pkg: "@pattern-js/mod-email", body: "Transactional email with Resend or SMTP drivers. Sign-in links send themselves.", hue: 22 },
   { icon: Bot, name: "Agents", pkg: "@pattern-js/mod-agents", body: "An agent loop with tools, MCP, and streaming turns you can watch live.", hue: 270 },
   { icon: MessagesSquare, name: "Chat", pkg: "@pattern-js/mod-chat", body: "A full hosted chat application running over one shared backend.", hue: 199 },
 ];

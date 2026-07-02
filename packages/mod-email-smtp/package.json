@@ -1,7 +1,15 @@
 {
   "name": "@pattern-js/mod-email-smtp",
-  "version": "0.2.42",
+  "version": "0.2.44",
   "description": "SMTP driver for @pattern-js/mod-email, built on nodemailer — any relay, your own server, or a local catcher. Host/port/user are account options in admin → System → Email; the password comes from the vault or an env var.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "email",
+    "smtp",
+    "nodemailer",
+    "driver"
+  ],
   "type": "module",
   "license": "MIT",
   "exports": {

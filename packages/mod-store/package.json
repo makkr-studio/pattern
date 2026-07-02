@@ -1,7 +1,15 @@
 {
   "name": "@pattern-js/mod-store",
-  "version": "0.2.42",
+  "version": "0.2.44",
   "description": "Generic persistence for Pattern apps: JSON document collections with declared indexes, a blob store, and CAS leases (with auto-release on run settle). SQLite or in-memory drivers; ops for visible canvas wiring; a Data browser in the admin.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "store",
+    "sqlite",
+    "blobs",
+    "persistence"
+  ],
   "type": "module",
   "license": "MIT",
   "exports": {

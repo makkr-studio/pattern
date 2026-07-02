@@ -94,6 +94,9 @@ function requestRoute(mount: string): Workflow {
   return {
     id: "magic-link.route.request",
     name: `Identity · POST ${mount}/magic-link/request`,
+    description:
+      "The login form posts here: mint a single-use sign-in token and hand its link to the identity.deliverToken " +
+      "hook (mod-email sends it; the console prints it otherwise). Responds with the \"check your email\" page.",
     source: "code",
     nodes: [
       { id: "in", op: "boundary.http.request", config: { method: "POST", path: `${mount}/magic-link/request` } },

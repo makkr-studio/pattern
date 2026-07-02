@@ -1,4 +1,5 @@
 {
+  "$schema": "pattern/workflow/v1",
   "id": "tool-weather",
   "name": "Tool · get_weather",
   "description": "A tool with validated arguments: the params schema is enforced by the ENGINE before this graph runs, so a hallucinated argument never reaches it.",

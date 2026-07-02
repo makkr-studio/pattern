@@ -30,6 +30,9 @@ function startRoute(mount: string, providerId: string): Workflow {
   return {
     id: `oidc.route.${providerId}.start`,
     name: `OIDC · GET ${path}`,
+    description:
+      `Begins the ${providerId} sign-in: mint state + nonce + PKCE, set the per-provider state cookie, and ` +
+      "redirect to the issuer's authorization endpoint. The login page's button points here (?next= carries the destination).",
     source: "code",
     nodes: [
       { id: "in", op: "boundary.http.request", config: { method: "GET", path } },
@@ -57,6 +60,10 @@ function callbackRoute(mount: string, providerId: string): Workflow {
   return {
     id: `oidc.route.${providerId}.callback`,
     name: `OIDC · GET ${path}`,
+    description:
+      `Finishes the ${providerId} sign-in: verify state, exchange the code (PKCE), verify the ID token + nonce, ` +
+      "find-or-create the user by verified email, mint the session, and redirect to ?next=. Failures land back on " +
+      "the login page with a fixed ?error= code.",
     source: "code",
     nodes: [
       { id: "in", op: "boundary.http.request", config: { method: "GET", path } },

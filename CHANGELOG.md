@@ -3,6 +3,97 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.3.0 — unreleased
+
+The AI, sign-in & email release: a native agent loop over any provider, a chat
+app with voice, real login methods, and transactional email — plus a full
+polish pass on the scaffolder, docs, and landing surfaces.
+
+### AI & agents
+
+- **`@pattern-js/mod-ai` — the AI capability layer.** Every modality as ops —
+  `ai.text.generate/stream`, `ai.object.generate`, `ai.embed(.many)`,
+  `ai.image.generate`, `ai.speech.generate`, `ai.transcribe`,
+  `ai.video.generate` — over the full Vercel AI SDK provider catalog (40+
+  providers, lazy-loaded; the AI Gateway built in). Models are **aliases**:
+  admin-configured instances (provider + model id + a vault/env-sourced key)
+  resolved by name at run time, so re-pointing one in Settings retargets every
+  workflow. A generated **AI Providers** settings page, `ai.mcp.client` for
+  remote MCP tools, and an `ai.mcp.server` route exposing your tool workflows
+  to MCP clients.
+- **`@pattern-js/mod-agents` rebuilt on a native loop.** The agent run loop is
+  Pattern code (no external agents SDK): `agents.agent` / `agents.run` /
+  `agents.run.resume`, tool workflows with engine-validated params, guardrails,
+  HITL approvals, history compaction — with agent name & instructions as
+  runtime inputs. `@pattern-js/mod-agents-openai` is retired; mod-agents +
+  mod-ai replace it on any provider.
+- **Declarative asset mounts & internal workflows.** Mods can declare static
+  asset mounts; plumbing routes can mark themselves `internal` to keep the
+  admin catalog focused (the "show internal" toggle reveals everything).
+
+### Chat
+
+- **Voice.** In-browser speech-to-text (Silero VAD + local Whisper assets),
+  spoken-style agent instructions on voice turns, text-to-speech playback, and
+  a fullscreen WebGPU particle **voice avatar** (Canvas2D fallback).
+- **Per-turn model switcher** backed by language-model aliases
+  (`chat.model.resolve` layers a per-turn pick over the pinned/default model).
+- **Multi-instance serving.** One shared chat backend, many branded SPA
+  instances (namespace decoupled from path); per-namespace agents by forking
+  the turn pipeline alone — most-specific route wins.
+- A three-way theme, lucide icons, avatar polish, and image/STT/TTS tools
+  (`chat.tool.image`, transcribe/speech routes) with conventional aliases.
+
+### Sign-in & email
+
+- **`@pattern-js/mod-email` — the transactional-email contract.**
+  Admin-configured **accounts** (provider + from + vault/env-sourced secrets)
+  under System → Email, an `email.send` op (markdown body with an inline-styled
+  HTML render + text alternative, attachments from blobs or literals), and a
+  packaged `email.deliver-token` workflow: create the `default` account and
+  identity sign-in links send themselves — console fallback until then, and on
+  any delivery failure (never locked out).
+- **`@pattern-js/mod-email-resend` / `mod-email-smtp`** — the first two
+  drivers (plain-fetch Resend; nodemailer SMTP with pooled, digest-keyed
+  transports). Drivers self-register; their field lists auto-generate the
+  admin account form, with a real-send **Test** button.
+- **`@pattern-js/mod-auth-oidc` — OIDC login.** Authorization-code + PKCE
+  against any OpenID Connect issuer (Google, Microsoft, Keycloak, …), ID
+  tokens verified with jose, several providers side by side, sessions minted
+  by mod-identity. Linking is by **verified email only** (configurable), so an
+  IdP can't take over an existing account with an unverified claim. Code-
+  configured via a small wrapper mod; the login page renders every registered
+  method, and OIDC failures surface as human-readable messages.
+
+### Scaffolder (`create-pattern`)
+
+- **Sign-in methods choice**: magic link, OIDC, or both (`--oidc`,
+  `--magic-link`); OIDC scaffolds a commented `mods/oidc.mjs` wrapper +
+  `.env` hints. **Sign-in link delivery** choice: console, Resend, or SMTP
+  (`--email`).
+- New **`studio-ai`** modpack (Studio + AI ops, no agent loop) and a
+  `--providers` picker for the AI packs.
+- `--help`, validated flag values, notes for flags a selection can't use
+  (instead of silently ignoring them), a ladder note generated from the real
+  pack list, and `--no-examples` cleaned up across every pack.
+- Scaffolds now **derive their `@pattern-js/*` dep ranges from the CLI's own
+  version**, so a fresh project always resolves the mods published alongside
+  the `create-pattern` it ran (templates can no longer go stale across a
+  minor bump).
+
+### Docs, admin & site
+
+- Four new chapters (OIDC login, Email, Resend, SMTP) slot between the
+  identity and AI clusters; identity docs cover the new login method and the
+  packaged email delivery; getting-started documents the new scaffold
+  dimensions.
+- Catalog presentation: chat's CRUD plumbing is internal by default, the
+  approval pipeline and MCP server gained descriptions + hand-laid layouts,
+  and every visible auth/email route describes itself.
+- The README and the site tell the 0.3 story (identity + email cards, the
+  `studio-ai` modpack, honest op counts: 175 base ops, over 300 with the
+  first-party mods).
+
 ## 0.2.2
 
 A pipeline and polish release; no functional changes to the published packages.

@@ -115,11 +115,13 @@ rooms:
 ## Tokens & delivery
 
 Magic links, invites, and the bootstrap link all print to the **server
-console** until you register a delivery workflow on the `identity.deliverToken`
-hook (`payload: { email, url, purpose, delivered }`): send the link by
-email/SMS/chat and return `delivered: true`. No subscriber (or
-`delivered: false`) falls back to the console, which **is** the zero-config dev
-login. Tokens are single-use, short-TTL (15 min; invites 7 days), sha256 at
+console** until delivery is wired. The packaged way: install
+`@pattern-js/mod-email` + a driver (Resend or SMTP) and create the `default`
+account in admin → System → Email — links then send by email automatically.
+Any other channel works through the `identity.deliverToken` hook
+(`payload: { email, url, purpose, delivered }`): send the link by email/SMS/chat
+and return `delivered: true`. No subscriber (or `delivered: false`) falls back
+to the console, which **is** the zero-config dev login. Tokens are single-use, short-TTL (15 min; invites 7 days), sha256 at
 rest, consumed via CAS so replays fail closed. Purposes: `login`, `invite`
 (carries roles), `bootstrap`. The `/auth/token` callback turns a consumed token
 into a user + session per the **signup policy**: `invite` (default; unknown

@@ -32,6 +32,19 @@ npm create pattern my-app -- --modpack studio
 | `agentic` | studio + AI + the agent stack (agent, run, tools): an `/ask` endpoint. |
 | `agent-chat` | studio + the full **chat app** at `/chat`. |
 
+The wizard then offers the orthogonal **dimensions** — every one has a flag for
+scripting (`--help` lists them all):
+
+- **Authentication** (`--auth`): identity, users & sessions; locks the admin.
+  Then pick the **sign-in methods**: magic link (zero-config, links print to
+  the console in dev), OIDC (`--oidc` — Google, Microsoft, any issuer; the
+  scaffold writes a `mods/oidc.mjs` to fill in), or both.
+- **Sign-in link delivery** (`--email console|resend|smtp`): keep the console,
+  or wire real email — mod-email plus the chosen driver; create the `default`
+  account in admin → System → Email and links send themselves.
+- **Docs** (`--docs`), **examples** (`--no-examples` for a clean scaffold), a
+  generated **vault key**, and the **AI providers** to install (AI packs).
+
 ## 2. Run it
 
 ```bash
@@ -40,7 +53,7 @@ npm install        # if you didn't let the scaffolder install
 npm run dev        # = pattern dev src/index.ts (watches & restarts on change)
 ```
 
-Open **http://localhost:3000/admin**. The studio pack seeds a few example
+Open **http://localhost:3000/admin**. The studio modpack seeds a few example
 workflows into the local store on first boot, so the catalog isn't empty.
 
 ## 3. Run your first workflow

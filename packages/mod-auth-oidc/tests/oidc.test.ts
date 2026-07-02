@@ -122,6 +122,15 @@ describe("@pattern-js/mod-auth-oidc", () => {
     expect(cb.headers.get("location")).toBe("/auth/login?error=oidc-state");
     expect(cookiePair(cb, "pattern_session")).toBeUndefined();
     expect(idp.tokenRequests).toHaveLength(0);
+    // The login page turns each fixed OIDC code into a human message — never
+    // the generic fallback (the codes live in mod-identity's error map).
+    const page = await (await fetch(`${base}${cb.headers.get("location")!}`)).text();
+    expect(page).toContain("That sign-in attempt expired");
+    expect(page).not.toContain("Something went wrong");
+    for (const code of ["oidc-failed", "oidc-exchange", "oidc-token", "oidc-no-email", "email-not-verified"]) {
+      const p = await (await fetch(`${base}/auth/login?error=${code}`)).text();
+      expect(p, `error=${code} should have a dedicated message`).not.toContain("Something went wrong");
+    }
   });
 
   it("unverified email → login?error=email-not-verified (linking by email needs a verified claim)", async () => {

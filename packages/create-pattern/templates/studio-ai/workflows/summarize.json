@@ -1,4 +1,5 @@
 {
+  "$schema": "pattern/workflow/v1",
   "id": "summarize",
   "name": "POST /summarize: AI text summary (no agent)",
   "description": "A plain AI workflow: POST { text } → ai.text.generate (via the \"default\" alias) → { summary }. No agent loop, only a capability op behind a route.",

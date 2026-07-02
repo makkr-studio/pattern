@@ -197,7 +197,8 @@ export function aiAdminRoutes(): Workflow[] {
 
 export function aiFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "System", label: "AI Providers", icon: "bot", path: "/x/ai/providers", order: 20 }],
+    // 22 keeps System deterministic: Settings 20 · Email 21 · AI Providers 22 · Secrets 40.
+    menu: [{ category: "System", label: "AI Providers", icon: "bot", path: "/x/ai/providers", order: 22 }],
     // The Tier-2 page is just its source; the admin serves + imports it (no workflow).
     pages: [{ path: "/x/ai/providers", title: "AI Providers", module: REMOTE }],
   };

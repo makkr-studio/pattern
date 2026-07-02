@@ -1,7 +1,15 @@
 {
   "name": "@pattern-js/mod-email",
-  "version": "0.2.42",
+  "version": "0.2.44",
   "description": "Transactional email for Pattern — the contract mod. Admin-configured accounts (provider + sourced secrets + from), driver mods plug in (Resend, SMTP, …), one email.send op, and a packaged workflow that delivers identity sign-in links the moment a default account exists.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "email",
+    "transactional-email",
+    "smtp",
+    "resend"
+  ],
   "type": "module",
   "license": "MIT",
   "exports": {

@@ -7,9 +7,12 @@ order: 14
 
 `@pattern-js/mod-identity` is the optional identity brick: users, revocable
 cookie sessions, roles→scopes, a single-use token kernel, a login page, and
-admin screens. `@pattern-js/mod-auth-magic-link` is the reference login method.
-Everything below is opt-in: a project without these mods behaves exactly as
-before.
+admin screens. Two login methods ship with it: `@pattern-js/mod-auth-magic-link`
+(email links, the zero-config reference) and `@pattern-js/mod-auth-oidc`
+(Google, Microsoft, Keycloak — any OpenID Connect issuer; see its chapter).
+They compose — the login page lists every registered method, and the same
+verified email is the same user. Everything below is opt-in: a project without
+these mods behaves exactly as before.
 
 ## Quick start
 
@@ -110,11 +113,15 @@ seeded). Authenticated connections auto-join two rooms:
 
 ## Delivering tokens (email, SMS, …)
 
-Token delivery is a hook chain, open to any channel. Subscribe a workflow
-to `identity.deliverToken` (`payload: { email, url, purpose, delivered }`),
-send the link however you like, and return the payload with
-`delivered: true`. No subscriber (or `delivered: false`) → the link prints to
-the console.
+The packaged answer is `@pattern-js/mod-email` plus a driver
+(`mod-email-resend` or `mod-email-smtp`): install them, create the `default`
+account in admin → System → Email, and sign-in links send themselves — no code
+(see the Email chapter).
+
+Underneath sits a hook chain open to any channel. Subscribe a workflow to
+`identity.deliverToken` (`payload: { email, url, purpose, delivered }`), send
+the link however you like, and return the payload with `delivered: true`. No
+subscriber (or `delivered: false`) → the link prints to the console.
 
 ## Token kernel
 
