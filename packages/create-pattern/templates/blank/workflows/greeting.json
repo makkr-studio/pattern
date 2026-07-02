@@ -7,7 +7,7 @@
       "id": "in",
       "op": "boundary.manual",
       "config": { "outputs": ["name"] },
-      "comment": "Trigger: a manual run. Its outputs ARE the external input — here a single `name` value passed by the caller."
+      "comment": "Trigger: a manual run. Its outputs ARE the external input: here a single `name` value passed by the caller."
     },
     {
       "id": "greet",

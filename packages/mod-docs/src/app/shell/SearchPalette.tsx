@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { pageHref } from "../lib/api";
+import { appBoot } from "../lib/config";
 import { useDocs } from "./Shell";
 
 interface PageEntry {
@@ -32,7 +33,7 @@ interface Item {
 let corpusPromise: Promise<Corpus> | null = null;
 function fetchCorpus(): Promise<Corpus> {
   if (!corpusPromise) {
-    corpusPromise = fetch("/docs/api/search-index").then((r) => {
+    corpusPromise = fetch(`${appBoot.apiBase}/search-index`).then((r) => {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<Corpus>;
     });

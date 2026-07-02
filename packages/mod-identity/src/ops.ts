@@ -216,7 +216,7 @@ const usersInvite = jsonOp(
 
 const usersSetRoles = jsonOp(
   "identity.users.setRoles",
-  "Set a user's roles (admin). Ends the user's sessions — privilege changes re-login. Args { userId, roles }.",
+  "Set a user's roles (admin). Ends the user's sessions; the change takes effect on next login. Args { userId, roles }.",
   { in: { userId: z.string(), roles: z.unknown().optional() }, out: "user" },
   async (args, svc) => {
     const roles = Array.isArray(args.roles)
@@ -244,7 +244,7 @@ const usersToggleDisabled = jsonOp(
 
 const usersRevokeSessions = jsonOp(
   "identity.users.revokeSessions",
-  "Revoke every session of a user (admin) — logs them out everywhere, closes their sockets. Args { userId }.",
+  "Revoke every session of a user (admin): logs them out everywhere, closes their sockets. Args { userId }.",
   { in: { userId: z.string() }, out: "result" },
   async (args, svc) => {
     await svc.revokeAllForUser(String(args.userId));
@@ -340,7 +340,7 @@ const usersRunStats = jsonOp(
 
 const usersLoginLink = jsonOp(
   "identity.users.loginLink",
-  "Mint a single-use sign-in link for a user (admin) — for handing over manually when no email/SMS delivery is wired. Args { userId }.",
+  "Mint a single-use sign-in link for a user (admin), for handing over manually when no email/SMS delivery is wired. Args { userId }.",
   { in: { userId: z.string() }, out: "result" },
   async (args, svc) => {
     const user = await svc.getUser(String(args.userId));
@@ -369,7 +369,7 @@ const settingsGet = jsonOp(
 
 const settingsSet = jsonOp(
   "identity.settings.set",
-  'Update identity settings (admin). Args { signup: "open" | "invite" }. Persisted — survives restarts.',
+  'Update identity settings (admin). Args { signup: "open" | "invite" }. Persisted, so it survives restarts.',
   { in: { signup: z.string().optional() }, out: "result" },
   async (args, svc) => {
     if (args.signup !== undefined) await svc.setSignup(args.signup as "open" | "invite");

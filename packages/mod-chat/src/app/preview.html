@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Avatar preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #050407; overflow: hidden; }
+      #c { display: block; width: 100vw; height: 100vh; }
+      #ui { position: fixed; top: 12px; left: 12px; display: flex; gap: 6px; z-index: 10; }
+      button { padding: 6px 11px; border-radius: 8px; border: 1px solid #333; background: #111; color: #ccc; font: 13px system-ui; cursor: pointer; }
+      button:hover { border-color: #666; }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <button data-s="idle">idle</button>
+      <button data-s="listening">listening</button>
+      <button data-s="thinking">thinking</button>
+      <button data-s="speaking">speaking</button>
+      <button data-s="emoji">emoji</button>
+      <button data-s="audio">audio: on</button>
+    </div>
+    <canvas id="c"></canvas>
+    <script type="module" src="./dev/preview.ts"></script>
+  </body>
+</html>

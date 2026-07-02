@@ -9,21 +9,19 @@ run I/O.
 { "mods": ["@pattern-js/mod-vault"] }
 ```
 
-## When to use / when not — vault vs. plain env vars
+## When to use / when not: vault vs. plain env vars
 
 A plain env var (a `.env` file next to `pattern.config.json` is auto-loaded) is
 fine for local development and for keys you're happy to keep in the process
 environment. Reach for the vault when you want secrets that:
 
-- **survive without redeploying** — written through the admin UI at runtime, no
+- **survive without redeploying**: written through the admin UI at runtime, no
   config edit or restart;
-- **stay out of traces** — vault reads are masked to `•••` in every sampled
-  run, env vars are not;
-- **live encrypted on disk** rather than in plaintext in a `.env` checked-in by
-  accident.
+- **stay out of traces**: vault reads are masked to `•••` in every sampled run;
+- **live encrypted on disk**, safe from an accidentally committed `.env`.
 
-It is **not** a place for non-secret config (use env vars / config), and it is
-**not** a multi-key KMS — there's one master key for the whole vault.
+It holds secrets under one master key for the whole vault; keep non-secret
+config in env vars or config.
 
 ## Configure it
 
@@ -48,7 +46,7 @@ openssl rand -base64 32        # generate ONCE
 PATTERN_VAULT_KEY=…
 ```
 
-The **same key forever** — it decrypts `./.pattern-data/vault.db`. Without it
+The **same key forever**: it decrypts `./.pattern-data/vault.db`. Without it
 the vault loads *locked*: nothing breaks at boot, but reads/writes fail with a
 setup hint and the Secrets page shows a warning row. Lose the key and the
 ciphertext is unrecoverable, so back it up where you keep other root secrets.
@@ -57,7 +55,7 @@ ciphertext is unrecoverable, so back it up where you keep other root secrets.
 
 There are two distinct things people mean by "rotation":
 
-- **Rotate a secret's value** (the common case — a leaked or expired API key):
+- **Rotate a secret's value** (the common case, a leaked or expired API key):
   re-write the same secret name on the **System → Secrets** page (`vault.admin.write`).
   It's write-only and re-encrypts in place; `vault.read` returns the new value
   on the next run. Nothing else changes.
@@ -67,35 +65,28 @@ There are two distinct things people mean by "rotation":
 
 ## Using secrets
 
-- **Write** them on the admin's **System → Secrets** page (write-only — values
+- **Write** them on the admin's **System → Secrets** page (write-only: values
   are never displayed back; sampled values everywhere show as `•••`).
 - **Read** them in a workflow with `vault.read` (config `{ key }` → a
-  secret-typed `value` output you wire into e.g. an `apiKey` input).
-- **Or don't wire anything**: `agents.run` automatically falls back to a vault
-  secret named `OPENAI_API_KEY` when no key is wired or in the environment.
+  secret-typed `value` output you wire where the secret is needed, such as an
+  auth header for `core.http.fetch`).
+- **Or don't wire anything**: a model wired inline (`ai.model`) finds its
+  provider's key by name (e.g. `OPENAI_API_KEY` for OpenAI), checking the
+  environment first, then a vault secret of that name.
 
 ## Integration
 
-The headline pairing is **mod-agents**: store the provider key in the vault and
-wire it in, so the key is masked in traces and never lives in a `.env`.
+The headline pairing is **mod-ai** (the model provider). Store your provider key
+in the vault under the provider's conventional name (`OPENAI_API_KEY` for OpenAI,
+`ANTHROPIC_API_KEY` for Anthropic), and a model wired inline (`ai.model`) finds it
+with nothing wired: mod-ai checks the environment first, then the unlocked vault.
+A model **alias** (admin → **Settings → AI Providers**) can also point a key field
+straight at a named vault secret. Either way the key is masked in traces and never
+has to live in a `.env`.
 
-```workflow
-{ "id": "vault.agent.key",
-  "name": "Vault · key → agents.run",
-  "nodes": [
-    { "id": "key",   "op": "vault.read",  "config": { "key": "OPENAI_API_KEY" } },
-    { "id": "agent", "op": "agents.run",  "config": { "instructions": "Be helpful." } }
-  ],
-  "edges": [
-    { "from": { "node": "key", "port": "value" }, "to": { "node": "agent", "port": "apiKey" } }
-  ] }
-```
-
-`agents.run` resolves its key in order: a wired `apiKey` input → the
-`OPENAI_API_KEY` env var → a vault secret *named* `OPENAI_API_KEY`. So storing
-the key under that exact name makes it work with no node wired at all — the
-graph above is the explicit form, useful when the secret has a different name
-or you want it visible on the canvas. Either way the value is masked.
+For any other secret (say an API key for an outbound `core.http.fetch`), read it
+explicitly with `vault.read` (config `{ key }` → a secret-typed `value` you wire
+where you need it). The value stays masked in run samples.
 
 Pair with **mod-store** when a record carries credentials: keep the secret in
-the vault and the reference (not the plaintext) in the document.
+the vault and only the reference in the document.

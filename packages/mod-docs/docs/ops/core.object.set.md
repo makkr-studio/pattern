@@ -1,1 +1,1 @@
-Return a clone with `config.path` set to the wired `value` (immutable — the input object is untouched). Missing intermediate containers are created along the path, choosing an array when the next key is numeric. Mirror of `core.object.get`; to remove a path use `core.object.delete`.
+Return a clone with `config.path` set to the wired `value` (immutable; the input object is untouched). Missing intermediate containers are created along the path, choosing an array when the next key is numeric. Mirror of `core.object.get`; to remove a path use `core.object.delete`.

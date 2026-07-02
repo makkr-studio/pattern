@@ -1,0 +1,21 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "summarize",
+  "name": "POST /summarize: AI text summary (no agent)",
+  "description": "A plain AI workflow: POST { text } → ai.text.generate (via the \"default\" alias) → { summary }. No agent loop, only a capability op behind a route.",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/summarize" }, "ui": { "x": 40, "y": 160 } },
+    { "id": "tpl", "op": "core.string.template", "config": { "template": "Summarize the following text in 2-3 sentences:\n\n{{text}}" }, "comment": "Build the prompt from the request body's `text` field.", "ui": { "x": 300, "y": 80 } },
+    { "id": "model", "op": "ai.alias", "config": { "alias": "default" }, "comment": "Resolve the \"default\" alias; configure it in admin → Settings → AI Providers.", "ui": { "x": 300, "y": 300 } },
+    { "id": "gen", "op": "ai.text.generate", "comment": "One-shot text generation on the aliased model.", "ui": { "x": 580, "y": 180 } },
+    { "id": "body", "op": "core.object.build", "config": { "keys": ["summary"] }, "comment": "Shape the response as { summary }.", "ui": { "x": 840, "y": 180 } },
+    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" }, "ui": { "x": 1080, "y": 180 } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "body" }, "to": { "node": "tpl", "port": "data" } },
+    { "from": { "node": "tpl", "port": "out" }, "to": { "node": "gen", "port": "prompt" } },
+    { "from": { "node": "model", "port": "model" }, "to": { "node": "gen", "port": "model" } },
+    { "from": { "node": "gen", "port": "text" }, "to": { "node": "body", "port": "summary" } },
+    { "from": { "node": "body", "port": "out" }, "to": { "node": "out", "port": "body" } }
+  ]
+}

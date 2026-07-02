@@ -1,1 +1,1 @@
-Batch a flat list into fixed-size sub-arrays (`config.size`) — the typical setup for paging work or rate-limited fan-out. To split by a predicate instead use `core.array.partition`; to take a single window use `core.array.slice`.
+Batch a flat list into fixed-size sub-arrays (`config.size`), the typical setup for paging work or rate-limited fan-out. To split by a predicate use `core.array.partition`; to take a single window use `core.array.slice`.

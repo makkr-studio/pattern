@@ -71,7 +71,7 @@ export const mathOps: OpDefinition[] = [
   pureOp({
     type: "core.math.fib",
     description:
-      "Naive recursive fibonacci(`n`) — deliberately CPU-bound (exponential). Exists for benchmarks and " +
+      "Naive recursive fibonacci(`n`), deliberately CPU-bound (exponential). Exists for benchmarks and " +
       "demos: it makes event-loop blocking visible and gives worker transports something to chew on.",
     inputs: { n: value(num) },
     output: num,
@@ -183,14 +183,14 @@ const valueOps: OpDefinition[] = [
   pureOp({
     type: "core.value.keep",
     description:
-      "Pass `value` through when `when` is true, else `undefined`. Inside a core.stream.each region that DROPS the chunk (collect ignores undefined) — the no-branch way to skip/filter. Inputs { value, when }.",
+      "Pass `value` through when `when` is true, else `undefined`. Inside a core.stream.each region that DROPS the chunk (collect ignores undefined), the no-branch way to skip or filter. Inputs { value, when }.",
     inputs: { value: value(), when: required(bool) },
     compute: ({ value: v, when }) => (when ? v : undefined),
   }),
   pureOp({
     type: "core.value.select",
     description:
-      "Value-level ternary: `cond ? then : else` (else is `undefined` when unwired, so it filters too). No control branch or sub-run — usable inside a stream region. Inputs { cond, then, else }.",
+      "Value-level ternary: `cond ? then : else` (else is `undefined` when unwired, so it filters too). Runs inline with no control branch or sub-run, so it works inside a stream region. Inputs { cond, then, else }.",
     inputs: { cond: required(bool), then: value(), else: value() },
     compute: ({ cond, then, else: els }) => (cond ? then : els),
   }),

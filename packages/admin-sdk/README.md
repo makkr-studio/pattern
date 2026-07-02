@@ -1,13 +1,15 @@
 # @pattern-js/admin-sdk
 
-The stable surface admin UIs and mods import to extend [`@pattern-js/mod-admin`](../mod-admin)
-(see the [admin internals](../mod-admin/docs/internals.md) §6, §12) — the adoption lever.
+The stable surface admin UIs and mods import to extend [`@pattern-js/mod-admin`](../mod-admin),
+the adoption lever for the admin (see the [admin internals](../mod-admin/docs/internals.md) §6, §12).
+
+[pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/admin-sdk)
 
 > **This release ships the framework-agnostic core**: the wire-protocol types, a
 > typed API client over the workflow-backed endpoints (incl. the SSE run tail),
 > and the extension helpers (nav aggregation, command + menu registries,
-> declarative-page authoring). The React layer — `useApi()`/`useTheme()` hooks
-> and the glass UI kit — lands with the SPA, built on exactly this core.
+> declarative-page authoring). The React layer (`useApi()`/`useTheme()` hooks
+> and the glass UI kit) lands with the SPA, built on exactly this core.
 
 ## Typed client
 

@@ -59,6 +59,13 @@ export interface HttpRouteSpec {
   io: RouteIO;
   /** Stamp `requireAuth` onto the boundary nodes (e.g. `{ scopes: ["admin"] }`). */
   auth?: true | { scopes: string[] };
+  /**
+   * Catalog visibility. A route endpoint is framework plumbing by default
+   * (`internal: true`), so it's hidden from the admin catalog unless "show
+   * internals" is on. Set `internal: false` for a route meant to be a visible
+   * example (e.g. a scaffold's starter API).
+   */
+  internal?: boolean;
 }
 
 const SRCS = ["params", "query", "body"] as const;
@@ -156,6 +163,7 @@ export function httpEndpoint(spec: HttpRouteSpec): Workflow {
     id: spec.id,
     name: spec.name ?? `${spec.method} ${spec.path}`,
     source: "code",
+    internal: spec.internal ?? true,
     nodes,
     edges,
   };

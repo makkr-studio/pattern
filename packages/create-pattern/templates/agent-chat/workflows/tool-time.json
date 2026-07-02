@@ -1,4 +1,5 @@
 {
+  "$schema": "pattern/workflow/v1",
   "id": "tool-time",
   "name": "Tool · get_time",
   "description": "The smallest possible agent tool: a workflow starting with boundary.tool. The agent discovers it by name.",

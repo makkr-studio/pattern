@@ -200,7 +200,7 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
  */
 const parkedCode = new Map<string, Workflow>();
 
-const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow — code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
+const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow; code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
   const slug = str(args.slug, "slug");
   const enabled = Boolean(args.enabled);
   if (enabled) {
@@ -366,19 +366,55 @@ const settingsSet = adminOp(
   },
 );
 
+/** Base path of the admin's own Tier-2 page-source route (served same-origin, CSP-clean). */
+export const UI_PAGE_BASE = "/admin/api/ui/page/";
+/** A stable, URL-safe key for a page path (e.g. "/x/ai/providers" → "x-ai-providers"). */
+export function pageSlug(path: string): string {
+  return path.replace(/^\/+/, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 /** The aggregated frontend manifest (serializable) the shell builds its nav from. */
 const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (menu, pages, commands).", { out: "manifest" }, (_args, { engine }) => {
   const fe = engine.frontend();
   const pages = (fe.pages ?? []).map((p) => {
-    if ("view" in p) return { path: p.path, view: p.view };
-    if ("views" in p) return { path: p.path, views: p.views };
-    if ("remote" in p) return { path: p.path, remote: p.remote };
-    return { path: p.path, tier2: true }; // function-loaded; not serializable over HTTP
+    // Mod-controlled header chrome carries through to the shell (admin-spec §6).
+    const chrome = { title: p.title, subtitle: p.subtitle, header: p.header };
+    if ("view" in p) return { path: p.path, ...chrome, view: p.view };
+    if ("views" in p) return { path: p.path, ...chrome, views: p.views };
+    // A Tier-2 `module` page: the admin serves its source same-origin; the shell
+    // imports that URL (no per-mod workflow, no CSP relaxation).
+    if ("module" in p) return { path: p.path, ...chrome, remote: UI_PAGE_BASE + pageSlug(p.path) };
+    return { path: p.path, ...chrome, tier2: true }; // function-loaded; not serializable over HTTP
   });
   // `authProvider` lets the editor tell authors that a declared requireAuth
   // won't actually be enforced until an auth provider (e.g. identity) is added.
   return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [], authProvider: engine.hasAuthProvider() };
 });
+
+/**
+ * Serve a mod's Tier-2 page SOURCE (the `module` field) as `text/javascript`,
+ * addressed by path slug. Public (UI code, not sensitive) + same-origin, so the
+ * shell `import()`s it under a plain `script-src 'self'` — no per-mod workflow,
+ * no asset mount, no CSP relaxation. NOT privileged (so a public route is clean).
+ */
+const uiPage: OpDefinition = {
+  type: "admin.ui.page",
+  title: "admin.ui.page",
+  description: "Serve a mod's Tier-2 page source (its `module`) as text/javascript, by path slug.",
+  reusable: false,
+  inputs: { slug: value(z.string()) },
+  outputs: { body: value(), headers: value(), status: value() },
+  execute: async (ctx) => {
+    const slug = await ctx.input.value<string>("slug");
+    const { engine } = adminServices(ctx);
+    const page = (engine.frontend().pages ?? []).find((p) => "module" in p && pageSlug(p.path) === slug);
+    const headers = { "content-type": "text/javascript; charset=utf-8" } as Record<string, string>;
+    if (!page || !("module" in page)) {
+      return { body: `/* mod page "${slug}" not found */`, headers, status: 404 };
+    }
+    return { body: (page as { module: string }).module, headers: { ...headers, "cache-control": "no-cache" }, status: 200 };
+  },
+};
 /** Replace non-serializable run outputs (live streams) with a marker. */
 function sanitizeOutputs(outputs: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {};
@@ -520,6 +556,7 @@ export const adminOps: OpDefinition[] = [
   settingsGet,
   settingsSet,
   uiManifest,
+  uiPage,
   runOp,
   docPortsOp,
   templateList,

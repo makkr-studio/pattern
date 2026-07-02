@@ -168,3 +168,32 @@ export function endpointWorkflows(auth?: boolean | { scopes: string[] }): Workfl
   const wfs = endpointSpecs.map(endpoint);
   return auth === undefined ? wfs : wfs.map((w) => stampRequireAuth(w, auth));
 }
+
+/**
+ * Serve a mod's Tier-2 page source as text/javascript (the `admin.ui.page` op).
+ * Hand-built (not via `endpoint()`) because it returns raw JS, not a JSON body —
+ * the body/headers/status wire straight to the response, like the blob route.
+ * **Public** (UI code, not sensitive; and so `import()` needs no credentials) and
+ * **internal** (framework plumbing, hidden from the catalog). NOT auth-stamped.
+ */
+export function uiPageRoute(): Workflow {
+  return {
+    id: "admin.api.ui.page",
+    name: `Admin · GET ${API}/ui/page/:slug`,
+    source: "code",
+    internal: true,
+    nodes: [
+      { id: "in", op: "boundary.http.request", config: { method: "GET", path: `${API}/ui/page/:slug` } },
+      { id: "pick", op: "core.object.get", config: { path: "slug" } },
+      { id: "page", op: "admin.ui.page" },
+      { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
+    ],
+    edges: [
+      { from: { node: "in", port: "params" }, to: { node: "pick", port: "object" } },
+      { from: { node: "pick", port: "out" }, to: { node: "page", port: "slug" } },
+      { from: { node: "page", port: "status" }, to: { node: "out", port: "status" } },
+      { from: { node: "page", port: "headers" }, to: { node: "out", port: "headers" } },
+      { from: { node: "page", port: "body" }, to: { node: "out", port: "body" } },
+    ],
+  };
+}

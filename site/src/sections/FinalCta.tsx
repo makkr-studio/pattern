@@ -10,7 +10,8 @@ const MODPACKS = [
   { name: "blank", desc: "engine + one example" },
   { name: "headless", desc: "API-first, no UI" },
   { name: "studio", desc: "the visual admin" },
-  { name: "agentic", desc: "studio + agents" },
+  { name: "studio-ai", desc: "studio + AI ops" },
+  { name: "agentic", desc: "studio + AI + agents" },
   { name: "agent-chat", desc: "a full chat app" },
 ];
 
@@ -37,7 +38,7 @@ export function FinalCta() {
                 <GitHubIcon size={16} /> Star on GitHub
               </NeonButton>
             </a>
-            <a href={`${REPO_URL}#readme`} target="_blank" rel="noreferrer">
+            <a href={`${REPO_URL}/tree/main/packages/mod-docs/docs`} target="_blank" rel="noreferrer">
               <NeonButton variant="ghost">
                 <BookOpen size={16} /> Read the docs
               </NeonButton>

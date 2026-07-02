@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineMod, httpEndpoint, value, z, type OpDefinition, type Workflow } from "@pattern-js/core";
-import { localFs, memoryFs, provideFilesystem } from "@pattern-js/runtime-node";
+import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
 
 /** Where the greetings data source is exposed (relative to the admin API mount). */
 const GREETINGS_ROUTE = "/sample/greetings";
@@ -28,7 +28,7 @@ const greetings = [
 const greetingsList: OpDefinition = {
   type: "sample.greetings.list",
   title: "sample.greetings.list",
-  description: "Returns a static list of greetings (a declarative-page data source). A PURE op with a NAMED output — fronted by its own route below.",
+  description: "Returns a static list of greetings (a declarative-page data source). A PURE op with a NAMED output, fronted by its own route below.",
   inputs: {},
   outputs: { greetings: value(z.array(z.object({ id: z.string(), language: z.string(), text: z.string() }))) },
   execute: async () => ({ greetings }),
@@ -129,26 +129,11 @@ export default function SampleStudio() {
 }
 `;
 
-const appMount: Workflow = {
-  id: "sample.app",
-  name: "Sample · Tier-2 assets",
-  // The canonical app trio (§7): mount trigger → app op → serve out-gate.
-  nodes: [
-    { id: "mount", op: "boundary.http.app", config: { mount: "/ext" }, ui: { x: 60, y: 60, pair: "serve" } },
-    { id: "assets", op: "core.app.static", config: { filesystem: "sample-assets", spaFallback: "" }, ui: { x: 340, y: 60 } },
-    { id: "serve", op: "boundary.http.app.serve", ui: { x: 620, y: 60, pair: "mount" } },
-  ],
-  edges: [
-    { from: { node: "mount", port: "out" }, to: { node: "assets", port: "in" } },
-    { from: { node: "assets", port: "app" }, to: { node: "serve", port: "app" } },
-  ],
-};
-
 export default defineMod({
   name: "@pattern-js/mod-sample",
   docs: { filesystem: "sample-docs", title: "Sample", order: 90 },
   ops: [greetingsList, crunch],
-  workflows: [appMount, replayShowcase, greetingsRoute],
+  workflows: [replayShowcase, greetingsRoute],
   frontend: {
     menu: [
       { category: "Examples", label: "Greetings", icon: "boxes", path: "/x/greetings", order: 10 },
@@ -168,13 +153,11 @@ export default defineMod({
           ],
         },
       },
-      { path: "/x/studio", remote: "/ext/sample-studio.js" },
+      // A Tier-2 page is just its source; the admin serves + imports it (no workflow, no assets).
+      { path: "/x/studio", module: STUDIO_REMOTE },
     ],
   },
   setup: (engine) => {
-    const fs = memoryFs();
-    void fs.write("sample-studio.js", STUDIO_REMOTE);
-    provideFilesystem(engine, "sample-assets", fs);
     // The packaged docs/ chapter (the `docs` contribution points at "sample-docs").
     try {
       const dir = fileURLToPath(new URL("../docs", import.meta.url));

@@ -1,8 +1,8 @@
-# Agent guide — {{name}} (Pattern · studio modpack)
+# Agent guide: {{name}} (Pattern · studio modpack)
 
 You are working in a **Pattern** project: a workflow engine where logic lives in
 **workflows** (JSON graphs of typed ops) and code lives in **ops** (plain
-functions contributed by mods). This project also runs `@pattern-js/mod-admin` — a
+functions contributed by mods). This project also runs `@pattern-js/mod-admin`, a
 visual control plane at `/admin` that edits, versions, runs, and observes those
 workflows. Your job is usually one of: add an op, add a route/workflow, or
 extend the admin. Recipes for each are below.
@@ -10,13 +10,13 @@ extend the admin. Recipes for each are below.
 ## Ground rules
 
 1. **Never guess op names or ports.** Ground truth is one command away:
-   - `npx pattern ops` — every available op (core + this project's mods)
-   - `npx pattern ops core.string` — filter by prefix
-   - `npx pattern ops core.string.template` — full ports + config detail
+   - `npx pattern ops`: every available op (core + this project's mods)
+   - `npx pattern ops core.string`: filter by prefix
+   - `npx pattern ops core.string.template`: full ports + config detail
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`,
    and `npx pattern graph <file>` to see the graph in the terminal.
 3. `npm run dev` hot-reloads on file changes (workflows and mods included).
-4. Don't edit `./.pattern` by hand — it's the admin's versioned workflow store
+4. Don't edit `./.pattern` by hand. It's the admin's versioned workflow store
    (treat it like a database; commit it, don't rewrite it).
 
 ## Mental model (60 seconds)
@@ -24,8 +24,8 @@ extend the admin. Recipes for each are below.
 - An **op** is a reusable definition: type id, typed input/output **ports**, a
   config schema, an `execute`. A **node** is an op instance in a workflow with
   its own `config`. **Edges** connect output ports to input ports.
-- Ports have a kind — `value`, `stream`, or `control` — and only same-kind
-  ports connect. Edge kind is derived, never declared:
+- Ports have a kind (`value`, `stream`, or `control`) and only same-kind
+  ports connect. The engine derives each edge's kind from its ports:
   - value→value is a **barrier** (consumer awaits the value),
   - stream→stream is **concurrent** with backpressure,
   - control→control is a dataless sequencing pulse.
@@ -51,7 +51,7 @@ extend the admin. Recipes for each are below.
   "nodes": [
     {
       "id": "in",                        // unique within the workflow
-      "op": "boundary.http.request",     // an op type — verify with `npx pattern ops`
+      "op": "boundary.http.request",     // an op type, verify with `npx pattern ops`
       "title": "Short label",            // optional, shown on the canvas
       "comment": "Markdown note shown in the editor.",
       "config": { "method": "GET", "path": "/things/:id" },
@@ -70,7 +70,7 @@ forms `"${API_KEY}"` / `"${REGION:-eu}"`.
 
 ## Recipe: add an HTTP route
 
-Routes are declared **inside the workflow** — there is no route table. The
+Routes are declared **inside the workflow**; there is no route table. The
 `boundary.http.request` trigger's config carries method, `path`
 (`:segment` params), optional `port`, `cors`, and JSON-Schema validation for
 `body` / `query` / `params` (enforced by the engine; bad input → 400).
@@ -79,20 +79,20 @@ Outputs: `method, url, path, headers, query, params, body`. Pair it with
 
 Two ways to ship it:
 
-- **File-based**: drop the JSON in `workflows/` — registered at boot,
+- **File-based**: drop the JSON in `workflows/`: registered at boot,
   hot-reloaded under `npm run dev`, listed read-only in the admin. Best for
   routes that belong in git.
 - **Admin-authored**: build it in the editor at `/admin` (or POST through the
-  admin API) — versioned in `./.pattern`, deployable/rollbackable.
+  admin API): versioned in `./.pattern`, deployable/rollbackable.
 
 Objects written to `body` serialize as JSON automatically. See the seeded
-`hello` and `quote` workflows (admin → Workflows) for canonical shapes —
+`hello` and `quote` workflows (admin → Workflows) for canonical shapes;
 `src/examples.ts` has their JSON.
 
 **Design discipline** (the shape to aim for): one workflow per action (not a
-fat dispatcher); keep ops HTTP-free — the boundary owns validation (400), auth
+fat dispatcher); keep ops HTTP-free. The boundary owns validation (400), auth
 (`requireAuth` → 401/403; set it with the editor's auth selector or wire it from
-`core.env`), and status (200 default). Never check scopes inside an op — that
+`core.env`), and status (200 default). Never check scopes inside an op. That
 couples it to HTTP and breaks CLI/cron/internal callers; if an op reads sensitive
 data, tag it `sensitivity: "privileged"` and the validator warns when a route
 forgets the gate. Decompose inputs to the field with `core.object.get`, but wire
@@ -103,17 +103,19 @@ bundled docs (`@pattern-js/mod-docs` →
 
 ## Heavy workflows: Offload to a worker pool
 
-Runs execute on the **host event loop by default** — correct for I/O-bound
+Runs execute on the **host event loop by default**, correct for I/O-bound
 work, which is already free during its awaits. A workflow only stalls the loop
 (and the admin) when an op does **synchronous compute**. For those, set the
 workflow's **`offload`** flag (editor → toolbar gear → *Workflow settings*, or
 `"offload": true` in the JSON) to run that whole workflow on a worker pool
 instead. Tag a compute-bound op `cpuHeavy: true` and the editor nudges toward
-Offload. Enable the pool in `pattern.config.json`: `"workers": 2` (number =
-size, or `{ "size", "mods" }`); with none configured, `offload` is a no-op.
-Offloaded runs use the worker's own services, can't reach live WebSocket
-sockets, and aren't pausable. (`@pattern-js/mod-docs` → *Projects & mods* →
-*Execution model* is the full version.)
+Offload. This project already ships a small pool (`workers` in
+`pattern.config.json`), so the admin's Process page reads **hybrid** and an
+`offload` workflow runs there out of the box. Tune the `{ size, mods }` or drop
+back to inline by removing the field. Offloaded runs use the worker's own
+services, can't reach live WebSocket sockets, and aren't pausable.
+(`@pattern-js/mod-docs` → *Projects & mods* → *Execution model* is the full
+version.)
 
 ## Recipe: serve your own frontend
 
@@ -124,11 +126,13 @@ declare the app trio `boundary.http.app` → `core.app.static`
 (`filesystem: "my-app"`) → `boundary.http.app.serve`. `filesystem` is the
 registered **name**, not a path; the app resolves once at registration (rebuilt
 SPA → restart; in dev, run Vite and proxy `/api` + `/auth` to the backend).
-The admin SPA you're looking at is exactly this trio.
+The admin SPA you're looking at is exactly this trio. No stack is imposed, but the
+admin and chat apps are built with React, Tailwind, motion.dev (the `motion`
+package) and lucide: a tested starting point if you have no preference.
 
 ## Recipe: add an op
 
-Ops live in **mods**. This project has an app-local mod at `mods/quotes.mjs` —
+Ops live in **mods**. This project has an app-local mod at `mods/quotes.mjs`;
 extend it or add a sibling file (then list it in `pattern.config.json` →
 `mods`). Minimal contract (plain ESM, no build step):
 
@@ -139,7 +143,7 @@ export default {
   ops: [
     {
       type: "app.slugify",                       // namespace your ops "app.*"
-      description: "Lowercase + dashes.",        // shows in catalogs — write one
+      description: "Lowercase + dashes.",        // shows in catalogs, write one
       inputs: { value: { kind: "value", required: true } },
       outputs: { out: { kind: "value" } },
       execute: async (ctx) => ({
@@ -151,12 +155,12 @@ export default {
 ```
 
 `execute` receives `ctx`: `await ctx.input.value("name")` (one await per value
-input), `ctx.config` (validated config object), `ctx.signal` (AbortSignal —
+input), `ctx.config` (validated config object), `ctx.signal` (AbortSignal,
 respect it in loops/timers). Return `{ portName: value }`. For streams, return
 a `ReadableStream` on a `{ kind: "stream" }` port.
 
 TypeScript mods can use the typed helpers from `@pattern-js/core`
-(`pureOp`, `defineOp`, `required`, `value`, `stream`, `z`) — same shape,
+(`pureOp`, `defineOp`, `required`, `value`, `stream`, `z`): same shape,
 Zod-typed ports and config.
 
 **Verify:** `npx pattern ops app.` must list your op. Then wire it in a
@@ -164,46 +168,51 @@ workflow and `npx pattern validate` it.
 
 ## Recipe: extend the admin
 
-A mod's `frontend` block adds UI to the admin — no admin code changes. See
+A mod's `frontend` block adds UI to the admin with no admin code changes. See
 `mods/quotes.mjs` for a working example (menu + page + command):
 
-Every data view and action binds to a **dedicated route** the mod also ships —
+Every data view and action binds to a **dedicated route** the mod also ships:
 a pure op fronted by `httpEndpoint(...)` (request → op → response). There is no
 generic op invoker: name a route, not an op. A `RouteRef` is
 `{ method, path }`, where `path` is relative to the admin API mount (e.g.
 `/quotes`); `:tokens` are filled from page/row `args`, leftover args become the
 query (GET) or JSON body (POST). `mods/quotes.mjs` is a complete worked example.
 
-- **Menu**: `{ category, label, icon, path, order }` — `icon` is a lucide name.
+- **Menu**: `{ category, label, icon, path, order }`; `icon` is a lucide name.
 - **Tier-1 page** (no build step): `{ path, view }` where `view` is one of
-  `table` (`{ route, columns, actions?, rowActions? }` — `route` reads the rows;
+  `table` (`{ route, columns, actions?, rowActions? }`: `route` reads the rows;
   a `rowAction` `{ label, route, args: { token: "rowKey" }, confirm? }` calls
-  `route` with values pulled from the row — or use `path: "/x/mine/:id"` instead
+  `route` with values pulled from the row, or use `path: "/x/mine/:id"` instead
   of `route` to NAVIGATE, tokens filled from `args`), `form`
-  (`{ schema, route }` — submits the values to `route`), `chart`, `json`,
-  `markdown` (`{ route }`), `detail` (`{ route }` — one object as labeled rows),
+  (`{ schema, route }`: submits the values to `route`), `chart`, `json`,
+  `markdown` (`{ route }`), `detail` (`{ route }`: one object as labeled rows),
   `graph` (`{ workflow }`), `iframe` (`{ url }`). Page paths may carry
   `:params` (filled into each view's route path), and a page may stack
-  `views: [{ title?, view }]` — that's how you build a details page.
-- **Command** (⌘K palette): `{ id, label, group, route?, path? }` — `route`
+  `views: [{ title?, view }]`; that's how you build a details page.
+- **Command** (⌘K palette): `{ id, label, group, route?, path? }`; `route`
   calls a dedicated route and shows its result; `path` navigates.
 - **Settings section** (on System → Settings): `{ id, title, description?,
-  route, submitRoute, fields }` under the mod's `frontend.settings` — `route`
+  route, submitRoute, fields }` under the mod's `frontend.settings`: `route`
   returns current values, `submitRoute` receives `{ key: value }` patches,
   fields are `{ key, label, type: toggle|select|text|number, options? }`.
 - **Action results**: row/table actions default to silent (the refreshed
   table is the feedback); set `result: "show"` when the route's return value is
-  for the operator — objects render as labeled rows and a `copy` key becomes
+  for the operator; objects render as labeled rows and a `copy` key becomes
   a copyable field (relative paths get the origin prepended).
-- **Tier-2 page** (full React): `{ path, remote: "/ext/my-page.js" }` — an ESM
-  file you serve yourself (e.g. a `boundary.http.app` mount). It reads
-  `globalThis.__PATTERN_ADMIN__` for the shared `React`, `api` client, and the
-  glass `ui` kit, and default-exports a component. Reach for Tier-2 only when a
-  declarative view can't express the page.
+- **Tier-2 page** (full React): `{ path, module }` where `module` is the page's
+  ESM **source** (a string); its default export is the component. The admin serves
+  that source from its own same-origin route and `import()`s it: no workflow, no
+  asset mount, no CSP relaxation (a plain `script-src 'self'` covers it). It reads
+  its dependencies off `globalThis.__PATTERN_ADMIN__`: `React`, `api` (the client),
+  the glass `ui` kit, `motion` (motion.dev) and `lucide`, giving it the admin's
+  exact stack with no bundler. **Never bundle your own React** (two Reacts break
+  hooks); need JSX/libraries → build a single-file ESM bundle with React
+  externalized to the global and assign the built string to `module`. Reach for
+  Tier-2 only when a declarative view can't express the page.
 
 ## Recipe: add login & users (identity)
 
-> If auth was chosen at scaffold time, this is already wired — skip to "What
+> If auth was chosen at scaffold time, this is already wired; skip to "What
 > you get".
 
 Add the identity mods to `pattern.config.json`:
@@ -216,15 +225,21 @@ Add the identity mods to `pattern.config.json`:
 
 - **First boot** prints a one-time `/auth/bootstrap?t=…` link → first user
   becomes admin. Bootstrap is a **two-step** flow (the GET renders a form, the
-  POST creates the admin — not a one-click GET). Magic-link / invite links are
+  POST creates the admin). Magic-link / invite links are
   path-only on the **server console**; `identity.users.invite` also returns the
   link as `copy` in its result. Sign-in links print there until you subscribe a
   workflow to the `identity.deliverToken` hook (`payload: { email, url, purpose,
-  delivered }` — send it, set `delivered: true`).
+  delivered }`: send it, set `delivered: true`). The turnkey subscriber:
+  install `@pattern-js/mod-email` plus a driver (`mod-email-resend` /
+  `mod-email-smtp`), list them in the mods, and create a `default` account in
+  admin → System → Email — its packaged `email.deliver-token` workflow then
+  claims the hook automatically (console again if you delete the account).
+  For "Continue with Google/Microsoft/Keycloak" buttons, add
+  `@pattern-js/mod-auth-oidc` via a small wrapper mod (see its README).
 - **The admin's `requireAuth` starts being ENFORCED.** It always *declared*
   `admin` scope (the editor shows it even before you add identity, with a "not
-  enforced — no provider" note); installing a provider just flips it on — a
-  logged-out browser now redirects to `/auth/login`, and you **reconfigure
+  enforced (no provider)" note); installing a provider flips it on, and a
+  logged-out browser now redirects to `/auth/login`. You **reconfigure
   nothing** (the admin's routes are code-derived each boot). Until a provider
   exists, `requireAuth` routes serve open and the host warns loudly on boot.
   Users / Invite / Sessions screens appear under "Access".
@@ -232,23 +247,23 @@ Add the identity mods to `pattern.config.json`:
   selector, or `{ "scopes": ["admin"] }` in config). Same rule everywhere: a
   declared requirement is enforced once a provider exists, advisory-open +
   warned before that. The trigger's **`user` output port** carries
-  `{ id, email?, scopes, claims } | null` — wire it to scope data per user
+  `{ id, email?, scopes, claims } | null`; wire it to scope data per user
   (e.g. `in.user → yourOp.owner`). In op code, `ctx.principal` has the same.
 - Signup is **invite-only** by default; customize via a wrapper mod
   (`mods/identity.mjs` default-exporting `identityMod({ signup: "open", … })`)
   and list it instead of the bare package name.
 - ⚠ Identity data lives in `./.pattern-data/` (gitignored). Never store
-  user/PII data in `./.pattern/` — that directory is committed.
+  user/PII data in `./.pattern/`; that directory is committed.
 
 ## Project layout
 
 ```
-pattern.config.json   # mods to load + workflows dir — the app manifest
+pattern.config.json   # mods to load + workflows dir: the app manifest
 mods/quotes.mjs       # app-local mod: ops + admin page (the live example)
 workflows/            # file-based workflow JSON (read-only in the admin)
 src/index.ts          # loadProject() → start(); prints the admin URL
 src/examples.ts       # first-boot seed (only into an empty ./.pattern store)
-.pattern/             # admin workflow store: versions + audit — committed
+.pattern/             # admin workflow store: versions + audit, committed
 ```
 
 ## Verification loop

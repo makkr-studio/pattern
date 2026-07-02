@@ -5,7 +5,7 @@ order: 16
 
 # Extending these docs
 
-This documentation is itself a mod (`@pattern-js/mod-docs`) — and **any mod can
+This documentation is itself a mod (`@pattern-js/mod-docs`), and **any mod can
 contribute a chapter**, first-party or third-party. Install a mod, its docs
 appear in the sidebar; uninstall it, they're gone. Content ships *inside* the
 npm package, so what you read always matches the version you run.
@@ -53,7 +53,7 @@ contribution via `engine.docs()`.
 
 ## Nav is derived from frontmatter
 
-You don't declare navigation — every `*.md` outside `ops/` becomes a page:
+You don't declare navigation: every `*.md` outside `ops/` becomes a page:
 
 ```markdown
 ---
@@ -73,14 +73,14 @@ contribution and it wins.
 ## Per-op prose
 
 Files under `ops/` are special: `ops/<op.type>.md` (e.g. `ops/my.op.md`) never
-becomes a nav page — it's merged into the **generated op reference** as the
+becomes a nav page; it's merged into the **generated op reference** as the
 "when to use" prose above the live port/config tables. Write the why; the
 docs render the what from the running registry.
 
 ## Live workflow embeds
 
 A fenced block with the `workflow` language renders as a real, read-only
-graph — the same renderer the admin uses:
+graph, the same renderer the admin uses:
 
 ````markdown
 ```workflow
@@ -89,4 +89,4 @@ graph — the same renderer the admin uses:
 ````
 
 Paste a workflow JSON (export one from the admin editor) and your guide shows
-a living canvas instead of a screenshot.
+a living canvas in place of a screenshot.

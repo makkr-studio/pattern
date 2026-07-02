@@ -1,1 +1,1 @@
-Reach for this when a downstream branch only needs the count (empty-check, pagination math, "N results") — not the items themselves. To count matches of a specific value instead, use `core.array.count`.
+Use this when a downstream branch needs only the count (empty-check, pagination math, "N results"). To count matches of a specific value, use `core.array.count`.

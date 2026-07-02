@@ -1,1 +1,1 @@
-Deduplicate by deep equality, keeping the first occurrence — works on objects, not just scalars. To dedupe by a single field rather than the whole item, `core.array.groupBy` on that path and take one per group, or `core.array.map` to the key first.
+Deduplicate by deep equality, keeping the first occurrence, including objects. To dedupe by a single field, `core.array.groupBy` on that path and take one per group, or `core.array.map` to the key first.

@@ -78,7 +78,7 @@ export interface LoadedProject {
  * Load `.env` from the project dir into process.env (already-set variables
  * win — the real environment outranks the file, dotenv-style). Hand-rolled
  * on purpose: KEY=VALUE lines, # comments, optional single/double quotes.
- * This is where PATTERN_VAULT_KEY / OPENAI_API_KEY live in dev.
+ * This is where PATTERN_VAULT_KEY and provider keys (e.g. OPENAI_API_KEY) live in dev.
  */
 export function loadDotEnv(baseDir: string, file = ".env"): void {
   const path = resolve(baseDir, file);
@@ -139,8 +139,8 @@ export async function loadProject(
   }
 
   // `.env` first (existing env wins), so mods' setup — the vault reading
-  // PATTERN_VAULT_KEY, agents reading OPENAI_API_KEY — and `$env` config
-  // interpolation all see it, whatever entry point launched us.
+  // PATTERN_VAULT_KEY, mod-ai resolving provider keys (e.g. OPENAI_API_KEY) —
+  // and `$env` config interpolation all see it, whatever entry point launched us.
   loadDotEnv(baseDir);
 
   // Off-loop pool for `offload`-flagged workflows (opt-in via `workers`). Built

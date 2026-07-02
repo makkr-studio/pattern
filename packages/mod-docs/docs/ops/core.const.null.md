@@ -1,1 +1,1 @@
-Emit a literal `null` — useful as an explicit empty sentinel or to clear an optional field. To branch on whether a value is null use `core.cast.isNull`; to default away from null use `core.cast.coalesce`.
+Emit a literal `null`: useful as an explicit empty sentinel or to clear an optional field. To branch on whether a value is null use `core.cast.isNull`; to default away from null use `core.cast.coalesce`.

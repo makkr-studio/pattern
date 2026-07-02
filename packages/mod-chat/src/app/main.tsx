@@ -4,16 +4,22 @@
  * in a later round (it consumes events, not the wire).
  */
 
-import React, { useEffect, useState, useSyncExternalStore } from "react";
+import React, { Suspense, lazy, useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
+import { Menu, Plus, AudioLines } from "lucide-react";
 import { chatStore } from "./lib/store";
 import { connectNotify } from "./lib/ws";
 import { applyBrand, brandTitle } from "./lib/config";
+import { applyTheme } from "./lib/theme";
 import { Sidebar } from "./components/Sidebar";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
+import { ModelSwitcher } from "./components/ModelSwitcher";
 import { SignIn } from "./components/SignIn";
 import "./index.css";
+
+// Voice mode is heavy (WebGPU + the VAD model) — load it only when entered.
+const VoiceMode = lazy(() => import("./voice/VoiceMode"));
 
 function useChat() {
   return useSyncExternalStore(chatStore.subscribe, chatStore.getState);
@@ -61,6 +67,8 @@ function App() {
 
   const streaming = state.liveTurnId != null;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const currentTitle = state.conversations.find((c) => c.id === state.currentId)?.title;
 
   // The server says auth is required and we're anonymous → the sign-in gate
   // replaces the app (the API would 401 anyway; this is the nice version).
@@ -73,6 +81,7 @@ function App() {
   }
 
   return (
+    <>
     <div className="flex h-full">
       <Sidebar
         conversations={state.conversations}
@@ -90,34 +99,39 @@ function App() {
         }}
       />
       <main className="flex h-full min-w-0 flex-1 flex-col">
-        {/* Mobile top bar — the drawer handle. */}
-        <div
-          className="flex items-center gap-2 border-b px-3 py-2.5 md:hidden"
-          style={{ borderColor: "var(--line-soft)" }}
-        >
+        {/* Top bar: drawer handle (mobile) + model switcher + voice mode. */}
+        <header className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--line-soft)" }}>
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-md p-1.5 transition-colors hover:bg-[var(--line-soft)]"
+            className="rounded-md p-1.5 transition-colors hover:bg-[var(--line-soft)] md:hidden"
             style={{ color: "var(--fg-soft)" }}
             aria-label="Open menu"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
+            <Menu size={18} />
           </button>
-          <span className="min-w-0 flex-1 truncate text-center text-[14px] font-medium">
-            {state.conversations.find((c) => c.id === state.currentId)?.title || brandTitle}
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium md:pl-1">
+            {currentTitle || brandTitle}
           </span>
+          <ModelSwitcher />
+          <button
+            onClick={() => setVoiceOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border transition-colors hover:border-[var(--fg-faint)]"
+            style={{ borderColor: "var(--line)", color: "var(--fg-soft)" }}
+            aria-label="Voice mode"
+            title="Voice mode"
+          >
+            <AudioLines size={16} />
+          </button>
           <button
             onClick={() => void chatStore.open(null)}
-            className="rounded-md p-1.5 text-[16px] leading-none transition-colors hover:bg-[var(--line-soft)]"
+            className="rounded-md p-1.5 transition-colors hover:bg-[var(--line-soft)] md:hidden"
             style={{ color: "var(--fg-soft)" }}
             aria-label="New conversation"
             title="New conversation"
           >
-            +
+            <Plus size={18} />
           </button>
-        </div>
+        </header>
         <div className="min-h-0 flex-1">
           {state.currentId == null && state.turns.length === 0 ? (
             <EmptyState />
@@ -142,10 +156,17 @@ function App() {
         <Composer streaming={streaming} busy={state.busy != null} />
       </main>
     </div>
+    {voiceOpen && (
+      <Suspense fallback={null}>
+        <VoiceMode onClose={() => setVoiceOpen(false)} />
+      </Suspense>
+    )}
+    </>
   );
 }
 
 applyBrand();
+applyTheme();
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

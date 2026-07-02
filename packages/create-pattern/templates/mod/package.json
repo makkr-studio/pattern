@@ -23,15 +23,18 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@pattern-js/core": "^0.2.0",
-    "@pattern-js/runtime-node": "^0.2.0",
+    "@pattern-js/core": "^0.3.0",
+    "@pattern-js/runtime-node": "^0.3.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@pattern-js/core": "^0.2.0",
-    "@pattern-js/runtime-node": "^0.2.0",
+    "@pattern-js/core": "^0.3.0",
+    "@pattern-js/runtime-node": "^0.3.0",
     "zod": "^4.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5"
   }
 }

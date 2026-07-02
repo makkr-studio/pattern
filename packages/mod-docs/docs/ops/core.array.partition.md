@@ -1,1 +1,1 @@
-Splits items by a predicate **sub-workflow** into two ports, `{ pass, fail }`, in one pass — reach for it when both sides matter (e.g. valid vs. rejected rows). If you only need the kept items, `core.array.filter` is leaner. Runs one linked sub-run per element.
+Splits items by a predicate **sub-workflow** into two ports, `{ pass, fail }`, in one pass. Reach for it when both sides matter (e.g. valid vs. rejected rows). If you only need the kept items, `core.array.filter` is leaner. Runs one linked sub-run per element.

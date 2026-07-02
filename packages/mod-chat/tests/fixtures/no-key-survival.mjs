@@ -10,7 +10,7 @@ import { Engine } from "../../../core/dist/index.js";
 import { createHttpHost } from "../../../runtime-node/dist/index.js";
 import { storeMod, STORE_SERVICE } from "../../../mod-store/dist/index.js";
 import { agentsMod } from "../../../mod-agents/dist/index.js";
-import agentsOpenAI from "../../../mod-agents-openai/dist/index.js";
+import aiMod from "../../../mod-ai/dist/index.js";
 import { chatMod, TURNS } from "../../dist/index.js";
 
 delete process.env.OPENAI_API_KEY;
@@ -23,10 +23,23 @@ const port = Number(process.argv[2] ?? 4966);
 const engine = new Engine({ env: process.env });
 await engine.useAsync(storeMod({ storage: "memory" }), { deferReady: true });
 await engine.useAsync(agentsMod(), { deferReady: true });
-await engine.useAsync(agentsOpenAI, { deferReady: true });
+await engine.useAsync(aiMod, { deferReady: true });
 const chat = chatMod();
 await engine.useAsync(chat, { deferReady: true });
 await chat.ready?.(engine);
+
+// A default alias resolves (so the turn streams), but its provider key is
+// missing — the failure fires MID-STREAM (after result-ready), the exact crash
+// shape. (aiMod.ready never runs here, so nothing is loaded from disk.)
+const cfg = engine.service("aiConfig");
+await cfg.upsertAlias({
+  name: "default",
+  provider: "openai",
+  modelId: "gpt-5-mini",
+  modality: "language",
+  secrets: { apiKey: { source: "env", key: "OPENAI_API_KEY" } },
+  options: {},
+});
 
 const host = createHttpHost(engine, { defaultPort: port });
 const { close } = await host.start();

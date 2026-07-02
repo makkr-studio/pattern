@@ -1,4 +1,4 @@
-Report the calling principal — `{ kind: "anonymous" }` when unauthenticated,
+Report the calling principal: `{ kind: "anonymous" }` when unauthenticated,
 else `{ kind: "user", id, email, name, roles, scopes, sessionId }`. Pure and
 unprivileged (it only ever sees the caller's own principal), so wire it into
 any graph that needs to know who's running; for a host trigger prefer the

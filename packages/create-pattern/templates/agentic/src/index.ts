@@ -2,15 +2,15 @@
  * {{name}} — build agentic workflows on Pattern, with the visual admin.
  *
  * `pattern.config.json` wires the agent stack: mod-store (durable state —
- * conversations, blobs, leases), mod-vault (your encrypted API key),
- * mod-agents + mod-agents-openai (the `agents.agent` / `agents.run` /
- * `agents.tools.*` ops, on OpenAI) and mod-admin (the editor + run traces at
+ * conversations, blobs, leases), mod-vault (your encrypted provider keys),
+ * mod-agents + mod-ai (the `agents.agent` / `agents.run` / `agents.tools.*`
+ * ops + `ai.model`, on any provider) and mod-admin (the editor + run traces at
  * /admin). An "agentic workflow" is just a graph that wires an agent into a
  * runner — no chat UI required; you build and run them in the editor.
  *
- * The agent needs an OpenAI key, resolved in order: an `apiKey` input →
- * OPENAI_API_KEY in the environment (a .env next to pattern.config.json is
- * loaded on boot) → a vault secret NAMED OPENAI_API_KEY (admin → Secrets).
+ * The agent runs on a model from an `ai.model` node, or the "default" alias you
+ * set in admin → Settings → AI Providers. Each alias carries its own provider
+ * key, sourced from the vault (admin → System → Secrets) or an env var you name.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 
@@ -20,6 +20,3 @@ const base = `http://localhost:${ports[0]}`;
 
 console.log(`◆ {{name}}`);
 console.log(`  Admin   ${base}/admin`);
-if (!process.env.OPENAI_API_KEY) {
-  console.log(`  ⚠ OPENAI_API_KEY is not set — agent runs fail until you set it (or store it in the vault).`);
-}

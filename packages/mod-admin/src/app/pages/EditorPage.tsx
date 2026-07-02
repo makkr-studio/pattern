@@ -1113,8 +1113,20 @@ function EditorInner() {
       baseDoc.current = { ...doc, id: slug ?? doc.id };
       if (isNew && !newSlug && doc.id) setNewSlug(doc.id.replace(/[^a-z0-9.\-_]/gi, ""));
       setSelected(null);
-      setNotice(`Imported "${doc.id}" — Save to persist it.`);
-      sfx.play("add");
+      // Flag ops this project doesn't have. The import still lands (the graph is
+      // visible, missing nodes included), but they're called out and block Save
+      // until resolved — never a silent import of an unrunnable workflow.
+      const unknownNodes = opMap.size ? doc.nodes.filter((n) => !opMap.has(n.op)) : [];
+      const missing = [...new Set(unknownNodes.map((n) => n.op))];
+      if (missing.length) {
+        setIssues(unknownNodes.map((n) => ({ nodeId: n.id, code: "unknown_op", message: `unknown op "${n.op}" — not installed in this project` })));
+        setNotice(`Imported "${doc.id}", but ${missing.length === 1 ? "this op isn't" : "these ops aren't"} installed: ${missing.join(", ")}. Add the mod(s) that provide them, or remove those nodes.`);
+        sfx.play("error");
+      } else {
+        setIssues([]);
+        setNotice(`Imported "${doc.id}" — Save to persist it.`);
+        sfx.play("add");
+      }
     } catch (err) {
       setNotice(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
       sfx.play("error");

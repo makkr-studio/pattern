@@ -10,7 +10,16 @@
 
 import { api, signOut, streamApproval, streamTurn } from "./api";
 import { sfx } from "./sfx";
-import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
+import type { Conversation, Me, MessagePart, Model, Turn, TurnEvent } from "./types";
+
+const MODEL_KEY = "pattern.chat.model";
+function readStoredModel(): string | null {
+  try {
+    return localStorage.getItem(MODEL_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export interface ChatState {
   /** Identity + auth policy from /chat/api/me (null until loaded). */
@@ -28,6 +37,11 @@ export interface ChatState {
   /** A 409 we should surface: someone else's turn is running. */
   busy: { turnId: string | null } | null;
   sendError: string | null;
+  /** The language-model aliases the switcher offers. */
+  models: Model[];
+  modelsLoaded: boolean;
+  /** The selected alias name (null = the app default); persisted to localStorage. */
+  selectedModel: string | null;
 }
 
 type Listener = () => void;
@@ -45,6 +59,9 @@ class ChatStore {
     liveTurnId: null,
     busy: null,
     sendError: null,
+    models: [],
+    modelsLoaded: false,
+    selectedModel: readStoredModel(),
   };
   private listeners = new Set<Listener>();
 
@@ -90,6 +107,24 @@ class ChatStore {
     await Promise.all([this.loadMe(), this.loadConversations()]);
   }
 
+  /** The model switcher's options. Validates (drops) a stale selection. */
+  async loadModels(): Promise<void> {
+    const models = await api.models().catch(() => []);
+    const stale = models.length > 0 && this.state.selectedModel != null && !models.some((m) => m.name === this.state.selectedModel);
+    this.set({ models, modelsLoaded: true, selectedModel: stale ? null : this.state.selectedModel });
+  }
+
+  /** Pick the language model for new turns (null = the app default). Persists. */
+  setSelectedModel(name: string | null): void {
+    try {
+      if (name) localStorage.setItem(MODEL_KEY, name);
+      else localStorage.removeItem(MODEL_KEY);
+    } catch {
+      /* private mode — selection lives for the session only */
+    }
+    this.set({ selectedModel: name });
+  }
+
   async loadConversations(): Promise<void> {
     try {
       const conversations = await api.conversations.list();
@@ -128,8 +163,15 @@ class ChatStore {
     if (this.state.currentId === id) await this.open(null);
   }
 
-  /** Send a message on the current conversation (creates one when fresh). */
-  async send(content: MessagePart[]): Promise<string | null> {
+  /**
+   * Send a message on the current conversation (creates one when fresh). The
+   * model defaults to the persisted selection; `onEvent` lets a surface (voice
+   * mode) observe the live event stream while the store still records history.
+   */
+  async send(
+    content: MessagePart[],
+    opts?: { model?: string; avatar?: boolean; onEvent?: (ev: TurnEvent) => void },
+  ): Promise<string | null> {
     let conversationId = this.state.currentId;
     if (!conversationId) {
       try {
@@ -155,8 +197,9 @@ class ChatStore {
     this.set({ turns: [...this.state.turns, turn], liveTurnId: turnId, busy: null, sendError: null });
     sfx.send();
 
+    const model = opts?.model ?? this.state.selectedModel ?? undefined;
     try {
-      await this.consume(streamTurn(conversationId, content, turnId), turnId);
+      await this.consume(streamTurn(conversationId, content, turnId, model, opts?.avatar), turnId, opts?.onEvent);
     } catch (err) {
       const e = err as { status?: number; body?: { activeTurnId?: string } };
       if (e.status === 409) {
@@ -195,7 +238,7 @@ class ChatStore {
     if (turns && this.state.currentId === id) this.set({ turns });
   }
 
-  private async consume(genr: AsyncGenerator<TurnEvent>, turnId: string): Promise<void> {
+  private async consume(genr: AsyncGenerator<TurnEvent>, turnId: string, onEvent?: (ev: TurnEvent) => void): Promise<void> {
     let sawDone = false;
     try {
       for await (const ev of genr) {
@@ -215,6 +258,7 @@ class ChatStore {
           }
           return next;
         });
+        onEvent?.(ev);
       }
     } finally {
       const finished = this.state.turns.find((t) => t.id === turnId);

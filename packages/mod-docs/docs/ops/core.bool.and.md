@@ -1,1 +1,1 @@
-Combine two comparison results into a single `core.flow.branch` condition — e.g. an `AND` of a `core.cmp.gte` and a `core.cmp.lt` to test a bounded range. Both inputs are required, so chain nodes for three-plus terms.
+Combine two comparison results into a single `core.flow.branch` condition: e.g. an `AND` of a `core.cmp.gte` and a `core.cmp.lt` to test a bounded range. Both inputs are required, so chain nodes for three-plus terms.

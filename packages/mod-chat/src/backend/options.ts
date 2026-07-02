@@ -7,6 +7,24 @@ export interface ChatBrand {
 }
 
 /**
+ * Pin a specific model for the chat agent (or guardrail), mirroring the
+ * `ai.model` op config — the chat backend wires an `ai.model` node into the
+ * agent's `model` input from it. Requires `@pattern-js/mod-ai` installed. When
+ * omitted, the agent runs on the app's DEFAULT model (admin → Settings → AI
+ * Providers), which is the usual path.
+ */
+export interface ChatModel {
+  /** "direct" (a provider SDK + its key) or "gateway" (the Vercel AI Gateway). Default "gateway". */
+  routing?: "direct" | "gateway";
+  /** Provider id, e.g. "openai", "anthropic", "google". */
+  provider: string;
+  /** Model id — bare for direct (e.g. "gpt-5"), "provider/model" for gateway (e.g. "openai/gpt-5"). */
+  modelId: string;
+  /** Vault secret name holding the key (else the provider's default env/secret name). */
+  credential?: string;
+}
+
+/**
  * One hosted SPA instance: a branded mount over the SHARED backend. The
  * `namespace` (decoupled from the mount) partitions its data; an optional
  * `agent` mints a namespace-pinned fork of the turn pipeline so this instance's
@@ -19,7 +37,7 @@ export interface ChatInstanceOptions {
   namespace?: string;
   brand?: ChatBrand;
   /** Override the agent for THIS namespace only (→ a pinned turn-pipeline fork). */
-  agent?: { name?: string; instructions?: string; model?: string };
+  agent?: { name?: string; instructions?: string; model?: ChatModel };
 }
 
 export interface ChatModOptions {
@@ -46,7 +64,7 @@ export interface ChatModOptions {
   agent?: {
     name?: string;
     instructions?: string;
-    model?: string;
+    model?: ChatModel;
   };
   /** Register the built-in turn pipeline workflow. Default true. */
   turnPipeline?: boolean;
@@ -60,7 +78,7 @@ export interface ChatModOptions {
    * the classifier workflow still ships, ready to wire by hand). Pass a boolean
    * to override the env, or an object to also tune the model/instructions.
    */
-  guardrail?: boolean | { enabled?: boolean; model?: string; instructions?: string };
+  guardrail?: boolean | { enabled?: boolean; model?: ChatModel; instructions?: string };
   /** Lease TTL for a running turn in ms (crash backstop). Default 5 min. */
   turnTtlMs?: number;
   /** Max model↔tool round-trips per turn. Default 12. */
@@ -87,11 +105,11 @@ export interface ChatModOptions {
 export interface ResolvedChatOptions {
   mount: string;
   assets?: string;
-  agent: { name: string; instructions: string; model?: string };
+  agent: { name: string; instructions: string; model?: ChatModel };
   turnPipeline: boolean;
   turnTtlMs: number;
   maxTurns: number;
-  guardrail: { enabled: boolean; model: string; instructions: string };
+  guardrail: { enabled: boolean; model?: ChatModel; instructions: string };
   requireAuth?: unknown;
   loginRequestPath: string;
   logoutPath: string;
@@ -108,7 +126,7 @@ export interface ResolvedInstance {
 /** A resolved namespace-pinned agent (fed to turnPipelineWorkflow as a fork). */
 export interface ResolvedPin {
   namespace: string;
-  agent: { name: string; instructions: string; model?: string };
+  agent: { name: string; instructions: string; model?: ChatModel };
 }
 
 /** The shipped classifier prompt. Replies on one line: `ALLOW`, or `BLOCK: <reason>`.
@@ -184,7 +202,7 @@ export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOption
       const explicit = typeof options.guardrail === "boolean" ? options.guardrail : g.enabled;
       return {
         enabled: explicit ?? envEnabled(),
-        model: g.model ?? "gpt-4.1-mini",
+        model: g.model,
         instructions: g.instructions ?? DEFAULT_GUARDRAIL_INSTRUCTIONS,
       };
     })(),

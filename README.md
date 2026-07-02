@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://pattern-js.dev"><b>pattern-js.dev</b></a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#the-idea">The idea</a> &nbsp;·&nbsp;
   <a href="#what-you-get">What you get</a> &nbsp;·&nbsp;
@@ -35,7 +36,8 @@ Two pieces, and the way they connect.
 
 - **Ops carry the code.** An op is a small typed function with named input and
   output ports: `core.string.template`, `core.http.fetch`, `agents.run`. The base
-  catalog ships around 270 of them, and you add your own.
+  catalog ships 175 of them, the first-party mods roughly double that, and you
+  add your own.
 - **Workflows wire ops together.** You connect an output port to an input port,
   and the *kind* of the port decides how data moves:
   - **value** ports resolve once and the consumer waits for them (a barrier),
@@ -54,7 +56,7 @@ cd my-app && npm install
 npm run dev                      # then open http://localhost:3000/admin
 ```
 
-Pick the **studio** pack and you land in a visual workspace with example
+Pick the **studio** modpack and you land in a visual workspace with example
 workflows you can edit, run, and trace. Or go straight to code: drop a `.json`
 workflow into `workflows/` and the dev server picks it up on save.
 
@@ -102,6 +104,11 @@ thing to a coding agent as one file.
 a workflow you can fork in the admin. You can serve a built single-page app from a
 workflow, and host many branded copies of it over a single backend.
 
+**Real sign-in and real email, in-box.** Magic-link and OIDC login (Google,
+Microsoft, any issuer) over one identity layer, and a transactional email
+contract with Resend and SMTP drivers — install a driver, create the account in
+the admin, and sign-in links send themselves.
+
 <p align="center">
   <img src="assets/screenshots/chat.jpg" width="820" alt="A branded chat app served from a workflow" />
 </p>
@@ -121,9 +128,10 @@ Everything beyond the engine is an optional mod you `engine.use()`.
 | [`@pattern-js/runtime-node`](packages/runtime-node) | the Node adapter: HTTP / WebSocket / CLI / schedule hosts, a worker pool, trace stores, the `pattern` CLI |
 | [`@pattern-js/mod-admin`](packages/mod-admin) · [`@pattern-js/admin-sdk`](packages/admin-sdk) | the visual control plane and its extension surface |
 | [`@pattern-js/mod-docs`](packages/mod-docs) | the served handbook and the generated op reference |
-| [`@pattern-js/mod-identity`](packages/mod-identity) · [`@pattern-js/mod-auth-magic-link`](packages/mod-auth-magic-link) | users, sessions, roles, magic-link login |
+| [`@pattern-js/mod-identity`](packages/mod-identity) · [`@pattern-js/mod-auth-magic-link`](packages/mod-auth-magic-link) · [`@pattern-js/mod-auth-oidc`](packages/mod-auth-oidc) | users, sessions, roles — sign in by magic link or any OIDC provider |
+| [`@pattern-js/mod-email`](packages/mod-email) · [`@pattern-js/mod-email-resend`](packages/mod-email-resend) · [`@pattern-js/mod-email-smtp`](packages/mod-email-smtp) | the transactional-email contract and its drivers; delivers sign-in links out of the box |
 | [`@pattern-js/mod-store`](packages/mod-store) · [`@pattern-js/mod-vault`](packages/mod-vault) | document / blob / lease persistence and encrypted secrets |
-| [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-agents-openai`](packages/mod-agents-openai) | the neutral agent contracts and an OpenAI provider |
+| [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-ai`](packages/mod-ai) | the neutral agent contracts + native run loop, and the AI capability layer (model provider, text / image / embeddings / STT / TTS / video, MCP) |
 | [`@pattern-js/mod-chat`](packages/mod-chat) | a complete chat application |
 | [`create-pattern`](packages/create-pattern) | the scaffolder (`npm create pattern`) |
 
@@ -132,8 +140,9 @@ with an example op, a route, an admin page, a docs chapter, and a test.
 
 ## Docs
 
-The full handbook is served at `/docs`, and ships as markdown inside
-[`@pattern-js/mod-docs`](packages/mod-docs/docs).
+The handbook is served at `/docs` in any project that installs
+`@pattern-js/mod-docs`, and ships as markdown inside
+[the package](packages/mod-docs/docs) — browsable right here on GitHub.
 
 - [Getting started](packages/mod-docs/docs/getting-started.md)
 - [Concepts](packages/mod-docs/docs/concepts.md) and [Architecture](packages/mod-docs/docs/architecture.md)

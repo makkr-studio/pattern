@@ -8,11 +8,11 @@
  *   VERDACCIO_REGISTRY=http://localhost:4873 node scripts/verdaccio-publish.mjs
  *
  * Notes
- * - Versions are kept in lockstep across @pattern-js/core, @pattern-js/runtime-node,
- *   and create-pattern, bumped within 0.1.x so the templates' `^0.1.0` deps
- *   resolve to the freshly-published version.
- * - `runtime-node`'s `workspace:*` dep on core is converted to the real version
- *   by `pnpm publish` automatically.
+ * - Versions are kept in lockstep across every publishable package (PKG_DIRS).
+ *   Scaffolds resolve the right mods regardless: create-pattern rewrites the
+ *   templates' @pattern-js/* ranges from its own version at scaffold time.
+ * - Inter-package `workspace:*` deps are converted to the real version by
+ *   `pnpm publish` automatically.
  * - You must be logged in to the registry once:
  *       npm adduser --registry http://localhost:4873
  *   (any user/password/email works with a default Verdaccio config).
@@ -35,10 +35,14 @@ const PKG_DIRS = [
   "packages/mod-admin",
   "packages/mod-identity",
   "packages/mod-auth-magic-link",
+  "packages/mod-auth-oidc",
+  "packages/mod-email",
+  "packages/mod-email-resend",
+  "packages/mod-email-smtp",
   "packages/mod-store",
   "packages/mod-vault",
   "packages/mod-agents",
-  "packages/mod-agents-openai",
+  "packages/mod-ai",
   "packages/mod-chat",
   "packages/mod-docs",
   "packages/create-pattern",

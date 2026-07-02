@@ -90,9 +90,9 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
       const path = `${opts.mount}/bootstrap?t=${issued.token}`;
       const guess = `http://localhost:${process.env.PORT ?? 3000}${path}`;
       console.log(
-        `\n[pattern] ◆ No users yet — create the first admin with this one-time link (valid 24h):\n` +
+        `\n[pattern] ◆ No users yet. Create the first admin with this one-time link (valid 24h):\n` +
           `[pattern]   ${guess}\n` +
-          `[pattern]   (path: ${path} — adjust host/port if your app serves elsewhere)\n`,
+          `[pattern]   (path: ${path}; adjust host/port if your app serves elsewhere)\n`,
       );
     },
   });

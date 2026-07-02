@@ -7,10 +7,12 @@
  */
 
 import React from "react";
+import { Volume2, VolumeX, LogOut, X, Plus, Trash2 } from "lucide-react";
 import { chatStore } from "../lib/store";
 import { appBoot, brandTitle } from "../lib/config";
 import { isMuted, toggleMute } from "../lib/sfx";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ThemeToggle } from "./ThemeToggle";
 import type { Conversation, Me } from "../lib/types";
 
 function timeAgo(ts: number): string {
@@ -58,11 +60,7 @@ function IdentityChip({ me }: { me: Me | null }) {
           title="Sign out"
           aria-label="Sign out"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <path d="M16 17l5-5-5-5" />
-            <path d="M21 12H9" />
-          </svg>
+          <LogOut size={15} />
         </button>
       ) : (
         me && (
@@ -127,32 +125,34 @@ export function Sidebar({
             </svg>
             {brandTitle}
           </a>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            <ThemeToggle />
             <button
               onClick={() => setMuted(toggleMute())}
-              className="text-[12px] transition-opacity hover:opacity-70"
+              className="flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-70"
               style={{ color: "var(--fg-faint)" }}
               title={muted ? "Unmute sounds" : "Mute sounds"}
+              aria-label={muted ? "Unmute sounds" : "Mute sounds"}
             >
-              {muted ? "🔇" : "🔈"}
+              {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
             </button>
             <button
               onClick={onClose}
-              className="rounded-md p-1 text-[14px] transition-colors hover:bg-[var(--line-soft)] md:hidden"
+              className="flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-[var(--line-soft)] md:hidden"
               style={{ color: "var(--fg-faint)" }}
               aria-label="Close menu"
             >
-              ✕
+              <X size={15} />
             </button>
           </div>
         </div>
 
         <button
           onClick={onNew}
-          className="mx-3 mb-2 rounded-xl border border-dashed px-3 py-2 text-left text-[13.5px] transition-colors hover:border-solid"
+          className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-dashed px-3 py-2 text-left text-[13.5px] transition-colors hover:border-solid"
           style={{ borderColor: "var(--line)", color: "var(--fg-soft)" }}
         >
-          + New conversation
+          <Plus size={15} /> New conversation
         </button>
 
         <nav className="flex-1 overflow-y-auto px-2 pb-4">
@@ -174,11 +174,12 @@ export function Sidebar({
               </button>
               <button
                 onClick={() => setPendingDelete(c)}
-                className="absolute right-2 top-2.5 flex h-5 w-5 items-center justify-center rounded text-[12px] md:hidden md:group-hover:flex"
+                className="absolute right-2 top-2.5 flex h-5 w-5 items-center justify-center rounded md:hidden md:group-hover:flex"
                 style={{ color: "var(--fg-faint)" }}
                 title="Delete"
+                aria-label="Delete conversation"
               >
-                ×
+                <Trash2 size={13} />
               </button>
             </div>
           ))}

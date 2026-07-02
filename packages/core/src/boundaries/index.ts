@@ -247,8 +247,7 @@ export const httpResponse = outgate({
     "HTTP response out-gate (network-OUT). mode: buffered | sse | chunked. Inputs { status?, headers?, body?, " +
     "cookies?, redirect? }. status defaults to 200; wire a domain output port straight to body. `cookies` " +
     "({ name: value | { value, maxAge, path, httpOnly, sameSite, secure, domain } }, value null clears) become " +
-    "Set-Cookie; `redirect` (a URL) sends 302 + Location. So an op never names a cookie/status/redirect — the " +
-    "workflow does, here.",
+    "Set-Cookie; `redirect` (a URL) sends 302 + Location. The workflow names cookies, status, and redirect here, keeping domain ops free of them.",
   inputs: {
     status: value(z.number()),
     headers: value(stringRecord),
@@ -295,7 +294,7 @@ export const httpStatus: OpDefinition = {
     "Map a conventioned domain outcome to { status, body } for boundary.http.response. An `httpOutcome(code)` value " +
     "→ a status from config.map (defaults: not_found→404, forbidden→403, unauthorized→401, conflict→409, invalid→400); " +
     "anything else → config.ok (default 200, body = the value). Keeps domain ops network-unaware. The outcome marker " +
-    "is collision-proof — a normal payload with an `error` field is a 200, not a 4xx.",
+    "is collision-proof: a plain payload with an `error` field still maps to 200.",
   inputs: { result: value() },
   outputs: { status: value(z.number()), body: value() },
   config: z.object({
@@ -386,7 +385,7 @@ export const wsMessage: OpDefinition = {
   title: "boundary.ws.message",
   description:
     "Fires a run per inbound WS message. Outputs { message, connection, user, room? }. config.message " +
-    "(JSON Schema — wire a core.schema.define node into the config port) validates inbound " +
+    "(JSON Schema: wire a core.schema.define node into the config port) validates inbound " +
     "messages; invalid ones are refused with an error reply instead of firing the run.",
   boundary: "trigger",
   pair: "boundary.ws.send",
@@ -508,7 +507,7 @@ export const eventTrigger: OpDefinition = {
   title: "boundary.event",
   description:
     "Fire-and-forget subscriber (§8). config: { event }. Outputs { payload }. The emitter never " +
-    "reads the result — pair with boundary.return to record an outcome on the run.",
+    "reads the result; pair with boundary.return to record an outcome on the run.",
   boundary: "trigger",
   pair: "boundary.return",
   inputs: {},

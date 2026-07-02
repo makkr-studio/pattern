@@ -40,6 +40,13 @@ export type TurnEvent =
       stopReason: "complete" | "interrupted" | "error" | "cancelled";
     };
 
+/** A selectable language-model alias (GET /chat/api/:ns/models). */
+export interface Model {
+  name: string;
+  provider: string;
+  modelId: string;
+}
+
 /** GET /chat/api/me — caller identity + the server's resolved auth policy. */
 export interface Me {
   user: { id: string; name: string | null; email: string | null; provider: string | null } | null;
@@ -163,3 +170,4 @@ export function segmentsOf(events: TurnEvent[], live: boolean): Segment[] {
   // Approvals are resolved once the turn isn't interrupted anymore.
   return out;
 }
+

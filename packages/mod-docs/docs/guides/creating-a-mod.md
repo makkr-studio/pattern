@@ -7,9 +7,9 @@ order: 15
 
 A **mod** is an npm package that extends a Pattern engine: it can contribute ops,
 workflows (incl. HTTP routes), an admin page, auth providers, hooks, and a docs
-chapter — all behind one `defineMod(...)` object. Install it, add it to
+chapter, all behind one `defineMod(...)` object. Install it, add it to
 `pattern.config.json`, and its capabilities appear in the catalog. This guide
-builds one end to end. The in-repo [`@pattern-js/mod-sample`](/docs/sample) is the
+builds one end to end. The in-repo [`@pattern-js/mod-sample`](/sample) is the
 canonical reference; read it alongside.
 
 ## Scaffold it
@@ -22,10 +22,9 @@ npm create pattern@latest
 The scaffolder asks what your mod includes and generates a publishable package:
 `package.json` (with a `@scope/mod-<name>` name and the right peer deps),
 `src/index.ts` exporting `defineMod(...)`, an example op and route, an optional
-admin page, a `docs/` chapter, a test, and an `AGENTS.md` for coding agents. If
-you opt into a Tier-2 admin page, it pre-wires the **admin's own stack** (React +
-Tailwind + Motion + lucide) so the page drops in seamlessly — or choose
-bring-your-own-stack and wire it yourself.
+admin page, a `docs/` chapter, a test, and an `AGENTS.md` for coding agents. A
+Tier-2 admin page drops in against the **admin's own stack** (React + Tailwind +
+Motion + lucide). You ship the page source, no bundler required.
 
 > Prefer to build by hand? Everything below is what the scaffold sets up.
 
@@ -46,7 +45,7 @@ export default defineMod({
 });
 ```
 
-`name` and op `type` ids are stable public contracts — namespace your ops
+`name` and op `type` ids are stable public contracts: namespace your ops
 (`acme.greet`, not `greet`) so they can't collide with another mod.
 
 ## Add an op
@@ -85,15 +84,17 @@ export const greetRoute = httpEndpoint({
 
 ## Add an admin page (optional)
 
-Contribute a page via the mod's `frontend` block — **Tier 1** (declarative, no
-build) renders a table/form/chart over one of your ops; **Tier 2** ships a built
-React bundle the admin loads at runtime. See
-[Admin → extension surface](/docs/admin) and `@pattern-js/mod-sample` for both.
+Contribute a page via the mod's `frontend` block: **Tier 1** (declarative, no
+build) renders a table/form/chart over one of your ops; **Tier 2** ships a
+fully-custom React page as `module` **source** (against the admin's shared
+`__PATTERN_ADMIN__` stack), which the admin serves same-origin and imports: no
+workflow, no asset mount, no CSP relaxation. See
+[Admin → extension surface](/admin) and `@pattern-js/mod-sample` for both.
 
 ## Ship a docs chapter
 
 Put markdown in a `docs/` folder, register it as a filesystem in `setup`, and
-point the `docs` field at it — your chapter joins this handbook when your mod is
+point the `docs` field at it. Your chapter joins this handbook when your mod is
 installed. Files under `docs/ops/<type>.md` become the "when to use" prose in the
 op reference. Full recipe: [Extending these docs](extending-the-docs.md).
 
@@ -103,7 +104,7 @@ Build, then install it into a throwaway app with a `file:` dependency (works
 across npm/pnpm/yarn/bun):
 
 ```bash
-npm run build                                   # → dist/ (+ app/dist if Tier-2)
+npm run build                                   # → dist/
 npx create-pattern host-test --modpack studio   # a host with /admin to see your page
 cd host-test
 # add to package.json deps:  "@acme/mod-greetings": "file:../mod-greetings"

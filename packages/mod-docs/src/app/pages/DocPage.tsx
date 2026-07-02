@@ -7,30 +7,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, pageHref, type Chapter, type Page } from "../lib/api";
 import { headingsOf, Markdown } from "../lib/md";
+import { InternalLink, makeResolveLink } from "../lib/links";
 import { useDocs } from "../shell/Shell";
 import { WorkflowEmbed } from "../components/WorkflowEmbed";
 import type { DocsNavItem } from "../../shared/types";
 
-/** Resolve a relative markdown href against the current file's directory. */
-function resolveRelative(currentFile: string, href: string): string {
-  const base = currentFile.split("/").slice(0, -1);
-  const parts = href.split("/");
-  const out = [...base];
-  for (const part of parts) {
-    if (part === "." || part === "") continue;
-    if (part === "..") out.pop();
-    else out.push(part);
-  }
-  return out.join("/");
-}
-
 function flatten(items: DocsNavItem[]): DocsNavItem[] {
   return items.flatMap((i) => [i, ...(i.items ? flatten(i.items) : [])]);
 }
-
-const InternalLink = ({ to, children }: { to: string; children: React.ReactNode }) => (
-  <Link to={to}>{children}</Link>
-);
 
 export function DocPage() {
   const { manifest } = useDocs();
@@ -111,14 +95,7 @@ export function DocPage() {
           text={page.markdown}
           InternalLink={InternalLink}
           fence={(lang, body, key) => (lang === "workflow" ? <WorkflowEmbed key={key} source={body} /> : null)}
-          resolveLink={(href) => {
-            const [path, frag] = href.split("#");
-            if (path && /\.md$/.test(path) && !/^[a-z]+:/.test(path) && !path.startsWith("/")) {
-              const target = resolveRelative(file, path);
-              return { href: `${pageHref(primarySlug, chapter!.slug, target, chapter!.index)}${frag ? `#${frag}` : ""}`, internal: true };
-            }
-            return { href };
-          }}
+          resolveLink={makeResolveLink(primarySlug, chapter!.slug, file, chapter!.index)}
         />
 
         <footer className="mt-12 flex items-center justify-between gap-3 border-t pt-5 hairline">

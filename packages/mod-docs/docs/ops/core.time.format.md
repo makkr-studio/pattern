@@ -1,1 +1,1 @@
-Render an epoch-ms timestamp for display or storage — `iso` for machine-readable, `date`/`time` for the UTC date or time slice, `locale` for a human string. The `iso`/`date`/`time` formats are always UTC; only `locale` honors `config.locale`.
+Render an epoch-ms timestamp for display or storage: `iso` for machine-readable, `date`/`time` for the UTC date or time slice, `locale` for a human string. The `iso`/`date`/`time` formats are always UTC; only `locale` honors `config.locale`.

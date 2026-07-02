@@ -1,1 +1,1 @@
-Coerce a value (typically a string field) to a number before arithmetic or a `core.cmp.gt` threshold. It uses JS `Number()`, so an unparseable input yields `NaN` rather than an error — guard with `core.cast.isNull` or a comparison if the source is untrusted.
+Coerce a value (typically a string field) to a number before arithmetic or a `core.cmp.gt` threshold. It uses JS `Number()`, so an unparseable input yields `NaN`. Guard with `core.cast.isNull` or a comparison if the source is untrusted.

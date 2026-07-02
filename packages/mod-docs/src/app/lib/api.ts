@@ -1,5 +1,6 @@
 /** Pattern Docs — API client (pure fetch over the docs.* routes). */
 
+import { appBoot } from "./config";
 import type { DocsNavItem, ModInfo, OpInfo } from "../../shared/types";
 
 export interface Me {
@@ -30,7 +31,7 @@ export interface Page {
   markdown: string;
 }
 
-const API = "/docs/api";
+const API = appBoot.apiBase;
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -45,7 +46,7 @@ export const api = {
   page: async (chapter: string, file: string): Promise<Page> =>
     json(await fetch(`${API}/page?chapter=${encodeURIComponent(chapter)}&file=${encodeURIComponent(file)}`)),
   rawUrl: (chapter: string, file: string): string =>
-    `/docs/raw?chapter=${encodeURIComponent(chapter)}&file=${encodeURIComponent(file)}`,
+    `${appBoot.mount}/raw?chapter=${encodeURIComponent(chapter)}&file=${encodeURIComponent(file)}`,
   ops: async (): Promise<OpInfo[]> => (await json<{ ops: OpInfo[] }>(await fetch(`${API}/ops`))).ops,
   op: async (type: string): Promise<{ info: OpInfo; prose: string | null }> =>
     json(await fetch(`${API}/op?type=${encodeURIComponent(type)}`)),
@@ -94,7 +95,7 @@ export async function requestMagicLink(requestPath: string, email: string): Prom
   const res = await fetch(requestPath, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, next: "/docs/" }),
+    body: JSON.stringify({ email, next: `${appBoot.mount}/` }),
   });
   if (!res.ok) throw new Error(`sign-in request failed (${res.status})`);
 }

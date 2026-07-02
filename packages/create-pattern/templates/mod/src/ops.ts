@@ -11,7 +11,7 @@ import { value, z, type OpDefinition } from "@pattern-js/core";
 export const itemsList: OpDefinition = {
   type: "{{opPrefix}}.items.list",
   title: "{{opPrefix}}.items.list",
-  description: "Returns a static list of items — the example op. Replace with your mod's real logic.",
+  description: "Returns a static list of items (the example op). Replace with your mod's real logic.",
   inputs: {},
   outputs: { items: value(z.array(z.object({ id: z.string(), label: z.string() }))) },
   execute: async () => ({

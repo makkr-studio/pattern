@@ -1,1 +1,1 @@
-Break a string into an array on `separator` (default `""` splits into characters); `config.limit` caps the piece count. The front door to per-piece array work — follow with `core.array.map` or `core.array.filter`. Inverse of `core.string.join`.
+Break a string into an array on `separator` (default `""` splits into characters); `config.limit` caps the piece count. The front door to per-piece array work: follow with `core.array.map` or `core.array.filter`. Inverse of `core.string.join`.

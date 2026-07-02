@@ -19,7 +19,11 @@ export default defineConfig({
       "@pattern-js/mod-store": r("./packages/mod-store/src/index.ts"),
       "@pattern-js/mod-vault": r("./packages/mod-vault/src/index.ts"),
       "@pattern-js/mod-agents": r("./packages/mod-agents/src/index.ts"),
-      "@pattern-js/mod-agents-openai": r("./packages/mod-agents-openai/src/index.ts"),
+      "@pattern-js/mod-ai": r("./packages/mod-ai/src/index.ts"),
+      "@pattern-js/mod-email-resend": r("./packages/mod-email-resend/src/index.ts"),
+      "@pattern-js/mod-email-smtp": r("./packages/mod-email-smtp/src/index.ts"),
+      "@pattern-js/mod-email": r("./packages/mod-email/src/index.ts"),
+      "@pattern-js/mod-auth-oidc": r("./packages/mod-auth-oidc/src/index.ts"),
       "@pattern-js/mod-chat": r("./packages/mod-chat/src/index.ts"),
       "@pattern-js/mod-docs": r("./packages/mod-docs/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built

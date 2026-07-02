@@ -5,7 +5,8 @@
  * Buds expand to their args/result and deep-link into the admin's run view.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useLayoutEffect, useEffect, useRef, useState } from "react";
+import { Volume2, Square, Loader2, Wrench } from "lucide-react";
 import { api } from "../lib/api";
 import { chatStore } from "../lib/store";
 import { segmentsOf, type MessagePart, type Segment, type Turn } from "../lib/types";
@@ -38,10 +39,21 @@ function UserMessage({ input }: { input: MessagePart[] }) {
   );
 }
 
+/** A tool result that is a generated-image MediaRef ({ blobId, kind:"image" | image/* mime }). */
+function imageRefOf(v: unknown): { blobId: string } | null {
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const isImg = o.kind === "image" || (typeof o.mime === "string" && o.mime.startsWith("image/"));
+    if (typeof o.blobId === "string" && isImg) return { blobId: o.blobId };
+  }
+  return null;
+}
+
 function ToolBud({ seg }: { seg: Extract<Segment, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
   const label =
     seg.phase === "start" ? "running" : seg.phase === "error" ? (seg.error ?? "failed") : "done";
+  const image = seg.phase === "done" ? imageRefOf(seg.result) : null;
   return (
     <div className="bud my-1.5" data-phase={seg.phase}>
       <button
@@ -49,9 +61,19 @@ function ToolBud({ seg }: { seg: Extract<Segment, { kind: "tool" }> }) {
         className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[13px] transition-colors hover:opacity-80"
         style={{ borderColor: "var(--line)", color: "var(--fg-soft)", background: "var(--bg-raised)" }}
       >
-        <span style={{ fontFamily: "var(--mono)" }}>⚙ {seg.toolName}</span>
+        <span className="inline-flex items-center gap-1.5" style={{ fontFamily: "var(--mono)" }}>
+          <Wrench size={12} /> {seg.toolName}
+        </span>
         <span style={{ color: seg.phase === "error" ? "var(--danger)" : "var(--fg-faint)" }}>{label}</span>
       </button>
+      {image && (
+        <img
+          src={api.blobs.url(image.blobId)}
+          alt="generated"
+          className="my-2 block max-h-80 rounded-lg border"
+          style={{ borderColor: "var(--line)" }}
+        />
+      )}
       {open && (
         <div
           className="mt-1.5 rounded-lg border p-3 text-[12.5px]"
@@ -168,6 +190,49 @@ function ErrorCard({ seg, onRetry }: { seg: Extract<Segment, { kind: "error" }>;
   );
 }
 
+// Per-message TTS cache: re-clicking "listen" replays the same generated audio
+// instead of regenerating it. Keyed by turn id, session-lifetime (cleared on reload).
+const speechCache = new Map<string, string>(); // turnId -> blobId
+
+/** Play an assistant turn aloud (text-to-speech via the "speech" alias). */
+function SpeakButton({ text, messageId }: { text: string; messageId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  async function toggle() {
+    if (state === "playing") {
+      audioRef.current?.pause();
+      setState("idle");
+      return;
+    }
+    setState("loading");
+    try {
+      let blobId = speechCache.get(messageId);
+      if (!blobId) {
+        ({ blobId } = await api.speech(text));
+        speechCache.set(messageId, blobId);
+      }
+      const audio = new Audio(api.blobs.url(blobId));
+      audioRef.current = audio;
+      audio.onended = () => setState("idle");
+      await audio.play();
+      setState("playing");
+    } catch {
+      setState("idle");
+    }
+  }
+  return (
+    <button
+      onClick={() => void toggle()}
+      className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-md transition-opacity hover:opacity-80"
+      style={{ color: "var(--fg-faint)" }}
+      title={state === "playing" ? "Stop" : "Read aloud"}
+      aria-label={state === "playing" ? "Stop" : "Read aloud"}
+    >
+      {state === "loading" ? <Loader2 size={13} className="animate-spin" /> : state === "playing" ? <Square size={13} /> : <Volume2 size={14} />}
+    </button>
+  );
+}
+
 function AgentTurn({ turn, live }: { turn: Turn; live: boolean }) {
   const segments = segmentsOf(turn.events, live);
   const status = turn.status;
@@ -175,6 +240,11 @@ function AgentTurn({ turn, live }: { turn: Turn; live: boolean }) {
     const parts = turn.input;
     if (parts.length) void chatStore.send(parts);
   };
+  const spokenText = segments
+    .filter((s): s is Extract<Segment, { kind: "text" }> => s.kind === "text")
+    .map((s) => s.text)
+    .join("\n")
+    .trim();
   return (
     <div className="strand pl-6 turn-enter" data-live={live || undefined} data-status={status}>
       {segments.length === 0 && live && (
@@ -192,6 +262,7 @@ function AgentTurn({ turn, live }: { turn: Turn; live: boolean }) {
         if (seg.kind === "approval") return <ApprovalCard key={i} seg={seg} turn={turn} live={live} />;
         return <ErrorCard key={i} seg={seg} onRetry={status !== "running" ? retry : undefined} />;
       })}
+      {!live && status === "complete" && spokenText && <SpeakButton text={spokenText} messageId={turn.id} />}
       {status === "cancelled" && (
         <div className="mt-1 text-[12.5px] italic" style={{ color: "var(--fg-faint)" }}>
           stopped
@@ -237,7 +308,11 @@ export function Transcript({ turns, liveTurnId }: { turns: Turn[]; liveTurnId: s
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect): set the anchor — and thus reserve the
+  // min-height — in the SAME commit the new turn paints in. With useEffect the
+  // reservation landed a frame late, so the area briefly collapsed to 0 (content
+  // dropped then snapped up) — that flash is what this fixes.
+  useLayoutEffect(() => {
     if (!last) return;
     const sameConv = prev.current.conv === convId;
     const newLast = prev.current.last !== last.id;
@@ -253,7 +328,7 @@ export function Transcript({ turns, liveTurnId }: { turns: Turn[]; liveTurnId: s
   }, [convId, last, liveTurnId]);
 
   // Scroll AFTER the min-height committed, so "top" is actually reachable.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (anchoredId) lastRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [anchoredId]);
 

@@ -1,6 +1,6 @@
 # {{pkgName}}
 
-A [Pattern](https://github.com/makkr-studio/pattern) mod — a publishable npm package that extends a
+A [Pattern](https://pattern-js.dev) mod, a publishable npm package that extends a
 Pattern engine with ops, workflows, an admin page, and a docs chapter.
 
 ## Develop
@@ -27,10 +27,10 @@ npm install && npm run dev
 
 Then verify:
 
-- `npx pattern ops {{opPrefix}}` — your op is registered.
-- `curl localhost:3000/api/{{name}}/items` — the route responds.
-- `/admin` → **Extensions → {{Title}}** — your page (if you scaffolded one).
-- `/docs` → **{{Title}}** — your chapter.
+- `npx pattern ops {{opPrefix}}`: your op is registered.
+- `curl localhost:3000/api/{{name}}/items`: the route responds.
+- `/admin` → **Extensions → {{Title}}**: your page (if you scaffolded one).
+- `/docs` → **{{Title}}**: your chapter.
 
 ## Publish
 
@@ -49,7 +49,7 @@ src/ops.ts        # the op (pure logic)
 src/routes.ts     # routes fronting the op
 src/frontend.ts   # the admin page (Tier-1 declarative or Tier-2 remote)
 src/app.ts        # serves the Tier-2 page's bundle (Tier-2 only)
-src/index.ts      # defineMod(...) — the package's default export
+src/index.ts      # defineMod(...): the package's default export
 docs/             # the chapter shipped at /docs
 AGENTS.md         # the contract sheet for coding agents (CLAUDE.md points here)
 ```

@@ -1,1 +1,1 @@
-Turn a JSON string into a value. Throws on malformed input, so validate or wrap untrusted text (e.g. in `core.flow.try`) rather than letting a parse error fail the whole run. For inbound HTTP bodies you usually don't need this — `boundary.http.request` already hands you a parsed `body`.
+Turn a JSON string into a value. Throws on malformed input; validate or wrap untrusted text in `core.flow.try` to handle parse errors. For inbound HTTP bodies, `boundary.http.request` already hands you a parsed `body`.

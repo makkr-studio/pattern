@@ -44,6 +44,44 @@
   }
 }
 
+/*
+ * Forced theme. `data-theme` on <html> (set by lib/theme.ts) overrides the
+ * prefers-color-scheme auto above: html[data-theme=…] is (0,1,1), winning over
+ * the media query's :root (0,1,0). "auto" sets no attribute → the media rules.
+ */
+html[data-theme="light"] {
+  --bg: #faf9f7;
+  --bg-raised: #ffffff;
+  --fg: #1f1c18;
+  --fg-soft: #6e675e;
+  --fg-faint: #a39b8f;
+  --line: #e8e3db;
+  --line-soft: #f1ede6;
+  --accent: #b4552d;
+  --accent-soft: #f6e8e0;
+  --ok: #4d7c5f;
+  --warn: #b48a2d;
+  --danger: #b43d3d;
+  --danger-soft: #f9eaea;
+  --user-chip: #efeae2;
+}
+html[data-theme="dark"] {
+  --bg: #191613;
+  --bg-raised: #211d19;
+  --fg: #ece7df;
+  --fg-soft: #a59c90;
+  --fg-faint: #6e675e;
+  --line: #322d27;
+  --line-soft: #272320;
+  --accent: #d98d62;
+  --accent-soft: #3a2a20;
+  --ok: #7fb392;
+  --warn: #d3b465;
+  --danger: #d77a7a;
+  --danger-soft: #382323;
+  --user-chip: #2b2620;
+}
+
 html,
 body,
 #root {

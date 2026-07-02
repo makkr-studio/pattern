@@ -6,10 +6,11 @@ beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
 import { Engine, resolvePorts, type Workflow } from "@pattern-js/core";
 import { createHttpHost } from "@pattern-js/runtime-node";
 import { storeMod, STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
-import { agentsMod, AGENTS_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
-import { agentsOpenAIMod, MODEL_PROVIDER_SERVICE } from "@pattern-js/mod-agents-openai";
+import { agentsMod, AGENTS_SERVICE, AI_MODEL_SERVICE, type AgentsService, type TurnEvent } from "@pattern-js/mod-agents";
+import { aiMod } from "../../mod-ai/src/index.js";
+import { AI_CONFIG_SERVICE } from "../../mod-ai/src/well-known.js";
 import { chatMod, CONVERSATIONS, TURNS, type TurnDoc } from "../src/index.js";
-import { scriptedProvider, type ScriptedTurn } from "../../mod-agents-openai/tests/scripted-model.js";
+import { scriptedModelService, type ScriptedTurn } from "../../mod-agents/tests/scripted-model-service.js";
 
 /**
  * The whole chat backend over a REAL HTTP host with a scripted model:
@@ -71,11 +72,14 @@ async function boot(
   }
   await engine.useAsync(storeMod({ storage: "memory" }), { deferReady: true });
   await engine.useAsync(agentsMod(), { deferReady: true });
-  await engine.useAsync(agentsOpenAIMod(), { deferReady: true });
+  // mod-ai is chat's real dependency (it registers the ai.* ops the media tool /
+  // STT / TTS workflows reference). The scripted model service below overrides
+  // mod-ai's, so turns still run deterministically with no provider keys.
+  await engine.useAsync(aiMod(), { deferReady: true });
   const chat = chatMod({ guardrail: opts.guardrail ?? false });
   await engine.useAsync(chat, { deferReady: true });
   await chat.ready?.(engine);
-  engine.provideService(MODEL_PROVIDER_SERVICE, scriptedProvider(turns));
+  engine.provideService(AI_MODEL_SERVICE, scriptedModelService(turns));
   engine.registerWorkflow(
     opts.gatedTool
       ? {
@@ -320,6 +324,67 @@ describe("chat over HTTP (scripted model)", () => {
     expect(down.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await down.arrayBuffer())).toEqual(png);
   });
+});
+
+describe("model switcher + voice avatar", () => {
+  it("GET /models lists language aliases only, with secrets stripped", async () => {
+    const { base, engine } = await boot([]);
+    // Override the alias source (duck-typed off the aiConfig service) with a mix
+    // of modalities; the route must return only language aliases, names+display.
+    engine.provideService(AI_CONFIG_SERVICE, {
+      aliases: () => [
+        { name: "smart", provider: "openai", modelId: "gpt-5", modality: "language", secrets: { apiKey: { source: "env", key: "OPENAI" } }, options: {} },
+        { name: "voice", provider: "openai", modelId: "tts-1", modality: "speech", secrets: {}, options: {} },
+      ],
+    });
+    const res = await fetch(`${base}/chat/api/default/models`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+    expect(body.models).toEqual([{ name: "smart", provider: "openai", modelId: "gpt-5" }]);
+  });
+
+  it("GET /models returns an empty list (not an error) when none are configured", async () => {
+    const { base } = await boot([]);
+    const res = await fetch(`${base}/chat/api/default/models`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { models: unknown[] }).models).toEqual([]);
+  });
+
+  it("a per-turn model alias is accepted and fails soft to the default", async () => {
+    const { base } = await boot([{ kind: "text", text: "ok" }]);
+    const { id, cookie } = await createConversation(base);
+    const res = await fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ content: [{ type: "text", text: "hi" }], model: "does-not-exist" }),
+    });
+    expect(res.status).toBe(200);
+    expect(sseEvents(await res.text()).at(-1)).toMatchObject({ type: "done", stopReason: "complete" });
+  });
+
+  it("avatar turns get spoken-style instructions; normal turns don't (per-turn agent.instructions)", async () => {
+    const { base, engine } = await boot([
+      { kind: "text", text: "normal reply" },
+      { kind: "text", text: "voice reply" },
+    ]);
+    const calls = engine.service<{ calls: Array<{ system?: string }> }>(AI_MODEL_SERVICE)!.calls;
+    const { id, cookie } = await createConversation(base);
+    const post = (body: object) =>
+      fetch(`${base}/chat/api/default/conversations/${id}/turns`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      }).then((r) => r.text());
+
+    // Normal turn: instructions stay the configured (display-style) ones.
+    await post({ content: [{ type: "text", text: "hi" }] });
+    expect(calls.at(-1)!.system).not.toContain("VOICE MODE");
+
+    // Avatar turn: the body flag swaps in the spoken, emoji-flavored instructions.
+    await post({ content: [{ type: "text", text: "hi by voice" }], avatar: true });
+    expect(calls.at(-1)!.system).toContain("VOICE MODE");
+  });
+
 });
 
 describe("admin Chats surface", () => {

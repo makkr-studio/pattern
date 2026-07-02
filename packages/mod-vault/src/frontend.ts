@@ -40,7 +40,7 @@ export function vaultFrontend(): FrontendContribution {
               schema: {
                 type: "object",
                 properties: {
-                  name: { type: "string", description: 'e.g. "OPENAI_API_KEY" — how vault.read finds it' },
+                  name: { type: "string", description: 'e.g. "OPENAI_API_KEY" (the name vault.read looks up)' },
                   value: {
                     type: "string",
                     description: "Encrypted at rest; never displayed again. Same name = rotate.",

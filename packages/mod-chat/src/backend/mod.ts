@@ -1,9 +1,9 @@
 /**
  * @pattern-js/mod-chat — the mod.
  *
- * Needs @pattern-js/mod-store (conversations, blobs, leases) and an agents
- * provider (@pattern-js/mod-agents + @pattern-js/mod-agents-openai) installed
- * alongside. `setup` registers the SPA assets filesystem; `ready` ensures
+ * Needs @pattern-js/mod-store (conversations, blobs, leases) and the agents
+ * stack (@pattern-js/mod-agents + @pattern-js/mod-ai for the model provider)
+ * installed alongside. `setup` registers the SPA assets filesystem; `ready` ensures
  * the chat collections (mod-store's setup has run by then, whatever the
  * listing order).
  */
@@ -23,7 +23,11 @@ import {
   blobUploadWorkflow,
   crudWorkflows,
   guardrailToolWorkflow,
+  imageToolWorkflow,
+  researcherToolWorkflow,
+  speechRouteWorkflow,
   spaWorkflow,
+  transcribeRouteWorkflow,
   turnPipelineWorkflow,
 } from "./workflows.js";
 
@@ -57,7 +61,7 @@ const chatAppOp: OpDefinition = {
     "The chat SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount. " +
     "`namespace` scopes this instance's data on the SHARED backend at `api` (decoupled from where the SPA mounts); " +
     "`accent`/`title` brand it. All ride the app descriptor's `manifest`, injected as `window.__APP__` into the " +
-    "served index.html — so one bundle is hosted many times, each branded and data-partitioned, no route duplication.",
+    "served index.html, so one bundle is hosted many times, each branded and data-partitioned, no route duplication.",
   reusable: true,
   inputs: {},
   outputs: { app: value(boundaries.appDescriptorSchema) },
@@ -130,6 +134,11 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
           ...pins.map((pin) => turnPipelineWorkflow(opts, pin)), // per-namespace forks
           approvalPipelineWorkflow(opts),
           guardrailToolWorkflow(opts),
+          // Capability showcases (auto-discovered as agent tools / SPA routes):
+          imageToolWorkflow(opts), // generate_image tool → rendered inline in chat
+          researcherToolWorkflow(opts), // research tool: an agent-as-tool example
+          transcribeRouteWorkflow(opts), // mic → speech-to-text
+          speechRouteWorkflow(opts), // assistant message → text-to-speech
         ]
       : []),
     // One branded SPA per instance, all talking to the shared backend.

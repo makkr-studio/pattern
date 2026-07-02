@@ -4,9 +4,10 @@
     "@pattern-js/mod-store",
     "@pattern-js/mod-vault",
     "@pattern-js/mod-agents",
-    "@pattern-js/mod-agents-openai",
+    "@pattern-js/mod-ai",
     "@pattern-js/mod-chat",
     "@pattern-js/mod-admin"
   ],
-  "workflows": "./workflows"
+  "workflows": "./workflows",
+  "workers": { "size": 2, "mods": ["@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-agents", "@pattern-js/mod-ai", "@pattern-js/mod-chat"] }
 }

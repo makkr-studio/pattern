@@ -212,7 +212,7 @@ export const objectOps: OpDefinition[] = [
     type: "core.object.extract",
     title: "core.object.extract",
     description:
-      "Extract values from the input `object` into one output port per config.keys entry — the inverse of core.object.build. Missing keys output undefined. Use it to decompose a request body/params into discrete op inputs.",
+      "Extract values from the input `object` into one output port per config.keys entry (the inverse of core.object.build). Missing keys output undefined. Use it to decompose a request body/params into discrete op inputs.",
     inputs: { object: required(obj) },
     // One output port per key — the editor re-resolves ports from config, same
     // as build's inputs. Default keeps a fresh node showing one visible port.

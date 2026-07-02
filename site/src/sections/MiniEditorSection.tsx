@@ -13,7 +13,9 @@ const MiniEditor = lazy(() => import("../editor/MiniEditor").then((m) => ({ defa
 function MobilePreview() {
   return (
     <GlassPanel className="flex flex-col items-center gap-6 p-8 text-center">
-      <div className="w-full overflow-x-auto">
+      {/* overflow-hidden (not -x-auto): clip the transform-scaled layout box so it
+          never adds a page-level horizontal scrollbar on narrow viewports. */}
+      <div className="w-full overflow-hidden">
         <div className="scale-[0.6] origin-top-left" style={{ width: "166%" }}>
           <StaticGraph graph={level1Graph} />
         </div>

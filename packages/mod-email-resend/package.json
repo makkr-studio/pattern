@@ -1,0 +1,52 @@
+{
+  "name": "@pattern-js/mod-email-resend",
+  "version": "0.3.0",
+  "description": "Resend driver for @pattern-js/mod-email — dependency-free (the Resend API is one fetch). Install it, create an account in admin → System → Email, and email.send delivers through Resend.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "email",
+    "resend",
+    "driver"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/mod-email": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/mod-email-resend"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Makkr Studio (https://github.com/makkr-studio)"
+}

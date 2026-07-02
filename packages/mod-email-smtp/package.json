@@ -1,0 +1,55 @@
+{
+  "name": "@pattern-js/mod-email-smtp",
+  "version": "0.3.0",
+  "description": "SMTP driver for @pattern-js/mod-email, built on nodemailer — any relay, your own server, or a local catcher. Host/port/user are account options in admin → System → Email; the password comes from the vault or an env var.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "email",
+    "smtp",
+    "nodemailer",
+    "driver"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/mod-email": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
+    "nodemailer": "^8.0.1",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/mod-email-smtp"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Makkr Studio (https://github.com/makkr-studio)"
+}

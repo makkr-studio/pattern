@@ -273,7 +273,7 @@ export const pluck: OpDefinition = defineOp({
   type: "core.stream.pluck",
   title: "core.stream.pluck",
   description:
-    "Extract `config.path` (dot/bracket) from each chunk and re-emit as a stream — no sub-workflow. " +
+    "Extract `config.path` (dot/bracket) from each chunk and re-emit as a stream, with no sub-workflow. " +
     "Chunks where the path is missing are dropped, so e.g. agent frames like { delta: { text } } become a clean text stream via path 'delta.text'.",
   inputs: { in: stream() },
   outputs: { out: stream() },
@@ -297,7 +297,7 @@ export const template: OpDefinition = defineOp({
   type: "core.stream.template",
   title: "core.stream.template",
   description:
-    "Render a string per chunk from `{{ dot.path }}` placeholders over the chunk, and re-emit as a stream — no sub-workflow. " +
+    "Render a string per chunk from `{{ dot.path }}` placeholders over the chunk, and re-emit as a stream, with no sub-workflow. " +
     "Great for formatting object chunks (e.g. agent deltas) into display text.",
   inputs: { in: stream() },
   outputs: { out: stream() },

@@ -43,7 +43,7 @@ const storePut: OpDefinition = {
   type: "store.put",
   title: "store.put",
   description:
-    "Write a document. Upsert without `version`; compare-and-swap with it (ok:false on a lost race — re-read and retry).",
+    "Write a document. Upsert without `version`; compare-and-swap with it (ok:false on a lost race; re-read and retry).",
   config: collectionConfig,
   inputs: { id: required(z.string()), data: required(recordSchema), version: value(z.number()) },
   outputs: { ok: value(z.boolean()), version: value(z.number().nullable()) },
@@ -61,7 +61,7 @@ const storePut: OpDefinition = {
 const storePatch: OpDefinition = {
   type: "store.patch",
   title: "store.patch",
-  description: "Shallow-merge a patch into a document (CAS — version required).",
+  description: "Shallow-merge a patch into a document (CAS: version required).",
   config: collectionConfig,
   inputs: {
     id: required(z.string()),
@@ -131,41 +131,60 @@ const storeQuery: OpDefinition = {
 
 /* ── blobs ─────────────────────────────────────────────────────────────── */
 
+/** Best-effort media kind from a mime type, for the MediaRef the op also returns. */
+function kindFromMime(mime: string | undefined): "image" | "audio" | "video" | undefined {
+  if (!mime) return undefined;
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  return undefined;
+}
+
 const blobPut: OpDefinition = {
   type: "store.blob.put",
   title: "store.blob.put",
   description:
-    "Store binary data (bytes value, or wire a byte stream — e.g. a streamed request body). Strings are stored utf-8.",
+    "Store binary data and get back its id, meta, and a ready-to-use MediaRef (`ref`). Accepts a bytes value, a byte stream " +
+    "(e.g. a streamed request body), a data URL or plain string, or a media payload from a generation op " +
+    "(ai.image/speech/video.generate output `{ bytes, mime, kind }`). This is the explicit save those ops leave to the workflow.",
   inputs: {
     data: value(),
     bytes: stream(),
     mime: value(z.string()),
     ownerId: value(z.string()),
   },
-  outputs: { id: value(z.string()), meta: value() },
+  outputs: { id: value(z.string()), meta: value(), ref: value() },
   execute: async (ctx) => {
-    const [mime, ownerId] = await Promise.all([maybe<string>(ctx, "mime"), maybe<string>(ctx, "ownerId")]);
+    const [mimeIn, ownerId] = await Promise.all([maybe<string>(ctx, "mime"), maybe<string>(ctx, "ownerId")]);
     let payload: Uint8Array | ReadableStream<Uint8Array>;
+    let mime = mimeIn;
+    let kind: "image" | "audio" | "video" | undefined;
     if (ctx.input.has("bytes")) {
       payload = ctx.input.stream<Uint8Array>("bytes");
     } else {
       const data = await ctx.input.value("data");
       if (data instanceof Uint8Array) payload = data;
-      else if (typeof data === "string") {
+      else if (data && typeof data === "object" && (data as { bytes?: unknown }).bytes instanceof Uint8Array) {
+        // A media payload from a generation op: { bytes, mime, kind }.
+        const m = data as { bytes: Uint8Array; mime?: string; kind?: "image" | "audio" | "video" };
+        payload = m.bytes;
+        mime = mime ?? m.mime;
+        kind = m.kind;
+      } else if (typeof data === "string") {
         // Data-URL convenience (image paste flows) or plain text.
         const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(data);
         if (m) {
-          const bytes = m[2]
+          payload = m[2]
             ? Uint8Array.from(atob(m[3]!), (c) => c.charCodeAt(0))
             : new TextEncoder().encode(decodeURIComponent(m[3]!));
-          const meta = await storeService(ctx).blobs.put(bytes, { mime: mime ?? m[1] ?? undefined, ownerId });
-          return { id: meta.id, meta };
+          mime = mime ?? m[1] ?? undefined;
+        } else {
+          payload = new TextEncoder().encode(data);
         }
-        payload = new TextEncoder().encode(data);
-      } else throw new Error("store.blob.put: wire `bytes` (stream) or `data` (Uint8Array / string)");
+      } else throw new Error("store.blob.put: wire `bytes` (stream) or `data` (Uint8Array / media payload / data URL / string)");
     }
     const meta = await storeService(ctx).blobs.put(payload, { mime, ownerId });
-    return { id: meta.id, meta };
+    return { id: meta.id, meta, ref: { blobId: meta.id, mime: meta.mime, kind: kind ?? kindFromMime(meta.mime) } };
   },
 };
 
@@ -244,7 +263,7 @@ const leaseAcquire: OpDefinition = {
   type: "store.lease.acquire",
   title: "store.lease.acquire",
   description:
-    "Claim a TTL'd lease (owner defaults to this runId; auto-released when the run settles). Conflict → ok:false + current owner — branch, don't throw.",
+    "Claim a TTL'd lease (owner defaults to this runId; auto-released when the run settles). Conflict → ok:false + current owner; branch on it instead of throwing.",
   config: leaseConfig,
   inputs: { key: value(z.string()), owner: value(z.string()), ttlMs: value(z.number()) },
   outputs: leaseOutputs,

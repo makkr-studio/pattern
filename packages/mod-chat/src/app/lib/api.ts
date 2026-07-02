@@ -1,6 +1,6 @@
 /** Pattern Chat — API client (pure fetch; SSE via ReadableStream). */
 
-import type { Conversation, Me, MessagePart, Turn, TurnEvent } from "./types";
+import type { Conversation, Me, MessagePart, Model, Turn, TurnEvent } from "./types";
 import { appBoot } from "./config";
 
 // Two roots on the SHARED backend: `API` for unscoped calls (/me, blobs) and
@@ -25,6 +25,9 @@ async function json<T>(res: Response): Promise<T> {
 export const api = {
   /** Who am I, and is auth required? Always open — drives the sign-in gate. */
   me: async (): Promise<Me> => json(await fetch(`${API}/me`)),
+
+  /** The language-model aliases the switcher offers (empty if mod-ai is absent). */
+  models: async (): Promise<Model[]> => (await json<{ models: Model[] }>(await fetch(`${NS}/models`))).models,
 
   conversations: {
     list: async (): Promise<Conversation[]> =>
@@ -62,6 +65,27 @@ export const api = {
       ),
     url: (id: string): string => `/store/blobs/${id}`,
   },
+
+  /** Speech-to-text: a previously-uploaded audio blob → text (needs a "transcription" alias). */
+  transcribe: async (blobId: string, mime: string): Promise<{ text: string }> =>
+    json(
+      await fetch(`${NS}/transcribe`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ blobId, mime }),
+      }),
+    ),
+
+  /** Text-to-speech: text → an audio MediaRef the SPA plays (needs a "speech" alias).
+   *  `instructions` steers the voice tone on promptable TTS (e.g. gpt-4o-mini-tts). */
+  speech: async (text: string, instructions?: string): Promise<{ blobId: string; mime: string }> =>
+    json(
+      await fetch(`${NS}/speech`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(instructions ? { text, instructions } : { text }),
+      }),
+    ),
 };
 
 export interface TurnRequestError extends Error {
@@ -96,11 +120,13 @@ export async function* streamTurn(
   conversationId: string,
   content: MessagePart[],
   turnId: string,
+  model?: string,
+  avatar?: boolean,
 ): AsyncGenerator<TurnEvent> {
   const res = await fetch(`${NS}/conversations/${conversationId}/turns`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({ turnId, content }),
+    body: JSON.stringify({ turnId, content, ...(model ? { model } : {}), ...(avatar ? { avatar: true } : {}) }),
   });
   if (!res.ok || !res.body) {
     let body: unknown = {};

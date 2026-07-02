@@ -1,7 +1,7 @@
 /**
  * @pattern-js/mod-agents — the well-known service seam.
  *
- * Provider mods (mod-agents-openai…) and consumers (mod-chat) meet here:
+ * The model provider (mod-ai) and consumers (mod-chat) meet here:
  * the tool registry lives on AGENTS_SERVICE; nobody imports a provider mod
  * to find tools.
  */

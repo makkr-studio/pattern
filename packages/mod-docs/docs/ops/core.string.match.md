@@ -1,1 +1,1 @@
-Run a regex (`config.pattern` + `flags`) and get back the match array, or `null` if none — with capture groups when the pattern has them. Reach for it to extract structured pieces from text. For a plain yes/no use `core.string.includes`; to rewrite matches use `core.string.replace`.
+Run a regex (`config.pattern` + `flags`) and get back the match array, or `null` if none, with capture groups when the pattern has them. Reach for it to extract structured pieces from text. For a plain yes/no use `core.string.includes`; to rewrite matches use `core.string.replace`.

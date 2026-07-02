@@ -48,7 +48,7 @@ export default {
     {
       type: "app.quotes.list",
       title: "app.quotes.list",
-      description: "Returns every quote — the data behind the admin's Quotes page.",
+      description: "Returns every quote, the data behind the admin's Quotes page.",
       inputs: {},
       outputs: { quotes: { kind: "value" } },
       execute: async () => ({ quotes: QUOTES }),

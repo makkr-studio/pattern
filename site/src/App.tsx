@@ -7,6 +7,7 @@ import { EdgeKindsToy } from "./sections/EdgeKindsToy";
 import { MiniEditorSection } from "./sections/MiniEditorSection";
 import { DxAxSection } from "./sections/DxAxSection";
 import { Ecosystem } from "./sections/Ecosystem";
+import { ModalitiesSection } from "./sections/ModalitiesSection";
 import { EditsItself } from "./sections/EditsItself";
 import { FinalCta } from "./sections/FinalCta";
 import { KonamiFx } from "./components/KonamiFx";
@@ -38,6 +39,7 @@ export function App() {
         <MiniEditorSection />
         <DxAxSection />
         <Ecosystem />
+        <ModalitiesSection />
         <EditsItself />
         <FinalCta />
       </main>

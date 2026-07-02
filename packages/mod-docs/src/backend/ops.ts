@@ -91,7 +91,7 @@ export function makeDocsOps(
 
   const page = docsOp(
     "docs.page",
-    "One markdown page (?chapter=<slug>&file=<path>) — frontmatter-stripped, with its resolved title.",
+    "One markdown page (?chapter=<slug>&file=<path>): frontmatter-stripped, with its resolved title.",
     { in: { chapter: Q(), file: Q() }, out: "page" },
     async ({ chapter, file }) => {
       const result = await content.page(String(chapter ?? ""), String(file ?? ""));
@@ -102,7 +102,7 @@ export function makeDocsOps(
 
   const raw = docsOp(
     "docs.raw",
-    "A page's raw markdown bytes (?chapter&file) — text/markdown, frontmatter included.",
+    "A page's raw markdown bytes (?chapter&file): text/markdown, frontmatter included.",
     { in: { chapter: Q(), file: Q() }, out: "markdown", contentType: "text/markdown; charset=utf-8" },
     async ({ chapter, file }) => {
       const markdown = await content.raw(String(chapter ?? ""), String(file ?? ""));
@@ -114,7 +114,9 @@ export function makeDocsOps(
     type: "docs.app",
     title: "Pattern Docs app",
     description:
-      "The docs SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount.",
+      "The docs SPA as an app object. Wire `app` into `boundary.http.app.serve` under a `boundary.http.app` mount. " +
+      "Carries a `manifest` so the host injects a mount-portable `<base href>` + `window.__APP__`: the SAME built " +
+      "bundle works under any configured mount, not only `/docs`.",
     reusable: true,
     inputs: {},
     outputs: { app: value(boundaries.appDescriptorSchema) },
@@ -123,7 +125,9 @@ export function makeDocsOps(
       spaFallback: z.string().default("index.html"),
       immutableAssets: z.boolean().default(true),
     }),
-    execute: (ctx) => ({ app: { ...(ctx.config as object) } }),
+    // The empty manifest opts in to bootstrap injection; the host fills in the
+    // resolved mount + apiBase (${mount}/api) that the SPA reads from __APP__.
+    execute: (ctx) => ({ app: { ...(ctx.config as object), manifest: {} } }),
   };
 
   /* ── the generated reference (self-reflection) ───────────────────────── */
@@ -136,14 +140,14 @@ export function makeDocsOps(
 
   const opsList = docsOp(
     "docs.ops.list",
-    "Every registered op from the LIVE registry — ports, category, contributing mod (schemas trimmed; ask docs.ops.get).",
+    "Every registered op from the LIVE registry: ports, category, contributing mod (schemas trimmed; ask docs.ops.get).",
     { out: "ops" },
     async () => ({ ops: opListTrimmed(engine()) }),
   );
 
   const opsGet = docsOp(
     "docs.ops.get",
-    "One op (?type=) — full registry data merged with the owning mod's ops/<type>.md prose.",
+    "One op (?type=): full registry data merged with the owning mod's ops/<type>.md prose.",
     { in: { type: Q() }, out: "op" },
     async ({ type }) => {
       const t = String(type ?? "");

@@ -1,10 +1,12 @@
 # @pattern-js/mod-auth-magic-link
 
-Passwordless email sign-in for [Pattern](../../README.md) — the **reference login
+Passwordless email sign-in for [Pattern](../../README.md): the **reference login
 method** for `@pattern-js/mod-identity`, a provider plugged into the identity
 kernel. Identity owns the kernel (single-use tokens, the `/auth/token` callback,
-the signup policy, the login page); this mod owns just the *flow* of requesting a
-link. Small enough to read in one sitting — it proves the login-method SPI.
+the signup policy, the login page); this mod owns the *flow* of requesting a
+link. Small enough to read in one sitting. It proves the login-method SPI.
+
+**Links:** [pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/mod-auth-magic-link)
 
 ```bash
 npm install @pattern-js/mod-auth-magic-link
@@ -13,15 +15,15 @@ npm install @pattern-js/mod-auth-magic-link
 ## When to use
 
 Reach for it whenever you want passwordless email sign-in and don't want to build
-a provider yourself — or as the worked example to copy when writing your own
+a provider yourself, or as the worked example to copy when writing your own
 (OIDC, SMS…). The flow: `POST /auth/magic-link/request` issues a gated single-use
 token, delivery sends the link, and identity's `GET /auth/token?t=…` verifies it
 and mints a session. With no delivery subscriber the link **prints to the server
-console** — the zero-config dev login.
+console**: the zero-config dev login.
 
 ## Prerequisites
 
-- **`@pattern-js/mod-identity`** — the kernel this mod plugs into. It registers its
+- **`@pattern-js/mod-identity`**: the kernel this mod plugs into. It registers its
   login method in `ready` (after the identity service exists), so its order in
   `pattern.config.json` doesn't matter.
 

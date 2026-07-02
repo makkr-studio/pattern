@@ -33,14 +33,18 @@ export function EditsItself() {
             your workflows, is itself a workflow you can open and read.
           </p>
         </div>
+        {/* overflow-hidden (not -x-auto) so the fixed-width graph can't add a
+            page-level horizontal scrollbar; scale it down to fit narrow screens. */}
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.5 }}
-          className="mt-10 flex justify-center overflow-x-auto"
+          className="mt-10 flex justify-center overflow-hidden"
         >
-          <StaticGraph graph={selfGraph} pulse={!reduced} />
+          <div className="origin-top scale-[0.6] sm:scale-90 md:scale-100">
+            <StaticGraph graph={selfGraph} pulse={!reduced} />
+          </div>
         </motion.div>
       </GlassPanel>
     </SectionShell>

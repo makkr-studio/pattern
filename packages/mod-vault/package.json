@@ -1,7 +1,14 @@
 {
   "name": "@pattern-js/mod-vault",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Encrypted-at-rest secrets for Pattern: AES-256-GCM vault (master key from PATTERN_VAULT_KEY), a vault.read node whose values are masked out of run samples, and a write-only Secrets screen in the admin.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "vault",
+    "secrets",
+    "encryption"
+  ],
   "type": "module",
   "license": "MIT",
   "exports": {

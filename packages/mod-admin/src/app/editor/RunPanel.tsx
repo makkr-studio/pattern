@@ -73,6 +73,57 @@ function buildInput(op: string, config: Record<string, any>, form: Record<string
   }
 }
 
+/** Build a copy-paste curl for an HTTP trigger from its config + the form values.
+ *  Base is this host's origin (the app's routes are served alongside the admin);
+ *  a trigger `port` override swaps the port. Null for non-HTTP triggers. */
+function curlForTrigger(op: string, config: Record<string, any>, form: Record<string, string>): string | null {
+  if (op !== "boundary.http.request") return null;
+  const method = String(config.method ?? "GET").toUpperCase();
+  const path = String(config.path ?? "/").replace(/:([A-Za-z0-9_]+)/g, (_m, p: string) => {
+    const v = form[`param.${p}`];
+    return v ? encodeURIComponent(v) : `:${p}`;
+  });
+  const query = parseJson(form.query ?? "", {}) as Record<string, unknown>;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(query ?? {})) if (v != null) qs.set(k, String(v));
+  const base = config.port ? `${location.protocol}//${location.hostname}:${config.port}` : location.origin;
+  const url = base + path + (qs.toString() ? `?${qs}` : "");
+  const q = (v: string) => "'" + v.replace(/'/g, "'\\''") + "'";
+  const lines = [`curl -X ${method} ${q(url)}`];
+  const body = parseJson(form.body ?? "", undefined);
+  if (body !== undefined && method !== "GET" && method !== "HEAD") {
+    lines.push(`  -H ${q("content-type: application/json")}`);
+    lines.push(`  --data-raw ${q(typeof body === "string" ? body : JSON.stringify(body))}`);
+  }
+  return lines.join(" \\\n");
+}
+
+/** Show a curl with a copy button (mirrors the Runs page's reconstructed curl). */
+function CurlBlock({ curl }: { curl: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="glass mt-3 rounded-xl p-3">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-muted text-[10px] font-semibold uppercase tracking-wider">curl</span>
+        <button
+          type="button"
+          className="text-xs text-[var(--color-neon-cyan)] hover:underline"
+          onClick={() => {
+            void navigator.clipboard?.writeText(curl).then(() => {
+              setCopied(true);
+              sfx.play("toggle");
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+      <pre className="text-muted overflow-x-auto whitespace-pre font-mono text-xs">{curl}</pre>
+    </div>
+  );
+}
+
 function TriggerForm({ op, config, form, set }: { op: string; config: Record<string, any>; form: Record<string, string>; set: (k: string, v: string) => void }) {
   const input = "glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]";
   const Label = ({ children }: { children: string }) => <div className="text-muted mb-1 font-mono text-xs">{children}</div>;
@@ -164,6 +215,7 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
 
   const trigger = triggers.find((t) => t.id === triggerId) ?? triggers[0];
   const config = (doc.nodes.find((n) => n.id === trigger?.id)?.config ?? {}) as Record<string, any>;
+  const curl = trigger ? curlForTrigger(trigger.op, config, form) : null;
 
   const run = async () => {
     if (!trigger) return;
@@ -224,6 +276,7 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
               )}
             </div>
             {stopNote && <p className="text-muted mt-2 text-xs">{stopNote}</p>}
+            {curl && <CurlBlock curl={curl} />}
           </div>
 
           <div>

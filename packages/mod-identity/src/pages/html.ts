@@ -65,6 +65,15 @@ const ERROR_MESSAGES: Record<string, string> = {
   "signup-closed": "Sign-ups are invite-only. Ask an admin to invite you.",
   "account-disabled": "This account is disabled.",
   "invalid-email": "That doesn't look like an email address.",
+  // The fixed codes mod-auth-oidc redirects back with (?error=<code>). The
+  // provider's own error text is deliberately never reflected here — only
+  // these vetted strings reach the page.
+  "oidc-state": "That sign-in attempt expired or was opened in a different browser. Try again.",
+  "oidc-failed": "The identity provider declined the sign-in. Try again.",
+  "oidc-exchange": "Couldn't complete the sign-in with the identity provider. Try again.",
+  "oidc-token": "The identity provider's response couldn't be verified. Try again.",
+  "oidc-no-email": "Your identity provider didn't share an email address, which this app needs to sign you in.",
+  "email-not-verified": "Your identity provider hasn't verified this email address. Verify it there, then try again.",
 };
 
 export function errorBanner(code: string | undefined): string {

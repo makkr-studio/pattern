@@ -19,7 +19,57 @@
 import type { Workflow } from "@pattern-js/core";
 import { chatOpRoutes, type ChatInSpec } from "./ops.js";
 import { DEVICE_COOKIE } from "./data.js";
-import type { ResolvedChatOptions, ResolvedInstance, ResolvedPin } from "./options.js";
+import type { ChatModel, ResolvedChatOptions, ResolvedInstance, ResolvedPin } from "./options.js";
+
+/**
+ * Pin a chat agent's model: an `ai.model` node feeding the agent's `model`
+ * INPUT (agents.agent takes a ModelRef there — a `model` in its config is
+ * silently dropped). With no pin, the agent falls through to the app's
+ * configured default model. Needs `@pattern-js/mod-ai` installed.
+ */
+function modelInjection(
+  model: ChatModel | undefined,
+  agentNodeId: string,
+  ui: { x: number; y: number },
+  target: { node: string; port: string } = { node: agentNodeId, port: "model" },
+): { nodes: Workflow["nodes"]; edges: Workflow["edges"] } {
+  if (!model) return { nodes: [], edges: [] };
+  const id = `${agentNodeId}Model`;
+  return {
+    nodes: [
+      {
+        id,
+        op: "ai.model",
+        config: {
+          routing: model.routing ?? "gateway",
+          provider: model.provider,
+          modelId: model.modelId,
+          ...(model.credential ? { credential: model.credential } : {}),
+        },
+        comment: "Pin this agent's model; remove to use the app's default model.",
+        ui,
+      },
+    ],
+    edges: [{ from: { node: id, port: "model" }, to: target }],
+  };
+}
+
+/**
+ * Appended to the agent's instructions ONLY on voice/avatar turns (the SPA sends
+ * `avatar: true` in the turn body). Switches the agent from a "display text" style
+ * to a spoken, conversational one. Wired in per-turn via core.value.select →
+ * agents.agent.instructions, so normal text turns are unaffected.
+ */
+const AVATAR_NOTE =
+  "\n\nVOICE MODE: your reply is spoken aloud and shown as a voice avatar, so talk like a person in " +
+  "conversation, not like a document. Keep it short and flowing — usually one to three sentences. Do not " +
+  "use markdown or any visual structure: no headings, bullet or numbered lists, tables, or code blocks, and " +
+  "avoid links and long enumerations; if you'd list things, weave them into a natural sentence instead. Use " +
+  "warm, plain, spoken language and contractions.\n\nEmojis are part of how you talk here: put at least one " +
+  "in almost every reply to carry the emotion, and often two. Weave them inside a sentence or at its very " +
+  "start (only rarely at the very end). Don't narrate a flat, emoji-less answer — let a little feeling show. " +
+  "The only limit is taste: rarely more than two or three, and skip them entirely only for genuinely somber " +
+  "or serious moments.";
 
 interface RouteSpec {
   id: string;
@@ -81,7 +131,9 @@ function route(spec: RouteSpec, requireAuth?: unknown): Workflow {
   edges.push({ from: { node: "status", port: "body" }, to: { node: "out", port: "body" } });
   if (io.cookiesPort) edges.push({ from: { node: "call", port: io.cookiesPort }, to: { node: "out", port: "cookies" } });
 
-  return { id: spec.id, name: `Chat · ${spec.method} ${spec.path}`, source: "code", nodes, edges };
+  // internal: plumbing — keep the catalog focused on the workflows worth
+  // forking (turn/approval pipelines, tools). "Show internal" reveals these.
+  return { id: spec.id, name: `Chat · ${spec.method} ${spec.path}`, source: "code", internal: true, nodes, edges };
 }
 
 export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
@@ -97,6 +149,8 @@ export function crudWorkflows(opts: ResolvedChatOptions): Workflow[] {
     { id: "chat.route.conversations.delete", method: "DELETE", path: `${api}/:ns/conversations/:id`, op: "chat.conversations.delete" },
     { id: "chat.route.turns.list", method: "GET", path: `${api}/:ns/conversations/:id/turns`, op: "chat.turns.list" },
     { id: "chat.route.turn.stop", method: "POST", path: `${api}/:ns/conversations/:id/turns/:turnId/stop`, op: "chat.turn.stop" },
+    // The model switcher's source of truth: language-model aliases (no secrets).
+    { id: "chat.route.models", method: "GET", path: `${api}/:ns/models`, op: "chat.models.list" },
   ];
   return [
     // /me is ALWAYS open: it answers "who am I / is auth required?" so the
@@ -112,6 +166,7 @@ export function blobUploadWorkflow(opts: ResolvedChatOptions): Workflow {
     id: "chat.route.blobs",
     name: `Chat · POST ${opts.mount}/api/blobs`,
     source: "code",
+    internal: true,
     nodes: [
       {
         id: "in",
@@ -151,6 +206,7 @@ export const GUARDRAIL_TOOL_NAME = "professional_conduct";
  * pipeline only WIRES it when `opts.guardrail.enabled`.
  */
 export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
+  const gModel = modelInjection(opts.guardrail.model, "agent", { x: 300, y: 520 });
   return {
     id: "chat.guardrail.professional",
     name: "Chat · guardrail · professional conduct",
@@ -187,14 +243,15 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
       {
         id: "agent",
         op: "agents.agent",
-        config: { name: "Conduct classifier", instructions: opts.guardrail.instructions, model: opts.guardrail.model },
-        comment: "Small, fast classifier (gpt-4.1-mini by default). Replies ALLOW or BLOCK: <reason>.",
+        config: { name: "Conduct classifier", instructions: opts.guardrail.instructions },
+        comment: "Conduct classifier. Pin a small model via guardrail.model, else the app default. Replies ALLOW or BLOCK.",
         ui: { x: 300, y: 340 },
       },
+      ...gModel.nodes,
       {
         id: "run",
         op: "agents.run",
-        comment: "One-shot classification; apiKey resolves from env/vault like the main run.",
+        comment: "One-shot classification on the agent's model (pinned or the app default).",
         ui: { x: 560, y: 240 },
       },
       { id: "upper", op: "core.string.upper", comment: "Case-fold the verdict.", ui: { x: 820, y: 120 } },
@@ -215,6 +272,7 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
       { id: "out", op: "boundary.tool.return", ui: { x: 1540, y: 240, pair: "in" } },
     ],
     edges: [
+      ...gModel.edges,
       { from: { node: "in", port: "args" }, to: { node: "text", port: "object" } },
       { from: { node: "text", port: "out" }, to: { node: "run", port: "input" } },
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
@@ -235,6 +293,9 @@ export function guardrailToolWorkflow(opts: ResolvedChatOptions): Workflow {
 export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPin): Workflow {
   const guard = opts.guardrail.enabled && !pin; // forks opt out of the shared guardrail tool
   const agent = pin?.agent ?? opts.agent;
+  // The pin (if any) feeds resolveModel's FALLBACK; resolveModel produces the
+  // agent's model, layering a per-turn alias selection on top.
+  const aModel = modelInjection(agent.model, "agent", { x: 940, y: 380 }, { node: "resolveModel", port: "fallback" });
   const seg = pin ? pin.namespace : ":ns";
   return {
     id: pin ? `chat.turn.pipeline.${pin.namespace}` : "chat.turn.pipeline",
@@ -252,22 +313,22 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
           path: `${opts.mount}/api/${seg}/conversations/:id/turns`,
           ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}),
         },
-        ui: { x: 40, y: 200, pair: "ok" },
+        ui: { x: 40, y: 240, pair: "ok" },
       },
       {
         id: "begin",
         op: "chat.turn.begin",
         config: { ttlMs: opts.turnTtlMs },
         comment: "Scope check + conversation lease + turn doc. Conflict → 409 path.",
-        ui: { x: 320, y: 200 },
+        ui: { x: 460, y: 240 },
       },
-      { id: "gate", op: "core.flow.branch", ui: { x: 600, y: 120 } },
+      { id: "gate", op: "core.flow.branch", ui: { x: 680, y: 240 } },
       {
         id: "tools",
         op: "agents.tools.workflows",
         config: { tools: [] },
         comment: "Every boundary.tool workflow in the app. Name them here to narrow.",
-        ui: { x: 820, y: 40 },
+        ui: { x: 900, y: 60 },
       },
       {
         id: "agent",
@@ -275,10 +336,34 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         config: {
           name: agent.name,
           instructions: agent.instructions,
-          ...(agent.model ? { model: agent.model } : {}),
         },
-        comment: "THE agent. Edit instructions/model here; wire guardrails/handoffs in.",
-        ui: { x: 1080, y: 40 },
+        comment: "THE agent. Edit instructions here; the model comes from resolveModel (per-turn alias → pin → default).",
+        ui: { x: 1140, y: 60 },
+      },
+      // Voice/avatar turns (body `avatar: true`) get a spoken, conversational
+      // instruction style. avatarInstr holds the full avatar prompt; pickInstr
+      // feeds it into agent.instructions only when avatarOn, else leaves the input
+      // unwired (undefined) so the agent keeps its configured instructions.
+      {
+        id: "avatarInstr",
+        op: "core.const.string",
+        config: { value: agent.instructions + AVATAR_NOTE },
+        comment: "Spoken-style instructions used only on voice/avatar turns.",
+        ui: { x: 660, y: 540 },
+      },
+      { id: "avatarOn", op: "core.cast.toBoolean", comment: "body.avatar → a definite boolean (missing ⇒ false).", ui: { x: 660, y: 440 } },
+      {
+        id: "pickInstr",
+        op: "core.value.select",
+        comment: "avatarOn ? avatar instructions : (unwired ⇒ the agent's configured instructions).",
+        ui: { x: 900, y: 480 },
+      },
+      ...aModel.nodes,
+      {
+        id: "resolveModel",
+        op: "chat.model.resolve",
+        comment: "Per-turn model: a language alias picked in the UI overrides the pin / app default.",
+        ui: { x: 1140, y: 300 },
       },
       ...(guard
         ? [
@@ -287,7 +372,7 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
               op: "agents.guardrail",
               config: { tool: GUARDRAIL_TOOL_NAME, direction: "input" as const },
               comment: "Professional-conduct input guardrail (CHAT_GUARDRAIL=off to drop this).",
-              ui: { x: 1080, y: 300 },
+              ui: { x: 1140, y: 420 },
             },
           ]
         : []),
@@ -295,8 +380,8 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         id: "run",
         op: "agents.run",
         config: { maxTurns: opts.maxTurns },
-        comment: "Streams turn events; needs OPENAI_API_KEY (or wire vault.read → apiKey).",
-        ui: { x: 1340, y: 200 },
+        comment: "Streams turn events; runs on the wired ai.model or the app's default model.",
+        ui: { x: 1380, y: 200 },
       },
       {
         id: "sink",
@@ -304,16 +389,16 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         comment: "Persists events + history; notifies WS rooms; guarantees a terminal state.",
         ui: { x: 1620, y: 80 },
       },
-      { id: "ok", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 1620, y: 320, pair: "in" } },
-      { id: "err", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 600, y: 420 } },
+      { id: "ok", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 1620, y: 300, pair: "in" } },
+      { id: "err", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 900, y: 440 } },
       // Decompose the request into chat.turn.begin's pure ports (the op never
       // sees HTTP): id from params, content + turnId from the body, the device
       // id from the cookies port. The conflict/not-found path maps begin's
       // httpOutcome to a status.
-      { id: "ex_params", op: "core.object.extract", config: { keys: ["id"] }, ui: { x: 180, y: 120 } },
-      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId"] }, ui: { x: 180, y: 280 } },
-      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 180, y: 360 } },
-      { id: "errStatus", op: "boundary.http.status", ui: { x: 600, y: 320 } },
+      { id: "ex_params", op: "core.object.extract", config: { keys: ["id"] }, ui: { x: 240, y: 60 } },
+      { id: "ex_body", op: "core.object.extract", config: { keys: ["content", "turnId", "model", "avatar"] }, ui: { x: 240, y: 180 } },
+      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 240, y: 300 } },
+      { id: "errStatus", op: "boundary.http.status", ui: { x: 680, y: 440 } },
     ],
     edges: [
       { from: { node: "in", port: "params" }, to: { node: "ex_params", port: "object" } },
@@ -336,6 +421,18 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
             { from: { node: "guard", port: "guardrail" }, to: { node: "agent", port: "guardrails" } },
           ]
         : []),
+      // Model resolution: the pin (aModel.edges) feeds resolveModel.fallback; the
+      // per-turn alias from the body feeds resolveModel.alias; the result is the
+      // agent's model (undefined ⇒ app default).
+      ...aModel.edges,
+      { from: { node: "ex_body", port: "model" }, to: { node: "resolveModel", port: "alias" } },
+      { from: { node: "resolveModel", port: "model" }, to: { node: "agent", port: "model" } },
+      // Per-turn instruction style: body.avatar → bool → select avatar instructions
+      // (or leave unwired) → the agent's instructions input (overrides config).
+      { from: { node: "ex_body", port: "avatar" }, to: { node: "avatarOn", port: "value" } },
+      { from: { node: "avatarOn", port: "out" }, to: { node: "pickInstr", port: "cond" } },
+      { from: { node: "avatarInstr", port: "out" }, to: { node: "pickInstr", port: "then" } },
+      { from: { node: "pickInstr", port: "out" }, to: { node: "agent", port: "instructions" } },
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
       { from: { node: "begin", port: "input" }, to: { node: "run", port: "input" } },
       { from: { node: "begin", port: "history" }, to: { node: "run", port: "history" } },
@@ -360,9 +457,14 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
 
 /** HITL: approve/deny an interrupted turn → the SAME turn resumes streaming. */
 export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
+  const aModel = modelInjection(opts.agent.model, "agent", { x: 1080, y: 220 });
   return {
     id: "chat.approval.pipeline",
     name: "Chat · approval pipeline",
+    description:
+      "Human-in-the-loop resume: POST an approve/deny decision for an interrupted turn → re-lease the conversation, " +
+      "replay the saved agent state with the decisions applied, and the SAME turn resumes streaming (SSE) while the " +
+      "sink persists. The sibling of the turn pipeline — fork them together if a namespace changes the agent.",
     source: "code",
     nodes: [
       {
@@ -373,29 +475,48 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
           path: `${opts.mount}/api/:ns/conversations/:id/turns/:turnId/approve`,
           ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}),
         },
+        ui: { x: 40, y: 240, pair: "ok" },
       },
-      { id: "begin", op: "chat.approval.begin", config: { ttlMs: opts.turnTtlMs } },
-      { id: "gate", op: "core.flow.branch" },
-      { id: "tools", op: "agents.tools.workflows", config: { tools: [] } },
+      {
+        id: "begin",
+        op: "chat.approval.begin",
+        config: { ttlMs: opts.turnTtlMs },
+        comment: "Scope check + re-lease + load the interrupted turn's saved state. Conflict → 409 path.",
+        ui: { x: 460, y: 240 },
+      },
+      { id: "gate", op: "core.flow.branch", ui: { x: 680, y: 240 } },
+      {
+        id: "tools",
+        op: "agents.tools.workflows",
+        config: { tools: [] },
+        comment: "Same toolset as the turn pipeline — the resumed run needs the tool that interrupted.",
+        ui: { x: 900, y: 60 },
+      },
       {
         id: "agent",
         op: "agents.agent",
         config: {
           name: opts.agent.name,
           instructions: opts.agent.instructions,
-          ...(opts.agent.model ? { model: opts.agent.model } : {}),
         },
         comment: "Must reify the same agent shape as the turn pipeline.",
+        ui: { x: 1140, y: 60 },
       },
-      { id: "resume", op: "agents.run.resume" },
-      { id: "sink", op: "chat.events.sink" },
-      { id: "ok", op: "boundary.http.response", config: { mode: "sse" } },
-      { id: "err", op: "boundary.http.response", config: { mode: "buffered" } },
+      ...aModel.nodes,
+      {
+        id: "resume",
+        op: "agents.run.resume",
+        comment: "Replays the saved state with the decisions; streams the rest of the turn.",
+        ui: { x: 1380, y: 200 },
+      },
+      { id: "sink", op: "chat.events.sink", comment: "Persists events + history; notifies WS rooms.", ui: { x: 1620, y: 80 } },
+      { id: "ok", op: "boundary.http.response", config: { mode: "sse" }, ui: { x: 1620, y: 300, pair: "in" } },
+      { id: "err", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 900, y: 440 } },
       // Decompose into chat.approval.begin's pure ports: id + turnId from
       // params, the decision from the body, the device id from cookies.
-      { id: "ex_params", op: "core.object.extract", config: { keys: ["id", "turnId"] } },
-      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" } },
-      { id: "errStatus", op: "boundary.http.status" },
+      { id: "ex_params", op: "core.object.extract", config: { keys: ["id", "turnId"] }, ui: { x: 240, y: 120 } },
+      { id: "ex_cookie", op: "core.object.get", config: { path: "chat_device" }, ui: { x: 240, y: 320 } },
+      { id: "errStatus", op: "boundary.http.status", ui: { x: 680, y: 440 } },
     ],
     edges: [
       { from: { node: "in", port: "params" }, to: { node: "ex_params", port: "object" } },
@@ -408,6 +529,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
       { from: { node: "begin", port: "ok" }, to: { node: "gate", port: "condition" } },
       { from: { node: "gate", port: "then" }, to: { node: "tools", port: "in" } },
       { from: { node: "tools", port: "toolset" }, to: { node: "agent", port: "tools" } },
+      ...aModel.edges,
       { from: { node: "agent", port: "agent" }, to: { node: "resume", port: "agent" } },
       { from: { node: "begin", port: "stateToken" }, to: { node: "resume", port: "stateToken" } },
       { from: { node: "begin", port: "decisions" }, to: { node: "resume", port: "decisions" } },
@@ -426,6 +548,177 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
   };
 }
 
+/**
+ * A callable tool: the chat agent generates an image from a prompt. Resolves the
+ * "image" alias (create it in admin → Settings → AI Providers, e.g. openai ·
+ * gpt-image-1), generates the image, and returns a MediaRef the chat UI renders
+ * inline. Auto-discovered by `agents.tools.workflows`.
+ */
+export function imageToolWorkflow(_opts: ResolvedChatOptions): Workflow {
+  return {
+    id: "chat.tool.image",
+    name: "Chat · tool · generate image",
+    description:
+      'A tool the chat agent can call to generate an image from a prompt. Resolves the "image" alias, generates ' +
+      "the image, and returns a MediaRef the chat UI shows inline. Configure an image alias in Settings → AI Providers.",
+    source: "code",
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.tool",
+        config: {
+          name: "generate_image",
+          description: "Generate an image from a text prompt. The image is shown to the user automatically.",
+          params: { type: "object", properties: { prompt: { type: "string", description: "What to draw." } }, required: ["prompt"] },
+        },
+        ui: { x: 40, y: 180, pair: "out" },
+      },
+      { id: "prompt", op: "core.object.get", config: { path: "prompt" }, comment: "Pull the prompt out of the tool args.", ui: { x: 300, y: 80 } },
+      {
+        id: "model",
+        op: "ai.alias",
+        config: { alias: "image" },
+        comment: 'The "image" alias — create it in Settings → AI Providers (e.g. openai · gpt-image-1).',
+        ui: { x: 300, y: 300 },
+      },
+      { id: "gen", op: "ai.image.generate", config: { n: 1 }, comment: "Generate the image (raw bytes + mime).", ui: { x: 560, y: 180 } },
+      { id: "put", op: "store.blob.put", comment: "Persist it explicitly; `ref` is the MediaRef the chat UI renders inline.", ui: { x: 760, y: 180 } },
+      { id: "out", op: "boundary.tool.return", ui: { x: 960, y: 180, pair: "in" } },
+    ],
+    edges: [
+      { from: { node: "in", port: "args" }, to: { node: "prompt", port: "object" } },
+      { from: { node: "prompt", port: "out" }, to: { node: "gen", port: "prompt" } },
+      { from: { node: "model", port: "model" }, to: { node: "gen", port: "model" } },
+      { from: { node: "gen", port: "image" }, to: { node: "put", port: "data" } },
+      { from: { node: "put", port: "ref" }, to: { node: "out", port: "result" } },
+    ],
+  };
+}
+
+/**
+ * Agents-as-tools, the reference example: a focused "researcher" sub-agent
+ * exposed as a callable tool. The chat agent delegates a topic; the sub-agent
+ * runs its own `agents.run` (a linked sub-run, deep-linked in the admin) and
+ * returns a briefing. No model wired ⇒ it runs on the app's default model.
+ */
+export function researcherToolWorkflow(_opts: ResolvedChatOptions): Workflow {
+  return {
+    id: "chat.tool.researcher",
+    name: "Chat · tool · researcher (agent-as-tool)",
+    description:
+      "A sub-agent exposed as a callable tool: the chat agent delegates a topic to a focused 'researcher' agent " +
+      "(its own agents.run, a linked sub-run) and gets back a briefing. The reference example for agents-as-tools.",
+    source: "code",
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.tool",
+        config: {
+          name: "research",
+          description: "Delegate a topic to a focused research sub-agent; returns a concise briefing.",
+          params: { type: "object", properties: { topic: { type: "string", description: "The topic to research." } }, required: ["topic"] },
+        },
+        ui: { x: 40, y: 180, pair: "out" },
+      },
+      { id: "topic", op: "core.object.get", config: { path: "topic" }, comment: "Pull the topic out of the tool args.", ui: { x: 300, y: 80 } },
+      {
+        id: "agent",
+        op: "agents.agent",
+        config: {
+          name: "Researcher",
+          instructions:
+            "You are a focused research assistant. Given a topic, produce a concise, well-structured briefing: the key " +
+            "points, useful distinctions, and any caveats. Be accurate and say so when you are uncertain.",
+        },
+        comment: "The sub-agent. No model wired ⇒ it runs on the app's default model.",
+        ui: { x: 300, y: 300 },
+      },
+      { id: "run", op: "agents.run", config: { maxTurns: 4 }, comment: "Runs the sub-agent as a linked sub-run (deep-links in the admin).", ui: { x: 580, y: 200 } },
+      { id: "out", op: "boundary.tool.return", ui: { x: 860, y: 200, pair: "in" } },
+    ],
+    edges: [
+      { from: { node: "in", port: "args" }, to: { node: "topic", port: "object" } },
+      { from: { node: "topic", port: "out" }, to: { node: "run", port: "input" } },
+      { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
+      { from: { node: "run", port: "output" }, to: { node: "out", port: "result" } },
+    ],
+  };
+}
+
+/**
+ * Speech-to-text for the composer mic: the SPA uploads the recording via the
+ * blob route, then POSTs { blobId, mime } here. We rebuild a MediaRef and run
+ * `ai.transcribe` (the "transcription" alias) → { text }.
+ */
+export function transcribeRouteWorkflow(opts: ResolvedChatOptions): Workflow {
+  return {
+    id: "chat.route.transcribe",
+    name: `Chat · POST ${opts.mount}/api/:ns/transcribe`,
+    description: 'Speech-to-text: an uploaded audio blob → ai.transcribe → { text }. Resolves the "transcription" alias.',
+    source: "code",
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.http.request",
+        config: { method: "POST", path: `${opts.mount}/api/:ns/transcribe`, ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}) },
+        ui: { x: 40, y: 160 },
+      },
+      { id: "ex", op: "core.object.extract", config: { keys: ["blobId", "mime"] }, ui: { x: 280, y: 160 } },
+      { id: "audio", op: "core.object.build", config: { keys: ["blobId", "mime"] }, comment: "Rebuild a MediaRef from the uploaded blob.", ui: { x: 520, y: 160 } },
+      { id: "model", op: "ai.alias", config: { alias: "transcription" }, comment: 'The "transcription" alias (e.g. openai · whisper-1).', ui: { x: 520, y: 340 } },
+      { id: "tr", op: "ai.transcribe", ui: { x: 780, y: 240 } },
+      { id: "body", op: "core.object.build", config: { keys: ["text"] }, ui: { x: 1040, y: 240 } },
+      { id: "out", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 1280, y: 240 } },
+    ],
+    edges: [
+      { from: { node: "in", port: "body" }, to: { node: "ex", port: "object" } },
+      { from: { node: "ex", port: "blobId" }, to: { node: "audio", port: "blobId" } },
+      { from: { node: "ex", port: "mime" }, to: { node: "audio", port: "mime" } },
+      { from: { node: "audio", port: "out" }, to: { node: "tr", port: "audio" } },
+      { from: { node: "model", port: "model" }, to: { node: "tr", port: "model" } },
+      { from: { node: "tr", port: "text" }, to: { node: "body", port: "text" } },
+      { from: { node: "body", port: "out" }, to: { node: "out", port: "body" } },
+    ],
+  };
+}
+
+/**
+ * Text-to-speech for assistant messages: { text } → `ai.speech.generate` (the
+ * "speech" alias) → `store.blob.put` → a MediaRef the SPA plays from
+ * /store/blobs/:id. The save is an explicit node, not baked into the op.
+ */
+export function speechRouteWorkflow(opts: ResolvedChatOptions): Workflow {
+  return {
+    id: "chat.route.speech",
+    name: `Chat · POST ${opts.mount}/api/:ns/speech`,
+    description: 'Text-to-speech: { text } → ai.speech.generate → store.blob.put → a MediaRef the SPA plays. Resolves the "speech" alias.',
+    source: "code",
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.http.request",
+        config: { method: "POST", path: `${opts.mount}/api/:ns/speech`, ...(opts.requireAuth !== undefined ? { requireAuth: opts.requireAuth } : {}) },
+        ui: { x: 40, y: 160 },
+      },
+      { id: "text", op: "core.object.get", config: { path: "text" }, ui: { x: 280, y: 120 } },
+      { id: "instr", op: "core.object.get", config: { path: "instructions" }, comment: "Optional voice-tone steering for promptable TTS.", ui: { x: 280, y: 220 } },
+      { id: "model", op: "ai.alias", config: { alias: "speech" }, comment: 'The "speech" alias (e.g. openai · gpt-4o-mini-tts).', ui: { x: 280, y: 340 } },
+      { id: "sp", op: "ai.speech.generate", ui: { x: 540, y: 240 } },
+      { id: "put", op: "store.blob.put", comment: "Persist the audio explicitly; `ref` (a MediaRef with blobId) goes back to the SPA, which plays /store/blobs/:id.", ui: { x: 760, y: 240 } },
+      { id: "out", op: "boundary.http.response", config: { mode: "buffered" }, ui: { x: 980, y: 240 } },
+    ],
+    edges: [
+      { from: { node: "in", port: "body" }, to: { node: "text", port: "object" } },
+      { from: { node: "in", port: "body" }, to: { node: "instr", port: "object" } },
+      { from: { node: "text", port: "out" }, to: { node: "sp", port: "text" } },
+      { from: { node: "instr", port: "out" }, to: { node: "sp", port: "instructions" } },
+      { from: { node: "model", port: "model" }, to: { node: "sp", port: "model" } },
+      { from: { node: "sp", port: "audio" }, to: { node: "put", port: "data" } },
+      { from: { node: "put", port: "ref" }, to: { node: "out", port: "body" } },
+    ],
+  };
+}
+
 /** The SPA: `boundary.http.app` (where) → `chat.app` (what, branded) → serve.
  *  One per instance; the chat.app node carries the namespace + the backend api
  *  root, which the host injects as window.__APP__ for the bundle to read. */
@@ -437,6 +730,9 @@ export function spaWorkflow(inst: ResolvedInstance): Workflow {
   return {
     id: `chat.spa${suffix}`,
     name: `Chat · SPA${suffix ? ` (${inst.namespace})` : ""}`,
+    description:
+      `Serves the chat app at ${inst.mount} — the app trio (mount → branded bundle → serve) that turns a built ` +
+      "SPA into a route. Declare another instance in chatMod options for a second branded copy on the same backend.",
     source: "code",
     nodes: [
       { id: "mount", op: "boundary.http.app", config: { mount: inst.mount }, ui: { x: 60, y: 60, pair: "serve" } },

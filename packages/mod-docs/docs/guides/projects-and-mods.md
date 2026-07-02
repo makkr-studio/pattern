@@ -43,8 +43,8 @@ workflow `.json`. You get the `engine` back to do anything else.
 
 ## Boundaries are declarative
 
-Routing is **not** wired in code. Each `boundary.http.request` node carries its
-own route in config — method, path, port, CORS, and JSON-Schema validation for
+Routing is declarative. Each `boundary.http.request` node carries its
+own route in config: method, path, port, CORS, and JSON-Schema validation for
 body/query:
 
 ```jsonc
@@ -64,15 +64,15 @@ body/query:
 
 The host derives its routes by scanning registered workflows for these nodes.
 Invalid bodies/queries get a `400` with located issues before the graph runs;
-valid (and coerced) values flow out of the trigger's `body`/`query` ports — and
-because the port schemas are derived from the same JSON Schema, downstream value
+valid (and coerced) values flow out of the trigger's `body`/`query` ports.
+Because the port schemas are derived from the same JSON Schema, downstream value
 edges are type-checked too.
 
 **Ports.** A route binds to its op `config.port` if set, otherwise the host
 default. The default resolves as `defaultPort` (e.g. `pattern.config.json`'s
 `http.port`, or the `HttpHost` option) → the `PORT` env var → `3000`. Routes are
-grouped by resolved port, so `start()` opens **one server per distinct port** —
-a public API and an admin/metrics endpoint can live on different ports just by
+grouped by resolved port, so `start()` opens **one server per distinct port**:
+a public API and an admin/metrics endpoint can live on different ports by
 declaring `port` on the latter.
 
 The JSON-Schema subset → Zod compiler is `jsonSchemaToZod` (in core); it's
@@ -82,20 +82,20 @@ runtime-neutral, so it serves both request validation and graph typing.
 
 Workflows are data, but a deployment needs to inject values (ports, hosts,
 secrets, flags). Config supports two forms, resolved when the workflow is
-registered — **before** validation, so typed refs satisfy the op's schema. `core`
+registered, **before** validation, so typed refs satisfy the op's schema. `core`
 resolves against an injected env map (runtime-neutral); `loadProject` injects
 `process.env`.
 
-**Typed object form** — for scalars that need a real type:
+**Typed object form**: for scalars that need a real type:
 
 ```jsonc
 { "$env": "ADMIN_PORT", "type": "number", "default": 3001 }
 ```
 
-- `type`: `string` (default) · `number` · `integer` · `boolean` · `json` — casts the env string.
+- `type`: `string` (default) · `number` · `integer` · `boolean` · `json`. Casts the env string.
 - `default`: used when the var is unset/empty. **No default + unset → a loud error** at registration (catches misconfig early).
 
-**String interpolation** — for building strings:
+**String interpolation**: for building strings:
 
 ```jsonc
 "redis://${REDIS_HOST}:${REDIS_PORT:-6379}"   // :-fallback; always a string
@@ -109,7 +109,7 @@ loader): `resolveWorkflowEnv(workflow, env)` or, on the engine, pass
 ## Config ports (the resolve phase)
 
 `$env` covers the common case, but a boundary's config can also be **fed by
-ops** — for fully computed configuration. A boundary op exposes *config ports*
+ops**, for fully computed configuration. A boundary op exposes *config ports*
 (`boundary.http.request` → `method`, `path`, `port`); wire an op into one and the
 engine evaluates the feeding sub-graph **once at registration** (the "resolve
 phase"), freezes the result into config, and drops the edge. The remaining graph
@@ -122,26 +122,26 @@ is the per-request runtime graph.
 { "id": "p", "op": "core.env", "config": { "name": "SVC_PORT", "type": "number", "default": 3000 } }
 ```
 
-Because it's just ops, config can be *computed* — e.g. an env var → a
+Because it's ops, config can be *computed*: an env var → a
 `core.string.template` → the `path`. `core.env` reads the injected `ctx.env`
 (same map as `$env`), with type casting + default.
 
 Rules and mechanics:
 
 - **Two clocks.** Config ports resolve at registration; the rest runs per request.
-- **Purity.** The config sub-graph must be pure sources/transforms — **no
+- **Purity.** The config sub-graph must be pure sources/transforms: **no
   triggers, nothing reachable from a trigger** (config can't depend on the
   request). Violations are a clear error.
 - **Async registration.** Resolving runs ops, so use
   `await engine.registerWorkflowAsync(wf)` (what `loadProject` calls). Plain
   `engine.registerWorkflow(wf)` stays synchronous for static / `$env` config and
   throws a helpful error if a workflow uses config ports.
-- **`$env` is the sugar**, config ports are the composable form — keep both.
+- **`$env` is the sugar**, config ports are the composable form; keep both.
 
 ## Workflows are modifiable at runtime
 
 The workflow registry is observable and mutable. Add, replace, or remove a
-workflow at any time — the HTTP host re-derives its routes live (opening/closing
+workflow at any time: the HTTP host re-derives its routes live (opening/closing
 servers per declared port):
 
 ```ts
@@ -160,24 +160,24 @@ first, so reloading never leaves stale wiring behind.
 
 Runs execute **on the host event loop by default**. That's the right place for
 the common case: an I/O-bound workflow (HTTP calls, DB reads, an LLM stream)
-spends its time *awaiting*, and the loop is already free during an await — moving
+spends its time *awaiting*, and the loop is already free during an await: moving
 it to a worker would only add a serialization round-trip for no gain. A run only
 *holds* the loop when an op does **synchronous compute** (a tight numeric loop,
-parsing a big blob, crypto); while that op runs, nothing else does — including
+parsing a big blob, crypto); while that op runs, nothing else does, including
 the admin.
 
 So offload is **selective and author-controlled, at the workflow level**:
 
 - Set a workflow's **`offload`** flag (editor → toolbar gear → *Workflow
-  settings*, or `"offload": true` in the JSON) and the engine runs that whole
-  workflow on a **worker pool** instead of the loop. Everything else stays
-  inline. The flag is the unit because the seam is then crossed once per run (at
-  the boundaries), not once per node — lower latency than per-op offload, and
+  settings*, or `"offload": true` in the JSON) and the engine moves that whole
+  workflow off the loop onto a **worker pool**. Everything else stays
+  inline. The flag is the unit because the seam is then crossed once per run, at
+  the boundaries: lower latency than per-op offload, and
   simpler to reason about.
-- An op can declare **`cpuHeavy: true`** — purely a *signal* (like
+- An op can declare **`cpuHeavy: true`**: purely a *signal* (like
   `sensitivity`). It routes nothing; it makes the editor **nudge**: the gear
-  badges amber and the validator warns "*N cpu-heavy nodes — Offload
-  recommended*" when such a node sits in a non-offloaded workflow.
+  badges amber and the validator recommends turning on Offload when such a node
+  sits in a non-offloaded workflow.
 
 Configure the pool in `pattern.config.json` with **`workers`**:
 
@@ -191,13 +191,13 @@ Configure the pool in `pattern.config.json` with **`workers`**:
 
 `workers` as a number is the pool size; the object form also picks which mods
 each worker loads (default: the project's `mods`). Exclude host-only mods (e.g.
-`@pattern-js/mod-admin`) from the worker set via the `{ mods }` form — workers run
-domain ops, not the control plane. **With no `workers` configured, an `offload`
-flag degrades to a graceful no-op** (the run stays inline).
+`@pattern-js/mod-admin`) from the worker set via the `{ mods }` form: workers run
+domain ops while the control plane stays on the host. **With no `workers`
+configured, an `offload` flag degrades to a graceful no-op** (the run stays inline).
 
 Limits to know: an offloaded workflow runs on the worker's **own** service/store
-instances (a separate connection — fine for file/DB-backed state, not for
-in-memory shared state), it **cannot reach live WebSocket sockets** (the
+instances (a separate connection: fine for file/DB-backed state, but in-memory
+shared state won't carry across), it **cannot reach live WebSocket sockets** (the
 validator warns if an offloaded workflow uses `boundary.ws.*`), and offloaded
 runs **aren't pausable** from the editor. The admin's **Process** page shows the
 hybrid (inline default + the worker pool's size/inflight) and benchmarks the
@@ -206,8 +206,8 @@ difference a pool makes on a CPU-bound workflow.
 ## Mods
 
 A **mod** is any module exporting a `PatternMod` (default export). It contributes
-ops, workflows, auth providers, and hooks (bringing a frontend app is a planned
-field):
+ops, workflows (including HTTP routes and SPA serving), auth providers, hooks,
+admin pages (`frontend`), and a docs chapter (`docs`):
 
 ```ts
 import { defineMod } from "@pattern-js/core";
@@ -223,7 +223,7 @@ export default defineMod({
 });
 ```
 
-`setup` sees only the mods loaded before it; `ready` sees the whole batch — use
+`setup` sees only the mods loaded before it; `ready` sees the whole batch: use
 it for work that depends on other mods' ops (the admin bootstraps its stored
 workflows there, so they may use ops from mods listed after it).
 
@@ -237,4 +237,4 @@ Three sources, one mechanism (`engine.useAsync(mod)` under the hood):
 
 `loadProject` loads them from `pattern.config.json`; or load explicitly with
 `loadMods(engine, ["@acme/mod-x", "./mods/local.mjs"], { baseDir })`. A 3rd-party
-mod is just an npm package — install it and add its name to the config.
+mod is an npm package: install it and add its name to the config.

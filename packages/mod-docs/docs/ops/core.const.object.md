@@ -1,1 +1,1 @@
-Emit a fixed key/value object from `config.value` — a static set of headers, a default config blob, a template payload. For an arbitrary (non-object) JSON literal or one you want schema-validated at author time, reach for `core.const.json`.
+Emit a fixed key/value object from `config.value`: a static set of headers, a default config blob, a template payload. For an arbitrary (non-object) JSON literal or one you want schema-validated at author time, reach for `core.const.json`.

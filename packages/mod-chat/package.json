@@ -1,7 +1,15 @@
 {
   "name": "@pattern-js/mod-chat",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "A complete chat application for Pattern agents: transcript-style SPA (the strand shows tool calls live), conversations + turn event log in mod-store (refresh mid-turn recovers), lease-guarded turns with Stop, image input, HITL approvals — the turn pipeline is a workflow you can fork and rewire.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "chat",
+    "agents",
+    "assistant",
+    "sse"
+  ],
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -28,20 +36,25 @@
     "@pattern-js/core": "workspace:*",
     "@pattern-js/mod-agents": "workspace:*",
     "@pattern-js/mod-store": "workspace:*",
-    "zod": "^4.0.0",
-    "@pattern-js/runtime-node": "workspace:*"
+    "@pattern-js/runtime-node": "workspace:*",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
+    "@ricky0123/vad-web": "^0.0.30",
+    "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^22.0.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.0",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "tailwindcss": "^4.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "@webgpu/types": "^0.1.71",
+    "lucide-react": "^1.17.0",
+    "onnxruntime-web": "^1.27.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwindcss": "^4.3.0",
     "typescript": "^5.6.0",
-    "vite": "^5.4.0"
+    "vite": "^8.0.16",
+    "vite-plugin-static-copy": "^4.1.1"
   },
   "engines": {
     "node": ">=22.5"

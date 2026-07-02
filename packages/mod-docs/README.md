@@ -1,7 +1,9 @@
 # @pattern-js/mod-docs
 
+[pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/mod-docs)
+
 Self-reflecting documentation for Pattern apps. A markdown-first docs app at
-`/docs` — the admin's visual language, tuned for reading — where **every
+`/docs` (the admin's visual language, tuned for reading) where **every
 installed mod contributes its own chapter**, first or third party: install a
 mod, its docs appear; the markdown ships inside the npm package, so what you
 read always matches the version you run.
@@ -13,18 +15,19 @@ read always matches the version you run.
 
 ## What you get
 
-- **The Pattern handbook** — concepts + guides (create an app, projects &
+- **The Pattern handbook**: concepts + guides (create an app, projects &
   mods, authoring ops, identity, agents & chat, the admin), shipped with this
   package.
-- **A generated op reference** (`/docs/ops`) — rendered from the LIVE registry
+- **A generated op reference** (`/docs/ops`): rendered from the LIVE registry
   of your installation: ports, config schemas, contributing mod, used-by.
   Hand-written "when to use" prose merges in via the `ops/<op.type>.md`
-  convention. The signatures can't go stale; they're never written down.
-- **Installed mods** (`/docs/mods`) — what each mod actually contributed.
-- **Live workflow embeds** — a ` ```workflow ` fence containing workflow JSON
+  convention. The signatures are generated from the registry, so they can't go
+  stale.
+- **Installed mods** (`/docs/mods`): what each mod actually contributed.
+- **Live workflow embeds**: a ` ```workflow ` fence containing workflow JSON
   renders as a real read-only graph (lazy-loaded; reading stays light).
 - **⌘K search** across every chapter + the op reference.
-- **`/docs/llms.txt`** — the whole doc set as one markdown body for agent
+- **`/docs/llms.txt`**: the whole doc set as one markdown body for agent
   readers, plus a raw `.md` view per page.
 
 ## Extending (any mod, including yours)

@@ -49,12 +49,16 @@ export function ManifestPage() {
   }
 
   const menu = manifest?.menu.find((m) => m.path === page.path);
-  const title = menu?.label ?? page.path.split("/").filter((s) => s && !s.startsWith(":")).pop() ?? page.path;
+  const title = page.title ?? menu?.label ?? page.path.split("/").filter((s) => s && !s.startsWith(":")).pop() ?? page.path;
+  // A mod controls its chrome: a custom title/subtitle, or `header: false` to
+  // suppress the shell header entirely and render its own.
+  const header = (fallbackSubtitle: string) =>
+    page.header === false ? null : <PageHeader title={title} subtitle={page.subtitle ?? fallbackSubtitle} />;
   if (page.view || page.views) {
     const sections = page.views ?? [{ title: undefined, view: page.view! }];
     return (
       <>
-        <PageHeader title={title} subtitle="Contributed by a mod (Tier-1 declarative page)." />
+        {header("Contributed by a mod (Tier-1 declarative page).")}
         <div className="space-y-6">
           {sections.map((s, i) => (
             <section key={i}>
@@ -70,7 +74,7 @@ export function ManifestPage() {
     const Remote = remote(page.remote);
     return (
       <>
-        <PageHeader title={title} subtitle="Contributed by a mod (Tier-2 ESM remote)." />
+        {header("Contributed by a mod (Tier-2 ESM remote).")}
         <Suspense fallback={<Spinner />}>
           <Remote />
         </Suspense>
