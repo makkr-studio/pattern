@@ -31,9 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # No version here: pnpm/action-setup reads `packageManager` from package.json,
+      # so the workflow can never drift from the version the lockfile was built with.
       - uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.9
 
       - uses: actions/setup-node@v6
         with:
