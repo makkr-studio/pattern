@@ -3,7 +3,7 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
-## 0.3.0 — unreleased
+## 0.3.0 — 2026-07-02
 
 The AI, sign-in & email release: a native agent loop over any provider, a chat
 app with voice, real login methods, and transactional email — plus a full

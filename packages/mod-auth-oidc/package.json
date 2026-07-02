@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-auth-oidc",
-  "version": "0.2.44",
+  "version": "0.3.0",
   "description": "OIDC login for Pattern — sign users in with Google, Microsoft, Keycloak or any OpenID Connect issuer. Authorization-code flow with PKCE, ID tokens verified with jose, sessions minted by mod-identity. Code-configured (a small wrapper mod); several providers side by side.",
   "keywords": [
     "pattern",
