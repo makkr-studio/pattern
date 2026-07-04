@@ -15,6 +15,7 @@ export { EmailConfigService, DEFAULT_ACCOUNT, emailSettingsSchema, type EmailSet
 export { DefaultEmailService, type EmailService, type SendResult, type TestResult } from "./service.js";
 export { renderEmailMarkdown } from "./markdown.js";
 export { deliverTokenWorkflow } from "./delivery.js";
+export { verifySvix, type VerifySvixInput } from "./webhook.js";
 
 export {
   secretRefSchema,
@@ -29,5 +30,8 @@ export {
   type EmailMessage,
   type EmailDriverSpec,
   type EmailDriverInfo,
+  type InboundAttachment,
+  type InboundEmailMessage,
+  type InboundInput,
   type SendInput,
 } from "./types.js";

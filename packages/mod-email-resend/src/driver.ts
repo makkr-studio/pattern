@@ -24,6 +24,7 @@ function wireBody(message: EmailMessage): Record<string, unknown> {
     subject: message.subject,
     ...(message.html ? { html: message.html } : {}),
     ...(message.text ? { text: message.text } : {}),
+    ...(message.headers && Object.keys(message.headers).length ? { headers: message.headers } : {}),
     ...(message.attachments?.length
       ? {
           attachments: message.attachments.map((a) => ({
@@ -39,7 +40,11 @@ function wireBody(message: EmailMessage): Record<string, unknown> {
 export const resendDriver: EmailDriverSpec = {
   id: "resend",
   label: "Resend",
-  secrets: [{ field: "apiKey", label: "API key", required: true }],
+  secrets: [
+    { field: "apiKey", label: "API key", required: true },
+    // Inbound: the whsec_… signing secret of your Resend inbound webhook.
+    { field: "webhookSecret", label: "Inbound webhook secret", required: false },
+  ],
   options: [{ field: "baseUrl", label: "API base URL", required: false, placeholder: DEFAULT_BASE_URL }],
   async send(message, creds, options) {
     const base = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");

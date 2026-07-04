@@ -17,6 +17,7 @@ import { EmailConfigService } from "./config.js";
 import { DefaultEmailService } from "./service.js";
 import { EMAIL_CONFIG_SERVICE, EMAIL_SERVICE } from "./well-known.js";
 import { accountOp } from "./ops/account.js";
+import { inboundOps } from "./ops/inbound.js";
 import { sendOp } from "./ops/send.js";
 import { deliverTokenWorkflow } from "./delivery.js";
 import { emailAdminRoutes, emailFrontend, settingsOps } from "./settings.js";
@@ -42,7 +43,7 @@ export function emailMod(options: EmailModOptions = {}): PatternMod {
   return defineMod({
     name: "@pattern-js/mod-email",
     docs: { filesystem: "email-docs", title: "Email", order: 43 },
-    ops: [sendOp, accountOp, ...settingsOps],
+    ops: [sendOp, accountOp, ...inboundOps, ...settingsOps],
     // The delivery workflow registers unconditionally: without mod-identity its
     // hook is auto-declared and never invoked (inert); with it, delivery starts
     // the moment a "default" account exists.

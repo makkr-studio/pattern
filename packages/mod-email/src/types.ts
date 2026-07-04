@@ -93,6 +93,8 @@ export interface EmailMessage {
   html?: string;
   text?: string;
   attachments?: EmailAttachment[];
+  /** Extra RFC-5322 headers (In-Reply-To/References for threading, X-* tags). */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -132,4 +134,52 @@ export interface SendInput {
   html?: string;
   text?: string;
   attachments?: AttachmentInput[];
+  /** Extra RFC-5322 headers, passed to the driver verbatim (threading, X-* tags). */
+  headers?: Record<string, string>;
+}
+
+/* ── inbound (0.4.0: the contract learns to receive) ──────────────────── */
+
+/** What a webhook driver hands `EmailService.ingestInbound` — bytes still inline. */
+export interface InboundInput {
+  /** The receiving account name (the webhook route knows which account it serves). */
+  account: string;
+  from: string;
+  to: string | string[];
+  cc?: string | string[];
+  subject?: string;
+  text?: string;
+  html?: string;
+  headers?: Record<string, string>;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  attachments?: Array<{ filename?: string; mime?: string; content: Uint8Array }>;
+  receivedAt?: number;
+}
+
+/** An inbound attachment AFTER ingestion: bytes live in the blob store. */
+export interface InboundAttachment {
+  /** Absent when mod-store isn't installed (bytes were dropped, meta kept). */
+  blobId?: string;
+  filename: string;
+  mime: string;
+  size: number;
+}
+
+/** What flows out of the `email.inbound` trigger (and rides the event bus). */
+export interface InboundEmailMessage {
+  account: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  text?: string;
+  html?: string;
+  headers: Record<string, string>;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  attachments: InboundAttachment[];
+  receivedAt: number;
 }

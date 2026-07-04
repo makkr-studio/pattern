@@ -24,6 +24,11 @@ export const STORE_SERVICE_KEY = "storeService";
 export interface BlobStoreLike {
   blobs: {
     get(id: string): Promise<{ meta: { mime: string }; stream: ReadableStream<Uint8Array> } | null>;
+    /** Inbound attachments land here (mirrors mod-store's BlobStore.put). */
+    put(
+      data: Uint8Array | ReadableStream<Uint8Array>,
+      opts?: { mime?: string; ownerId?: string | null },
+    ): Promise<{ id: string; mime: string; size: number }>;
   };
 }
 
