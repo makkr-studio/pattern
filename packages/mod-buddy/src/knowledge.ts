@@ -11,7 +11,7 @@
  * never changes, so nothing downstream cares which engine answered.
  */
 
-import { value, z, type Engine, type OpDefinition } from "@pattern-js/core";
+import { value, z, type Engine, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { DocsContent, resolveOptions } from "@pattern-js/mod-docs";
 
 export interface KnowledgeResult {
@@ -20,6 +20,44 @@ export interface KnowledgeResult {
   path: string;
   snippet: string;
   score: number;
+}
+
+/* ── duck-typed views of mod-vectors + mod-ai (NEVER imported) ───────────── */
+
+const VECTORS_SERVICE = "vectorsService";
+const AI_CONFIG_SERVICE = "aiConfig";
+
+export const DOCS_COLLECTION = "buddy.docs";
+
+interface VectorsLike {
+  ensureCollection(spec: { name: string; alias: string; metric: "cosine"; filterables: string[] }): Promise<void>;
+  upsert(
+    collection: string,
+    items: Array<{ id: string; text: string; meta?: Record<string, unknown> }>,
+    ctx: OpContext,
+  ): Promise<{ count: number; embedded: number }>;
+  query(
+    collection: string,
+    input: { text: string; k: number; mode: "hybrid" },
+    ctx: OpContext,
+  ): Promise<Array<{ id: string; score: number; text: string | null; meta: Record<string, unknown> | null }>>;
+}
+
+interface AiConfigLike {
+  aliases(): Array<{ name: string; modality?: string }>;
+}
+
+function vectorsOf(services: Record<string, unknown>): VectorsLike | null {
+  const svc = services[VECTORS_SERVICE] as VectorsLike | undefined;
+  return svc && typeof svc.query === "function" ? svc : null;
+}
+
+/** The embedding alias Buddy indexes with: "buddy" when it embeds, else the first embedding alias. */
+function embeddingAlias(services: Record<string, unknown>): string | null {
+  const config = services[AI_CONFIG_SERVICE] as AiConfigLike | undefined;
+  if (!config || typeof config.aliases !== "function") return null;
+  const embedding = config.aliases().filter((a) => a.modality === "embedding");
+  return embedding.find((a) => a.name === "buddy")?.name ?? embedding[0]?.name ?? null;
 }
 
 const tokenize = (s: string): string[] =>
@@ -60,12 +98,100 @@ function snippetAround(markdown: string, queryTokens: string[]): string {
 
 export class KnowledgeService {
   private readonly content: DocsContent;
+  /** True once the boot indexer has the docs corpus in vectors — search upgrades itself. */
+  private semanticReady = false;
 
   constructor(private readonly getEngine: () => Engine | undefined) {
     this.content = new DocsContent(getEngine, resolveOptions({}));
   }
 
-  async search(query: string, k = 6): Promise<KnowledgeResult[]> {
+  /** Whether searches currently run semantically (the status probe reports it). */
+  isSemantic(): boolean {
+    return this.semanticReady;
+  }
+
+  /**
+   * Boot indexer (fire-and-forget from ready(), never blocks boot): when
+   * mod-vectors AND an embedding alias are present, chunk every handbook page
+   * into the "buddy.docs" collection. Content-hashing in vectors.upsert makes
+   * re-runs after upgrades cost only the diff. Any failure leaves the lexical
+   * baseline in charge — one warn, no drama.
+   */
+  async indexDocs(ctx: OpContext): Promise<void> {
+    const vectors = vectorsOf(ctx.services);
+    const alias = embeddingAlias(ctx.services);
+    if (!vectors || !alias) return;
+    try {
+      await vectors.ensureCollection({ name: DOCS_COLLECTION, alias, metric: "cosine", filterables: ["kind", "chapter"] });
+      const items: Array<{ id: string; text: string; meta: Record<string, unknown> }> = [];
+      for (const page of await this.content.searchIndex()) {
+        const md = await this.content.page(page.chapter, page.file).catch(() => null);
+        if (!md?.markdown.trim()) continue;
+        // Coarse paragraph packing (~1500 chars) — pages are structured prose,
+        // this keeps chunks self-contained without a tokenizer.
+        const paragraphs = md.markdown.split("\n\n");
+        let buf = "";
+        let i = 0;
+        const flush = () => {
+          if (!buf.trim()) return;
+          items.push({
+            id: `guide/${page.chapter}/${page.file}#${i++}`,
+            text: buf,
+            meta: { kind: "guide", chapter: page.chapter, title: page.title, path: `guide/${page.chapter}/${page.file}` },
+          });
+          buf = "";
+        };
+        for (const p of paragraphs) {
+          if (buf.length + p.length > 1500) flush();
+          buf = buf ? `${buf}\n\n${p}` : p;
+        }
+        flush();
+      }
+      if (!items.length) return;
+      const res = await vectors.upsert(DOCS_COLLECTION, items, ctx);
+      this.semanticReady = true;
+      if (res.embedded > 0) {
+        console.log(`[pattern/mod-buddy] knowledge index ready — ${res.embedded} chunk(s) embedded via alias "${alias}"`);
+      }
+    } catch (err) {
+      console.warn(`[pattern/mod-buddy] semantic indexing unavailable (lexical search stays on): ${(err as Error).message}`);
+    }
+  }
+
+  /** Semantic path: hybrid retrieval over the indexed handbook + lexical op-catalog hits. */
+  private async searchSemantic(query: string, k: number, ctx: OpContext): Promise<KnowledgeResult[] | null> {
+    const vectors = vectorsOf(ctx.services);
+    const engine = this.getEngine();
+    if (!vectors || !engine || !this.semanticReady) return null;
+    try {
+      const matches = await vectors.query(DOCS_COLLECTION, { text: query, k, mode: "hybrid" }, ctx);
+      const guide = matches.map((m) => ({
+        title: String(m.meta?.title ?? m.id),
+        path: String(m.meta?.path ?? m.id),
+        snippet: (m.text ?? "").slice(0, 500),
+        score: m.score,
+      }));
+      // Ops aren't vector-indexed (exact names are lexical's home turf) — blend
+      // the top catalog hits in after the guide results.
+      const queryTokens = tokenize(query);
+      const ops = engine.ops
+        .list()
+        .map((op) => ({ op, score: overlap(queryTokens, `${op.type} ${op.description ?? ""}`) }))
+        .filter((s) => s.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, Math.max(2, Math.floor(k / 3)))
+        .map(({ op, score }) => ({ title: op.type, path: `op/${op.type}`, snippet: op.description ?? "", score }));
+      return [...guide, ...ops].slice(0, k + ops.length);
+    } catch {
+      return null; // embedding hiccup → the lexical baseline answers
+    }
+  }
+
+  async search(query: string, k = 6, ctx?: OpContext): Promise<KnowledgeResult[]> {
+    if (ctx) {
+      const semantic = await this.searchSemantic(query, k, ctx);
+      if (semantic) return semantic;
+    }
     const engine = this.getEngine();
     if (!engine) return [];
     const queryTokens = tokenize(query);
@@ -127,7 +253,7 @@ export function knowledgeSearchOp(service: () => KnowledgeService): OpDefinition
     execute: async (ctx) => {
       const query = String((await ctx.input.value("query")) ?? "");
       const k = ctx.input.has("k") ? Number((await ctx.input.value("k")) ?? 6) : 6;
-      return { results: await service().search(query, Number.isFinite(k) && k > 0 ? k : 6) };
+      return { results: await service().search(query, Number.isFinite(k) && k > 0 ? k : 6, ctx) };
     },
   };
 }

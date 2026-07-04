@@ -73,6 +73,7 @@ const MAP: Record<string, LucideIcon> = {
   "user-plus": UserPlus,
   "key-round": KeyRound,
   "key-square": KeySquare,
+  wand: Wand2,
   "log-out": LogOut,
   ban: Ban,
   "shield-check": ShieldCheck,
