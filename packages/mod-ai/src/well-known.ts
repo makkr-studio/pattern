@@ -14,19 +14,9 @@ export const AI_CATALOG_SERVICE = "aiModelCatalog";
 /** Persisted provider/default-model settings. */
 export const AI_CONFIG_SERVICE = "aiConfig";
 
-/* ── vault (secrets) ───────────────────────────────────────────────────── */
+/* ── vault (secrets) — hoisted to core; re-exported for existing importers ── */
 
-export const VAULT_SERVICE_KEY = "vaultService";
-
-export interface VaultLike {
-  unlocked(): boolean;
-  has(name: string): Promise<boolean>;
-  read(name: string): Promise<string>;
-}
-
-export function vaultLike(ctx: OpContext): VaultLike | undefined {
-  return ctx.services[VAULT_SERVICE_KEY] as VaultLike | undefined;
-}
+export { VAULT_SERVICE_KEY, vaultLike, type VaultLike } from "@pattern-js/core";
 
 /* ── store (blobs) ─────────────────────────────────────────────────────── */
 

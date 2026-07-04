@@ -10,7 +10,7 @@
  * fetch (it takes minutes).
  */
 
-import type { OpContext } from "@pattern-js/core";
+import { resolveSourced, type OpContext } from "@pattern-js/core";
 import type { ModelRef } from "@pattern-js/mod-agents";
 import {
   createGateway,
@@ -20,7 +20,7 @@ import {
   type SpeechModel,
   type TranscriptionModel,
 } from "./sdk.js";
-import type { Alias, SecretRef } from "./types.js";
+import type { Alias } from "./types.js";
 import { getSpec, type Creds, type ProviderSpec, type ProviderLike } from "./registry.js";
 import { vaultLike } from "./well-known.js";
 
@@ -65,18 +65,6 @@ export class ProviderService implements AiProviderService {
   /** `lookup` resolves a ModelRef.alias name → an Alias (from AiConfigService). */
   constructor(private readonly lookup: (name: string) => Alias | undefined = () => undefined) {}
 
-  /** Resolve a secret reference from its declared source (vault or env). Throws if absent. */
-  private async resolveSourced(ctx: OpContext, ref: SecretRef): Promise<string> {
-    if (ref.source === "env") {
-      const v = ctx.env[ref.key];
-      if (v) return v;
-      throw new Error(`mod-ai: env var "${ref.key}" is not set.`);
-    }
-    const vault = vaultLike(ctx);
-    if (vault?.unlocked() && (await vault.has(ref.key).catch(() => false))) return vault.read(ref.key);
-    throw new Error(`mod-ai: no vault secret "${ref.key}" — add it in admin → System → Secrets.`);
-  }
-
   /** Resolve a secret by NAME from env then the (unlocked) vault (inline + gateway default). */
   private async resolveByName(ctx: OpContext, name: string): Promise<string> {
     const v = await this.tryName(ctx, name);
@@ -113,7 +101,7 @@ export class ProviderService implements AiProviderService {
     if (!spec) throw this.unknownProvider(alias.provider);
     const creds: Creds = {};
     for (const [field, ref] of Object.entries(alias.secrets ?? {})) {
-      if (ref?.key) creds[field] = await this.resolveSourced(ctx, ref);
+      if (ref?.key) creds[field] = await resolveSourced(ctx, ref, "mod-ai");
     }
     return spec.make(await this.loadPkg(spec), creds, alias.options ?? {});
   }
@@ -192,7 +180,7 @@ export class ProviderService implements AiProviderService {
 
   private async aliasGatewayKey(alias: Alias, ctx: OpContext): Promise<string> {
     const ref = alias.secrets?.apiKey;
-    return ref?.key ? this.resolveSourced(ctx, ref) : this.resolveByName(ctx, GATEWAY_SECRET);
+    return ref?.key ? resolveSourced(ctx, ref, "mod-ai") : this.resolveByName(ctx, GATEWAY_SECRET);
   }
 
   async testAlias(alias: Alias, ctx: OpContext): Promise<{ ok: boolean; detail?: string }> {

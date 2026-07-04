@@ -258,12 +258,12 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
     });
   }
   for (const t of triggers) {
-    // Event subscribers (fire-and-forget, §8) and schedules (result discarded,
-    // §7) tolerate a missing out-gate — their pair is the generic
-    // `boundary.return`, which only records the run's result.
+    // Some triggers' callers never read the run result (fire-and-forget events,
+    // discarded schedule results, closed sockets) — those ops declare
+    // `outgateOptional` and tolerate a missing out-gate; `boundary.return`
+    // remains available to record an outcome on the run.
     const op = ops.get(t.op)!;
-    const noOutgateExpected = t.op === "boundary.event" || t.op === "boundary.schedule";
-    if (noOutgateExpected) continue;
+    if (op.outgateOptional === true) continue;
     const reach = reachableFrom(workflow, t.id);
     const reachesOutgate = outgates.some((g) => reach.nodes.has(g.id));
     if (!reachesOutgate && outgates.length > 0) {

@@ -60,6 +60,20 @@ describe("auth (§9)", () => {
     if (!denied.ok) expect(denied.reason).toMatch(/admin/);
   });
 
+  it("treats the admin scope as root — it satisfies any requirement", () => {
+    const engine = enforcing();
+    const admin: Principal = { kind: "user", id: "root", provider: "p", scopes: ["admin"] };
+    // Granular API-token scopes an admin session never carries explicitly.
+    expect(engine.authorize(admin, { scopes: ["workflows:read"] }).ok).toBe(true);
+    expect(engine.authorize(admin, { scopes: ["workflows:write", "deploy"] }).ok).toBe(true);
+    expect(engine.authorize(admin, true).ok).toBe(true);
+    // The reverse never holds: a granular token does not satisfy admin.
+    const scoped: Principal = { kind: "user", id: "t", provider: "p", scopes: ["workflows:read", "deploy"] };
+    expect(engine.authorize(scoped, { scopes: ["admin"] }).ok).toBe(false);
+    // And anonymous stays rejected regardless.
+    expect(engine.authorize({ kind: "anonymous" }, { scopes: ["workflows:read"] }).ok).toBe(false);
+  });
+
   it("resolves an { env } requirement against the engine env per call", () => {
     const anon: Principal = { kind: "anonymous" };
     const user: Principal = { kind: "user", id: "u", provider: "p", scopes: ["user"] };

@@ -9,10 +9,10 @@
  * driver. Secret VALUES never sit in workflow values or persisted config.
  */
 
-import type { OpContext } from "@pattern-js/core";
+import { resolveSourced, type OpContext } from "@pattern-js/core";
 import { renderEmailMarkdown } from "./markdown.js";
 import { DEFAULT_ACCOUNT, type EmailConfigService } from "./config.js";
-import { blobStore, vaultLike } from "./well-known.js";
+import { blobStore } from "./well-known.js";
 import type {
   AttachmentInput,
   EmailAccount,
@@ -20,7 +20,6 @@ import type {
   EmailDriverInfo,
   EmailDriverSpec,
   EmailMessage,
-  SecretRef,
   SendInput,
 } from "./types.js";
 
@@ -123,20 +122,9 @@ export class DefaultEmailService implements EmailService {
     }
     const creds: Record<string, string> = {};
     for (const [field, ref] of Object.entries(account.secrets)) {
-      creds[field] = await this.resolveSourced(ctx, ref);
+      creds[field] = await resolveSourced(ctx, ref, "mod-email");
     }
     return creds;
-  }
-
-  private async resolveSourced(ctx: OpContext, ref: SecretRef): Promise<string> {
-    if (ref.source === "env") {
-      const v = ctx.env[ref.key];
-      if (v) return v;
-      throw new Error(`mod-email: env var "${ref.key}" is not set.`);
-    }
-    const vault = vaultLike(ctx);
-    if (vault?.unlocked() && (await vault.has(ref.key).catch(() => false))) return vault.read(ref.key);
-    throw new Error(`mod-email: no vault secret "${ref.key}" — add it in admin → System → Secrets (vault must be unlocked).`);
   }
 
   /** to/cc/bcc listed, bodies final (explicit html/text win over markdown per part), attachments as bytes. */

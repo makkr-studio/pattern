@@ -7,7 +7,7 @@
  * on a port.
  */
 
-import { z } from "@pattern-js/core";
+import { z, secretRefSchema } from "@pattern-js/core";
 
 export {
   modelRefSchema,
@@ -17,20 +17,11 @@ export {
   type NeutralMessage,
 } from "@pattern-js/mod-agents";
 
-const modalityEnum = z.enum(["language", "embedding", "image", "speech", "transcription", "video"]);
+// Sourced secret references now live in core (hoisted once mod-email and
+// mod-vectors joined mod-ai as consumers); re-exported for existing importers.
+export { secretRefSchema, type SecretRef } from "@pattern-js/core";
 
-/**
- * Where a secret comes from. Auth VALUES are never stored — a secret reference
- * is either a vault secret NAME (managed in System → Secrets) or an env-var NAME
- * read at run time. Chosen explicitly per field, so nothing relies on guessing a
- * provider's magic env-var convention.
- */
-export const secretRefSchema = z.object({
-  source: z.enum(["vault", "env"]).default("vault"),
-  /** The vault secret name or the env-var name (never the value). */
-  key: z.string(),
-});
-export type SecretRef = z.infer<typeof secretRefSchema>;
+const modalityEnum = z.enum(["language", "embedding", "image", "speech", "transcription", "video"]);
 
 /**
  * A named **alias** — "default", "mini", "vision", … — a fully self-contained

@@ -8,17 +8,12 @@
  * secrets) — re-pointing an account in admin re-targets every workflow.
  */
 
-import { z } from "@pattern-js/core";
+import { z, secretRefSchema } from "@pattern-js/core";
 import type { OpContext } from "@pattern-js/core";
 
-/* ── sourced secrets (same scheme as mod-ai; candidate for a core hoist) ── */
+/* ── sourced secrets (hoisted to core; re-exported for drivers) ─────────── */
 
-export const secretRefSchema = z.object({
-  source: z.enum(["vault", "env"]).default("vault"),
-  /** The vault secret name or the env-var name (never the value). */
-  key: z.string(),
-});
-export type SecretRef = z.infer<typeof secretRefSchema>;
+export { secretRefSchema, type SecretRef } from "@pattern-js/core";
 
 /* ── accounts ─────────────────────────────────────────────────────────── */
 

@@ -415,6 +415,26 @@ export interface OpDefinition {
    */
   pair?: string;
   /**
+   * Trigger ops only: the caller never reads the run's result (fire-and-forget
+   * events, discarded schedule results, closed sockets), so the validator skips
+   * the "trigger must reach an out-gate" check for this op. An out-gate is still
+   * allowed — `boundary.return` just records the outcome on the run.
+   */
+  outgateOptional?: boolean;
+  /**
+   * Trigger ops only: the engine events this node subscribes to, derived from
+   * its frozen config at registration. Each subscription starts a run from this
+   * node when the event fires; `map` shapes the event payload into the trigger's
+   * output ports (default `{ payload }`). This is THE seam for mod-defined
+   * trigger ops (`email.inbound`, webhooks-as-events, …): emit an event from a
+   * service, declare it here, and the engine wires the subscription — no host
+   * or dispatch changes needed.
+   */
+  triggerEvents?: (config: any) => Array<{
+    event: string;
+    map?: (payload: unknown) => Record<string, unknown>;
+  }>;
+  /**
    * Whether this op is meant for general authoring/reuse. Default `true`.
    * Set `false` for internal/control-plane ops (e.g. `admin.*`, internal
    * boundary helpers): authoring UIs de-emphasize them (a collapsed "Advanced"

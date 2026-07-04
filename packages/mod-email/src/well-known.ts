@@ -3,8 +3,7 @@
  *
  * mod-vault (secrets) and mod-store (blob attachments) are looked up by their
  * well-known service keys, never imported — mod-email has no hard dependency
- * on either. (The VaultLike/BlobStoreLike shapes mirror mod-ai's copies; a
- * future hoist to core would collapse the three.)
+ * on either. (VaultLike now lives in core; BlobStoreLike stays local.)
  */
 
 import type { OpContext } from "@pattern-js/core";
@@ -14,19 +13,9 @@ export const EMAIL_SERVICE = "emailService";
 /** Persisted email accounts (.pattern-data/email-config.json). */
 export const EMAIL_CONFIG_SERVICE = "emailConfig";
 
-/* ── vault (secrets) ───────────────────────────────────────────────────── */
+/* ── vault (secrets) — hoisted to core; re-exported for existing importers ── */
 
-export const VAULT_SERVICE_KEY = "vaultService";
-
-export interface VaultLike {
-  unlocked(): boolean;
-  has(name: string): Promise<boolean>;
-  read(name: string): Promise<string>;
-}
-
-export function vaultLike(ctx: OpContext): VaultLike | undefined {
-  return ctx.services[VAULT_SERVICE_KEY] as VaultLike | undefined;
-}
+export { VAULT_SERVICE_KEY, vaultLike, type VaultLike } from "@pattern-js/core";
 
 /* ── store (blob attachments) ──────────────────────────────────────────── */
 

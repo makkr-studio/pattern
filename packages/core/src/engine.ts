@@ -350,12 +350,15 @@ export class Engine {
             priority: cfg.priority ?? 100,
           });
         }
-      } else if (op?.type === "boundary.event") {
-        const cfg = (node.config ?? {}) as { event?: string };
-        if (cfg.event) {
+      } else if (op?.triggerEvents) {
+        // Generic event-backed trigger seam: the op derives its subscriptions
+        // from the node's frozen config (`boundary.event` is the simplest
+        // consumer; mods declare their own trigger ops the same way).
+        for (const sub of op.triggerEvents(node.config ?? {})) {
+          const map = sub.map ?? ((payload: unknown) => ({ payload }));
           unsubs.push(
-            this.events.subscribe(cfg.event, (payload) => {
-              void this.runFrom(workflow, node.id, { payload }, ANONYMOUS).catch((err) => {
+            this.events.subscribe(sub.event, (payload) => {
+              void this.runFrom(workflow, node.id, map(payload), ANONYMOUS).catch((err) => {
                 console.error(`[pattern] event workflow "${workflow.id}" failed:`, err);
               });
             }),
