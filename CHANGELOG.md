@@ -3,6 +3,92 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.4.0 — unreleased
+
+The framework learns to build itself: Buddy (the in-editor workflow
+assistant), a scoped-token control plane with a Pattern MCP server, vector
+search, and inbound email.
+
+### Buddy & the control plane
+
+- **`@pattern-js/mod-buddy` — Buddy, the workflow assistant.** A chat dock in
+  the editor (the ✦ toggle; appears only when the mod is installed): describe
+  what you want and Buddy drafts the workflow — grounded in your app's
+  handbook + op catalog, validated before you ever see it — then **applies
+  proposals to your open canvas** as ordinary, undoable edits. It debugs
+  failed runs from traces ("why did this break at 3am?"), remembers the
+  conversation per workflow (mod-store), runs on the `buddy` model alias when
+  defined (else the default), and its whole turn pipeline is an editable
+  Pattern workflow.
+- **The `pattern_*` control plane: ten restricted tool workflows** (list/get
+  ops, search docs, get workflow, validate, propose, save-draft,
+  deploy-with-approval, list/get runs) — one capability layer consumed by
+  Buddy, by external MCP clients, and by the CLI. `boundary.tool` gains
+  `restricted: true`: excluded from EVERY `["*"]` expansion (agent toolsets
+  and MCP alike), offered only by explicit name.
+- **Scoped, revocable API tokens** (`@pattern-js/mod-identity`): `pat_…`
+  bearer credentials minted in admin → Access → API tokens (show-once, hashed
+  at rest), with a six-scope taxonomy — `workflows:read`/`workflows:write`,
+  `runs:read`/`runs:write`, `deploy`, `admin` (root) — so an authoring token
+  can draft all day and still can't touch production. The `admin.*` ops
+  re-check scopes in-op (advisory-open without an auth provider, mirroring
+  `engine.authorize`), and NEW `admin.workflow.validate` returns located
+  issues without saving.
+- **The Pattern MCP server.** `POST /mcp/pattern` (seeded by mod-buddy,
+  token-gated) serves the ten tools to Claude Code, Cursor, or any MCP
+  client; **`pattern mcp`** serves the same over stdio for local dev — no
+  tokens, your shell owns the box. `ai.mcp.serve`'s `tools/call` now enforces
+  the same exposure set as `tools/list`, and `mcpServerWorkflow()` accepts an
+  `auth` requirement.
+
+### Vector search
+
+- **`@pattern-js/mod-vectors` — embedding collections.** A collection
+  **declares its embedding alias** and locks its dims on first write, so
+  indexing with one model and querying with another is unrepresentable.
+  Declared **filterable meta fields** land in an indexed side table and prune
+  BEFORE scoring (`filter: { field: value | values[] }`; undeclared fields are
+  located errors). `vectors.query` ranks in three modes — cosine, keyword
+  (FTS5 when available, token-overlap fallback), and **hybrid** via
+  reciprocal-rank fusion. `vectors.index` is chunk→embed→upsert in one node,
+  content-hashed so unchanged docs cost nothing. Zero-dependency sqlite
+  engine (durable AND offload-safe); a driver SPI carries `{filter, mode}`
+  for sqlite-vec/pgvector later. Admin: Data → Vectors.
+- Buddy dogfoods it: with mod-vectors + an embedding alias installed, a boot
+  indexer embeds the live handbook and `buddy.knowledge.search` silently
+  upgrades from lexical to hybrid semantic retrieval — same output shape.
+
+### Email
+
+- **Inbound email.** The `email.inbound` trigger runs a workflow once per
+  received message (per-account filtering); attachments land in the blob
+  store as references. `@pattern-js/mod-email-resend` ships a signed webhook
+  (svix scheme, hand-rolled on node:crypto: constant-time, ±5 min window,
+  raw-bytes verification over a `bodyMode: "stream"` route) at
+  `POST /email/inbound/resend`.
+- **`email.reply`** answers an inbound message with real threading —
+  In-Reply-To/References, `Re:` prefixed exactly once, reply-to respected —
+  and `EmailMessage` gains pass-through `headers`. Email your app a question;
+  a three-node workflow answers in-thread.
+
+### Core
+
+- **Any mod can ship a trigger op.** `OpDefinition.triggerEvents(config)`
+  declares event subscriptions the engine wires at registration (how
+  `email.inbound` works — zero host changes), and `outgateOptional` replaces
+  the validator's hardcoded out-gate exemption (also fixing
+  `boundary.ws.close`, which could never reach a meaningful out-gate).
+- `secretRefSchema` + `resolveSourced` hoisted to core (one sourced-secrets
+  implementation for mod-ai, mod-email, mod-vectors); `admin` is now the root
+  scope in `meetsRequirement`.
+
+### Scaffolder
+
+- `studio-ai` adds mod-vectors; `agentic` and `agent-chat` add mod-vectors +
+  mod-buddy. The agentic examples gain a **RAG pair**: `POST /rag/ingest`
+  (declare + chunk + embed) and `POST /rag/ask` (hybrid retrieval → grounded
+  answer with sources).
+
 ## 0.3.0 — 2026-07-02
 
 The AI, sign-in & email release: a native agent loop over any provider, a chat

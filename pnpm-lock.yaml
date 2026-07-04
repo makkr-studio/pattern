@@ -353,6 +353,40 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  packages/mod-buddy:
+    dependencies:
+      '@pattern-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pattern-js/mod-agents':
+        specifier: workspace:*
+        version: link:../mod-agents
+      '@pattern-js/mod-ai':
+        specifier: workspace:*
+        version: link:../mod-ai
+      '@pattern-js/mod-docs':
+        specifier: workspace:*
+        version: link:../mod-docs
+      '@pattern-js/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@pattern-js/mod-admin':
+        specifier: workspace:*
+        version: link:../mod-admin
+      '@pattern-js/mod-identity':
+        specifier: workspace:*
+        version: link:../mod-identity
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/mod-chat:
     dependencies:
       '@pattern-js/core':
@@ -602,6 +636,25 @@ importers:
         version: 5.9.3
 
   packages/mod-vault:
+    dependencies:
+      '@pattern-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pattern-js/runtime-node':
+        specifier: workspace:*
+        version: link:../runtime-node
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/mod-vectors:
     dependencies:
       '@pattern-js/core':
         specifier: workspace:*

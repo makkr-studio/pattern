@@ -20,6 +20,8 @@ import { agentsMod } from "@pattern-js/mod-agents";
 import { aiMod } from "@pattern-js/mod-ai";
 import { adminMod } from "@pattern-js/mod-admin";
 import { chatMod } from "@pattern-js/mod-chat";
+import { vectorsMod } from "@pattern-js/mod-vectors";
+import { buddyMod } from "@pattern-js/mod-buddy";
 
 const TEMPLATES = fileURLToPath(new URL("../templates", import.meta.url));
 const VAULT_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -33,6 +35,8 @@ const FACTORIES: Record<string, () => PatternMod> = {
   "@pattern-js/mod-ai": () => aiMod(),
   "@pattern-js/mod-admin": () => adminMod(),
   "@pattern-js/mod-chat": () => chatMod(),
+  "@pattern-js/mod-vectors": () => vectorsMod({ path: ":memory:" }),
+  "@pattern-js/mod-buddy": () => buddyMod({ indexOnBoot: false }),
 };
 
 async function resolveMod(templateDir: string, entry: string): Promise<PatternMod> {

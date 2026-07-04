@@ -128,6 +128,37 @@ into a user + session per the **signup policy**: `invite` (default; unknown
 emails refused) or `open`. This is a runtime setting toggled on the admin's
 Settings page (the mod option only seeds it).
 
+## API tokens (0.4)
+
+Sessions authenticate humans in browsers; **API tokens** authenticate
+programs — MCP clients on `/mcp/pattern`, CI deploys, scripts against the
+admin API. Mint them in admin → **Access → API tokens**: the raw `pat_…`
+secret is shown **exactly once** (only its sha256 is stored), and a bearer
+header authenticates it on any route:
+
+```
+Authorization: Bearer pat_…
+```
+
+Tokens are multi-use until revoked (or until their optional expiry), carry
+their own **scopes**, and authenticate as themselves — audit trails name the
+credential that acted, not the admin who minted it.
+
+| Scope | Grants |
+| --- | --- |
+| `workflows:read` | read workflows, versions, ops, docs, templates, fixtures |
+| `workflows:write` | save drafts, import, write fixtures |
+| `runs:read` | read runs, traces, metrics |
+| `runs:write` | start, cancel, pause, resume runs |
+| `deploy` | deploy, enable/disable, delete — what RUNS |
+| `admin` | root — satisfies every requirement (sessions carry this via roles) |
+
+The split that matters: an *authoring* token (`workflows:read` +
+`workflows:write`) can draft all day and never change what runs in
+production; `deploy` is its own decision. The admin ops re-check these scopes
+in-op, so the enforcement holds even when a tool workflow calls them on your
+behalf.
+
 ## Minimal config
 
 Defaults work from the bare `"@pattern-js/mod-identity"` config entry. To

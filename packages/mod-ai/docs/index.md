@@ -107,7 +107,17 @@ external MCP clients (Claude Desktop, other agents). `tools/list` reads the tool
 registry; `tools/call` runs the tool workflow via `ctx.invoke`, a linked
 sub-run with the same validation + tracing as an agent's own tool call. Narrow
 which tools are exposed by building your own route around `ai.mcp.serve`
-(`config.tools`).
+(`config.tools`) — `tools/call` enforces the same exposure set, so narrowing
+is a boundary, not a menu.
+
+**Auth posture** (0.4): the default `/mcp` route is **public** — the
+local-dev posture; gate it with `mcpServerWorkflow({ auth: { scopes: […] } })`
+or by forking the route and setting `requireAuth`. Tools marked
+`restricted: true` (the `pattern_*` control plane) never ride a `["*"]`
+wildcard — here or in agent toolsets — and are served only when named
+explicitly, the way mod-buddy's token-gated `/mcp/pattern` route does. For
+local editors, `pattern mcp` serves the same tools over stdio, no tokens
+(your shell already owns the box).
 
 ## Providers
 

@@ -236,6 +236,8 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-email-resend": "Resend driver for mod-email",
   "@pattern-js/mod-email-smtp": "SMTP driver for mod-email (nodemailer)",
   "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
+  "@pattern-js/mod-vectors": "vector search: embedding collections, hybrid retrieval, RAG",
+  "@pattern-js/mod-buddy": "Buddy: the editor assistant + the pattern_* MCP control plane",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
 };
@@ -339,7 +341,7 @@ const MODPACKS: Modpack[] = [
     hint: "call AI ops directly in the editor — text/object/embed/image/speech ops + vault; no agent loop",
     rung: "+ mod-ai — text/object/image/speech ops, any provider",
     tagline: "Studio + mod-ai — build plain AI workflows (text · object · image · speech) in the editor",
-    mods: ["@pattern-js/mod-ai", "@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-admin"],
+    mods: ["@pattern-js/mod-ai", "@pattern-js/mod-vectors", "@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-admin"],
     exampleSummary: "an AI workflow (POST /summarize → ai.text.generate, no agent)",
     serves: (ex) => (ex ? ["/admin", "/summarize"] : ["/admin"]),
     env: ["PATTERN_VAULT_KEY"],
@@ -373,16 +375,18 @@ const MODPACKS: Modpack[] = [
     tagline: "Studio + AI + the agent stack — build agentic workflows (agent · run · tools) in the editor",
     mods: [
       "@pattern-js/mod-agents + mod-ai",
+      "@pattern-js/mod-vectors",
+      "@pattern-js/mod-buddy",
       "@pattern-js/mod-store",
       "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",
     ],
-    exampleSummary: "an agentic workflow (POST /ask → agent + tool) + a get_time tool",
-    serves: (ex) => (ex ? ["/admin", "/ask"] : ["/admin"]),
+    exampleSummary: "an agentic workflow (POST /ask → agent + tool), a get_time tool, and a RAG pair (ingest + ask)",
+    serves: (ex) => (ex ? ["/admin", "/ask", "/rag/ask"] : ["/admin"]),
     env: ["PATTERN_VAULT_KEY"],
     generates: (ex) =>
       ex
-        ? ["workflows/agent-answer.json", "workflows/tool-time.json", "src/index.ts", ".env.example"]
+        ? ["workflows/agent-answer.json", "workflows/tool-time.json", "workflows/rag-ingest.json", "workflows/rag-ask.json", "src/index.ts", ".env.example"]
         : ["workflows/ (your agentic flows)", "src/index.ts", ".env.example"],
     auth: { default: true },
     docs: { default: true },
@@ -411,6 +415,8 @@ const MODPACKS: Modpack[] = [
     mods: [
       "@pattern-js/mod-chat",
       "@pattern-js/mod-agents + mod-ai",
+      "@pattern-js/mod-vectors",
+      "@pattern-js/mod-buddy",
       "@pattern-js/mod-store",
       "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",

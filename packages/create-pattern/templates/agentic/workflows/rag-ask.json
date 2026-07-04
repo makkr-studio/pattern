@@ -1,0 +1,31 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "rag-ask",
+  "name": "POST /rag/ask: retrieval-grounded answer",
+  "description": "RAG in six nodes: POST { question } → hybrid search over the \"kb\" collection (vector + keyword, RRF-fused) → the matches become the prompt's context → ai.text.generate answers from it. Feed the kb via POST /rag/ingest first.",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/rag/ask" }, "ui": { "x": 40, "y": 200 } },
+    { "id": "q", "op": "core.object.get", "config": { "path": "question" }, "ui": { "x": 280, "y": 120 } },
+    { "id": "search", "op": "vectors.query", "config": { "collection": "kb", "k": 4, "mode": "hybrid" }, "comment": "Hybrid retrieval: the question embeds through the collection's declared alias AND ranks by keywords; RRF fuses both.", "ui": { "x": 520, "y": 120 } },
+    { "id": "ctx", "op": "core.json.stringify", "comment": "The matches, verbatim, as the prompt's context block.", "ui": { "x": 760, "y": 60 } },
+    { "id": "vars", "op": "core.object.build", "config": { "keys": ["context", "question"] }, "ui": { "x": 980, "y": 140 } },
+    { "id": "prompt", "op": "core.string.template", "config": { "template": "Answer the question using ONLY this context (JSON search results). Cite the ids you used. If the context does not contain the answer, say so.\n\nContext:\n{{context}}\n\nQuestion: {{question}}" }, "ui": { "x": 1200, "y": 140 } },
+    { "id": "model", "op": "ai.alias", "config": { "alias": "default" }, "comment": "The language model; configure \"default\" in admin → Settings → AI Providers.", "ui": { "x": 1200, "y": 320 } },
+    { "id": "gen", "op": "ai.text.generate", "ui": { "x": 1440, "y": 220 } },
+    { "id": "body", "op": "core.object.build", "config": { "keys": ["answer", "sources"] }, "comment": "{ answer, sources } — the matches ride along so the client can show citations.", "ui": { "x": 1680, "y": 220 } },
+    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" }, "ui": { "x": 1920, "y": 220 } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "body" }, "to": { "node": "q", "port": "object" } },
+    { "from": { "node": "q", "port": "out" }, "to": { "node": "search", "port": "text" } },
+    { "from": { "node": "search", "port": "matches" }, "to": { "node": "ctx", "port": "value" } },
+    { "from": { "node": "ctx", "port": "out" }, "to": { "node": "vars", "port": "context" } },
+    { "from": { "node": "q", "port": "out" }, "to": { "node": "vars", "port": "question" } },
+    { "from": { "node": "vars", "port": "out" }, "to": { "node": "prompt", "port": "data" } },
+    { "from": { "node": "prompt", "port": "out" }, "to": { "node": "gen", "port": "prompt" } },
+    { "from": { "node": "model", "port": "model" }, "to": { "node": "gen", "port": "model" } },
+    { "from": { "node": "gen", "port": "text" }, "to": { "node": "body", "port": "answer" } },
+    { "from": { "node": "search", "port": "matches" }, "to": { "node": "body", "port": "sources" } },
+    { "from": { "node": "body", "port": "out" }, "to": { "node": "out", "port": "body" } }
+  ]
+}

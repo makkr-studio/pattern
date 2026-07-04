@@ -5,8 +5,19 @@
     "@pattern-js/mod-vault",
     "@pattern-js/mod-agents",
     "@pattern-js/mod-ai",
+    "@pattern-js/mod-vectors",
+    "@pattern-js/mod-buddy",
     "@pattern-js/mod-admin"
   ],
   "workflows": "./workflows",
-  "workers": { "size": 2, "mods": ["@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-agents", "@pattern-js/mod-ai"] }
+  "workers": {
+    "size": 2,
+    "mods": [
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
+      "@pattern-js/mod-agents",
+      "@pattern-js/mod-ai",
+      "@pattern-js/mod-vectors"
+    ]
+  }
 }
