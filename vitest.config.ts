@@ -27,6 +27,7 @@ export default defineConfig({
       "@pattern-js/mod-chat": r("./packages/mod-chat/src/index.ts"),
       "@pattern-js/mod-docs": r("./packages/mod-docs/src/index.ts"),
       "@pattern-js/mod-buddy": r("./packages/mod-buddy/src/index.ts"),
+      "@pattern-js/mod-vectors": r("./packages/mod-vectors/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built
       // JS to spawn workers); its own @pattern-js/core imports still alias above.
     },
