@@ -18,7 +18,7 @@
 
 import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { identityService } from "./service-key.js";
-import type { IdentityService } from "./service.js";
+import { API_TOKEN_SCOPES, type IdentityService } from "./service.js";
 import { deliverToken } from "./deliver.js";
 import { looksLikeEmail } from "./tokens.js";
 import { renderLoginPage, renderSentPage } from "./pages/login.js";
@@ -411,6 +411,75 @@ const sessionsRevoke = jsonOp(
   { sensitivity: "privileged" },
 );
 
+/* ── API tokens (control-plane bearer credentials) ─────────────────────── */
+
+const apiTokensList = jsonOp(
+  "identity.apiTokens.list",
+  "List API tokens, newest first (admin). Secrets are never stored — only names, scopes and status.",
+  { out: "tokens" },
+  async (_args, svc) => {
+    const rows = await svc.listApiTokens();
+    return rows.map((t) => ({
+      id: t.id,
+      name: t.name,
+      scopes: t.scopes.join(", "),
+      status: t.revokedAt != null ? "revoked" : t.expiresAt != null && t.expiresAt <= Date.now() ? "expired" : "active",
+      created: new Date(t.createdAt).toISOString(),
+      lastUsed: t.lastUsedAt != null ? new Date(t.lastUsedAt).toISOString() : "",
+      expires: t.expiresAt != null ? new Date(t.expiresAt).toISOString() : "never",
+    }));
+  },
+  { sensitivity: "privileged" },
+);
+
+const apiTokensCreate = jsonOp(
+  "identity.apiTokens.create",
+  `Mint a scoped API token (admin). Args { name, scopes (array or comma string — of ${API_TOKEN_SCOPES.join("/")}), ttlDays? (empty = never expires) }. ` +
+    "Returns the RAW pat_… secret exactly once; storage keeps only its hash.",
+  { in: { name: z.string(), scopes: z.unknown(), ttlDays: z.unknown().optional() }, out: "result" },
+  async (args, svc, ctx) => {
+    const scopes = Array.isArray(args.scopes)
+      ? (args.scopes as string[])
+      : String(args.scopes ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+    const ttlDaysRaw = String(args.ttlDays ?? "").trim();
+    const ttlDays = ttlDaysRaw ? Number(ttlDaysRaw) : null;
+    if (ttlDays != null && (!Number.isFinite(ttlDays) || ttlDays <= 0)) {
+      throw new Error("ttlDays must be a positive number of days (or empty for no expiry)");
+    }
+    const minted = await svc.createApiToken({
+      name: String(args.name ?? ""),
+      scopes,
+      ttlMs: ttlDays == null ? null : ttlDays * 24 * 60 * 60 * 1000,
+      userId: ctx.principal.kind === "user" ? ctx.principal.id : null,
+    });
+    return {
+      ok: true,
+      id: minted.row.id,
+      name: minted.row.name,
+      scopes: minted.row.scopes,
+      expires: minted.row.expiresAt != null ? new Date(minted.row.expiresAt).toISOString() : "never",
+      // `copy` renders as a copyable field in the admin's result view — the
+      // one and only time the raw secret exists outside the caller's hands.
+      copy: minted.token,
+    };
+  },
+  { sensitivity: "privileged" },
+);
+
+const apiTokensRevoke = jsonOp(
+  "identity.apiTokens.revoke",
+  "Revoke an API token (admin): it stops authenticating immediately. Idempotent. Args { tokenId }.",
+  { in: { tokenId: z.string() }, out: "result" },
+  async (args, svc) => {
+    const row = await svc.revokeApiToken(String(args.tokenId));
+    return { ok: true, id: row.id, name: row.name };
+  },
+  { sensitivity: "privileged" },
+);
+
 /* ── auth pages & flows ────────────────────────────────────────────────── */
 
 const loginPage = authOp(
@@ -545,6 +614,9 @@ export const identityOps: OpDefinition[] = [
   settingsSet,
   sessionsList,
   sessionsRevoke,
+  apiTokensList,
+  apiTokensCreate,
+  apiTokensRevoke,
   loginPage,
   tokenCallback,
   logout,

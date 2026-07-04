@@ -14,10 +14,32 @@
 
 import type { ConnectionRegistry } from "@pattern-js/core";
 import type { ResolvedIdentityOptions } from "./options.js";
-import type { IdentityStores, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
+import type { ApiTokenRow, IdentityStores, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
 import { UniqueViolationError } from "./store/types.js";
 import { KeyedMutex } from "./store/mutex.js";
 import { normalizeEmail, randomToken, sha256hex } from "./tokens.js";
+
+/**
+ * The API-token scope taxonomy (0.4.0). Granular scopes gate the control-plane
+ * surface (read/author/run/deploy split); `admin` is the ROOT scope — core's
+ * `meetsRequirement` treats it as satisfying any requirement, which is what
+ * makes admin sessions work against granularly-scoped routes.
+ */
+export const API_TOKEN_SCOPES = [
+  "workflows:read",
+  "workflows:write",
+  "runs:read",
+  "runs:write",
+  "deploy",
+  "admin",
+] as const;
+export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
+
+/** Bearer tokens are self-identifying so the provider can reject fast. */
+export const API_TOKEN_PREFIX = "pat_";
+
+/** lastUsedAt stamps are throttled — hot tokens must not write per request. */
+const API_TOKEN_TOUCH_THROTTLE_MS = 60_000;
 
 /** A way to log in, registered by provider mods in their `ready` hook. */
 export interface LoginMethod {
@@ -50,6 +72,12 @@ export interface IssuedToken {
   /** Path-only callback URL (`{mount}/token?t=…[&next=…]`); callers prepend an origin if needed. */
   path: string;
   expiresAt: number;
+}
+
+export interface MintedApiToken {
+  /** The RAW bearer secret (`pat_…`) — shown exactly once, stored hashed. */
+  token: string;
+  row: ApiTokenRow;
 }
 
 export interface FindOrCreateInput {
@@ -90,6 +118,22 @@ export interface IdentityService {
     data?: Record<string, unknown>;
   }): Promise<IssuedToken>;
   consumeToken(rawToken: string, purpose?: TokenPurpose): Promise<TokenRow | null>;
+
+  // scoped API tokens (multi-use control-plane bearer credentials)
+  /** Mint a token. The raw secret is returned HERE and never again. */
+  createApiToken(input: {
+    name: string;
+    scopes: string[];
+    /** null/undefined = never expires. */
+    ttlMs?: number | null;
+    /** The minting admin (audit trail). */
+    userId?: string | null;
+  }): Promise<MintedApiToken>;
+  /** Raw bearer → live row (null when unknown, revoked or expired). Stamps lastUsedAt, throttled. */
+  verifyApiToken(rawToken: string, now?: number): Promise<ApiTokenRow | null>;
+  listApiTokens(): Promise<ApiTokenRow[]>;
+  /** CAS-retried; idempotent. */
+  revokeApiToken(id: string): Promise<ApiTokenRow>;
 
   // login-method registry (provider mods register in `ready`)
   registerLoginMethod(method: LoginMethod): void;
@@ -297,6 +341,67 @@ export class DefaultIdentityService implements IdentityService {
     return this.mutex.run(`token:${found.id}`, () =>
       this.stores.tokens.consume(found.id, found.version, Date.now()),
     );
+  }
+
+  /* ── API tokens ──────────────────────────────────────────────────────── */
+
+  async createApiToken(input: {
+    name: string;
+    scopes: string[];
+    ttlMs?: number | null;
+    userId?: string | null;
+  }): Promise<MintedApiToken> {
+    const name = input.name?.trim();
+    if (!name) throw new Error("API token needs a name (how you'll recognize it to revoke it).");
+    const scopes = [...new Set(input.scopes)];
+    if (!scopes.length) throw new Error("API token needs at least one scope.");
+    const known = new Set<string>(API_TOKEN_SCOPES);
+    const bad = scopes.filter((s) => !known.has(s));
+    if (bad.length) {
+      throw new Error(`unknown API token scope(s): ${bad.join(", ")} — valid scopes: ${API_TOKEN_SCOPES.join(", ")}`);
+    }
+    const token = `${API_TOKEN_PREFIX}${randomToken()}`;
+    const now = Date.now();
+    const row = await this.stores.apiTokens.create({
+      id: crypto.randomUUID(),
+      tokenHash: sha256hex(token),
+      name,
+      scopes,
+      userId: input.userId ?? null,
+      createdAt: now,
+      expiresAt: input.ttlMs == null ? null : now + input.ttlMs,
+      revokedAt: null,
+      lastUsedAt: null,
+    });
+    return { token, row };
+  }
+
+  async verifyApiToken(rawToken: string, now: number = Date.now()): Promise<ApiTokenRow | null> {
+    if (!rawToken.startsWith(API_TOKEN_PREFIX)) return null;
+    const row = await this.stores.apiTokens.findByTokenHash(sha256hex(rawToken));
+    if (!row || row.revokedAt != null) return null;
+    if (row.expiresAt != null && row.expiresAt <= now) return null;
+    if (row.lastUsedAt == null || now - row.lastUsedAt >= API_TOKEN_TOUCH_THROTTLE_MS) {
+      await this.stores.apiTokens.touchLastUsed(row.id, now).catch(() => {});
+    }
+    return row;
+  }
+
+  listApiTokens(): Promise<ApiTokenRow[]> {
+    return this.stores.apiTokens.list();
+  }
+
+  async revokeApiToken(id: string): Promise<ApiTokenRow> {
+    return this.mutex.run(`apitoken:${id}`, async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const current = await this.stores.apiTokens.findById(id);
+        if (!current) throw new Error(`API token "${id}" not found`);
+        if (current.revokedAt != null) return current;
+        const next = await this.stores.apiTokens.revoke(id, current.version, Date.now());
+        if (next) return next;
+      }
+      throw new Error(`API token "${id}": CAS revoke kept losing — concurrent writer storm?`);
+    });
   }
 
   /* ── login methods ───────────────────────────────────────────────────── */

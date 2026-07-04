@@ -75,6 +75,22 @@ export const MIGRATIONS: string[] = [
     value  TEXT NOT NULL
   );
   `,
+
+  // v3 — scoped, revocable API tokens (control-plane bearer credentials).
+  `
+  CREATE TABLE IF NOT EXISTS api_tokens (
+    id            TEXT PRIMARY KEY,
+    token_hash    TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    scopes        TEXT NOT NULL DEFAULT '[]',
+    user_id       TEXT,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER,
+    revoked_at    INTEGER,
+    last_used_at  INTEGER,
+    version       INTEGER NOT NULL DEFAULT 1
+  );
+  `,
 ];
 
 export function runMigrations(db: SqlDatabase): void {

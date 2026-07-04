@@ -15,6 +15,7 @@ export function identityFrontend(): FrontendContribution {
       { category: "Access", label: "Users", icon: "users", path: "/x/identity/users", order: 10 },
       { category: "Access", label: "Invite", icon: "user-plus", path: "/x/identity/invite", order: 20 },
       { category: "Access", label: "Sessions", icon: "key-round", path: "/x/identity/sessions", order: 30 },
+      { category: "Access", label: "API tokens", icon: "key-square", path: "/x/identity/api-tokens", order: 40 },
     ],
     pages: [
       {
@@ -92,6 +93,50 @@ export function identityFrontend(): FrontendContribution {
           },
           route: { method: "POST", path: PATHS.invites },
         },
+      },
+      {
+        // API tokens: mint (show-once secret in the result view) + inventory.
+        path: "/x/identity/api-tokens",
+        views: [
+          {
+            title: "Mint a token",
+            view: {
+              kind: "form",
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: 'A label you\'ll recognize ("CI deploys", "Claude Code")' },
+                  scopes: {
+                    type: "string",
+                    description:
+                      "Comma-separated: workflows:read, workflows:write, runs:read, runs:write, deploy, admin",
+                  },
+                  ttlDays: { type: "string", description: "Days until expiry (empty = never)" },
+                },
+                required: ["name", "scopes"],
+              },
+              route: { method: "POST", path: PATHS.apiTokens },
+            },
+          },
+          {
+            title: "Tokens",
+            view: {
+              kind: "table",
+              route: { method: "GET", path: PATHS.apiTokens },
+              columns: [
+                { key: "name", label: "Name" },
+                { key: "scopes", label: "Scopes" },
+                { key: "status", label: "Status", format: "badge" },
+                { key: "created", label: "Created", format: "date" },
+                { key: "lastUsed", label: "Last used", format: "date" },
+                { key: "expires", label: "Expires" },
+              ],
+              rowActions: [
+                { label: "Revoke", route: { method: "POST", path: PATHS.apiTokenRevoke }, args: { tokenId: "id" }, icon: "ban", confirm: true },
+              ],
+            },
+          },
+        ],
       },
       {
         path: "/x/identity/sessions",

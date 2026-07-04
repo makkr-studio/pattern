@@ -129,6 +129,41 @@ export interface TokenStore {
   deleteExpired(now: number): Promise<number>;
 }
 
+/**
+ * A scoped, revocable **API token** (`pat_…` bearer credentials for the
+ * control-plane API / MCP server). Unlike `TokenRow` these are MULTI-use:
+ * they stay valid until revoked or expired. Same hashing discipline —
+ * storage only ever sees the sha256.
+ */
+export interface ApiTokenRow {
+  id: string;
+  /** sha256 hex of the full raw bearer secret (including the `pat_` prefix). */
+  tokenHash: string;
+  /** Operator-chosen label ("CI deploys", "Claude Code"). */
+  name: string;
+  scopes: string[];
+  /** The admin who minted it — audit only, never authorization. */
+  userId: string | null;
+  createdAt: number;
+  /** null = never expires (revocation is the kill switch). */
+  expiresAt: number | null;
+  revokedAt: number | null;
+  lastUsedAt: number | null;
+  version: number;
+}
+
+export interface ApiTokenStore {
+  create(row: Omit<ApiTokenRow, "version">): Promise<ApiTokenRow>;
+  findByTokenHash(tokenHash: string): Promise<ApiTokenRow | null>;
+  findById(id: string): Promise<ApiTokenRow | null>;
+  /** All tokens, newest first (admin screen). */
+  list(): Promise<ApiTokenRow[]>;
+  /** CAS revoke: null on version mismatch (re-read & retry). Idempotent on an already-revoked row. */
+  revoke(id: string, expectedVersion: number, at: number): Promise<ApiTokenRow | null>;
+  /** Best-effort usage stamp — NOT CAS; concurrent stamps race harmlessly toward "recent". */
+  touchLastUsed(id: string, at: number): Promise<void>;
+}
+
 /** Small persisted key/value bag for runtime-mutable identity settings (signup policy…). */
 export interface SettingsStore {
   get(key: string): Promise<string | null>;
@@ -139,6 +174,7 @@ export interface IdentityStores {
   users: UserStore;
   sessions: SessionStore;
   tokens: TokenStore;
+  apiTokens: ApiTokenStore;
   settings: SettingsStore;
   close(): Promise<void>;
 }

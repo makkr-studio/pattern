@@ -20,6 +20,7 @@ import { AUTH_LOGIN_URL, IDENTITY_SERVICE, defineMod, z, type Engine, type Patte
 import { resolveOptions, type IdentityOptions } from "./options.js";
 import { DefaultIdentityService } from "./service.js";
 import { sessionAuthProvider } from "./auth-provider.js";
+import { apiTokenAuthProvider } from "./api-token-provider.js";
 import { identityOps } from "./ops.js";
 import { endpointWorkflows } from "./workflows.js";
 import { identityAdminRoutes } from "./admin-routes.js";
@@ -54,7 +55,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     // Auth-page routes + the admin Access screens' dedicated routes (one
     // purposeful endpoint per screen and action, replacing the invoke path).
     workflows: [...endpointWorkflows(opts.mount), ...identityAdminRoutes()],
-    authProviders: [sessionAuthProvider(() => service)],
+    authProviders: [sessionAuthProvider(() => service), apiTokenAuthProvider(() => service)],
     hooks: [
       {
         name: DELIVER_TOKEN_HOOK,

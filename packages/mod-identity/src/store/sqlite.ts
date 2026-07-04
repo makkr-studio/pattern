@@ -16,6 +16,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   UniqueViolationError,
+  type ApiTokenRow,
+  type ApiTokenStore,
   type IdentityStores,
   type SessionRow,
   type SessionStore,
@@ -53,6 +55,19 @@ const toSession = (r: Raw): SessionRow => ({
   version: Number(r.version),
   userAgent: (r.user_agent as string | null) ?? null,
   ip: (r.ip as string | null) ?? null,
+});
+
+const toApiToken = (r: Raw): ApiTokenRow => ({
+  id: String(r.id),
+  tokenHash: String(r.token_hash),
+  name: String(r.name),
+  scopes: JSON.parse(String(r.scopes ?? "[]")) as string[],
+  userId: (r.user_id as string | null) ?? null,
+  createdAt: Number(r.created_at),
+  expiresAt: r.expires_at == null ? null : Number(r.expires_at),
+  revokedAt: r.revoked_at == null ? null : Number(r.revoked_at),
+  lastUsedAt: r.last_used_at == null ? null : Number(r.last_used_at),
+  version: Number(r.version),
 });
 
 const toToken = (r: Raw): TokenRow => ({
@@ -275,6 +290,60 @@ class SqliteTokenStore implements TokenStore {
   }
 }
 
+class SqliteApiTokenStore implements ApiTokenStore {
+  constructor(private readonly db: SqlDatabase) {}
+
+  async create(row: Omit<ApiTokenRow, "version">): Promise<ApiTokenRow> {
+    this.db
+      .prepare(
+        "INSERT INTO api_tokens (id, token_hash, name, scopes, user_id, created_at, expires_at, revoked_at, last_used_at, version) VALUES (?,?,?,?,?,?,?,?,?,1)",
+      )
+      .run(
+        row.id,
+        row.tokenHash,
+        row.name,
+        JSON.stringify(row.scopes),
+        row.userId,
+        row.createdAt,
+        row.expiresAt,
+        row.revokedAt,
+        row.lastUsedAt,
+      );
+    return (await this.findById(row.id))!;
+  }
+
+  async findById(id: string): Promise<ApiTokenRow | null> {
+    const r = this.db.prepare("SELECT * FROM api_tokens WHERE id = ?").get(id) as Raw | undefined;
+    return r ? toApiToken(r) : null;
+  }
+
+  async findByTokenHash(tokenHash: string): Promise<ApiTokenRow | null> {
+    const r = this.db.prepare("SELECT * FROM api_tokens WHERE token_hash = ?").get(tokenHash) as Raw | undefined;
+    return r ? toApiToken(r) : null;
+  }
+
+  async list(): Promise<ApiTokenRow[]> {
+    const rows = this.db.prepare("SELECT * FROM api_tokens ORDER BY created_at DESC").all() as Raw[];
+    return rows.map(toApiToken);
+  }
+
+  async revoke(id: string, expectedVersion: number, at: number): Promise<ApiTokenRow | null> {
+    const info = this.db
+      .prepare("UPDATE api_tokens SET revoked_at=?, version=version+1 WHERE id=? AND version=? AND revoked_at IS NULL")
+      .run(at, id, expectedVersion);
+    if (Number(info.changes) === 1) return this.findById(id);
+    // Idempotent success on an already-revoked row; null only on a live-row CAS miss.
+    const current = await this.findById(id);
+    return current?.revokedAt != null ? current : null;
+  }
+
+  async touchLastUsed(id: string, at: number): Promise<void> {
+    // Deliberately not CAS and not version-bumping: a usage stamp must never
+    // invalidate a concurrent revoke's version read.
+    this.db.prepare("UPDATE api_tokens SET last_used_at=? WHERE id=?").run(at, id);
+  }
+}
+
 class SqliteSettingsStore {
   constructor(private readonly db: SqlDatabase) {}
 
@@ -321,6 +390,7 @@ export async function sqliteIdentityStores(filePath: string): Promise<IdentitySt
     users: new SqliteUserStore(db),
     sessions: new SqliteSessionStore(db),
     tokens: new SqliteTokenStore(db),
+    apiTokens: new SqliteApiTokenStore(db),
     settings: new SqliteSettingsStore(db),
     close: async () => db.close(),
   };

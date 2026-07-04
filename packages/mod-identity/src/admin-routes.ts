@@ -26,6 +26,8 @@ export const PATHS = {
   invites: "/identity/invites",
   sessions: "/identity/sessions",
   session: "/identity/sessions/:sessionId",
+  apiTokens: "/identity/api-tokens",
+  apiTokenRevoke: "/identity/api-tokens/:tokenId/revoke",
   settings: "/identity/settings",
   whoami: "/identity/whoami",
 } as const;
@@ -59,5 +61,9 @@ export function identityAdminRoutes(): Workflow[] {
     r("identity.route.admin.users.revokeSessions", "POST", PATHS.userRevokeSessions, "identity.users.revokeSessions", { in: { userId: fromParams() }, out: "result" }),
     r("identity.route.admin.sessions.revoke", "DELETE", PATHS.session, "identity.sessions.revoke", { in: { sessionId: fromParams() }, out: "result" }),
     r("identity.route.admin.settings.set", "POST", PATHS.settings, "identity.settings.set", { in: { signup: fromBody() }, out: "result" }),
+    // ── API tokens ──
+    r("identity.route.admin.apiTokens.list", "GET", PATHS.apiTokens, "identity.apiTokens.list", { out: "tokens" }),
+    r("identity.route.admin.apiTokens.create", "POST", PATHS.apiTokens, "identity.apiTokens.create", { in: { name: fromBody(), scopes: fromBody(), ttlDays: fromBody() }, out: "result" }),
+    r("identity.route.admin.apiTokens.revoke", "POST", PATHS.apiTokenRevoke, "identity.apiTokens.revoke", { in: { tokenId: fromParams() }, out: "result" }),
   ];
 }
