@@ -2,13 +2,15 @@
  * @pattern-js/mod-ai — Pattern AS an MCP server.
  *
  * Exposes Pattern's `boundary.tool` workflows to external MCP clients (Claude
- * Desktop, other agents…) over a stateless StreamableHTTP JSON-RPC endpoint.
- * `tools/list` reads the AgentsRegistry; `tools/call` runs the tool workflow via
- * ctx.invoke (a linked sub-run — same engine validation + tracing as an agent's
- * own tool calls). Pure JSON-RPC over the HTTP boundary; no MCP SDK needed here.
+ * Desktop, Claude Code, other agents…) as stateless JSON-RPC. The protocol
+ * handler (`handleMcp`) is decoupled from HTTP via a pluggable `McpSource`,
+ * so the SAME handler serves the StreamableHTTP route here and the
+ * `pattern mcp` stdio transport in runtime-node.
  *
  * Wire: boundary.http.request (POST) → ai.mcp.serve → boundary.http.response.
- * `mcpServerWorkflow()` is the ready-made route (POST /mcp).
+ * `mcpServerWorkflow()` is the ready-made route (POST /mcp) — public by
+ * default for local dev; pass `auth` to gate it (production posture: scoped
+ * API tokens via mod-identity).
  */
 
 import { required, value, z, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
@@ -16,17 +18,27 @@ import { agentsService } from "@pattern-js/mod-agents";
 
 const PROTOCOL_VERSION = "2025-06-18";
 
-interface JsonRpcMessage {
+export interface JsonRpcMessage {
   jsonrpc: "2.0";
   id?: string | number | null;
   method: string;
   params?: Record<string, unknown>;
 }
 
-interface ServeOpts {
+/** What an MCP transport needs from its tool provider — nothing else. */
+export interface McpSource {
+  serverInfo: { name: string; version: string };
+  /** The EXPOSED tools — list and call must agree on this set. */
+  listTools(): McpToolInfo[] | Promise<McpToolInfo[]>;
+  /** Run a tool by name. Throw for unknown tools and failures (becomes isError content). */
+  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+}
+
+export interface McpToolInfo {
   name: string;
-  version: string;
-  toolFilter: string[];
+  description?: string;
+  /** JSON Schema for the arguments. */
+  params?: Record<string, unknown>;
 }
 
 const ok = (id: JsonRpcMessage["id"], result: unknown) => ({ jsonrpc: "2.0" as const, id: id ?? null, result });
@@ -37,23 +49,20 @@ const err = (id: JsonRpcMessage["id"], code: number, message: string) => ({
 });
 
 /** Handle one JSON-RPC message. Returns undefined for notifications (no reply). */
-async function handleOne(ctx: OpContext, msg: JsonRpcMessage, opts: ServeOpts): Promise<object | undefined> {
-  const svc = agentsService(ctx);
+async function handleOne(msg: JsonRpcMessage, source: McpSource): Promise<object | undefined> {
   switch (msg.method) {
     case "initialize":
       return ok(msg.id, {
         protocolVersion: (msg.params?.protocolVersion as string) ?? PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: opts.name, version: opts.version },
+        serverInfo: source.serverInfo,
       });
     case "ping":
       return ok(msg.id, {});
     case "tools/list": {
-      const wanted = opts.toolFilter.filter((t) => t !== "*");
-      const all = svc.listWorkflowTools().filter((t) => !t.guardrail);
-      const picked = wanted.length ? all.filter((t) => wanted.includes(t.name)) : all;
+      const tools = await source.listTools();
       return ok(msg.id, {
-        tools: picked.map((t) => ({
+        tools: tools.map((t) => ({
           name: t.name,
           description: t.description ?? "",
           inputSchema: t.params ?? { type: "object", properties: {} },
@@ -62,11 +71,9 @@ async function handleOne(ctx: OpContext, msg: JsonRpcMessage, opts: ServeOpts): 
     }
     case "tools/call": {
       const name = msg.params?.name as string | undefined;
-      const reg = name ? svc.getWorkflowTool(name) : undefined;
-      if (!reg) return ok(msg.id, { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true });
       try {
-        const outputs = await ctx.invoke({ workflowId: reg.workflowId }, { args: (msg.params?.arguments as object) ?? {} });
-        const result = (outputs as Record<string, unknown>).result === undefined ? outputs : (outputs as Record<string, unknown>).result;
+        if (!name) throw new Error("Unknown tool: (missing name)");
+        const result = await source.callTool(name, (msg.params?.arguments as Record<string, unknown>) ?? {});
         const text = typeof result === "string" ? result : JSON.stringify(result);
         return ok(msg.id, { content: [{ type: "text", text }] });
       } catch (e) {
@@ -80,17 +87,68 @@ async function handleOne(ctx: OpContext, msg: JsonRpcMessage, opts: ServeOpts): 
   }
 }
 
+/**
+ * The transport-agnostic MCP handler: single messages or batches in, JSON-RPC
+ * replies out (undefined = notification, nothing to send). Both the HTTP
+ * serve op and the `pattern mcp` stdio transport delegate here.
+ */
+export async function handleMcp(
+  body: unknown,
+  source: McpSource,
+): Promise<object | object[] | undefined> {
+  if (Array.isArray(body)) {
+    const out = (await Promise.all(body.map((m) => handleOne(m as JsonRpcMessage, source)))).filter(
+      (r): r is object => Boolean(r),
+    );
+    return out;
+  }
+  return handleOne(body as JsonRpcMessage, source);
+}
+
+/**
+ * The engine-backed source: exposed tools come from the AgentsRegistry, calls
+ * run the tool workflow via ctx.invoke (a linked, traced sub-run with engine
+ * arg validation). `toolFilter` narrows exposure; `["*"]`/empty exposes every
+ * non-guardrail, NON-RESTRICTED tool — control-plane tools must be named
+ * explicitly. tools/call enforces the SAME set as tools/list, so narrowing
+ * the config is a real boundary, not a menu.
+ */
+export function workflowToolSource(
+  ctx: OpContext,
+  opts: { name: string; version: string; toolFilter: string[] },
+): McpSource {
+  const svc = agentsService(ctx);
+  const exposed = (): Map<string, McpToolInfo & { workflowId: string }> => {
+    const wanted = opts.toolFilter.filter((t) => t !== "*");
+    const all = svc.listWorkflowTools().filter((t) => !t.guardrail);
+    const picked = wanted.length ? all.filter((t) => wanted.includes(t.name)) : all.filter((t) => !t.restricted);
+    return new Map(picked.map((t) => [t.name, t]));
+  };
+  return {
+    serverInfo: { name: opts.name, version: opts.version },
+    listTools: () => [...exposed().values()].map(({ name, description, params }) => ({ name, description, params })),
+    callTool: async (name, args) => {
+      const reg = exposed().get(name);
+      if (!reg) throw new Error(`Unknown tool: ${name}`);
+      const outputs = await ctx.invoke({ workflowId: reg.workflowId }, { args });
+      const record = outputs as Record<string, unknown>;
+      return record.result === undefined ? outputs : record.result;
+    },
+  };
+}
+
 export const mcpServeOp: OpDefinition = {
   type: "ai.mcp.serve",
   title: "ai.mcp.serve",
   description:
     "Serve Pattern's boundary.tool workflows as an MCP server (stateless StreamableHTTP JSON-RPC). Wire the request " +
-    "body into `request` and `response` into boundary.http.response.body. config.tools narrows which tools are exposed.",
+    "body into `request` and `response` into boundary.http.response.body. config.tools narrows which tools are exposed " +
+    "(restricted tools are only served when named explicitly).",
   reusable: false,
   config: z.object({
     name: z.string().default("pattern"),
-    version: z.string().default("0.2.2"),
-    /** Tool names to expose; empty (or ["*"]) = every non-guardrail tool. */
+    version: z.string().default("0.4.0"),
+    /** Tool names to expose; empty (or ["*"]) = every non-guardrail, non-restricted tool. */
     tools: z.array(z.string()).default([]),
   }),
   inputs: { request: required() },
@@ -98,23 +156,23 @@ export const mcpServeOp: OpDefinition = {
   execute: async (ctx) => {
     const cfg = ctx.config as { name: string; version: string; tools: string[] };
     const body = await ctx.input.value<unknown>("request");
-    const opts: ServeOpts = { name: cfg.name, version: cfg.version, toolFilter: cfg.tools };
-    if (Array.isArray(body)) {
-      const out = (await Promise.all(body.map((m) => handleOne(ctx, m as JsonRpcMessage, opts)))).filter(Boolean);
-      return { response: out };
-    }
-    const res = await handleOne(ctx, body as JsonRpcMessage, opts);
+    const source = workflowToolSource(ctx, { name: cfg.name, version: cfg.version, toolFilter: cfg.tools });
+    const res = await handleMcp(body, source);
     // Notifications produce no JSON-RPC reply; return an empty object body (200).
     return { response: res ?? {} };
   },
 };
 
 /**
- * A ready-made MCP server route at POST /mcp exposing every tool. To narrow the
- * exposed tools, build your own workflow: boundary.http.request → ai.mcp.serve
- * (config.tools: [...]) → boundary.http.response.
+ * A ready-made MCP server route at POST /mcp exposing every non-restricted
+ * tool. PUBLIC by default (local-dev posture) — pass `auth` to gate it, e.g.
+ * `{ scopes: ["workflows:read"] }` with mod-identity's API tokens installed.
+ * To narrow the exposed tools, fork it or build your own: boundary.http.request
+ * → ai.mcp.serve (config.tools: [...]) → boundary.http.response.
  */
-export function mcpServerWorkflow(opts: { path?: string } = {}): Workflow {
+export function mcpServerWorkflow(
+  opts: { path?: string; auth?: boolean | { scopes: string[] } | { env: string } } = {},
+): Workflow {
   const path = opts.path ?? "/mcp";
   // The WHOLE request body (the JSON-RPC message) flows into `request` — a
   // per-field fromBody() mapping would only pick a named field, not the message.
@@ -123,10 +181,15 @@ export function mcpServerWorkflow(opts: { path?: string } = {}): Workflow {
     name: `AI · MCP server (POST ${path})`,
     description:
       `Exposes this app's tool workflows to MCP clients over HTTP at ${path}: the whole JSON-RPC message flows ` +
-      "into ai.mcp.serve, which lists and calls every boundary.tool workflow. Fork it to narrow the toolset " +
-      "(config.tools) or move the path.",
+      "into ai.mcp.serve, which lists and calls every non-restricted boundary.tool workflow. Fork it to narrow " +
+      "the toolset (config.tools), gate it (requireAuth), or move the path.",
     nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: "POST", path }, ui: { x: 60, y: 60, pair: "out" } },
+      {
+        id: "in",
+        op: "boundary.http.request",
+        config: { method: "POST", path, ...(opts.auth !== undefined ? { requireAuth: opts.auth } : {}) },
+        ui: { x: 60, y: 60, pair: "out" },
+      },
       { id: "serve", op: "ai.mcp.serve", comment: "MCP over JSON-RPC: initialize / tools/list / tools/call.", ui: { x: 340, y: 60 } },
       { id: "out", op: "boundary.http.response", ui: { x: 620, y: 60, pair: "in" } },
     ],

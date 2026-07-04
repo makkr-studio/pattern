@@ -21,6 +21,8 @@ export interface WorkflowToolRegistration {
   needsApproval?: boolean;
   /** Guardrail-only: resolvable by name, but excluded from the default toolset. */
   guardrail?: boolean;
+  /** Privileged (control-plane): excluded from EVERY `["*"]` expansion (toolsets AND MCP). */
+  restricted?: boolean;
 }
 
 /** A code tool a mod contributes directly (registered in its `setup`). */

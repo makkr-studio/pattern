@@ -65,6 +65,14 @@ export const toolTrigger: OpDefinition = {
      * offered it as a callable tool. Name it explicitly to include it anyway.
      */
     guardrail: z.boolean().optional(),
+    /**
+     * Mark this tool PRIVILEGED (control-plane surface: deploys, workflow
+     * writes, …): every `["*"]` expansion — `agents.tools.workflows` AND
+     * `ai.mcp.serve` — leaves it out, so no agent or MCP client is ever
+     * handed it by accident. Only explicit by-name inclusion offers it, and
+     * the ops inside it still re-check the caller's scopes.
+     */
+    restricted: z.boolean().optional(),
   }),
   execute: () => ({}),
 };
