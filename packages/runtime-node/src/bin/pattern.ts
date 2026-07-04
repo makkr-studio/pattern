@@ -57,6 +57,8 @@ async function main(): Promise<void> {
       return cmdValidate(rest[0]);
     case "run":
       return cmdRun(rest);
+    case "mcp":
+      return cmdMcp();
     case "dev":
       return cmdDev(rest[0]);
     case "load":
@@ -81,6 +83,7 @@ function usage(): void {
   ${pc.cyan("pattern graph")} <file.json>     print a workflow's graph
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
   ${pc.cyan("pattern run")} <file.json|id> [-- args]  run a boundary.cli workflow once by file or id (records to the trace store)
+  ${pc.cyan("pattern mcp")}                   serve this project's tool workflows to a local MCP client over stdio
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
   ${pc.cyan("pattern load")} <scenario.json>  open-loop load test with engine flight-recording
                               ${pc.dim("--sweep  find max sustainable rps   --url <u>  target a running server")}
@@ -217,6 +220,46 @@ async function cmdRun(rest: string[]): Promise<void> {
     await store.close();
   }
   process.exit(code);
+}
+
+/**
+ * `pattern mcp` — serve the project's tool workflows over stdio (§15).
+ * Local = trusted: runs execute as an admin-scoped "local-cli" principal, and
+ * the restricted pattern_* control-plane tools ARE exposed (point Claude Code
+ * or Cursor here and your editor's agent becomes a Pattern author). stdout is
+ * reserved for JSON-RPC — everything the project logs is rerouted to stderr.
+ */
+async function cmdMcp(): Promise<void> {
+  // Mods print (bootstrap links, boot notes) with console.log — reroute BEFORE
+  // the project loads so no stray line corrupts the JSON-RPC stream.
+  console.log = (...args: unknown[]) => console.error(...args);
+
+  const engine = await projectEngine();
+  for (const wf of await loadWorkflowDir(resolve(process.cwd(), "workflows"))) {
+    if (!engine.workflows.has(wf.id)) await engine.registerWorkflowAsync(wf).catch(() => {});
+  }
+
+  // Tool calls show up in the admin's Runs page like any other run.
+  const store = await createTraceStore({ kind: "sqlite", path: resolve(process.cwd(), ".pattern/traces.db") });
+  engine.onTrace(store);
+
+  let version = "0.0.0";
+  try {
+    version = (JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string }).version;
+  } catch {
+    /* best-effort */
+  }
+
+  const { runMcpStdio } = await import("../mcp-stdio.js");
+  try {
+    await runMcpStdio(engine, { name: "pattern", version });
+  } catch (err) {
+    console.error(pc.red(`✗ ${(err as Error).message}`));
+    await store.close();
+    process.exit(1);
+  }
+  await store.close();
+  process.exit(0);
 }
 
 // ── pattern ops ──────────────────────────────────────────────────────────────
