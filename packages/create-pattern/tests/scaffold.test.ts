@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { aliasSchema } from "@pattern-js/mod-ai";
 
 const CLI = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 const SELF = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string };
@@ -87,6 +88,50 @@ describe("create-pattern scaffold dimensions", () => {
   it("headless --no-examples strips the load profile aimed at removed routes", () => {
     const { dir } = scaffold("s-hl-clean", "--modpack", "headless", "--no-examples");
     expect(existsSync(join(dir, "load.example.json"))).toBe(false);
+  });
+
+  it("agentic --providers openai: seeds default + embeddings aliases, writes .mcp.json", () => {
+    const { read, json } = scaffold("s-seed", "--modpack", "agentic", "--no-auth", "--providers", "openai");
+    const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
+    expect(ai.aliases.map((a) => [a.name, a.modality, a.provider])).toEqual([
+      ["default", "language", "openai"],
+      ["embeddings", "embedding", "openai"],
+    ]);
+    for (const a of ai.aliases) {
+      expect(a.secrets.apiKey).toEqual({ source: "env", key: "OPENAI_API_KEY" });
+      // The seeded records must stay valid against mod-ai's REAL alias schema.
+      expect(aliasSchema.safeParse(a).success, JSON.stringify(a)).toBe(true);
+    }
+    expect(json(".mcp.json")).toEqual({ mcpServers: { pattern: { command: "npx", args: ["pattern", "mcp"] } } });
+    expect(read(".env")).toContain("OPENAI_API_KEY="); // vault-key generation copied the (existing) hint into .env
+  });
+
+  it("agentic --providers anthropic: language-only seed, env hint reaches .env.example AND the generated .env", () => {
+    const { read, json } = scaffold("s-seed-claude", "--modpack", "agentic", "--no-auth", "--providers", "anthropic");
+    const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
+    expect(ai.aliases).toHaveLength(1); // anthropic has no embedding models — no embeddings alias
+    expect(ai.aliases[0]).toMatchObject({ name: "default", provider: "anthropic", modality: "language" });
+    expect(read(".env.example")).toContain("ANTHROPIC_API_KEY=");
+    expect(read(".env")).toContain("ANTHROPIC_API_KEY="); // seeding ran BEFORE the vault-key .env copy
+  });
+
+  it("no provider pick seeds nothing; a pack without mod-buddy gets no .mcp.json", () => {
+    const { dir } = scaffold("s-noseed", "--modpack", "studio");
+    expect(existsSync(join(dir, ".pattern-data"))).toBe(false);
+    expect(existsSync(join(dir, ".mcp.json"))).toBe(false);
+    const agentic = scaffold("s-noseed-agentic", "--modpack", "agentic", "--no-auth");
+    expect(existsSync(join(agentic.dir, ".pattern-data"))).toBe(false);
+    expect(existsSync(join(agentic.dir, ".mcp.json"))).toBe(true);
+  });
+
+  it("agentic + resend + examples writes the email→agent demo; agent-chat and --no-examples don't", () => {
+    const a = scaffold("s-mail-agent", "--modpack", "agentic", "--auth", "--email", "resend");
+    const wf = a.json("workflows/email-agent-reply.json") as { nodes: Array<{ op: string }> };
+    expect(wf.nodes.map((n) => n.op)).toEqual(expect.arrayContaining(["email.inbound", "agents.run", "email.reply"]));
+    const chat = scaffold("s-mail-chat", "--modpack", "agent-chat", "--auth", "--email", "resend");
+    expect(existsSync(join(chat.dir, "workflows", "email-agent-reply.json"))).toBe(false);
+    const clean = scaffold("s-mail-clean", "--modpack", "agentic", "--auth", "--email", "resend", "--no-examples");
+    expect(existsSync(join(clean.dir, "workflows", "email-agent-reply.json"))).toBe(false);
   });
 
   it("flags a pack can't honor produce notes, not silence", () => {

@@ -25,6 +25,13 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
    in `.env`.
 4. Don't edit `./.pattern` by hand (admin-versioned workflows, committed);
    `./.pattern-data` is runtime data (sqlite, blobs, secrets) and is gitignored.
+5. **Prefer the `pattern_*` MCP tools when you have them.** This project ships
+   `.mcp.json` → `pattern mcp`, so Claude Code (and any MCP client) connects to
+   the running engine's control plane: `pattern_list_ops` / `pattern_get_op`
+   (ground truth instead of guessing), `pattern_search_docs`,
+   `pattern_get_workflow`, `pattern_validate_workflow` (validate BEFORE you
+   propose), `pattern_save_workflow_draft` (drafts only — deploying stays
+   human), `pattern_list_runs` / `pattern_get_run` (debug from real traces).
 
 ## The agent stack (60 seconds)
 

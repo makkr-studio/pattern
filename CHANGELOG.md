@@ -88,6 +88,26 @@ search, and inbound email.
   mod-buddy. The agentic examples gain a **RAG pair**: `POST /rag/ingest`
   (declare + chunk + embed) and `POST /rag/ask` (hybrid retrieval → grounded
   answer with sources).
+- **Provider picks seed model aliases.** Choosing e.g. OpenAI pre-writes
+  `default` (language) and `embeddings` (embedding) into
+  `.pattern-data/ai-config.json`, each authenticating through an env-sourced
+  secret reference (`{ source: "env", key: "OPENAI_API_KEY" }` — never a
+  value). A fresh scaffold answers `/rag/ask` and talks to Buddy the moment
+  the key lands in `.env`; re-point the aliases anytime in Settings.
+- **`.mcp.json` in the Buddy packs** (`agentic`, `agent-chat`): `npx pattern
+  mcp` is pre-wired, so opening the scaffold in Claude Code (or any MCP
+  client reading `.mcp.json`) hands it the `pattern_*` control-plane tools
+  with zero setup — plus a new AGENTS.md ground rule telling coding agents to
+  prefer them over guessing.
+- **Inbound email demo**: `agentic` with Resend delivery scaffolds
+  `workflows/email-agent-reply.json` — `email.inbound` → agent → threaded
+  `email.reply`, ready for a Resend webhook pointed at
+  `POST /email/inbound/resend`.
+- Next-steps cards now cover the seeded aliases (and the env key that unlocks
+  them), the Buddy toggle, the Claude Code hookup, and the RAG curl pair; the
+  manifest card lists the seeded config and `.mcp.json` under *generates*.
+  Scaffold-written workflows (`whoami`, `email-agent-reply`) get the same
+  op-drift CI safety net as template workflows.
 
 ## 0.3.0 — 2026-07-02
 

@@ -18,10 +18,12 @@ export {
 } from "./mcp-server.js";
 export { aiOps } from "./ops/index.js";
 export {
+  aliasSchema,
   mediaRefSchema,
   genProgressSchema,
   modelCapabilitySchema,
   modelRefSchema,
+  type Alias,
   type MediaRef,
   type GenProgress,
   type ModelCapability,
