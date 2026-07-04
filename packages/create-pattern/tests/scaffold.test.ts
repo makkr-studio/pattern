@@ -134,6 +134,18 @@ describe("create-pattern scaffold dimensions", () => {
     expect(existsSync(join(clean.dir, "workflows", "email-agent-reply.json"))).toBe(false);
   });
 
+  it("buddy packs keep mod-docs even with --no-docs (Buddy's tools wire docs.* ops)", () => {
+    const res = spawnSync(
+      process.execPath,
+      [CLI, "s-buddy-docs", "--yes", "--no-install", "--no-git", "--modpack", "agentic", "--no-auth", "--no-docs"],
+      { cwd, encoding: "utf8" },
+    );
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout).toContain("note: --no-docs ignored");
+    const cfg = JSON.parse(readFileSync(join(cwd, "s-buddy-docs", "pattern.config.json"), "utf8")) as { mods: string[] };
+    expect(cfg.mods).toContain("@pattern-js/mod-docs");
+  });
+
   it("flags a pack can't honor produce notes, not silence", () => {
     const res = spawnSync(
       process.execPath,

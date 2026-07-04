@@ -176,6 +176,8 @@ export class Engine {
   private readonly eventUnsubs = new Map<string, Array<() => void>>();
   /** Installed mods, in load order (for frontend aggregation + `admin.mod.list`). */
   private readonly mods: InstalledMod[] = [];
+  /** Mod workflows parked by `useAsync({ deferWorkflows })` until `flushDeferredWorkflows()`. */
+  private deferredModWorkflows: Workflow[] = [];
   /** Per-workflow, per-node config paths resolved from the environment (P4). */
   private readonly secretPaths = new Map<string, Record<string, string[]>>();
   /**
@@ -467,16 +469,36 @@ export class Engine {
    * Install a mod, running the registration-time resolve phase for any workflow
    * that uses boundary config ports, and awaiting an async `setup` (admin-spec P3).
    * Use this whenever a mod's workflows may wire ops into a boundary's config.
+   *
+   * `deferWorkflows` parks the mod's workflows instead of registering them —
+   * batch installers (`loadMods`) set it so a seeded workflow may wire ops from
+   * a mod listed AFTER its own (mod-buddy's tools use mod-docs ops); the batch
+   * calls `flushDeferredWorkflows()` once every mod's ops are in, before any
+   * `ready` runs.
    */
-  async useAsync(mod: PatternMod, opts: { deferReady?: boolean } = {}): Promise<this> {
+  async useAsync(mod: PatternMod, opts: { deferReady?: boolean; deferWorkflows?: boolean } = {}): Promise<this> {
     const pending: Array<Promise<unknown>> = [];
     this.installMod(mod, (wf) => {
-      pending.push(this.registerWorkflowAsync(wf));
+      if (opts.deferWorkflows) this.deferredModWorkflows.push(wf);
+      else pending.push(this.registerWorkflowAsync(wf));
     });
     await Promise.all(pending);
     await mod.setup?.(this);
     // Batch installs (`loadMods`) defer `ready` until every mod is in.
     if (!opts.deferReady) await mod.ready?.(this);
+    return this;
+  }
+
+  /**
+   * Register (resolve + validate) every workflow parked by
+   * `useAsync(mod, { deferWorkflows: true })`. Call once per batch, after the
+   * last install and before the `ready` hooks — this is what makes mod load
+   * order irrelevant to which ops a seeded workflow may use.
+   */
+  async flushDeferredWorkflows(): Promise<this> {
+    const parked = this.deferredModWorkflows;
+    this.deferredModWorkflows = [];
+    for (const wf of parked) await this.registerWorkflowAsync(wf);
     return this;
   }
 

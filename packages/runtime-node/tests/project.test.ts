@@ -33,6 +33,19 @@ describe("project loading (mods + JSON workflows)", () => {
     expect(Object.values(res.outputs)[0]).toEqual({ value: "TWO-PHASE" });
   });
 
+  it("a mod's SEEDED workflows may wire ops from a mod listed after it", async () => {
+    // ships-upper-workflow ships `seeded-greet` (wiring app.upper) in its
+    // `workflows`, and is listed BEFORE upper.mjs. Mod workflows are parked
+    // during install and flushed once every mod's ops are in — the 0.4 scaffold
+    // regression (mod-buddy's tools wire docs.* ops; mod-docs is listed last).
+    const { engine } = await loadProject({
+      mods: [fixture("mods/ships-upper-workflow.mjs"), fixture("mods/upper.mjs")],
+    });
+    const res = await engine.run("seeded-greet", { input: { value: "deferred" } });
+    expect(res.status).toBe("ok");
+    expect(Object.values(res.outputs)[0]).toEqual({ value: "DEFERRED" });
+  });
+
   it("accepts an inline config object too", async () => {
     const { engine, config } = await loadProject(
       { mods: [fixture("mods/upper.mjs")], workflows: fixture("workflows") },

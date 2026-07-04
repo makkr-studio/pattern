@@ -17,6 +17,12 @@ Pattern workflow, you can open it on the canvas and reshape it.
 }
 ```
 
+`@pattern-js/mod-docs` is a **hard requirement**, not a nicety: the
+`pattern_list_ops` / `pattern_get_op` / `pattern_search_docs` tools wire its
+`docs.*` ops, and the knowledge engine retrieves over its handbook. Load
+order in `mods` doesn't matter — seeded workflows register once every mod's
+ops are in.
+
 Optional but recommended: `@pattern-js/mod-store` (threads survive reloads)
 and `@pattern-js/mod-vectors` (semantic knowledge — see below).
 

@@ -765,6 +765,7 @@ function resolveDims(pack: Modpack, flags: Flags): { dims: Dims; notes: string[]
   if (flags.email !== undefined && !auth) notes.push("--email ignored (auth is off)");
   if (flags.email !== undefined && auth && !magicLink) notes.push("--email ignored (magic link is off — email delivers magic links)");
   if (flags.docs !== undefined && !pack.docs) notes.push(`--docs ignored (the ${pack.id} pack has no HTTP host)`);
+  if (flags.docs === false && packHasBuddy(pack)) notes.push("--no-docs ignored (Buddy's knowledge engine reads the docs — this pack keeps /docs)");
   if (flags.vaultKey !== undefined && !packNeedsVault(pack)) notes.push(`--vault-key ignored (the ${pack.id} pack has no vault)`);
   if (flags.providers !== undefined && !packUsesAi(pack)) notes.push(`--providers ignored (the ${pack.id} pack has no mod-ai)`);
   return {
@@ -773,7 +774,10 @@ function resolveDims(pack: Modpack, flags: Flags): { dims: Dims; notes: string[]
       magicLink,
       oidc,
       email: auth && magicLink ? (flags.email ?? "console") : "console",
-      docs: pack.docs ? (flags.docs ?? pack.docs.default) : false,
+      // Buddy packs always ship docs: mod-buddy's tools wire docs.* ops and its
+      // knowledge engine retrieves over the handbook — without mod-docs the
+      // seeded tool workflows can't validate and the app won't boot.
+      docs: packHasBuddy(pack) ? true : pack.docs ? (flags.docs ?? pack.docs.default) : false,
       examples: flags.examples ?? true,
       vaultKey: packNeedsVault(pack) ? (flags.vaultKey ?? true) : false,
       providers: packUsesAi(pack) ? (flags.providers ?? []).map(normProvider) : [],
@@ -1448,9 +1452,13 @@ async function runInteractive(flags: Flags): Promise<void> {
     }
   }
 
-  // Docs is orthogonal too — same tri-state as auth.
+  // Docs is orthogonal too — same tri-state as auth. Buddy packs don't ask:
+  // mod-buddy's tools wire docs.* ops and its knowledge retrieves over the
+  // handbook, so /docs is part of the pack.
   let docs = false;
-  if (pack.docs) {
+  if (packHasBuddy(pack)) {
+    docs = true;
+  } else if (pack.docs) {
     if (flags.docs !== undefined) {
       docs = flags.docs;
     } else {

@@ -81,6 +81,13 @@ search, and inbound email.
 - `secretRefSchema` + `resolveSourced` hoisted to core (one sourced-secrets
   implementation for mod-ai, mod-email, mod-vectors); `admin` is now the root
   scope in `meetsRequirement`.
+- **Mod load order can't break seeded workflows.** `loadMods` parks every
+  mod-contributed workflow during install and registers them once ALL mods'
+  ops are in (`useAsync({ deferWorkflows })` +
+  `engine.flushDeferredWorkflows()`), so a mod's seeded workflow may wire
+  ops from a mod listed after it — mod-buddy's `pattern_*` tools wire
+  `docs.*` ops while mod-docs sits last in a scaffolded config. The same
+  deferral `ready` hooks always had.
 
 ### Scaffolder
 
@@ -103,6 +110,9 @@ search, and inbound email.
   `workflows/email-agent-reply.json` — `email.inbound` → agent → threaded
   `email.reply`, ready for a Resend webhook pointed at
   `POST /email/inbound/resend`.
+- The Buddy packs always ship `/docs`: mod-buddy's tools and knowledge read
+  mod-docs, so `agentic`/`agent-chat` skip the docs question and `--no-docs`
+  earns a note instead of an app that can't boot.
 - Next-steps cards now cover the seeded aliases (and the env key that unlocks
   them), the Buddy toggle, the Claude Code hookup, and the RAG curl pair; the
   manifest card lists the seeded config and `.mcp.json` under *generates*.
