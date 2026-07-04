@@ -12,6 +12,7 @@ import {
   boundaries,
   collectIssues,
   httpOutcome,
+  meetsRequirement,
   stream,
   value,
   z,
@@ -54,20 +55,88 @@ const Bd = (schema: z.ZodType): InSpec => ({ src: "body", schema });
 type Handler = (args: Record<string, unknown>, backend: ReturnType<typeof adminServices>, ctx: OpContext) => unknown | Promise<unknown>;
 
 /**
+ * The granular control-plane scopes (0.4.0) — mod-identity mints API tokens
+ * against this taxonomy, and `admin` (the root scope, what admin sessions
+ * carry) satisfies every one of them via core's `meetsRequirement`.
+ */
+type AdminScope = "workflows:read" | "workflows:write" | "runs:read" | "runs:write" | "deploy" | "admin";
+
+/**
+ * Which scope each op demands, in one place so the taxonomy reads as a table.
+ * The split that matters: a `workflows:write` token can draft and save, but
+ * only `deploy` changes what RUNS (deploy/enable/delete); `runs:write` starts
+ * and steers runs without touching definitions. Anything not listed —
+ * settings, system stats/bench, the UI manifest, observability — stays on the
+ * root `admin` scope.
+ */
+const OP_SCOPES: Record<string, AdminScope> = {
+  "admin.workflow.list": "workflows:read",
+  "admin.workflow.get": "workflows:read",
+  "admin.workflow.explain": "workflows:read",
+  "admin.version.list": "workflows:read",
+  "admin.version.get": "workflows:read",
+  "admin.version.diff": "workflows:read",
+  "admin.op.list": "workflows:read",
+  "admin.op.get": "workflows:read",
+  "admin.ports.compatible": "workflows:read",
+  "admin.doc.ports": "workflows:read",
+  "admin.template.list": "workflows:read",
+  "admin.mod.list": "workflows:read",
+  "admin.system.map": "workflows:read",
+  "admin.workflow.save": "workflows:write",
+  "admin.workflow.import": "workflows:write",
+  "admin.workflow.validate": "workflows:read",
+  "admin.fixture.list": "workflows:read",
+  "admin.fixture.get": "workflows:read",
+  "admin.fixture.save": "workflows:write",
+  "admin.fixture.delete": "workflows:write",
+  "admin.run.list": "runs:read",
+  "admin.run.get": "runs:read",
+  "admin.run.tail": "runs:read",
+  "admin.metrics.summary": "runs:read",
+  "admin.run": "runs:write",
+  "admin.run.cancel": "runs:write",
+  "admin.run.pause": "runs:write",
+  "admin.run.resume": "runs:write",
+  "admin.workflow.deploy": "deploy",
+  "admin.workflow.setEnabled": "deploy",
+  "admin.workflow.delete": "deploy",
+};
+
+/**
+ * The in-op scope re-check (defense in depth): admin routes gate at the HTTP
+ * boundary, but these ops are ALSO reachable inside tool workflows (the
+ * `pattern_*` control-plane tools, `pattern mcp`), where the caller may hold a
+ * granular API token instead of an admin session. Advisory-open without an
+ * auth provider — EXACTLY mirroring engine.authorize's posture, so
+ * zero-config dev keeps working.
+ */
+function requireScope(ctx: OpContext, engine: { hasAuthProvider(): boolean }, scope: AdminScope, type: string): void {
+  if (!engine.hasAuthProvider()) return;
+  const check = meetsRequirement(ctx.principal, { scopes: [scope] });
+  if (!check.ok) throw new DomainError("forbidden", `${type} requires the "${scope}" scope — ${check.reason}`);
+}
+
+/**
  * Build an admin op as a PURE domain function: discrete, named input ports
  * (`io.in`) and a named output port (`io.out`, or several for genuinely distinct
  * concerns like `version` + `issues`). The op never sees HTTP — the endpoint
  * workflow decomposes the request into these ports and names the response. The
  * handler still receives a plain args object (the resolved named inputs), so
  * the domain logic is unchanged.
+ *
+ * `opts.scope` is the granular scope this op demands in-op (default: the root
+ * `admin` scope — the safe floor for anything not explicitly opened up).
  */
 function adminOp(
   type: string,
   description: string,
   io: { in?: Record<string, InSpec>; out: string | string[]; stream?: boolean },
   handler: Handler,
+  opts: { scope?: AdminScope } = {},
 ): OpDefinition {
   const inSpec = io.in ?? {};
+  const scope = opts.scope ?? OP_SCOPES[type] ?? "admin";
   adminOpRoutes[type] = { in: inSpec, out: io.out, stream: io.stream };
   const inputs: Ports = Object.fromEntries(Object.entries(inSpec).map(([k, v]) => [k, value(v.schema)]));
   const outputs: Ports = io.stream
@@ -93,13 +162,15 @@ function adminOp(
       const args: Record<string, unknown> = {};
       await Promise.all(keys.map(async (k) => void (args[k] = await ctx.input.value(k))));
       try {
-        const result = await handler(args, adminServices(ctx), ctx);
+        const backend = adminServices(ctx);
+        requireScope(ctx, backend.engine, scope, type);
+        const result = await handler(args, backend, ctx);
         return typeof io.out === "string" ? { [io.out]: result } : (result as Record<string, unknown>);
       } catch (err) {
-        // A DOMAIN error (not-found, bad input) becomes a collision-proof
-        // outcome the route's boundary.http.status maps to a 4xx — the op stays
-        // network-unaware. Real failures rethrow (→ 500). Multi-output ops have
-        // no domain-error case, so they always rethrow.
+        // A DOMAIN error (not-found, bad input, forbidden) becomes a
+        // collision-proof outcome the route's boundary.http.status maps to a
+        // 4xx — the op stays network-unaware. Real failures rethrow (→ 500).
+        // Multi-output ops have no domain-error path, so they always rethrow.
         if (err instanceof DomainError && typeof io.out === "string") return { [io.out]: httpOutcome(err.code, { error: err.code, message: err.message }) };
         throw err;
       }
@@ -191,6 +262,30 @@ const workflowImport = adminOp("admin.workflow.import", "Import a workflow JSON 
   }
   return { slug, issues };
 });
+
+const workflowValidate = adminOp(
+  "admin.workflow.validate",
+  "Validate a workflow doc WITHOUT saving: located errors + advisory warnings. Same resolve semantics as a real run.",
+  { in: { doc: Bd(objSchema) }, out: "result" },
+  async (args, { engine }) => {
+    const doc = args.doc as Workflow;
+    if (!doc || typeof doc !== "object" || !Array.isArray((doc as { nodes?: unknown }).nodes)) {
+      throw new DomainError("invalid", 'missing "doc" (a workflow document with nodes/edges)');
+    }
+    // Resolve $env refs + boundary config ports first (exactly what admin.run
+    // does), so validation judges the doc a deploy would actually register.
+    let resolved: Workflow;
+    try {
+      resolved = await engine.resolveWorkflowDoc(doc);
+    } catch (err) {
+      // A resolve-phase failure IS a validation result, not a 500 — surface it
+      // as a located-ish issue so self-repairing callers (Buddy) can act on it.
+      return { ok: false, issues: [{ severity: "error", code: "resolve_failed", message: err instanceof Error ? err.message : String(err) }] };
+    }
+    const { ok, issues } = collectIssues(resolved, engine.ops);
+    return { ok, issues };
+  },
+);
 
 /**
  * Code workflows a user undeployed in THIS process: slug → the doc the mod
@@ -532,6 +627,7 @@ export const adminOps: OpDefinition[] = [
   workflowGet,
   workflowSave,
   workflowImport,
+  workflowValidate,
   workflowSetEnabled,
   workflowDeploy,
   workflowDelete,
