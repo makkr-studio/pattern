@@ -128,6 +128,41 @@ into a user + session per the **signup policy**: `invite` (default; unknown
 emails refused) or `open`. This is a runtime setting toggled on the admin's
 Settings page (the mod option only seeds it).
 
+**Emailed links are absolute.** Set `PATTERN_PUBLIC_URL` (e.g.
+`https://app.example.com`) and every delivered link is built on that canonical
+origin — it beats the request-derived origin on purpose, because behind a
+proxy or tunnel the Host header is whatever the hop put there. Unset (dev),
+the request's own origin is used, so localhost links still work with zero
+config.
+
+## Invites (0.4)
+
+An invite is a **record**, not just a token: admin → **Access → Invites**
+sends one (email, roles, and an optional **next path** — where the invitee's
+first login lands, e.g. `/admin` or `/chat`) and lists every invite sent with
+its derived status: `pending` → `accepted` (or `expired` / `revoked`). Revoke
+a pending invite and its link dies immediately — the callback checks the
+record before creating any account.
+
+Accepting an invite deliberately does **not** sign the user in. The link
+creates the account, stamps the record, and lands on `/auth/invited` — a small
+page that says what just happened and hands over to the login screen with the
+invite's next path riding along. Acceptance and the first sign-in stay two
+distinct acts, so the invitee consciously picks (and remembers) a sign-in
+method.
+
+## Administering users (0.4)
+
+Access → **Users** is the control room: per row — details, a minted sign-in
+link, **disable / enable** (reversible lock-out; revokes sessions), **log out
+everywhere**, and **delete** (removes the user, their identity links and
+session rows; invites and API tokens keep the id as audit trail). Roles are
+edited on the user's **details page** (the "Set roles" form replaces the whole
+set and ends their sessions). Two guards run everywhere they matter: you can't
+disable or delete **yourself**, and the **last active admin** can't be
+demoted, disabled or deleted — an app always keeps someone who can administer
+it.
+
 ## API tokens (0.4)
 
 Sessions authenticate humans in browsers; **API tokens** authenticate

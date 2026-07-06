@@ -95,6 +95,7 @@ export {
   fromParams,
   fromQuery,
   fromBody,
+  fromRequestUrl,
   type HttpSrc,
   type PortSource,
   type RouteIO,

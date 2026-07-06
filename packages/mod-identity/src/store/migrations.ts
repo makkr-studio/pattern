@@ -91,6 +91,27 @@ export const MIGRATIONS: string[] = [
     version       INTEGER NOT NULL DEFAULT 1
   );
   `,
+
+  // v4 — invites as first-class records (status, next path, audit trail). The
+  // single-use token stays the credential; this row is what the admin sees.
+  // email_norm is deliberately NOT unique — re-inviting is a normal act.
+  `
+  CREATE TABLE IF NOT EXISTS invites (
+    id                TEXT PRIMARY KEY,
+    email             TEXT NOT NULL,
+    email_norm        TEXT NOT NULL,
+    roles             TEXT NOT NULL DEFAULT '[]',
+    next              TEXT,
+    invited_by        TEXT,
+    created_at        INTEGER NOT NULL,
+    expires_at        INTEGER NOT NULL,
+    accepted_at       INTEGER,
+    accepted_user_id  TEXT,
+    revoked_at        INTEGER,
+    version           INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE INDEX IF NOT EXISTS idx_invites_email ON invites(email_norm);
+  `,
 ];
 
 export function runMigrations(db: SqlDatabase): void {

@@ -32,8 +32,19 @@ export function absoluteUrl(path: string, origin?: string | null): string {
   return origin ? `${origin.replace(/\/$/, "")}${path}` : path;
 }
 
+/**
+ * The canonical public origin, when configured. `PATTERN_PUBLIC_URL` beats any
+ * request-derived origin on purpose: behind a proxy or tunnel the Host header
+ * is whatever the hop put there, and links minted outside a request (cron,
+ * CLI) have no origin at all — an emailed link must survive both.
+ */
+function configuredOrigin(ctx: OpContext): string | null {
+  const raw = ctx.env?.PATTERN_PUBLIC_URL;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
 export async function deliverToken(ctx: OpContext, input: DeliverInput): Promise<DeliverResult> {
-  const url = absoluteUrl(input.path, input.origin);
+  const url = absoluteUrl(input.path, configuredOrigin(ctx) ?? input.origin);
   const payload = { email: input.email, url, purpose: input.purpose, delivered: false };
   let result: unknown;
   try {

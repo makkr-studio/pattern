@@ -69,6 +69,32 @@ export interface TokenRow {
   version: number;
 }
 
+/**
+ * An **invite** as a first-class record — what the admin sent, to whom, and
+ * what became of it. The single-use `TokenRow` remains the credential (its
+ * `data.inviteId` points back here); this row is the audit/status side:
+ * listable, revocable, and stamped on acceptance. Status is DERIVED, in
+ * precedence order: revoked → accepted → expired → pending.
+ */
+export interface InviteRow {
+  id: string;
+  email: string;
+  emailNorm: string;
+  /** Roles granted on acceptance. */
+  roles: string[];
+  /** Post-first-login destination (relative path), carried through the flow. */
+  next: string | null;
+  /** The admin who sent it (user id) — audit only, never authorization. */
+  invitedBy: string | null;
+  createdAt: number;
+  expiresAt: number;
+  acceptedAt: number | null;
+  /** The user the acceptance created (or linked). */
+  acceptedUserId: string | null;
+  revokedAt: number | null;
+  version: number;
+}
+
 /** Thrown when an insert hits the one-user-per-email constraint. */
 export class UniqueViolationError extends Error {
   constructor(field: string) {
@@ -99,6 +125,12 @@ export interface UserStore {
     patch: Partial<Pick<UserRow, "name" | "roles" | "disabled">>,
   ): Promise<UserRow | null>;
   listUsers(opts?: { limit?: number; offset?: number }): Promise<UserRow[]>;
+  /**
+   * Hard-delete a user with their identity links and sessions (FK order:
+   * sessions → identities → user, one transaction). Returns false when absent.
+   * The caller (service) revokes sessions FIRST so live sockets close.
+   */
+  deleteUser(id: string): Promise<boolean>;
 }
 
 export interface SessionStore {
@@ -164,6 +196,17 @@ export interface ApiTokenStore {
   touchLastUsed(id: string, at: number): Promise<void>;
 }
 
+export interface InviteStore {
+  create(row: Omit<InviteRow, "version">): Promise<InviteRow>;
+  findById(id: string): Promise<InviteRow | null>;
+  /** All invites, newest first (admin screen). */
+  list(): Promise<InviteRow[]>;
+  /** CAS acceptance stamp — only a live (un-accepted, un-revoked) invite takes it. */
+  markAccepted(id: string, expectedVersion: number, at: number, userId: string): Promise<InviteRow | null>;
+  /** CAS revoke: null on version mismatch. Idempotent on an already-revoked row. */
+  revoke(id: string, expectedVersion: number, at: number): Promise<InviteRow | null>;
+}
+
 /** Small persisted key/value bag for runtime-mutable identity settings (signup policy…). */
 export interface SettingsStore {
   get(key: string): Promise<string | null>;
@@ -175,6 +218,7 @@ export interface IdentityStores {
   sessions: SessionStore;
   tokens: TokenStore;
   apiTokens: ApiTokenStore;
+  invites: InviteStore;
   settings: SettingsStore;
   close(): Promise<void>;
 }

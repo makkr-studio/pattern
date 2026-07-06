@@ -162,18 +162,37 @@ describe("identity over HTTP (e2e)", () => {
     expect(me.roles).toEqual([]); // open signup grants no roles
   });
 
-  it("invite flow: invited user lands with the granted roles", async () => {
+  it("invite flow: acceptance creates the account + lands on the interstitial; first login is explicit", async () => {
     const { base, service, logSpy } = await boot(4866);
     await bootstrapAdmin(base, logSpy);
 
-    const invite = await service.issueToken({
-      purpose: "invite",
+    const { invite, issued } = await service.createInvite({
       email: "new@x.io",
-      data: { roles: ["admin"] },
+      roles: ["admin"],
+      next: "/admin",
     });
-    const cb = await fetch(`${base}${invite.path}`, { redirect: "manual" });
+
+    // Accepting the link creates the user and stamps the record — but mints NO
+    // session: the interstitial explains the handover to the first sign-in.
+    const cb = await fetch(`${base}${issued.path}`, { redirect: "manual" });
     expect(cb.status).toBe(302);
-    const who = await fetch(`${base}/auth/whoami`, { headers: { cookie: cookieOf(cb) } });
+    expect(cb.headers.get("set-cookie")).toBeNull();
+    const location = cb.headers.get("location")!;
+    expect(location).toContain("/auth/invited?next=%2Fadmin");
+
+    const interstitial = await fetch(`${base}${location}`);
+    const html = await interstitial.text();
+    expect(html).toContain("Your account is ready");
+    expect(html).toContain("/auth/login?next=%2Fadmin"); // the invite's next survives into login
+
+    const stamped = await service.getInvite(invite.id);
+    expect(stamped?.acceptedAt).not.toBeNull();
+    expect(stamped?.acceptedUserId).toBe((await service.findUserByEmail("new@x.io"))!.id);
+
+    // The first login (any method — here a magic-link token) carries the granted roles.
+    const login = await service.issueToken({ purpose: "login", email: "new@x.io" });
+    const signedIn = await fetch(`${base}${login.path}`, { redirect: "manual" });
+    const who = await fetch(`${base}/auth/whoami`, { headers: { cookie: cookieOf(signedIn) } });
     const me = await who.json();
     expect(me.email).toBe("new@x.io");
     expect(me.roles).toEqual(["admin"]);

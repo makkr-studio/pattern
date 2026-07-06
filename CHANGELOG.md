@@ -71,6 +71,34 @@ search, and inbound email.
   and `EmailMessage` gains pass-through `headers`. Email your app a question;
   a three-node workflow answers in-thread.
 
+### Identity
+
+- **Invite emails carried a relative (dead) link** — fixed at the root:
+  `PATTERN_PUBLIC_URL` is the app's canonical origin, and every delivered link
+  (invite, magic link) is built on it — it beats the request-derived origin,
+  because proxies and tunnels lie about Host. Without it, the invite route now
+  wires the request URL through (new core `fromRequestUrl()` port source), so
+  dev links are absolute too. The bootstrap console link uses it as well.
+- **Invites are records now**: admin → Access → **Invites** sends (email,
+  roles, and a **next path** — where the first login lands) and lists every
+  invite with a derived status (`pending` / `accepted` / `expired` /
+  `revoked`). Revoking a pending invite kills its link immediately — the
+  callback checks the record before creating any account. Ops:
+  `identity.invites.list` / `identity.invites.revoke`.
+- **Accepting an invite no longer silently signs you in.** The link creates
+  the account and lands on `/auth/invited` — "your account is ready, sign in
+  for the first time" — handing the invite's next path into the login screen.
+  Acceptance and first sign-in are two acts again.
+- **Real user administration**: delete a user (`identity.users.delete` —
+  sessions revoked, user + identity links + session rows removed), edit roles
+  from the user's details page (the setRoles op finally has a route + UI),
+  disable/enable stays reversible. Guards everywhere they matter: no
+  self-disable/self-delete, and the **last active admin** can't be demoted,
+  disabled or deleted.
+- Tier-1 admin forms on parameterized pages now carry the page's `:params`
+  into their submit — what makes the "Set roles" form on `/x/identity/users/:userId`
+  (and any future mod's detail-page form) possible.
+
 ### Core
 
 - **Any mod can ship a trigger op.** `OpDefinition.triggerEvents(config)`

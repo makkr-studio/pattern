@@ -18,12 +18,13 @@
 
 import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { identityService } from "./service-key.js";
-import { API_TOKEN_SCOPES, type IdentityService } from "./service.js";
+import { API_TOKEN_SCOPES, inviteStatus, type IdentityService } from "./service.js";
 import { deliverToken } from "./deliver.js";
 import { looksLikeEmail } from "./tokens.js";
 import { renderLoginPage, renderSentPage } from "./pages/login.js";
 import { renderBootstrapPage } from "./pages/bootstrap.js";
 import { renderWelcomePage } from "./pages/welcome.js";
+import { renderInvitedPage } from "./pages/invited.js";
 import { safeNextPath } from "./pages/html.js";
 
 /* ── helpers ───────────────────────────────────────────────────────────── */
@@ -160,6 +161,19 @@ const publicUser = (u: { id: string; email: string; name: string | null; roles: 
   created: new Date(u.createdAt).toISOString(),
 });
 
+/** The acting user (session principal id) — the self-targeting guards read this.
+ *  API-token principals carry `apitoken:<id>` ids, which never match a user id. */
+const actingUserId = (ctx: OpContext): string | null => (ctx.principal.kind === "user" ? ctx.principal.id : null);
+
+/** Comma-string or array → trimmed string[] (the admin form posts a string). */
+const normalizeRoles = (raw: unknown): string[] =>
+  Array.isArray(raw)
+    ? (raw as string[])
+    : String(raw ?? "")
+        .split(",")
+        .map((r) => r.trim())
+        .filter(Boolean);
+
 /* ── whoami ────────────────────────────────────────────────────────────── */
 
 const whoami = jsonOp("identity.whoami", "The current principal: kind, id, email, roles, scopes.", { out: "whoami" }, (_args, _svc, ctx) => {
@@ -188,56 +202,113 @@ const usersList = jsonOp(
 
 const usersInvite = jsonOp(
   "identity.users.invite",
-  'Invite a user by email (admin): mints an invite token and delivers it via the "identity.deliverToken" hook (console fallback). Args { email, roles? (array or comma string) }.',
-  { in: { email: z.string(), roles: z.unknown().optional() }, out: "result" },
+  'Invite a user by email (admin): records the invite (listable, revocable), mints its token and delivers the link via the "identity.deliverToken" hook (console fallback). Args { email, roles? (array or comma string), next? (post-first-login path), url? (the request URL — derives the link origin; PATTERN_PUBLIC_URL beats it when set) }.',
+  { in: { email: z.string(), roles: z.unknown().optional(), next: z.string().optional(), url: z.string().optional() }, out: "result" },
   async (args, svc, ctx) => {
     const email = String(args.email ?? "").trim();
     if (!looksLikeEmail(email)) throw new Error("invalid email");
-    const roles =
-      Array.isArray(args.roles)
-        ? (args.roles as string[])
-        : String(args.roles ?? "")
-            .split(",")
-            .map((r) => r.trim())
-            .filter(Boolean);
-    const issued = await svc.issueToken({
-      purpose: "invite",
-      email,
-      ttlMs: 7 * 24 * 60 * 60 * 1000, // invites get a week, not 15 minutes
-      data: { roles },
-    });
-    const { delivered, url } = await deliverToken(ctx, { email, path: issued.path, purpose: "invite" });
+    const roles = normalizeRoles(args.roles);
+    const next = typeof args.next === "string" && args.next.trim() ? safeNextPath(args.next.trim()) : null;
+    const { invite, issued } = await svc.createInvite({ email, roles, next, invitedBy: actingUserId(ctx) });
+    // The emailed link must be absolute: PATTERN_PUBLIC_URL wins inside
+    // deliverToken; the request origin (wired by the admin route) is the
+    // dev-mode fallback.
+    let origin: string | null = null;
+    try {
+      origin = args.url ? new URL(String(args.url)).origin : null;
+    } catch {
+      /* not absolute — deliverToken falls back */
+    }
+    const { delivered, url } = await deliverToken(ctx, { email, path: issued.path, purpose: "invite", origin });
     // Undelivered (no email channel): hand the link to the inviting admin —
     // `copy` renders as a copyable field in the admin's result view.
-    return { ok: true, email, roles, delivered, ...(delivered ? {} : { copy: url }) };
+    return {
+      ok: true,
+      email,
+      roles,
+      ...(invite.next ? { next: invite.next } : {}),
+      expires: new Date(invite.expiresAt).toISOString(),
+      delivered,
+      ...(delivered ? {} : { copy: url }),
+    };
+  },
+  { sensitivity: "privileged" },
+);
+
+const invitesList = jsonOp(
+  "identity.invites.list",
+  "List sent invites, newest first (admin): status (pending / accepted / expired / revoked), roles, next path, who sent it.",
+  { out: "invites" },
+  async (_args, svc) => {
+    const invites = await svc.listInvites();
+    const emails = new Map<string, string>();
+    for (const i of invites) {
+      if (i.invitedBy && !emails.has(i.invitedBy)) {
+        emails.set(i.invitedBy, (await svc.getUser(i.invitedBy))?.email ?? i.invitedBy);
+      }
+    }
+    return invites.map((i) => ({
+      id: i.id,
+      email: i.email,
+      roles: i.roles.join(", ") || "—",
+      status: inviteStatus(i),
+      next: i.next ?? "",
+      "invited by": i.invitedBy ? (emails.get(i.invitedBy) ?? i.invitedBy) : "—",
+      sent: new Date(i.createdAt).toISOString(),
+      expires: new Date(i.expiresAt).toISOString(),
+    }));
+  },
+  { sensitivity: "privileged" },
+);
+
+const invitesRevoke = jsonOp(
+  "identity.invites.revoke",
+  "Revoke a pending invite (admin): its link stops working immediately. Idempotent; refused once accepted. Args { inviteId }.",
+  { in: { inviteId: z.string() }, out: "result" },
+  async (args, svc) => {
+    const row = await svc.revokeInvite(String(args.inviteId));
+    return { ok: true, email: row.email, status: inviteStatus(row) };
   },
   { sensitivity: "privileged" },
 );
 
 const usersSetRoles = jsonOp(
   "identity.users.setRoles",
-  "Set a user's roles (admin). Ends the user's sessions; the change takes effect on next login. Args { userId, roles }.",
+  "Set a user's roles (admin) — replaces the whole set. Ends the user's sessions; refused when it would demote the last active admin. Args { userId, roles }.",
   { in: { userId: z.string(), roles: z.unknown().optional() }, out: "user" },
   async (args, svc) => {
-    const roles = Array.isArray(args.roles)
-      ? (args.roles as string[])
-      : String(args.roles ?? "")
-          .split(",")
-          .map((r) => r.trim())
-          .filter(Boolean);
-    return publicUser(await svc.setRoles(String(args.userId), roles));
+    return publicUser(await svc.setRoles(String(args.userId), normalizeRoles(args.roles)));
   },
   { sensitivity: "privileged" },
 );
 
 const usersToggleDisabled = jsonOp(
   "identity.users.toggleDisabled",
-  "Disable / re-enable a user (admin). Disabling revokes all sessions. Args { userId }.",
+  "Disable / re-enable a user (admin). Disabling revokes all sessions; refused on yourself and on the last active admin. Args { userId }.",
   { in: { userId: z.string() }, out: "user" },
-  async (args, svc) => {
+  async (args, svc, ctx) => {
     const user = await svc.getUser(String(args.userId));
     if (!user) throw new Error("user not found");
+    if (!user.disabled && actingUserId(ctx) === user.id) {
+      throw new Error("you can't disable your own account — another admin has to");
+    }
     return publicUser(await svc.setDisabled(user.id, !user.disabled));
+  },
+  { sensitivity: "privileged" },
+);
+
+const usersDelete = jsonOp(
+  "identity.users.delete",
+  "Delete a user (admin): sessions are revoked and the user, their identity links and session rows are removed. Refused on yourself and on the last active admin. Args { userId }.",
+  { in: { userId: z.string() }, out: "result" },
+  async (args, svc, ctx) => {
+    const user = await svc.getUser(String(args.userId));
+    if (!user) throw new Error("user not found");
+    if (actingUserId(ctx) === user.id) {
+      throw new Error("you can't delete your own account — another admin has to");
+    }
+    await svc.deleteUser(user.id);
+    return { ok: true, deleted: user.email };
   },
   { sensitivity: "privileged" },
 );
@@ -500,7 +571,7 @@ const loginPage = authOp(
 
 const tokenCallback = authOp(
   "identity.token.callback",
-  "The login/invite callback: consumes a single-use token, finds-or-creates the user per the signup policy, mints a session and redirects with the cookie set.",
+  "The login/invite callback: consumes a single-use token and finds-or-creates the user per the signup policy. A login mints a session and redirects with the cookie set; an invite acceptance creates the account and lands on the /invited page — the first sign-in stays an explicit act.",
   { query: ["t", "next"], userAgent: true },
   async (args, svc, req) => {
     const loginUrl = `${svc.options.mount}/login`;
@@ -515,6 +586,15 @@ const tokenCallback = authOp(
 
     const data = token.data ?? {};
     const invite = token.purpose === "invite";
+
+    // A revoked invite must die even though its token row was just consumed —
+    // the record is the source of truth the admin acts on.
+    const inviteRecord =
+      invite && typeof data.inviteId === "string" ? await svc.getInvite(data.inviteId) : null;
+    if (invite && inviteRecord?.revokedAt != null) {
+      return redirectTo(`${loginUrl}?error=invite-revoked`);
+    }
+
     const user = await svc.findOrCreateByIdentity({
       provider: typeof data.provider === "string" ? data.provider : "magic-link",
       subject: token.emailNorm,
@@ -526,10 +606,25 @@ const tokenCallback = authOp(
     if (!user) return redirectTo(`${loginUrl}?error=signup-closed`);
     if (user.disabled) return redirectTo(`${loginUrl}?error=account-disabled`);
 
-    const minted = await svc.mintSession(user.id, { userAgent: (args.userAgent as string) ?? null });
     const next = safeNextPath(args.next ?? data.next ?? req.home);
+
+    if (invite) {
+      // Acceptance ≠ sign-in: stamp the record, then explain what happened and
+      // hand over to the login page (which carries `next` through).
+      if (inviteRecord) await svc.acceptInvite(inviteRecord.id, user.id);
+      return redirectTo(`${svc.options.mount}/invited?next=${encodeURIComponent(next)}`);
+    }
+
+    const minted = await svc.mintSession(user.id, { userAgent: (args.userAgent as string) ?? null });
     return redirectTo(next, sessionCookie(svc, minted.token));
   },
+);
+
+const invitedPage = authOp(
+  "identity.invited.page",
+  "The invite-accepted interstitial: your account is ready, sign in for the first time — with a continue button carrying the invite's next path into the login page.",
+  { query: ["next"] },
+  (args, svc) => page(renderInvitedPage({ mount: svc.options.mount, next: safeNextPath(args.next) })),
 );
 
 const logout = authOp(
@@ -607,9 +702,12 @@ export const identityOps: OpDefinition[] = [
   usersSetRoles,
   usersToggleDisabled,
   usersRevokeSessions,
+  usersDelete,
   usersGet,
   usersRunStats,
   usersLoginLink,
+  invitesList,
+  invitesRevoke,
   settingsGet,
   settingsSet,
   sessionsList,
@@ -621,6 +719,7 @@ export const identityOps: OpDefinition[] = [
   tokenCallback,
   logout,
   welcomePage,
+  invitedPage,
   bootstrapPage,
   bootstrapSubmit,
 ];

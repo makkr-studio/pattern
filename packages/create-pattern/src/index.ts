@@ -994,7 +994,13 @@ async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<v
     delivery === "resend"
       ? "# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
       : "# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
-  await appendEnvHint(targetDir, hint);
+  await appendEnvHint(
+    targetDir,
+    hint +
+      "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +
+      "# (invites, sign-in) are built on it. Unset in dev = the request's host.\n" +
+      "# PATTERN_PUBLIC_URL=\n",
+  );
 }
 
 /** Append a commented hint to .env.example, creating the file for templates that ship none. */

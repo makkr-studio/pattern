@@ -14,7 +14,7 @@
 
 import type { ConnectionRegistry } from "@pattern-js/core";
 import type { ResolvedIdentityOptions } from "./options.js";
-import type { ApiTokenRow, IdentityStores, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
+import type { ApiTokenRow, IdentityStores, InviteRow, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
 import { UniqueViolationError } from "./store/types.js";
 import { KeyedMutex } from "./store/mutex.js";
 import { normalizeEmail, randomToken, sha256hex } from "./tokens.js";
@@ -40,6 +40,17 @@ export const API_TOKEN_PREFIX = "pat_";
 
 /** lastUsedAt stamps are throttled — hot tokens must not write per request. */
 const API_TOKEN_TOUCH_THROTTLE_MS = 60_000;
+
+/** Invites get a week, not the 15-minute login-token TTL. */
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** An invite's derived status, in precedence order. */
+export function inviteStatus(invite: InviteRow, now: number = Date.now()): "revoked" | "accepted" | "expired" | "pending" {
+  if (invite.revokedAt != null) return "revoked";
+  if (invite.acceptedAt != null) return "accepted";
+  if (invite.expiresAt <= now) return "expired";
+  return "pending";
+}
 
 /** A way to log in, registered by provider mods in their `ready` hook. */
 export interface LoginMethod {
@@ -98,10 +109,17 @@ export interface IdentityService {
   /** Lookup by (normalized) email — provider mods gate token issuance on this. */
   findUserByEmail(email: string): Promise<UserRow | null>;
   listUsers(): Promise<UserRow[]>;
-  /** CAS-retried. Revokes the user's sessions — privilege changes end sessions. */
+  /** CAS-retried. Revokes the user's sessions — privilege changes end sessions.
+   *  Refuses to demote the last active admin. */
   setRoles(userId: string, roles: string[]): Promise<UserRow>;
-  /** CAS-retried. Disabling also revokes all sessions. */
+  /** CAS-retried. Disabling also revokes all sessions and is refused on the last active admin. */
   setDisabled(userId: string, disabled: boolean): Promise<UserRow>;
+  /**
+   * Hard-delete a user: sessions revoked first (sockets close), then the row,
+   * identity links and session rows are removed. Refused on the last active
+   * admin. Their invites/API tokens keep the id as an audit trail.
+   */
+  deleteUser(userId: string): Promise<void>;
 
   // sessions
   mintSession(userId: string, meta?: { userAgent?: string | null; ip?: string | null }): Promise<MintedSession>;
@@ -118,6 +136,22 @@ export interface IdentityService {
     data?: Record<string, unknown>;
   }): Promise<IssuedToken>;
   consumeToken(rawToken: string, purpose?: TokenPurpose): Promise<TokenRow | null>;
+
+  // invites (first-class records; the single-use token stays the credential)
+  /** Record the invite AND mint its token (data carries { inviteId, roles, next }). */
+  createInvite(input: {
+    email: string;
+    roles: string[];
+    next?: string | null;
+    invitedBy?: string | null;
+    ttlMs?: number;
+  }): Promise<{ invite: InviteRow; issued: IssuedToken }>;
+  getInvite(id: string): Promise<InviteRow | null>;
+  listInvites(): Promise<InviteRow[]>;
+  /** CAS-retried; idempotent. Refused once accepted (the account already exists). */
+  revokeInvite(id: string): Promise<InviteRow>;
+  /** Acceptance stamp (CAS-retried; a lost race means someone else stamped it). */
+  acceptInvite(id: string, userId: string): Promise<void>;
 
   // scoped API tokens (multi-use control-plane bearer credentials)
   /** Mint a token. The raw secret is returned HERE and never again. */
@@ -219,6 +253,11 @@ export class DefaultIdentityService implements IdentityService {
   }
 
   async setRoles(userId: string, roles: string[]): Promise<UserRow> {
+    // Demoting the last active admin would leave the app with no one able to
+    // administer it — only guard when the NEW roles lose the admin scope.
+    if (!this.scopesForRoles(roles).includes("admin")) {
+      await this.assertNotLastAdmin(userId, "demote");
+    }
     const updated = await this.casUpdateUser(userId, { roles });
     // Privilege change: existing sessions carry the old privilege — end them.
     await this.revokeAllForUser(userId);
@@ -226,9 +265,38 @@ export class DefaultIdentityService implements IdentityService {
   }
 
   async setDisabled(userId: string, disabled: boolean): Promise<UserRow> {
+    if (disabled) await this.assertNotLastAdmin(userId, "disable");
     const updated = await this.casUpdateUser(userId, { disabled });
     if (disabled) await this.revokeAllForUser(userId);
     return updated;
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    const user = await this.getUser(userId);
+    if (!user) throw new Error(`user "${userId}" not found`);
+    await this.assertNotLastAdmin(userId, "delete");
+    // Revoke BEFORE the rows go: revocation closes live WS sockets.
+    await this.revokeAllForUser(userId);
+    await this.stores.users.deleteUser(userId);
+  }
+
+  /**
+   * The admin floor: an app must always keep at least one enabled user whose
+   * roles compile to the `admin` scope. Best-effort (no global lock — two
+   * admins removing each other concurrently can still race), which is the
+   * right trade: the guard protects against the everyday mistake, not a
+   * malicious admin pair.
+   */
+  private async assertNotLastAdmin(userId: string, action: string): Promise<void> {
+    const target = await this.getUser(userId);
+    if (!target || target.disabled || !this.scopesForRoles(target.roles).includes("admin")) return;
+    const users = await this.stores.users.listUsers({ limit: 10_000 });
+    const others = users.filter(
+      (u) => u.id !== userId && !u.disabled && this.scopesForRoles(u.roles).includes("admin"),
+    );
+    if (!others.length) {
+      throw new Error(`refusing to ${action} the last active admin — appoint another admin first`);
+    }
   }
 
   /** Read-modify-write with CAS retry under the per-user mutex. */
@@ -341,6 +409,78 @@ export class DefaultIdentityService implements IdentityService {
     return this.mutex.run(`token:${found.id}`, () =>
       this.stores.tokens.consume(found.id, found.version, Date.now()),
     );
+  }
+
+  /* ── invites ─────────────────────────────────────────────────────────── */
+
+  async createInvite(input: {
+    email: string;
+    roles: string[];
+    next?: string | null;
+    invitedBy?: string | null;
+    ttlMs?: number;
+  }): Promise<{ invite: InviteRow; issued: IssuedToken }> {
+    const ttlMs = input.ttlMs ?? INVITE_TTL_MS;
+    const next = typeof input.next === "string" && input.next.trim() ? input.next.trim() : null;
+    const now = Date.now();
+    const invite = await this.stores.invites.create({
+      id: crypto.randomUUID(),
+      email: input.email.trim(),
+      emailNorm: normalizeEmail(input.email),
+      roles: [...input.roles],
+      next,
+      invitedBy: input.invitedBy ?? null,
+      createdAt: now,
+      expiresAt: now + ttlMs,
+      acceptedAt: null,
+      acceptedUserId: null,
+      revokedAt: null,
+    });
+    // The token stays the credential; data points back at the record so the
+    // callback can check revocation and stamp acceptance.
+    const issued = await this.issueToken({
+      purpose: "invite",
+      email: input.email,
+      ttlMs,
+      data: { inviteId: invite.id, roles: input.roles, ...(next ? { next } : {}) },
+    });
+    return { invite, issued };
+  }
+
+  getInvite(id: string): Promise<InviteRow | null> {
+    return this.stores.invites.findById(id);
+  }
+
+  listInvites(): Promise<InviteRow[]> {
+    return this.stores.invites.list();
+  }
+
+  async revokeInvite(id: string): Promise<InviteRow> {
+    return this.mutex.run(`invite:${id}`, async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const current = await this.stores.invites.findById(id);
+        if (!current) throw new Error(`invite "${id}" not found`);
+        if (current.revokedAt != null) return current;
+        if (current.acceptedAt != null) {
+          throw new Error("this invite was already accepted — disable or delete the user instead");
+        }
+        const next = await this.stores.invites.revoke(id, current.version, Date.now());
+        if (next) return next;
+      }
+      throw new Error(`invite "${id}": CAS revoke kept losing — concurrent writer storm?`);
+    });
+  }
+
+  async acceptInvite(id: string, userId: string): Promise<void> {
+    await this.mutex.run(`invite:${id}`, async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const current = await this.stores.invites.findById(id);
+        if (!current || current.acceptedAt != null || current.revokedAt != null) return;
+        const next = await this.stores.invites.markAccepted(id, current.version, Date.now(), userId);
+        if (next) return;
+      }
+      // Best-effort audit stamp — never fail the login over it.
+    });
   }
 
   /* ── API tokens ──────────────────────────────────────────────────────── */

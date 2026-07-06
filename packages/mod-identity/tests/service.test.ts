@@ -84,6 +84,9 @@ describe("DefaultIdentityService", () => {
     expect(await svc.resolveSessionByToken(b.token)).toBeNull();
     expect((await svc.getUser(user!.id))?.roles).toEqual(["admin"]);
 
+    // A second admin, so the last-admin floor lets us disable the first.
+    await svc.findOrCreateByIdentity(identity("grace@x.io", true, ["admin"]));
+
     const c = await svc.mintSession(user!.id);
     await svc.setDisabled(user!.id, true);
     expect(await svc.resolveSessionByToken(c.token)).toBeNull();

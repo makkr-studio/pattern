@@ -89,7 +89,8 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
         data: { roles: opts.bootstrapRoles },
       });
       const path = `${opts.mount}/bootstrap?t=${issued.token}`;
-      const guess = `http://localhost:${process.env.PORT ?? 3000}${path}`;
+      const configured = process.env.PATTERN_PUBLIC_URL?.trim().replace(/\/$/, "");
+      const guess = configured ? `${configured}${path}` : `http://localhost:${process.env.PORT ?? 3000}${path}`;
       console.log(
         `\n[pattern] ◆ No users yet. Create the first admin with this one-time link (valid 24h):\n` +
           `[pattern]   ${guess}\n` +

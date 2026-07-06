@@ -10,7 +10,7 @@
  * single-sourced here so the workflows and the manifest can't drift.
  */
 
-import { fromBody, fromParams, httpEndpoint, type Workflow } from "@pattern-js/core";
+import { fromBody, fromParams, fromRequestUrl, httpEndpoint, type Workflow } from "@pattern-js/core";
 
 const API = "/admin/api";
 
@@ -23,7 +23,9 @@ export const PATHS = {
   userLoginLink: "/identity/users/:userId/login-link",
   userToggleDisabled: "/identity/users/:userId/toggle-disabled",
   userRevokeSessions: "/identity/users/:userId/revoke-sessions",
+  userSetRoles: "/identity/users/:userId/roles",
   invites: "/identity/invites",
+  inviteRevoke: "/identity/invites/:inviteId/revoke",
   sessions: "/identity/sessions",
   session: "/identity/sessions/:sessionId",
   apiTokens: "/identity/api-tokens",
@@ -54,11 +56,17 @@ export function identityAdminRoutes(): Workflow[] {
     r("identity.route.admin.settings.get", "GET", PATHS.settings, "identity.settings.get", { out: "settings" }),
     // whoami is about the *caller* — authentication, not the admin scope.
     r("identity.route.admin.whoami", "GET", PATHS.whoami, "identity.whoami", { out: "whoami" }, true),
+    r("identity.route.admin.invites.list", "GET", PATHS.invites, "identity.invites.list", { out: "invites" }),
     // ── actions ──
-    r("identity.route.admin.users.invite", "POST", PATHS.invites, "identity.users.invite", { in: { email: fromBody(), roles: fromBody() }, out: "result" }),
+    // The invite's emailed link must be absolute: the request URL rides along so
+    // the op can derive the origin (PATTERN_PUBLIC_URL beats it when configured).
+    r("identity.route.admin.users.invite", "POST", PATHS.invites, "identity.users.invite", { in: { email: fromBody(), roles: fromBody(), next: fromBody(), url: fromRequestUrl() }, out: "result" }),
+    r("identity.route.admin.invites.revoke", "POST", PATHS.inviteRevoke, "identity.invites.revoke", { in: { inviteId: fromParams() }, out: "result" }),
     r("identity.route.admin.users.loginLink", "POST", PATHS.userLoginLink, "identity.users.loginLink", { in: { userId: fromParams() }, out: "result" }),
     r("identity.route.admin.users.toggleDisabled", "POST", PATHS.userToggleDisabled, "identity.users.toggleDisabled", { in: { userId: fromParams() }, out: "user" }),
     r("identity.route.admin.users.revokeSessions", "POST", PATHS.userRevokeSessions, "identity.users.revokeSessions", { in: { userId: fromParams() }, out: "result" }),
+    r("identity.route.admin.users.setRoles", "POST", PATHS.userSetRoles, "identity.users.setRoles", { in: { userId: fromParams(), roles: fromBody() }, out: "user" }),
+    r("identity.route.admin.users.delete", "DELETE", PATHS.user, "identity.users.delete", { in: { userId: fromParams() }, out: "result" }),
     r("identity.route.admin.sessions.revoke", "DELETE", PATHS.session, "identity.sessions.revoke", { in: { sessionId: fromParams() }, out: "result" }),
     r("identity.route.admin.settings.set", "POST", PATHS.settings, "identity.settings.set", { in: { signup: fromBody() }, out: "result" }),
     // ── API tokens ──

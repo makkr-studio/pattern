@@ -13,7 +13,7 @@ export function identityFrontend(): FrontendContribution {
   return {
     menu: [
       { category: "Access", label: "Users", icon: "users", path: "/x/identity/users", order: 10 },
-      { category: "Access", label: "Invite", icon: "user-plus", path: "/x/identity/invite", order: 20 },
+      { category: "Access", label: "Invites", icon: "user-plus", path: "/x/identity/invite", order: 20 },
       { category: "Access", label: "Sessions", icon: "key-round", path: "/x/identity/sessions", order: 30 },
       { category: "Access", label: "API tokens", icon: "key-square", path: "/x/identity/api-tokens", order: 40 },
     ],
@@ -36,8 +36,9 @@ export function identityFrontend(): FrontendContribution {
             // stay silent: the refreshed row is the feedback.
             { label: "Details", path: "/x/identity/users/:userId", args: { userId: "id" }, icon: "user" },
             { label: "Sign-in link", route: { method: "POST", path: PATHS.userLoginLink }, args: { userId: "id" }, icon: "key-round", result: "show" },
-            { label: "Toggle disabled", route: { method: "POST", path: PATHS.userToggleDisabled }, args: { userId: "id" }, icon: "ban", confirm: true },
+            { label: "Disable / enable", route: { method: "POST", path: PATHS.userToggleDisabled }, args: { userId: "id" }, icon: "ban", confirm: true },
             { label: "Log out everywhere", route: { method: "POST", path: PATHS.userRevokeSessions }, args: { userId: "id" }, icon: "log-out", confirm: true },
+            { label: "Delete", route: { method: "DELETE", path: PATHS.user }, args: { userId: "id" }, icon: "trash", confirm: true },
           ],
         },
       },
@@ -47,6 +48,24 @@ export function identityFrontend(): FrontendContribution {
         path: "/x/identity/users/:userId",
         views: [
           { title: "Profile", view: { kind: "detail", route: { method: "GET", path: PATHS.user } } },
+          {
+            // Editing roles needs an input, which a row action can't carry —
+            // so it lives here as a form (the page's :userId fills the route).
+            title: "Set roles",
+            view: {
+              kind: "form",
+              schema: {
+                type: "object",
+                properties: {
+                  roles: {
+                    type: "string",
+                    description: 'Comma-separated — REPLACES the current set, e.g. "admin" (empty = plain user). Ends the user\'s sessions.',
+                  },
+                },
+              },
+              route: { method: "POST", path: PATHS.userSetRoles },
+            },
+          },
           {
             title: "Runs by workflow (recent window)",
             view: {
@@ -80,19 +99,45 @@ export function identityFrontend(): FrontendContribution {
         ],
       },
       {
+        // Invites: send (form) + the sent list with statuses, one page.
         path: "/x/identity/invite",
-        view: {
-          kind: "form",
-          schema: {
-            type: "object",
-            properties: {
-              email: { type: "string", description: "Who to invite" },
-              roles: { type: "string", description: 'Comma-separated roles, e.g. "admin" (empty = plain user)' },
+        views: [
+          {
+            title: "Send an invite",
+            view: {
+              kind: "form",
+              schema: {
+                type: "object",
+                properties: {
+                  email: { type: "string", description: "Who to invite" },
+                  roles: { type: "string", description: 'Comma-separated roles, e.g. "admin" (empty = plain user)' },
+                  next: { type: "string", description: "Where their first login lands, e.g. /admin or /chat (empty = the app default)" },
+                },
+                required: ["email"],
+              },
+              route: { method: "POST", path: PATHS.invites },
             },
-            required: ["email"],
           },
-          route: { method: "POST", path: PATHS.invites },
-        },
+          {
+            title: "Sent invites",
+            view: {
+              kind: "table",
+              route: { method: "GET", path: PATHS.invites },
+              columns: [
+                { key: "email", label: "Email" },
+                { key: "roles", label: "Roles" },
+                { key: "status", label: "Status", format: "badge" },
+                { key: "next", label: "Lands on" },
+                { key: "invited by", label: "Invited by" },
+                { key: "sent", label: "Sent", format: "date" },
+                { key: "expires", label: "Expires", format: "date" },
+              ],
+              rowActions: [
+                { label: "Revoke", route: { method: "POST", path: PATHS.inviteRevoke }, args: { inviteId: "id" }, icon: "ban", confirm: true },
+              ],
+            },
+          },
+        ],
       },
       {
         // API tokens: mint (show-once secret in the result view) + inventory.

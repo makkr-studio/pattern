@@ -22,7 +22,7 @@ import { z } from "zod";
 import type { Workflow } from "./types.js";
 
 /** Which part of the request an op input port is sourced from. */
-export type HttpSrc = "params" | "query" | "body";
+export type HttpSrc = "params" | "query" | "body" | "url";
 
 /** One op input port: the request part it reads, and its schema (for the trigger). */
 export interface PortSource {
@@ -45,6 +45,10 @@ export interface RouteIO {
 export const fromParams = (schema: z.ZodType = z.string()): PortSource => ({ src: "params", schema });
 export const fromQuery = (schema: z.ZodType = z.string()): PortSource => ({ src: "query", schema });
 export const fromBody = (schema: z.ZodType = z.unknown()): PortSource => ({ src: "body", schema });
+/** The full request URL (the trigger's `url` output) — for ops that derive the
+ *  request origin (e.g. building absolute links into emails). Not part of the
+ *  declared input schema; wired straight off the trigger. */
+export const fromRequestUrl = (): PortSource => ({ src: "url", schema: z.string().optional() });
 
 export interface HttpRouteSpec {
   /** Workflow id (stable; the host derives the route from the trigger). */
@@ -111,6 +115,7 @@ export function httpEndpoint(spec: HttpRouteSpec): Workflow {
   const io = spec.io;
   const sse = io.stream === true;
   const entries = Object.entries(io.in ?? {});
+  const urlPorts = entries.filter(([, v]) => v.src === "url");
   const bySrc = Object.fromEntries(SRCS.map((s) => [s, entries.filter(([, v]) => v.src === s)])) as Record<
     (typeof SRCS)[number],
     Array<[string, PortSource]>
@@ -137,6 +142,11 @@ export function httpEndpoint(spec: HttpRouteSpec): Workflow {
     nodes.push({ id: ex, op: "core.object.extract", config: { keys: ports.map(([n]) => n) } });
     edges.push({ from: { node: "in", port: src }, to: { node: ex, port: "object" } });
     for (const [name] of ports) edges.push({ from: { node: ex, port: name }, to: { node: "call", port: name } });
+  }
+  // The request URL rides straight off the trigger — no extract, no schema entry.
+  for (const [name] of urlPorts) {
+    anyInput = true;
+    edges.push({ from: { node: "in", port: "url" }, to: { node: "call", port: name } });
   }
   // No-input op: sequence it after the trigger with a control pulse.
   if (!anyInput) edges.push({ from: { node: "in", port: "out" }, to: { node: "call", port: "in" } });
