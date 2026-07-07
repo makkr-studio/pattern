@@ -17,7 +17,7 @@ import type { WorkflowDoc } from "@pattern-js/admin-sdk";
 import { GlassPanel, NeonButton } from "../components/ui";
 import { Markdown } from "../components/Markdown";
 import { sfx } from "../lib/sfx";
-import { Check, ExternalLink, Loader2, RotateCcw, Send, Sparkles, Square, Wrench, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, RotateCcw, Send, Sparkles, Square, TriangleAlert, Wrench, X } from "lucide-react";
 
 type DockItem =
   | { kind: "user"; text: string }
@@ -47,6 +47,21 @@ interface BuddyStatus {
   model: string;
   knowledge: "semantic" | "lexical";
   threads: boolean;
+}
+
+interface FailedRun {
+  runId: string;
+  workflowId: string;
+  startTime: number;
+}
+
+/** "3m ago" / "2h ago" / "1d ago" — chip-sized recency. */
+function ago(ts: number): string {
+  const minutes = Math.max(1, Math.round((Date.now() - ts) / 60_000));
+  if (minutes < 90) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours <= 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 async function* sseTurn(body: object, signal: AbortSignal): AsyncGenerator<TurnEvent> {
@@ -119,9 +134,28 @@ export function BuddyDock({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<BuddyStatus | null>(null);
+  const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const turnIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // The one-click debug moment: surface the most recent failed run (recent =
+  // last 24h; the admin's own plumbing routes don't count) as a chip that
+  // sends the "why did this fail" question for you.
+  const checkFailures = useCallback(() => {
+    void fetch("/admin/api/runs?status=error&limit=10")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((runs: FailedRun[] | unknown) => {
+        const recent = (Array.isArray(runs) ? (runs as FailedRun[]) : []).find(
+          (r) =>
+            !r.workflowId.startsWith("__") &&
+            !r.workflowId.includes(".route.admin.") &&
+            Date.now() - r.startTime < 24 * 60 * 60 * 1000,
+        );
+        setFailedRun(recent ?? null);
+      })
+      .catch(() => {});
+  }, []);
 
   // Load the persisted thread + capabilities on mount / workflow switch.
   useEffect(() => {
@@ -136,10 +170,11 @@ export function BuddyDock({
       .then((r) => (r.ok ? r.json() : null))
       .then((s: BuddyStatus | null) => live && s && setStatus(s))
       .catch(() => {});
+    checkFailures();
     return () => {
       live = false;
     };
-  }, [slug]);
+  }, [slug, checkFailures]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -154,10 +189,8 @@ export function BuddyDock({
       return prev;
     });
 
-  const send = useCallback(async () => {
-    const message = input.trim();
+  const sendMessage = useCallback(async (message: string) => {
     if (!message || busy) return;
-    setInput("");
     setBusy(true);
     push({ kind: "user", text: message });
     const turnId = crypto.randomUUID();
@@ -207,8 +240,16 @@ export function BuddyDock({
       setBusy(false);
       abortRef.current = null;
       turnIdRef.current = null;
+      checkFailures(); // the turn may have run (or fixed) something
     }
-  }, [input, busy, slug, getDoc]);
+  }, [busy, slug, getDoc, checkFailures]);
+
+  const send = useCallback(() => {
+    const message = input.trim();
+    if (!message || busy) return;
+    setInput("");
+    void sendMessage(message);
+  }, [input, busy, sendMessage]);
 
   const stop = useCallback(() => {
     const turnId = turnIdRef.current;
@@ -324,6 +365,22 @@ export function BuddyDock({
             </p>
           );
         })}
+        {failedRun && !busy && (
+          <button
+            type="button"
+            onClick={() => {
+              const question = `The last run of "${failedRun.workflowId}" failed (run ${failedRun.runId}). Why, and how do I fix it?`;
+              setFailedRun(null);
+              void sendMessage(question);
+            }}
+            className="flex w-full items-center gap-1.5 rounded-lg border hairline bg-[color-mix(in_srgb,var(--color-neon-amber)_8%,transparent)] px-2.5 py-1.5 text-left text-[11px] text-[var(--color-neon-amber)] hover:bg-[color-mix(in_srgb,var(--color-neon-amber)_16%,transparent)]"
+          >
+            <TriangleAlert size={12} className="shrink-0" />
+            <span className="truncate">
+              Why did “{failedRun.workflowId}” fail {ago(failedRun.startTime)}?
+            </span>
+          </button>
+        )}
       </div>
 
       <div className="flex items-end gap-2 border-t hairline p-2">

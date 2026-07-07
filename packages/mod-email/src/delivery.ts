@@ -41,14 +41,15 @@ export function deliverTokenWorkflow(): Workflow {
       { id: "should", op: "core.bool.and" },
       { id: "gate", op: "core.flow.branch" },
       { id: "to", op: "core.object.get", config: { path: "email" } },
-      { id: "subj", op: "core.string.template", config: { template: "Your {{purpose}} link" } },
+      // Subject + message arrive READY-MADE on the payload (identity writes
+      // purpose- and expiry-aware copy — "You've been invited … valid for 7
+      // days"). Reword here, or replace the whole template with your own.
+      { id: "subj", op: "core.string.template", config: { template: "{{subject}}" } },
       {
         id: "body",
         op: "core.string.template",
         config: {
-          template:
-            "# Your {{purpose}} link\n\nClick the button to continue:\n\n{{url}}\n\n" +
-            "This link is single-use and expires soon. If you didn't request it, you can safely ignore this email.",
+          template: "# {{subject}}\n\n{{message}}\n\n{{url}}\n\nIf you didn't expect this email, you can safely ignore it.",
         },
       },
       { id: "send", op: "email.send" },

@@ -65,6 +65,11 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
             url: z.string(),
             purpose: z.string(),
             delivered: z.boolean(),
+            /** Ready-made human copy (purpose- and expiry-aware) — any channel may use or replace it. */
+            subject: z.string(),
+            message: z.string(),
+            /** Token expiry (ms epoch), when the issuer knows it. */
+            expiresAt: z.number().optional(),
           })
           .loose(),
       },

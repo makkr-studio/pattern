@@ -22,8 +22,8 @@ afterEach(async () => {
   idp.tokenRequests.length = 0;
 });
 
-async function boot(port: number, opts: { signup?: "open" | "invite"; second?: boolean } = {}) {
-  const engine = new Engine({ env: { OIDC_TEST_SECRET: "shhh" } });
+async function boot(port: number, opts: { signup?: "open" | "invite"; second?: boolean; env?: Record<string, string> } = {}) {
+  const engine = new Engine({ env: { OIDC_TEST_SECRET: "shhh", ...opts.env } });
   const providers = [
     {
       id: "test",
@@ -113,6 +113,14 @@ describe("@pattern-js/mod-auth-oidc", () => {
     expect(exchange.client_secret).toBe("shhh");
     expect(exchange.code_verifier).toBeTruthy();
     expect(exchange.redirect_uri).toBe(`${base}/auth/oidc/test/callback`);
+  });
+
+  it("PATTERN_PUBLIC_URL beats the request origin in redirect_uri (the IdP knows the public address)", async () => {
+    const { base } = await boot(5109, { env: { PATTERN_PUBLIC_URL: "https://app.example.com/" } });
+    const start = await fetch(`${base}/auth/oidc/test/start`, { redirect: "manual" });
+    const authorize = new URL(start.headers.get("location")!);
+    // Trailing slash stripped; the localhost the request hit is nowhere in sight.
+    expect(authorize.searchParams.get("redirect_uri")).toBe("https://app.example.com/auth/oidc/test/callback");
   });
 
   it("state mismatch → login?error=oidc-state, no session, no token exchange", async () => {

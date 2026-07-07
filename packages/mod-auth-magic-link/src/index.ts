@@ -79,7 +79,7 @@ const requestOp: OpDefinition = {
       const shouldIssue = user ? !user.disabled : (await svc.getSignup()) === "open";
       if (shouldIssue) {
         const issued = await svc.issueToken({ purpose: "login", email, data: { next } });
-        await deliverToken(ctx, { email, path: issued.path, purpose: "login", origin });
+        await deliverToken(ctx, { email, path: issued.path, purpose: "login", origin, expiresAt: issued.expiresAt });
       }
     }
     // Identical response either way — nothing leaks about who exists or

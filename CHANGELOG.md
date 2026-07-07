@@ -19,7 +19,9 @@ search, and inbound email.
   failed runs from traces ("why did this break at 3am?"), remembers the
   conversation per workflow (mod-store), runs on the `buddy` model alias when
   defined (else the default), and its whole turn pipeline is an editable
-  Pattern workflow.
+  Pattern workflow. When a recent run failed, the dock offers the question as
+  a one-click chip — *Why did "daily-digest" fail 3m ago?* — instead of making
+  you type it.
 - **The `pattern_*` control plane: ten restricted tool workflows** (list/get
   ops, search docs, get workflow, validate, propose, save-draft,
   deploy-with-approval, list/get runs) — one capability layer consumed by
@@ -98,6 +100,15 @@ search, and inbound email.
 - Tier-1 admin forms on parameterized pages now carry the page's `:params`
   into their submit — what makes the "Set roles" form on `/x/identity/users/:userId`
   (and any future mod's detail-page form) possible.
+- **Token emails read like a human wrote them.** The `identity.deliverToken`
+  payload now carries ready-made, purpose- and expiry-aware copy (`subject`,
+  `message`, `expiresAt`) — "You've been invited … valid for 7 days" instead
+  of "Your invite link — click the button to continue". Identity owns the
+  wording (it knows the token's semantics), so every channel on the hook —
+  the packaged email workflow included — gets it for free, and a forked
+  workflow can still write its own.
+- OIDC's `redirect_uri` adopts `PATTERN_PUBLIC_URL` too: the IdP has the
+  public address registered, and behind a proxy the Host header is not it.
 
 ### Core
 

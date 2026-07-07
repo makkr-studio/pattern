@@ -102,10 +102,10 @@ describe("email.deliver-token (identity.deliverToken subscriber)", () => {
     const message = sent[0]!;
     expect(message.to).toEqual(["ada@x.io"]);
     expect(message.from).toBe("App <app@example.com>");
-    expect(message.subject).toBe("Your login link");
+    expect(message.subject).toBe("Your sign-in link"); // identity's purpose-aware copy, not "Your login link"
     expect(message.html).toContain("/auth/token?t=");
     expect(message.html).toContain("display:inline-block"); // the sign-in button
-    expect(message.text).toContain("single-use");
+    expect(message.text).toContain("single-use and valid for"); // expiry-aware ("… 15 minutes")
 
     // The emailed link is the working link: callback → 302 → session cookie → whoami.
     const link = /(https?:\/\/\S*\/auth\/token\?t=[^\s)]+)/.exec(message.text!)?.[1];
@@ -127,6 +127,10 @@ describe("email.deliver-token (identity.deliverToken subscriber)", () => {
       email: "ada@x.io",
       url: "http://h/auth/token?t=1",
       purpose: "login",
+      // subject/message are part of the payload contract now — identity's
+      // deliverToken always writes them (purpose- and expiry-aware copy).
+      subject: "Your sign-in link",
+      message: "Open the link below to sign in.",
       delivered: true, // an earlier chain member claimed it
     })) as Record<string, unknown>;
     expect(out.delivered).toBe(true);

@@ -219,7 +219,13 @@ const usersInvite = jsonOp(
     } catch {
       /* not absolute — deliverToken falls back */
     }
-    const { delivered, url } = await deliverToken(ctx, { email, path: issued.path, purpose: "invite", origin });
+    const { delivered, url } = await deliverToken(ctx, {
+      email,
+      path: issued.path,
+      purpose: "invite",
+      origin,
+      expiresAt: invite.expiresAt,
+    });
     // Undelivered (no email channel): hand the link to the inviting admin —
     // `copy` renders as a copyable field in the admin's result view.
     return {

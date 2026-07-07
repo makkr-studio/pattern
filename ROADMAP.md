@@ -59,8 +59,13 @@ Email your app a question — an agent reads it, calls its tools, and answers.
 An unordered shelf — these are on the map, not yet in a milestone:
 
 - **Durable retries & resume** — retry policies as node config; resume a failed
-  run from the failing node, built on the event-sourced replay log.
+  run from the failing node, built on the event-sourced replay log. The spans
+  already record every node's I/O in order; the work is resumable-state
+  persistence and idempotency semantics (an `email.send` must never replay).
 - **Failure alerts** — a run fails, you get an email. Nearly free on `mod-email`.
+- **Auth rate limiting** — throttle magic-link/invite issuance per address and
+  IP; today a hostile client can make an app send email as fast as its driver
+  allows.
 - **Workflow import/export & a public gallery** — copy-as-JSON, import-from-URL,
   and a gallery of ready-to-import examples on the site.
 - **Deploy story** — Dockerfile in every scaffold and guides for the usual
