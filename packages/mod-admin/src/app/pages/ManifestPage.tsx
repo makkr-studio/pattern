@@ -51,14 +51,15 @@ export function ManifestPage() {
   const menu = manifest?.menu.find((m) => m.path === page.path);
   const title = page.title ?? menu?.label ?? page.path.split("/").filter((s) => s && !s.startsWith(":")).pop() ?? page.path;
   // A mod controls its chrome: a custom title/subtitle, or `header: false` to
-  // suppress the shell header entirely and render its own.
-  const header = (fallbackSubtitle: string) =>
-    page.header === false ? null : <PageHeader title={title} subtitle={page.subtitle ?? fallbackSubtitle} />;
+  // suppress the shell header entirely and render its own. No subtitle unless
+  // the mod declares one — a mod page is a first-class page, not a guest with
+  // a name tag (the catalog is where provenance lives).
+  const header = () => (page.header === false ? null : <PageHeader title={title} subtitle={page.subtitle} />);
   if (page.view || page.views) {
     const sections = page.views ?? [{ title: undefined, view: page.view! }];
     return (
       <>
-        {header("Contributed by a mod (Tier-1 declarative page).")}
+        {header()}
         <div className="space-y-6">
           {sections.map((s, i) => (
             <section key={i}>
@@ -74,7 +75,7 @@ export function ManifestPage() {
     const Remote = remote(page.remote);
     return (
       <>
-        {header("Contributed by a mod (Tier-2 ESM remote).")}
+        {header()}
         <Suspense fallback={<Spinner />}>
           <Remote />
         </Suspense>

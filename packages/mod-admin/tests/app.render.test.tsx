@@ -128,6 +128,9 @@ describe("SPA pages render", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText("Hello, Ada!")).toBeTruthy();
-    expect(screen.getByText("Tier-1 declarative page).", { exact: false })).toBeTruthy();
+    expect(screen.getByText("Greetings")).toBeTruthy(); // titled from the menu entry
+    // A mod page is a first-class page — no "contributed by a mod" name tag
+    // under the title (that was scaffolding-era debug chrome).
+    expect(screen.queryByText("Contributed by", { exact: false })).toBeNull();
   });
 });
