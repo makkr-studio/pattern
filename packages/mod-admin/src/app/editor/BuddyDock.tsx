@@ -26,6 +26,32 @@ type DockItem =
   | { kind: "apply"; doc: WorkflowDoc; summary: string; valid: boolean | null; applied: boolean }
   | { kind: "note"; text: string };
 
+type ToolCall = Extract<DockItem, { kind: "tool" }>;
+
+/**
+ * The display list: CONSECUTIVE calls of the same tool collapse into one chip
+ * with a "+n" badge (a research-y turn calls pattern_search_docs four times in
+ * a row — that's one activity, not four rows). `idx` keeps each non-grouped
+ * item's position in `items`, which in-place patches (the Apply card) need.
+ */
+type DisplayEntry =
+  | { kind: "entry"; item: Exclude<DockItem, ToolCall>; idx: number }
+  | { kind: "tools"; toolName: string; calls: ToolCall[] };
+
+function toDisplay(items: DockItem[]): DisplayEntry[] {
+  const out: DisplayEntry[] = [];
+  items.forEach((item, idx) => {
+    if (item.kind === "tool") {
+      const last = out.at(-1);
+      if (last?.kind === "tools" && last.toolName === item.toolName) last.calls.push(item);
+      else out.push({ kind: "tools", toolName: item.toolName, calls: [item] });
+    } else {
+      out.push({ kind: "entry", item, idx });
+    }
+  });
+  return out;
+}
+
 interface TurnEvent {
   type: string;
   delta?: string;
@@ -295,7 +321,35 @@ export function BuddyDock({
             catalog, validate before proposing, and you keep Save & Deploy.
           </p>
         )}
-        {items.map((item, i) => {
+        {toDisplay(items).map((entry, i) => {
+          if (entry.kind === "tools") {
+            const { toolName, calls } = entry;
+            const running = calls.some((c) => c.phase === "start");
+            const errored = calls.find((c) => c.phase === "error");
+            const latestRun = [...calls].reverse().find((c) => c.subRunId)?.subRunId;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => latestRun && navigate(`/runs/${latestRun}`)}
+                title={
+                  errored?.error ??
+                  (latestRun ? (calls.length > 1 ? `${calls.length} calls — open the latest run` : "Open the tool call's run") : toolName)
+                }
+                className={`flex items-center gap-1.5 rounded-full border hairline px-2.5 py-1 text-[11px] ${
+                  errored ? "text-[var(--color-neon-amber)]" : "text-muted"
+                } ${latestRun ? "hover:bg-white/5 hover:text-[var(--fg)]" : "cursor-default"}`}
+              >
+                {running ? <Loader2 size={11} className="animate-spin" /> : errored ? <X size={11} /> : <Wrench size={11} />}
+                {toolName.replace(/^pattern_/, "")}
+                {calls.length > 1 && (
+                  <span className="rounded-full bg-white/10 px-1.5 text-[10px] leading-4">+{calls.length - 1}</span>
+                )}
+                {latestRun && <ExternalLink size={10} />}
+              </button>
+            );
+          }
+          const { item, idx } = entry;
           if (item.kind === "user") {
             return (
               <div key={i} className="ml-6 rounded-lg bg-[color-mix(in_srgb,var(--color-neon-cyan)_12%,transparent)] px-3 py-2 text-sm">
@@ -308,23 +362,6 @@ export function BuddyDock({
               <div key={i} className="text-sm leading-relaxed [&_pre]:overflow-x-auto [&_pre]:text-xs">
                 <Markdown text={item.text} />
               </div>
-            );
-          }
-          if (item.kind === "tool") {
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => item.subRunId && navigate(`/runs/${item.subRunId}`)}
-                title={item.error ?? (item.subRunId ? "Open the tool call's run" : item.toolName)}
-                className={`flex items-center gap-1.5 rounded-full border hairline px-2.5 py-1 text-[11px] ${
-                  item.phase === "error" ? "text-[var(--color-neon-amber)]" : "text-muted"
-                } ${item.subRunId ? "hover:bg-white/5 hover:text-[var(--fg)]" : "cursor-default"}`}
-              >
-                {item.phase === "start" ? <Loader2 size={11} className="animate-spin" /> : item.phase === "error" ? <X size={11} /> : <Wrench size={11} />}
-                {item.toolName.replace(/^pattern_/, "")}
-                {item.subRunId && <ExternalLink size={10} />}
-              </button>
             );
           }
           if (item.kind === "apply") {
@@ -344,7 +381,8 @@ export function BuddyDock({
                   disabled={item.applied || item.valid === false}
                   onClick={() => {
                     onApply(item.doc);
-                    setItems((prev) => prev.map((it, j) => (j === i && it.kind === "apply" ? { ...it, applied: true } : it)));
+                    // `idx` is the position in `items` — the display list regroups.
+                    setItems((prev) => prev.map((it, j) => (j === idx && it.kind === "apply" ? { ...it, applied: true } : it)));
                     sfx.play("drop");
                   }}
                 >

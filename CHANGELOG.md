@@ -21,7 +21,8 @@ search, and inbound email.
   defined (else the default), and its whole turn pipeline is an editable
   Pattern workflow. When a recent run failed, the dock offers the question as
   a one-click chip — *Why did "daily-digest" fail 3m ago?* — instead of making
-  you type it.
+  you type it; consecutive calls of the same tool collapse into one chip with
+  a `+n` badge.
 - **The `pattern_*` control plane: ten restricted tool workflows** (list/get
   ops, search docs, get workflow, validate, propose, save-draft,
   deploy-with-approval, list/get runs) — one capability layer consumed by
