@@ -79,6 +79,18 @@ export interface ChatModOptions {
    * to override the env, or an object to also tune the model/instructions.
    */
   guardrail?: boolean | { enabled?: boolean; model?: ChatModel; instructions?: string };
+  /**
+   * Cross-conversation, per-user memory (needs @pattern-js/mod-vectors + an
+   * embedding alias — both duck-typed, so without them chat runs unchanged).
+   * After each completed turn an extraction workflow decides whether it
+   * learned something durable about the user and indexes it; the next turn —
+   * in ANY conversation — recalls the most relevant memories into the system
+   * prompt. Signed-in users only (guests have no durable identity). Every
+   * memory carries provenance meta ({ userId, conversationId, sourceRunId }),
+   * browsable and deletable in admin → Chat → Memories. `false` turns the
+   * whole feature off.
+   */
+  memory?: boolean | { collection?: string; alias?: string; recallK?: number; maxPerTurn?: number };
   /** Lease TTL for a running turn in ms (crash backstop). Default 5 min. */
   turnTtlMs?: number;
   /** Max model↔tool round-trips per turn. Default 12. */
@@ -109,6 +121,7 @@ export interface ResolvedChatOptions {
   turnPipeline: boolean;
   turnTtlMs: number;
   maxTurns: number;
+  memory: { enabled: boolean; collection: string; alias: string; recallK: number; maxPerTurn: number };
   guardrail: { enabled: boolean; model?: ChatModel; instructions: string };
   requireAuth?: unknown;
   loginRequestPath: string;
@@ -197,6 +210,17 @@ export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOption
     turnPipeline: options.turnPipeline ?? true,
     turnTtlMs: options.turnTtlMs ?? 5 * 60 * 1000,
     maxTurns: options.maxTurns ?? 12,
+    memory: (() => {
+      const m = options.memory;
+      const cfg = typeof m === "object" && m !== null ? m : {};
+      return {
+        enabled: m !== false,
+        collection: cfg.collection ?? "chat.memories",
+        alias: cfg.alias ?? "embeddings",
+        recallK: cfg.recallK ?? 3,
+        maxPerTurn: cfg.maxPerTurn ?? 5,
+      };
+    })(),
     guardrail: (() => {
       const g = typeof options.guardrail === "object" ? options.guardrail : {};
       const explicit = typeof options.guardrail === "boolean" ? options.guardrail : g.enabled;

@@ -417,7 +417,9 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
         input: parsed.data,
         history: hit.doc.history ?? [],
         turnId,
-        turn: { conversationId, turnId, rooms, ttlMs },
+        // ownerId rides along so the sink can stamp turn-completed events with
+        // the user (memory extraction keys on it); null for guests.
+        turn: { conversationId, turnId, rooms, ttlMs, ownerId: scope.ownerId },
       };
     },
   };
@@ -548,6 +550,16 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
           history,
           updatedAt: Date.now(),
         }));
+      }
+      if (status === "complete") {
+        // The turn-end seam: anything may subscribe (the packaged memory
+        // extraction workflow does). ownerId is null for guests.
+        ctx.services.events.emit("chat.turn.completed", {
+          conversationId: meta.conversationId,
+          turnId: meta.turnId,
+          ownerId: (meta as { ownerId?: string | null }).ownerId ?? null,
+          runId: ctx.runId,
+        });
       }
       await notify(status);
       return { status };

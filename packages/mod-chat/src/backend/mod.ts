@@ -15,6 +15,7 @@ import { localFs, memoryFs, provideFilesystem, type Filesystem } from "@pattern-
 import { STORE_SERVICE, type PatternStores } from "@pattern-js/mod-store";
 import { resolveInstances, resolveOptions, type ChatModOptions } from "./options.js";
 import { chatOps } from "./ops.js";
+import { memoryOps, memoryPipelineWorkflow } from "./memory.js";
 import { chatAdminOps, chatFrontend } from "./admin.js";
 import { chatAdminRoutes } from "./admin-routes.js";
 import { ensureChatCollections } from "./data.js";
@@ -121,7 +122,7 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
 
   // Build ops FIRST — they register their route I/O (chatOpRoutes), which the
   // CRUD route factory then reads to decompose each request.
-  const ops = [...chatOps(() => engineRef, opts), ...chatAdminOps, chatAppOp];
+  const ops = [...chatOps(() => engineRef, opts), ...memoryOps(opts), ...chatAdminOps, chatAppOp];
 
   const workflows = [
     // The shared backend — one set of routes + pipeline for every instance.
@@ -139,6 +140,9 @@ export function chatMod(options: ChatModOptions = {}): PatternMod {
           researcherToolWorkflow(opts), // research tool: an agent-as-tool example
           transcribeRouteWorkflow(opts), // mic → speech-to-text
           speechRouteWorkflow(opts), // assistant message → text-to-speech
+          // Cross-conversation memory: extraction runs after every completed
+          // turn, as its own (inspectable) run. No-ops without mod-vectors.
+          ...(opts.memory.enabled ? [memoryPipelineWorkflow()] : []),
         ]
       : []),
     // One branded SPA per instance, all talking to the shared backend.

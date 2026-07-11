@@ -1,4 +1,5 @@
 import {
+  Brain,
   Activity,
   Frame,
   BarChart3,
@@ -53,6 +54,7 @@ const MAP: Record<string, LucideIcon> = {
   workflow: Workflow,
   "git-branch": GitBranch,
   activity: Activity,
+  brain: Brain,
   "bar-chart": BarChart3,
   boxes: Boxes,
   package: Package,

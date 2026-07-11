@@ -17,6 +17,7 @@ import type {
   EngineRow,
   Filter,
   FilterValue,
+  ListedRow,
   Match,
   QueryMode,
   VectorItem,
@@ -51,6 +52,8 @@ export interface VectorsService {
     input: { text?: string; vector?: number[]; k?: number; filter?: Filter; mode?: QueryMode },
     ctx: OpContext,
   ): Promise<Match[]>;
+  /** Enumerate rows newest-first (admin browsers, memory managers) — no scoring, that's `query`. */
+  list(collection: string, q?: { filter?: Filter; limit?: number; offset?: number }): Promise<ListedRow[]>;
   delete(collection: string, ids: string[]): Promise<number>;
 }
 
@@ -190,18 +193,7 @@ export class DefaultVectorsService implements VectorsService {
     const mode = input.mode ?? "vector";
     const k = Math.max(1, Math.min(input.k ?? 8, 100));
 
-    // Undeclared filter field = a located error naming the field AND the fix.
-    if (input.filter) {
-      const declared = new Set(spec.filterables);
-      for (const field of Object.keys(input.filter)) {
-        if (!declared.has(field)) {
-          throw new Error(
-            `vectors: "${field}" is not a filterable field of collection "${collection}" — declared: ` +
-              `[${spec.filterables.join(", ") || "none"}]. Add it to \`filterables\` in vectors.collection.ensure and re-upsert.`,
-          );
-        }
-      }
-    }
+    if (input.filter) this.assertFilterable(spec, input.filter, collection);
 
     if (!input.text?.trim() && input.vector === undefined) {
       throw new Error("vectors: query needs `text` (embedded via the collection's alias) or a raw `vector`");
@@ -218,7 +210,28 @@ export class DefaultVectorsService implements VectorsService {
     return this.engine().query(collection, { vector, text: input.text, k, filter: input.filter, mode });
   }
 
+  async list(collection: string, q: { filter?: Filter; limit?: number; offset?: number } = {}): Promise<ListedRow[]> {
+    const spec = await this.spec(collection);
+    if (q.filter) this.assertFilterable(spec, q.filter, collection);
+    const eng = this.engine();
+    if (!eng.list) throw new Error(`vectors: engine "${eng.id}" does not support listing rows`);
+    return eng.list(collection, q);
+  }
+
   delete(collection: string, ids: string[]): Promise<number> {
     return this.engine().delete(collection, ids);
+  }
+
+  /** Undeclared filter field = a located error naming the field AND the fix. */
+  private assertFilterable(spec: CollectionSpec, filter: Filter, collection: string): void {
+    const declared = new Set(spec.filterables);
+    for (const field of Object.keys(filter)) {
+      if (!declared.has(field)) {
+        throw new Error(
+          `vectors: "${field}" is not a filterable field of collection "${collection}" — declared: ` +
+            `[${spec.filterables.join(", ") || "none"}]. Add it to \`filterables\` in vectors.collection.ensure and re-upsert.`,
+        );
+      }
+    }
   }
 }

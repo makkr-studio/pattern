@@ -46,6 +46,19 @@ search, and inbound email.
 
 ### Vector search
 
+- **The chat remembers you — with receipts.** With mod-vectors + an
+  `embeddings` alias installed, mod-chat grows cross-conversation, per-user
+  memory: after each completed turn an event-triggered, forkable workflow
+  (`chat.memory.pipeline`) extracts the durable facts about the user and
+  indexes them filter-pruned by `userId`; the next turn — in any conversation
+  — recalls the most relevant ones into the system prompt. Every memory
+  carries provenance (`{ userId, conversationId, sourceRunId }`): admin →
+  Chat → **Memories** shows what the assistant knows about whom, with a
+  **Source run** link to the exact moment it was learned and a **Forget**
+  button. Signed-in users only; `memory: false` turns it off; everything is
+  duck-typed, so without vectors chat runs unchanged. `VectorsService` gains
+  `list()` (row enumeration for browsers like this one), and the sink emits a
+  `chat.turn.completed` event anything can subscribe to.
 - **The admin's Vectors page is now the whole RAG loop**: collections table +
   **Ingest text** (paste → chunk → embed; collection created on first use,
   content-hash dedupe on re-paste) + **Search** (hybrid, scored matches).

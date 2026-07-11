@@ -320,6 +320,36 @@ export class LocalVectorsEngine implements VectorsEngine {
       .map(([id, score]) => ({ ...byId.get(id)!, score }));
   }
 
+  async list(
+    collection: string,
+    q: { filter?: Filter; limit?: number; offset?: number },
+  ): Promise<Array<{ id: string; text: string | null; meta: Record<string, unknown> | null; updatedAt: number }>> {
+    const limit = Math.max(1, Math.min(q.limit ?? 100, 1000));
+    const offset = Math.max(0, q.offset ?? 0);
+    const parse = (r: Raw) => ({
+      id: String(r.id),
+      text: (r.text as string | null) ?? null,
+      meta: r.meta == null ? null : (JSON.parse(String(r.meta)) as Record<string, unknown>),
+      updatedAt: Number(r.updated_at),
+    });
+    const candidates = q.filter && Object.keys(q.filter).length ? this.filterIds(collection, q.filter) : null;
+    if (candidates === null) {
+      const rows = this.db
+        .prepare("SELECT id, text, meta, updated_at FROM vec_rows WHERE collection = ? ORDER BY updated_at DESC, id LIMIT ? OFFSET ?")
+        .all(collection, limit, offset) as Raw[];
+      return rows.map(parse);
+    }
+    if (candidates.size === 0) return [];
+    const out: ReturnType<typeof parse>[] = [];
+    for (const batch of chunks([...candidates], 400)) {
+      const rows = this.db
+        .prepare(`SELECT id, text, meta, updated_at FROM vec_rows WHERE collection = ? AND id IN (${batch.map(() => "?").join(",")})`)
+        .all(collection, ...batch) as Raw[];
+      out.push(...rows.map(parse));
+    }
+    return out.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)).slice(offset, offset + limit);
+  }
+
   /** AND of equality/any-of via the side table: one indexed lookup per field, intersected. */
   private filterIds(collection: string, filter: Filter): Set<string> {
     let acc: Set<string> | null = null;

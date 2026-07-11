@@ -94,6 +94,33 @@ instruction style (short, conversational, no markdown) while normal text turns
 keep the configured instructions. The avatar's color follows the reply's mood,
 detected client-side from the streamed text (no model tool call needed).
 
+## Memory (0.4) — it remembers you, with receipts
+
+Install `@pattern-js/mod-vectors` and define an `embeddings` alias, and the
+chat grows **cross-conversation, per-user memory** — no config, no new deps
+(everything is duck-typed; without vectors, chat runs exactly as before).
+
+After every completed turn, the `chat.memory.pipeline` workflow — an ordinary,
+forkable graph triggered by the `chat.turn.completed` event — asks a model
+whether the exchange taught it something durable about the user ("User's dog
+is called Rex", "User prefers answers in French") and indexes each fact into
+the `chat.memories` collection, keyed and **filter-pruned by user**: one
+user's memories never rank against another's. On the next turn — in *any*
+conversation — the pipeline's `chat.memory.recall` node retrieves the most
+relevant memories into the system prompt.
+
+The part nobody else has: **provenance**. Every memory carries
+`{ userId, conversationId, sourceRunId }` — the exact run where it was
+learned. Admin → Chat → **Memories** lists every fact with a **Source run**
+link (watch the replay of the moment it was learned), a **Conversation**
+link, and a **Forget** button. Memory here isn't a black box in a library —
+it's a workflow you can open, an extraction prompt you can rewrite, and an
+audit trail you can click.
+
+Signed-in users only (guests have no durable identity). Turn it off with
+`chatMod({ memory: false })`; tune the collection, alias, or recall depth via
+the `memory` options object.
+
 ## Reliability model
 
 The store is the source of truth; SSE is a live tail. Every event lands in the

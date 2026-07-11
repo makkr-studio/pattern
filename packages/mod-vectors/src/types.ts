@@ -80,6 +80,14 @@ export interface EngineQuery {
  * engine is sqlite-backed brute force; sqlite-vec / pgvector drivers register
  * the same shape and receive `{ filter, mode }` to push down.
  */
+/** One stored row, as enumeration (no scores — that's `query`'s job). */
+export interface ListedRow {
+  id: string;
+  text: string | null;
+  meta: Record<string, unknown> | null;
+  updatedAt: number;
+}
+
 export interface VectorsEngine {
   id: string;
   ensureCollection(spec: CollectionSpec): Promise<void>;
@@ -90,6 +98,12 @@ export interface VectorsEngine {
   upsert(collection: string, rows: EngineRow[]): Promise<void>;
   query(collection: string, q: EngineQuery): Promise<Match[]>;
   delete(collection: string, ids: string[]): Promise<number>;
+  /**
+   * Enumerate rows, newest-first, optionally pruned by a declared-filterable
+   * filter (admin browsers, memory managers). OPTIONAL — a driver that can't
+   * scan cheaply may omit it; the service reports that honestly.
+   */
+  list?(collection: string, q: { filter?: Filter; limit?: number; offset?: number }): Promise<ListedRow[]>;
   /** Lock dims on first write; throws (naming the alias) on mismatch. */
   close(): Promise<void>;
 }
