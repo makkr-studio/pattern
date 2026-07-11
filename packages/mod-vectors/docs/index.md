@@ -85,5 +85,10 @@ default. pgvector follows the same shape.
 
 ## Admin
 
-**Data → Vectors** lists every collection: alias, dims, filterables, row
-count, active engine.
+**Data → Vectors** is the whole RAG loop on one page: the collections table
+(alias, dims, filterables, row count, active engine), **Ingest text** (paste
+anything — it's chunked, embedded through the collection's alias and indexed;
+the collection is created on first use; re-pasting the same text is a no-op
+thanks to content-hash dedupe), and **Search** (hybrid by default; scored
+matches with their text and meta). Paste a document, search for a phrase from
+it, read the scores — no curl required.

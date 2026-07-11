@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { Engine, type OpContext, type Workflow } from "@pattern-js/core";
 import { chunkText, chunkDoc } from "../src/chunk.js";
 import { LocalVectorsEngine, normalize, rrfFuse } from "../src/engine-local.js";
+import { collectionsIngestOp, collectionsSearchOp } from "../src/admin.js";
 import { DefaultVectorsService, VECTORS_SERVICE } from "../src/service.js";
 import { vectorsMod } from "../src/mod.js";
 
@@ -245,5 +246,52 @@ describe("ops on the engine (port 5063 not needed — in-process run)", () => {
     expect(matches.length).toBeGreaterThan(0);
     expect(matches.every((m) => m.meta.kind === "guide")).toBe(true);
     expect(matches[0]?.id.startsWith("g1#")).toBe(true);
+  });
+});
+
+describe("admin ingest + search ops (the paste-to-RAG loop)", () => {
+  const opCtx = (services: Record<string, unknown>, bag: Record<string, unknown>): OpContext =>
+    ({
+      services,
+      env: {},
+      principal: { kind: "anonymous" },
+      input: { has: (k: string) => bag[k] !== undefined, value: async (k: string) => bag[k] },
+    }) as unknown as OpContext;
+
+  it("paste → chunk → embed → search; re-paste dedupes; existing alias is never re-pointed", async () => {
+    const engine = new LocalVectorsEngine({ path: ":memory:" });
+    const svc = new DefaultVectorsService(engine);
+    const services = { [VECTORS_SERVICE]: svc, aiProviderService: fakeProvider };
+    const text = "Refunds take five business days.\n\nInvoices are issued monthly, on the 1st.";
+
+    const first = (await collectionsIngestOp.execute(
+      opCtx(services, { collection: "pasted", text, alias: "test-embed", meta: '{"topic":"billing"}' }),
+    )) as { result: { chunks: number; indexed: number; docId: string } };
+    expect(first.result.chunks).toBeGreaterThan(0);
+    expect(first.result.indexed).toBe(first.result.chunks);
+    expect(first.result.docId).toMatch(/^paste-/);
+
+    // Same paste (text AND meta — both feed the content hash) → no writes.
+    const again = (await collectionsIngestOp.execute(
+      opCtx(services, { collection: "pasted", text, alias: "test-embed", meta: '{"topic":"billing"}' }),
+    )) as { result: { indexed: number; docId: string } };
+    expect(again.result.docId).toBe(first.result.docId);
+    expect(again.result.indexed).toBe(0);
+
+    const found = (await collectionsSearchOp.execute(
+      opCtx(services, { collection: "pasted", query: "refunds", mode: "hybrid", k: "3" }),
+    )) as { matches: Array<{ id: string; score: number; meta: Record<string, unknown> }> };
+    expect(found.matches.length).toBeGreaterThan(0);
+    expect(found.matches[0]!.meta).toMatchObject({ topic: "billing" });
+
+    // A different alias on an EXISTING collection is ignored — re-pointing a
+    // live collection's embedding model would corrupt its space.
+    await collectionsIngestOp.execute(opCtx(services, { collection: "pasted", text: "More text.", alias: "other-alias" }));
+    expect((await svc.listCollections()).find((c) => c.name === "pasted")?.alias).toBe("test-embed");
+
+    // Bad meta fails with a located, example-carrying error.
+    await expect(
+      collectionsIngestOp.execute(opCtx(services, { collection: "pasted", text: "x", meta: "not-json" })),
+    ).rejects.toThrow(/JSON object/);
   });
 });

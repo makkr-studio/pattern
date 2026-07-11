@@ -46,6 +46,12 @@ search, and inbound email.
 
 ### Vector search
 
+- **The admin's Vectors page is now the whole RAG loop**: collections table +
+  **Ingest text** (paste → chunk → embed; collection created on first use,
+  content-hash dedupe on re-paste) + **Search** (hybrid, scored matches).
+  Testing retrieval is a form, not a curl. Tier-1 forms gained
+  `format: "multiline"` (a textarea) along the way.
+
 - **`@pattern-js/mod-vectors` — embedding collections.** A collection
   **declares its embedding alias** and locks its dims on first write, so
   indexing with one model and querying with another is unrepresentable.

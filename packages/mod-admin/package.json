@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-admin",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Pattern admin mod — authorable, self-reflecting control surface (control plane, workflow store, run inspection).",
   "type": "module",
   "license": "MIT",

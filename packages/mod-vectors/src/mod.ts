@@ -18,7 +18,7 @@ import { defineMod, type Engine, type PatternMod } from "@pattern-js/core";
 import { LocalVectorsEngine } from "./engine-local.js";
 import { DefaultVectorsService, VECTORS_SERVICE } from "./service.js";
 import { vectorsOps } from "./ops.js";
-import { collectionsListOp, vectorsAdminRoutes, vectorsFrontend } from "./admin.js";
+import { collectionsIngestOp, collectionsListOp, collectionsSearchOp, vectorsAdminRoutes, vectorsFrontend } from "./admin.js";
 
 export interface VectorsOptions {
   /** Database file (default "./.pattern-data/vectors.db"; ":memory:" for tests). */
@@ -39,7 +39,7 @@ export function vectorsMod(options: VectorsOptions = {}): PatternMod {
   return defineMod({
     name: "@pattern-js/mod-vectors",
     docs: { filesystem: "vectors-docs", title: "Vectors", order: 32 },
-    ops: [...vectorsOps, collectionsListOp],
+    ops: [...vectorsOps, collectionsListOp, collectionsIngestOp, collectionsSearchOp],
     workflows: vectorsAdminRoutes(),
     frontend: vectorsFrontend(),
     setup: (engine: Engine) => {
