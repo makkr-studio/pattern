@@ -100,14 +100,22 @@ Install `@pattern-js/mod-vectors` and define an `embeddings` alias, and the
 chat grows **cross-conversation, per-user memory** — no config, no new deps
 (everything is duck-typed; without vectors, chat runs exactly as before).
 
-After every completed turn, the `chat.memory.pipeline` workflow — an ordinary,
-forkable graph triggered by the `chat.turn.completed` event — asks a model
-whether the exchange taught it something durable about the user ("User's dog
-is called Rex", "User prefers answers in French") and indexes each fact into
-the `chat.memories` collection, keyed and **filter-pruned by user**: one
-user's memories never rank against another's. On the next turn — in *any*
-conversation — the pipeline's `chat.memory.recall` node retrieves the most
-relevant memories into the system prompt.
+Memory is written two ways. The agent gets a **`remember` tool** — so
+remembering is a *visible act*: the user watches the tool chip fire and the
+agent acknowledges it in the same breath. And after every completed turn, the
+`chat.memory.pipeline` workflow — an ordinary, forkable graph triggered by
+the `chat.turn.completed` event — runs **reconciliation** as the backstop:
+one model call (through the `memory` alias when defined — point it at a mini
+model — else the default) sees the exchange *and* the user's existing nearby
+memories, and answers with operations: `add` a new fact, `supersede` an
+outdated one ("the dog is Max now" replaces Rex, keeping `revises` lineage),
+or `forget` a disowned one. So contradictions resolve at write time instead
+of piling up, paraphrase duplicates get superseded rather than appended, and
+a per-user cap (default 200, newest kept) bounds growth. Everything is keyed
+and **filter-pruned by user** — one user's memories never rank against
+another's. On the next turn — in *any* conversation — the pipeline's
+`chat.memory.recall` node retrieves the top matches into the system prompt,
+under a hard ~300-token budget so memory can never crowd the context.
 
 The part nobody else has: **provenance**. Every memory carries
 `{ userId, conversationId, sourceRunId }` — the exact run where it was

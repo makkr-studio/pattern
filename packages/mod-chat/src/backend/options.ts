@@ -90,7 +90,7 @@ export interface ChatModOptions {
    * browsable and deletable in admin → Chat → Memories. `false` turns the
    * whole feature off.
    */
-  memory?: boolean | { collection?: string; alias?: string; recallK?: number; maxPerTurn?: number };
+  memory?: boolean | { collection?: string; alias?: string; recallK?: number; maxPerTurn?: number; maxMemories?: number };
   /** Lease TTL for a running turn in ms (crash backstop). Default 5 min. */
   turnTtlMs?: number;
   /** Max model↔tool round-trips per turn. Default 12. */
@@ -121,7 +121,7 @@ export interface ResolvedChatOptions {
   turnPipeline: boolean;
   turnTtlMs: number;
   maxTurns: number;
-  memory: { enabled: boolean; collection: string; alias: string; recallK: number; maxPerTurn: number };
+  memory: { enabled: boolean; collection: string; alias: string; recallK: number; maxPerTurn: number; maxMemories: number };
   guardrail: { enabled: boolean; model?: ChatModel; instructions: string };
   requireAuth?: unknown;
   loginRequestPath: string;
@@ -219,6 +219,7 @@ export function resolveOptions(options: ChatModOptions = {}): ResolvedChatOption
         alias: cfg.alias ?? "embeddings",
         recallK: cfg.recallK ?? 3,
         maxPerTurn: cfg.maxPerTurn ?? 5,
+        maxMemories: cfg.maxMemories ?? 200,
       };
     })(),
     guardrail: (() => {

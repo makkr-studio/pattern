@@ -168,6 +168,49 @@ describe("chat memory (per-user, cross-conversation, with receipts)", () => {
     expect(system).not.toContain("Mia"); // filter-pruned: grace's memories never rank for ada
   });
 
+  it("reconciliation: a contradicting fact SUPERSEDES the old memory instead of piling up", async () => {
+    const { base, vectors } = await boot([
+      { kind: "text", text: "Got it — Max it is!" },
+      // The extractor sees the existing memory (with its id) and revises it.
+      { kind: "text", text: '[{"op":"supersede","id":"m1","text":"User\'s dog is called Max"}]' },
+    ]);
+    await vectors!.ensureCollection({ name: "chat.memories", alias: "embeddings", metric: "cosine", filterables: ["userId"] });
+    await vectors!.upsert(
+      "chat.memories",
+      [{ id: "m1", text: "User's dog is called Rex", meta: { userId: "ada" } }],
+      opCtx({ aiProviderService: fakeProvider }),
+    );
+
+    const conv = await conversationAs(base, "ada");
+    await runTurn(base, conv, "Actually my dog is called Max now, not Rex.");
+
+    const rows = await until(async () => {
+      const r = await vectors!.list("chat.memories", { filter: { userId: "ada" } });
+      return r.some((m) => m.text?.includes("Max")) ? r : undefined;
+    });
+    expect(rows.some((m) => m.id === "m1")).toBe(false); // the old fact is gone
+    const max = rows.find((m) => m.text?.includes("Max"))!;
+    expect(max.meta).toMatchObject({ userId: "ada", revises: "m1" }); // the revision keeps its lineage
+  });
+
+  it("the agent's `remember` tool saves visibly, mid-turn, with the tool run as receipt", async () => {
+    const { base, vectors } = await boot([
+      { kind: "tool_call", name: "remember", callId: "c1", args: { fact: "User works at Makkr" } },
+      { kind: "text", text: "Noted — I'll remember that." },
+      { kind: "text", text: "[]" }, // post-turn extraction: nothing further
+    ]);
+    const conv = await conversationAs(base, "ada");
+    await runTurn(base, conv, "For context: I work at Makkr, please remember it.");
+
+    const rows = await until(async () => {
+      const r = await vectors!.list("chat.memories", { filter: { userId: "ada" } });
+      return r.length ? r : undefined;
+    });
+    const fact = rows.find((m) => m.text?.includes("Makkr"))!;
+    expect(fact.meta).toMatchObject({ userId: "ada", via: "remember" });
+    expect(String(fact.meta?.sourceRunId ?? "")).not.toBe(""); // the tool call's own run
+  });
+
   it("guest turns never extract — no durable identity, no memory, no model call", async () => {
     const { base, scripted } = await boot([
       { kind: "text", text: "Hello stranger." },

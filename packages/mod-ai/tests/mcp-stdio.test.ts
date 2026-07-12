@@ -37,14 +37,19 @@ async function session(messages: object[]): Promise<Array<Record<string, unknown
 
   const input = new PassThrough();
   const output = new PassThrough();
+  // Accumulate as data flows — a single output.read() after `done` races the
+  // PassThrough's transform ticks and can observe only the first chunk.
+  const chunks: Buffer[] = [];
+  output.on("data", (c: Buffer) => chunks.push(c));
   const done = runMcpStdio(engine, { name: "pattern-test", version: "0.0.1", input, output, handler: handleMcp });
   for (const m of messages) input.write(`${JSON.stringify(m)}\n`);
   input.write("not json\n"); // parse errors answer -32700, never kill the session
   input.end();
   await done;
+  await new Promise((r) => setImmediate(r)); // let the final writes flush through
 
-  const raw = output.read() as Buffer | null;
-  return String(raw ?? "")
+  return Buffer.concat(chunks)
+    .toString("utf8")
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l) as Record<string, unknown>);

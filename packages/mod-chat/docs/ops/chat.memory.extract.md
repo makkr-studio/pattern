@@ -1,10 +1,12 @@
-Turn-end memory extraction, running as its own event-triggered run (the
-`chat.memory.pipeline` workflow subscribes it to `chat.turn.completed`): a
-one-shot model call reads the completed exchange and answers with the durable
-facts about the user worth keeping — stable preferences, personal facts,
-ongoing projects — as a JSON array; small talk and one-off requests never
-qualify. Each statement is indexed into the memory collection (declared with
-`filterables: ["userId"]`) with provenance meta `{ userId, conversationId,
-sourceRunId, learnedAt }`, so every memory can answer "where did you learn
-that?" with a link to the exact run. Skips guests (no durable identity) and
-no-ops without mod-vectors, a model, or the embedding alias.
+Turn-end memory RECONCILIATION, running as its own event-triggered run (the
+`chat.memory.pipeline` workflow subscribes it to `chat.turn.completed`). One
+model call — through the `memory` alias when defined (point it at a mini
+model; this is classification, not prose), else the default — receives the
+exchange AND the user's existing nearby memories (ids included) and answers
+with operations: `add` a new durable fact, `supersede` an outdated one (the
+revision keeps `revises` lineage), or `forget` one the user disowned. Ids are
+validated against the fetched neighbor set, so a hallucinated id can never
+touch another user's rows. Everything indexed carries provenance meta
+`{ userId, conversationId, sourceRunId, learnedAt }`, and a per-user cap
+(default 200, newest kept) stops unbounded growth. Skips guests; no-ops
+without mod-vectors, a model, or the embedding alias.

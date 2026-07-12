@@ -56,11 +56,18 @@ interface AiConfigLike {
 
 const EXTRACT_SYSTEM =
   "You maintain long-term memory about a user, extracted from their conversations with an assistant. " +
-  "From the exchange, pick out durable facts worth remembering in FUTURE conversations: stable preferences, " +
-  "personal facts they shared, ongoing projects, standing constraints. Never keep small talk, one-off requests, " +
-  "sensitive data (passwords, card numbers), or things only the assistant said. " +
-  'Answer with ONLY a JSON array of short, standalone, third-person statements (e.g. ["User\'s dog is called Rex"]). ' +
-  "Answer [] when nothing qualifies. Five statements maximum.";
+  "You receive the exchange AND the user's existing nearby memories (with ids). Reconcile them: answer with " +
+  "ONLY a JSON array of operations —\n" +
+  '- {"op":"add","text":"…"} for a NEW durable fact worth keeping in FUTURE conversations (stable preferences, ' +
+  "personal facts, ongoing projects, standing constraints), written as a short standalone third-person statement;\n" +
+  '- {"op":"supersede","id":"…","text":"…"} when an existing memory is now outdated, refined or contradicted — ' +
+  "the new text replaces it;\n" +
+  '- {"op":"forget","id":"…"} when the user asked to forget it or it is plainly no longer true.\n' +
+  "Never store small talk, one-off requests, sensitive data (passwords, card numbers), or things only the " +
+  "assistant said. Never add a fact an existing memory already states — supersede or leave it. " +
+  "Answer [] when nothing qualifies. Five operations maximum.";
+
+type MemoryOp = { op: "add"; text: string } | { op: "supersede"; id: string; text: string } | { op: "forget"; id: string };
 
 /** Text of the user's message parts (images etc. are skipped). */
 function partsText(parts: unknown[]): string {
@@ -86,21 +93,31 @@ function memoryId(ownerId: string, statement: string): string {
   return `mem-${h.toString(36)}`;
 }
 
-/** Parse the model's answer defensively: first JSON array wins, junk is dropped. */
-function parseStatements(text: string, max: number): string[] {
-  const raw = /\[[\s\S]*?\]/.exec(text)?.[0];
+/** Parse the model's answer defensively: first JSON array wins, junk is
+ *  dropped; a bare string is treated as an `add` (older prompt shape). */
+function parseOps(text: string, max: number): MemoryOp[] {
+  const raw = /\[[\s\S]*\]/.exec(text)?.[0];
   if (!raw) return [];
+  let arr: unknown;
   try {
-    const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((s): s is string => typeof s === "string")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && s.length <= 300)
-      .slice(0, max);
+    arr = JSON.parse(raw);
   } catch {
     return [];
   }
+  if (!Array.isArray(arr)) return [];
+  const okText = (t: unknown): t is string => typeof t === "string" && t.trim().length > 0 && t.length <= 300;
+  const out: MemoryOp[] = [];
+  for (const item of arr) {
+    if (okText(item)) out.push({ op: "add", text: item.trim() });
+    else if (item && typeof item === "object") {
+      const o = item as { op?: string; id?: string; text?: string };
+      if (o.op === "add" && okText(o.text)) out.push({ op: "add", text: o.text.trim() });
+      else if (o.op === "supersede" && typeof o.id === "string" && okText(o.text)) out.push({ op: "supersede", id: o.id, text: o.text.trim() });
+      else if (o.op === "forget" && typeof o.id === "string") out.push({ op: "forget", id: o.id });
+    }
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
@@ -148,33 +165,66 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
       const reply = assistantText((turn.events ?? []) as Array<{ type?: string; delta?: string }>).slice(0, 4000);
       if (!userText.trim()) return skip("no user text in this turn");
 
+      // Reconciliation context: the user's memories NEAR this exchange, ids
+      // included, so the model can supersede/forget instead of duplicating.
+      const neighbors = await vec
+        .query(cfg.collection, { text: userText.slice(0, 1000), k: 6, filter: { userId: ownerId }, mode: "hybrid" }, ctx)
+        .catch(() => []); // collection not created yet — no neighbors
+      const neighborIds = new Set(neighbors.map((n) => n.id));
+      const existing = neighbors.length
+        ? `Existing memories about this user (nearby):\n${neighbors.map((n) => `- [${n.id}] ${n.text ?? ""}`).join("\n")}\n\n`
+        : "";
+
+      // A "memory" alias (point it at a mini model — this is classification,
+      // not prose) wins; otherwise the app's default model.
+      const aiCfgFull = ctx.services["aiConfig"] as (AiConfigLike & { resolveAlias?(name: string): unknown }) | undefined;
+      const modelRef = aiCfgFull?.resolveAlias?.("memory");
+
       const { text } = await aiModelService(ctx).generateText({
         ctx,
         signal: ctx.signal,
         system: EXTRACT_SYSTEM,
-        messages: [{ role: "user", content: `User message:\n${userText}\n\nAssistant reply:\n${reply}` }],
-        // modelRef omitted → the app's default alias
+        messages: [{ role: "user", content: `${existing}User message:\n${userText}\n\nAssistant reply:\n${reply}` }],
+        ...(modelRef ? { modelRef: modelRef as never } : {}),
       });
-      const statements = parseStatements(text, cfg.maxPerTurn);
-      if (!statements.length) return { result: { ok: true, memories: 0 } };
+      const ops = parseOps(text, cfg.maxPerTurn);
+      if (!ops.length) return { result: { ok: true, memories: 0 } };
 
       await ensureCollection(vec);
       const learnedAt = new Date().toISOString();
-      await vec.upsert(
-        cfg.collection,
-        statements.map((s) => ({
-          id: memoryId(ownerId, s),
-          text: s,
-          meta: {
-            userId: ownerId,
-            conversationId: payload.conversationId ?? "",
-            sourceRunId: payload.runId ?? "",
-            learnedAt,
-          },
-        })),
-        ctx,
-      );
-      return { result: { ok: true, memories: statements.length, user: ownerId } };
+      const meta = (revises?: string) => ({
+        userId: ownerId,
+        conversationId: payload.conversationId ?? "",
+        sourceRunId: payload.runId ?? "",
+        learnedAt,
+        ...(revises ? { revises } : {}),
+      });
+      let added = 0;
+      let superseded = 0;
+      let forgotten = 0;
+      for (const op of ops) {
+        // Ids must come from the neighbor set — a hallucinated id must never
+        // touch another user's (or a random) row.
+        if (op.op === "forget" && neighborIds.has(op.id)) {
+          forgotten += await vec.delete(cfg.collection, [op.id]);
+        } else if (op.op === "supersede" && neighborIds.has(op.id)) {
+          await vec.delete(cfg.collection, [op.id]);
+          await vec.upsert(cfg.collection, [{ id: memoryId(ownerId, op.text), text: op.text, meta: meta(op.id) }], ctx);
+          superseded++;
+        } else if (op.op === "add") {
+          await vec.upsert(cfg.collection, [{ id: memoryId(ownerId, op.text), text: op.text, meta: meta() }], ctx);
+          added++;
+        }
+      }
+
+      // The growth cap: keep the newest maxMemories per user (list is
+      // newest-first) — memory is a working set, not an archive.
+      const rows = await vec.list(cfg.collection, { filter: { userId: ownerId }, limit: cfg.maxMemories + 50 });
+      if (rows.length > cfg.maxMemories) {
+        await vec.delete(cfg.collection, rows.slice(cfg.maxMemories).map((r) => r.id));
+      }
+
+      return { result: { ok: true, user: ownerId, added, superseded, forgotten } };
     },
   };
 
@@ -216,9 +266,20 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
           ctx,
         );
         if (!matches.length) return { instructions: base };
+        // Hard prompt budget: whatever recallK says, the block never exceeds
+        // ~1200 chars (≈300 tokens) — memory must never crowd the context.
+        const lines: string[] = [];
+        let budget = 1200;
+        for (const m of matches) {
+          const line = `- ${m.text ?? ""}`;
+          if (line.length > budget) break;
+          budget -= line.length;
+          lines.push(line);
+        }
+        if (!lines.length) return { instructions: base };
         const block =
           "\n\n## Things you remember about this user (from earlier conversations)\n" +
-          matches.map((m) => `- ${m.text ?? ""}`).join("\n") +
+          lines.join("\n") +
           "\nUse them naturally when relevant — don't recite them.";
         return { instructions: base + block };
       } catch {
@@ -226,6 +287,41 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
         // the turn proceeds without memories.
         return { instructions: base };
       }
+    },
+  };
+
+  const save: OpDefinition = {
+    type: "chat.memory.save",
+    title: "chat.memory.save",
+    description:
+      "The body of the `remember` tool: save one durable fact about the CURRENT user (the tool sub-run inherits " +
+      "the chat principal) with provenance meta — sourceRunId is the tool call's own run, so the memory's receipt " +
+      "is the very moment the agent decided to remember. Signed-in users only.",
+    reusable: false,
+    inputs: { fact: value(z.string()) },
+    outputs: { result: value() },
+    execute: async (ctx) => {
+      const fact = String((await ctx.input.value("fact")) ?? "").trim();
+      if (!fact) return { result: { ok: false, error: "nothing to remember" } };
+      if (!cfg.enabled) return { result: { ok: false, error: "memory is disabled" } };
+      const vec = vectorsOf(ctx);
+      if (!vec) return { result: { ok: false, error: "memory is not available (mod-vectors is not installed)" } };
+      const p = ctx.principal as { kind?: string; id?: string };
+      const ownerId = p?.kind === "user" && p.id ? p.id : null;
+      if (!ownerId) return { result: { ok: false, error: "guests have no long-term memory — sign in first" } };
+      await ensureCollection(vec);
+      await vec.upsert(
+        cfg.collection,
+        [
+          {
+            id: memoryId(ownerId, fact),
+            text: fact.slice(0, 300),
+            meta: { userId: ownerId, conversationId: "", sourceRunId: ctx.runId, learnedAt: new Date().toISOString(), via: "remember" },
+          },
+        ],
+        ctx,
+      );
+      return { result: { ok: true, remembered: fact.slice(0, 300) } };
     },
   };
 
@@ -277,7 +373,50 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
     },
   };
 
-  return [extract, recall, memoriesList, memoryForget];
+  return [extract, recall, save, memoriesList, memoryForget];
+}
+
+/**
+ * The `remember` tool: remembering as a VISIBLE act. The chat UI already
+ * renders tool calls live, so the user watches the agent decide to remember —
+ * and the agent can acknowledge it in the same breath. Auto-extraction stays
+ * as the backstop for what the agent didn't think to save.
+ */
+export function rememberToolWorkflow(): Workflow {
+  return {
+    id: "chat.tool.remember",
+    name: "remember (chat memory tool)",
+    description: "Agent-invoked memory: save one durable fact about the current user, visibly, mid-conversation.",
+    source: "code",
+    internal: false,
+    nodes: [
+      {
+        id: "in",
+        op: "boundary.tool",
+        config: {
+          name: "remember",
+          description:
+            "Save one durable fact about the user to your long-term memory (persists across conversations). " +
+            "Use it when the user shares a stable preference, personal fact or standing constraint — or asks you " +
+            "to remember something. Phrase the fact as a short standalone third-person statement.",
+          params: {
+            type: "object",
+            properties: { fact: { type: "string", description: 'e.g. "User\'s dog is called Rex"' } },
+            required: ["fact"],
+          },
+        },
+        ui: { x: 60, y: 120, pair: "out" },
+      },
+      { id: "args", op: "core.object.extract", config: { keys: ["fact"] }, ui: { x: 320, y: 120 } },
+      { id: "save", op: "chat.memory.save", ui: { x: 580, y: 120 } },
+      { id: "out", op: "boundary.tool.return", ui: { x: 840, y: 120, pair: "in" } },
+    ],
+    edges: [
+      { from: { node: "in", port: "args" }, to: { node: "args", port: "object" } },
+      { from: { node: "args", port: "fact" }, to: { node: "save", port: "fact" } },
+      { from: { node: "save", port: "result" }, to: { node: "out", port: "result" } },
+    ],
+  };
 }
 
 /** The packaged extraction pipeline: turn completed → extract. Fork it to reshape what "memorable" means. */

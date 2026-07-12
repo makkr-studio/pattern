@@ -59,6 +59,15 @@ search, and inbound email.
   duck-typed, so without vectors chat runs unchanged. `VectorsService` gains
   `list()` (row enumeration for browsers like this one), and the sink emits a
   `chat.turn.completed` event anything can subscribe to.
+- **Memory that revises itself.** Extraction is a *reconciliation*: the model
+  sees the user's existing nearby memories and answers with operations —
+  `add` / `supersede` (with `revises` lineage) / `forget` — so contradictions
+  resolve at write time instead of piling up; ids are validated against the
+  fetched set, a per-user cap (default 200) bounds growth, recall runs under
+  a hard ~300-token prompt budget, and a `memory` alias routes extraction to
+  a mini model. The agent also gets a visible **`remember` tool** — the user
+  watches it decide to remember, and the memory's receipt is the tool call's
+  own run.
 - **The admin's Vectors page is now the whole RAG loop**: collections table +
   **Ingest text** (paste → chunk → embed; collection created on first use,
   content-hash dedupe on re-paste) + **Search** (hybrid, scored matches).
