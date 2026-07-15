@@ -28,6 +28,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 export const branch = defineOp({
   type: "core.flow.branch",
+  effects: "pure",
   title: "core.flow.branch",
   description: "Boolean condition → pulses control-out `then` or `else`.",
   inputs: { condition: required(z.boolean()) },
@@ -42,6 +43,7 @@ export const branch = defineOp({
 
 export const switchOp = defineOp({
   type: "core.flow.switch",
+  effects: "pure",
   title: "core.flow.switch",
   description: "Match a value against config.cases → pulses `case.<i>` or `default`.",
   inputs: { value: required() },
@@ -62,6 +64,7 @@ export const switchOp = defineOp({
 
 export const gate = defineOp({
   type: "core.flow.gate",
+  effects: "pure",
   title: "core.flow.gate",
   description: "Pass control through `out` only if condition is true; otherwise the path stops here.",
   inputs: { condition: required(z.boolean()) },
@@ -76,6 +79,7 @@ export const gate = defineOp({
 
 export const sequence = defineOp({
   type: "core.flow.sequence",
+  effects: "pure",
   title: "core.flow.sequence",
   description: "Pulse control-outs 0..count-1 in order, each waiting for the previous subgraph to finish.",
   inputs: {},
@@ -93,6 +97,7 @@ export const sequence = defineOp({
 
 export const parallel = defineOp({
   type: "core.flow.parallel",
+  effects: "pure",
   title: "core.flow.parallel",
   description: "Fan control-out to N branches at once (control-outs 0..count-1).",
   inputs: {},
@@ -108,6 +113,7 @@ export const parallel = defineOp({
 
 export const join = defineOp({
   type: "core.flow.join",
+  effects: "pure",
   title: "core.flow.join",
   description: "Converge N control-ins (waits for all), then pulses `out`. (AND semantics are automatic.)",
   inputs: {},
@@ -117,6 +123,7 @@ export const join = defineOp({
 
 export const delay = defineOp({
   type: "core.flow.delay",
+  effects: "pure",
   title: "core.flow.delay",
   description: "Wait a configured duration, then pulse `out`.",
   inputs: {},
@@ -153,6 +160,7 @@ export const tryOp = defineOp({
 
 export const throwOp = defineOp({
   type: "core.flow.throw",
+  effects: "pure",
   title: "core.flow.throw",
   description: "Raise an error (fails the run / triggers an enclosing try).",
   inputs: { data: value() },
@@ -166,6 +174,7 @@ export const throwOp = defineOp({
 
 export const assertOp = defineOp({
   type: "core.flow.assert",
+  effects: "pure",
   title: "core.flow.assert",
   description: "Fail unless condition holds; otherwise pass control through.",
   inputs: { condition: required(z.boolean()) },
@@ -180,6 +189,7 @@ export const assertOp = defineOp({
 
 export const noop = defineOp({
   type: "core.flow.noop",
+  effects: "pure",
   title: "core.flow.noop",
   description: "Pure pass-through / sequencing point. Forwards `value` if wired.",
   inputs: { value: value() },
@@ -215,6 +225,7 @@ export const foreach = defineOp({
 
 export const log = defineOp({
   type: "core.log",
+  effects: "idempotent",
   title: "core.log",
   description: "Emit a structured log line to the trace sink; pass-through of `value`.",
   inputs: { value: value() },

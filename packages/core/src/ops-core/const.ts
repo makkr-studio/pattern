@@ -43,6 +43,7 @@ export const constBoolean = literal(
 
 export const constNull = defineOp({
   type: "core.const.null",
+  effects: "pure",
   title: "core.const.null",
   description: "Emits a constant `null`. Output `{ out }`.",
   inputs: {},
@@ -52,6 +53,7 @@ export const constNull = defineOp({
 
 export const constObject = defineOp({
   type: "core.const.object",
+  effects: "pure",
   title: "core.const.object",
   description: "Emits a constant object from `config.value`. Output `{ out }`.",
   inputs: {},
@@ -62,6 +64,7 @@ export const constObject = defineOp({
 
 export const constArray = defineOp({
   type: "core.const.array",
+  effects: "pure",
   title: "core.const.array",
   description: "Emits a constant array from `config.value`. Output `{ out }`.",
   inputs: {},
@@ -72,6 +75,7 @@ export const constArray = defineOp({
 
 export const constJson = defineOp({
   type: "core.const.json",
+  effects: "pure",
   title: "core.const.json",
   description: "Arbitrary JSON literal, optionally validated against a declared schema at author time.",
   inputs: {},
@@ -82,6 +86,7 @@ export const constJson = defineOp({
 
 export const input = defineOp({
   type: "core.input",
+  effects: "pure",
   title: "core.input",
   description: "Read a run-scoped input/parameter by name (with optional default).",
   inputs: {},
@@ -96,6 +101,7 @@ export const input = defineOp({
 
 export const env = defineOp({
   type: "core.env",
+  effects: "pure",
   title: "core.env",
   description:
     "Read an environment variable from ctx.env, with type casting and an optional default. " +

@@ -8,6 +8,7 @@ import { maybe } from "./shared.js";
 
 export const modelOp: OpDefinition = {
   type: "ai.model",
+  effects: "pure",
   title: "ai.model",
   description:
     "Build a model reference (a value) to wire into any ai.* op or agents.agent. Define it inline: " +
@@ -59,6 +60,7 @@ export const modelOp: OpDefinition = {
 
 export const aliasOp: OpDefinition = {
   type: "ai.alias",
+  effects: "pure",
   title: "ai.alias",
   description:
     "Resolve a named model alias (configured in admin → Settings → AI Providers) to a model reference. " +

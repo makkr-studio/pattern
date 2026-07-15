@@ -16,7 +16,7 @@ import { z } from "zod";
 import { required, stream, value } from "../ops-core/helpers.js";
 import { jsonSchemaToZod } from "../json-schema.js";
 import { userInputSchema } from "../auth/well-known.js";
-import type { OpDefinition, Ports } from "../types.js";
+import type { OpDefinition, OpEffects, Ports } from "../types.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
 const stringRecord = z.record(z.string(), z.string());
@@ -72,6 +72,8 @@ function outgate(opts: {
   reusable?: boolean;
   /** The trigger op this out-gate canonically pairs with (§7). */
   pair?: string;
+  /** Replay-safety; result-shaping out-gates are "pure" (delivery is the host's). */
+  effects?: OpEffects;
 }): OpDefinition {
   return {
     type: opts.type,
@@ -80,6 +82,7 @@ function outgate(opts: {
     boundary: "outgate",
     reusable: opts.reusable,
     pair: opts.pair,
+    effects: opts.effects,
     inputs: opts.inputs,
     outputs: {},
     config: opts.config,
@@ -135,6 +138,7 @@ export const schedule: OpDefinition = {
 
 export const returnGate = outgate({
   type: "boundary.return",
+  effects: "pure",
   description: "Generic out-gate: returns its resolved inputs as the run result. config.inputs declares the ports.",
   inputs: { value: value() },
   pair: "boundary.manual",
@@ -143,6 +147,7 @@ export const returnGate = outgate({
 /** A `boundary.return` whose input ports are configurable (for sub-workflows). */
 export const returnGateConfigurable: OpDefinition = {
   type: "boundary.return.named",
+  effects: "pure",
   title: "boundary.return.named",
   description: "Out-gate with configurable input ports. config: { inputs: string[] }.",
   boundary: "outgate",
@@ -245,6 +250,7 @@ export const httpRequest: OpDefinition = {
 
 export const httpResponse = outgate({
   type: "boundary.http.response",
+  effects: "pure",
   description:
     "HTTP response out-gate (network-OUT). mode: buffered | sse | chunked. Inputs { status?, headers?, body?, " +
     "cookies?, redirect? }. status defaults to 200; wire a domain output port straight to body. `cookies` " +
@@ -291,6 +297,7 @@ function readOutcome(result: unknown): { code: string; body?: unknown } | null {
  */
 export const httpStatus: OpDefinition = {
   type: "boundary.http.status",
+  effects: "pure",
   title: "boundary.http.status",
   description:
     "Map a conventioned domain outcome to { status, body } for boundary.http.response. An `httpOutcome(code)` value " +
@@ -476,6 +483,7 @@ export const cli: OpDefinition = {
 
 export const cliExit = outgate({
   type: "boundary.cli.exit",
+  effects: "pure",
   description: "CLI exit out-gate. Inputs { stdout (value/stream), stderr, code }.",
   inputs: { stdout: value(), stdoutStream: stream(), stderr: value(z.string()), code: value(z.number()) },
   pair: "boundary.cli",
@@ -500,6 +508,7 @@ export const hookTrigger: OpDefinition = {
 
 export const hookReturn = outgate({
   type: "boundary.hook.return",
+  effects: "pure",
   description: "Hook member out-gate: returns { payload, stop? } to thread/short-circuit the chain (§8).",
   inputs: { payload: required(), stop: value(z.boolean()) },
   reusable: false,

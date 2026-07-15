@@ -84,6 +84,7 @@ function broadcast(
 
 export const split: OpDefinition = defineOp({
   type: "core.stream.split",
+  effects: "pure",
   title: "core.stream.split",
   description: "Tee/fan-out a stream into `branches` outputs (out.0..n). bufferPolicy: backpressure | { drop }.",
   inputs: { in: stream() },
@@ -99,6 +100,7 @@ export const split: OpDefinition = defineOp({
 
 export const merge: OpDefinition = defineOp({
   type: "core.stream.merge",
+  effects: "pure",
   title: "core.stream.merge",
   description: "Merge N input streams (in.0..n) into one. ordering: interleave | concat.",
   inputs: (config: { inputs?: number }): Ports =>
@@ -209,6 +211,7 @@ export const accumulate: OpDefinition = defineOp({
 
 export const emit: OpDefinition = defineOp({
   type: "core.stream.emit",
+  effects: "pure",
   title: "core.stream.emit",
   description: "Value/iterable → stream.",
   inputs: { in: required(z.union([z.array(z.unknown()), z.any()])) },
@@ -271,6 +274,7 @@ export const filter: OpDefinition = defineOp({
 
 export const pluck: OpDefinition = defineOp({
   type: "core.stream.pluck",
+  effects: "pure",
   title: "core.stream.pluck",
   description:
     "Extract `config.path` (dot/bracket) from each chunk and re-emit as a stream, with no sub-workflow. " +
@@ -295,6 +299,7 @@ export const pluck: OpDefinition = defineOp({
 
 export const template: OpDefinition = defineOp({
   type: "core.stream.template",
+  effects: "pure",
   title: "core.stream.template",
   description:
     "Render a string per chunk from `{{ dot.path }}` placeholders over the chunk, and re-emit as a stream, with no sub-workflow. " +
@@ -330,6 +335,7 @@ const REGION_MARKER = (which: "each" | "collect") => (): never => {
 
 export const each: OpDefinition = defineOp({
   type: "core.stream.each",
+  effects: "pure",
   title: "core.stream.each",
   description:
     "Open a per-chunk region. The value ops wired between this and core.stream.collect run once per chunk, inline in the same run (no sub-run). Outputs the current `item` and its `index`.",
@@ -340,6 +346,7 @@ export const each: OpDefinition = defineOp({
 
 export const collect: OpDefinition = defineOp({
   type: "core.stream.collect",
+  effects: "pure",
   title: "core.stream.collect",
   description:
     "Close a per-chunk region: take each chunk's processed `value` and re-emit them as a stream. Pairs with core.stream.each.",

@@ -14,7 +14,7 @@
  */
 
 import { parentPort, workerData } from "node:worker_threads";
-import { Engine, type RunResult } from "@pattern-js/core";
+import { Engine, RunCanceled, type RunResult } from "@pattern-js/core";
 import { loadMods } from "../mods.js";
 
 const port = parentPort!;
@@ -67,7 +67,10 @@ interface RunMessage {
 
 port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
   if (msg.type === "run") void handleRun(msg);
-  else if (msg.type === "abort") aborts.get(msg.id)?.abort();
+  // The only abort source across this seam is a cancellation (admin cancel /
+  // client disconnect forwarded by the pool) — mark it so the run records
+  // status "canceled" instead of "error".
+  else if (msg.type === "abort") aborts.get(msg.id)?.abort(new RunCanceled("canceled"));
 });
 
 async function handleRun(msg: RunMessage): Promise<void> {

@@ -98,6 +98,27 @@ export class TriggerInputError extends Error {
   }
 }
 
+/**
+ * The abort reason cancellation paths pass (admin cancel, client disconnect,
+ * worker abort). Distinguishes "someone stopped this run" from "a node failed",
+ * so the run records `status: "canceled"` instead of `"error"`.
+ */
+export class RunCanceled extends Error {
+  constructor(message = "run canceled") {
+    super(message);
+    this.name = "RunCanceled";
+  }
+}
+
+/** True when `v` is a cancellation reason (unwraps NodeExecutionError; matches
+ *  by name so a reason that crossed a transport seam still counts). */
+export function isRunCanceled(v: unknown): boolean {
+  if (!(v instanceof Error)) return false;
+  if (v.name === "RunCanceled") return true;
+  if (v instanceof NodeExecutionError) return isRunCanceled(v.cause);
+  return false;
+}
+
 /** Raised by `core.flow.throw` / `core.flow.assert` and surfaced to an enclosing `try`. */
 export class WorkflowError extends Error {
   readonly data?: unknown;

@@ -19,6 +19,7 @@ import { Readable } from "node:stream";
 import {
   ANONYMOUS,
   AUTH_LOGIN_URL,
+  RunCanceled,
   jsonSchemaToZod,
   principalToUser,
   type Engine,
@@ -566,7 +567,7 @@ export class HttpHost {
     let delivered = false;
     if (route.cancelOnDisconnect) {
       res.on("close", () => {
-        if (!delivered) ac.abort(new Error("client disconnected"));
+        if (!delivered) ac.abort(new RunCanceled("client disconnected"));
       });
     }
 

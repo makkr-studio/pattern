@@ -15,6 +15,7 @@ const recordSchema = z.record(z.string(), z.unknown());
 
 const vaultRead: OpDefinition = {
   type: "vault.read",
+  effects: "pure",
   title: "vault.read",
   description:
     "Read a secret from the vault (decrypted at run time, masked out of run samples). Wire it into API-key inputs.",

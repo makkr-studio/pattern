@@ -50,6 +50,7 @@ function parseMeta(raw: unknown): Record<string, unknown> | undefined {
 /** Backing op for the collections table (privileged; the route carries the admin gate). */
 export const collectionsListOp: OpDefinition = {
   type: "vectors.collections.list",
+  effects: "pure",
   title: "vectors.collections.list",
   description: "List vector collections with alias, dims, filterables, row count and the active engine (admin).",
   reusable: false,
@@ -76,6 +77,7 @@ export const collectionsListOp: OpDefinition = {
 /** Paste-to-RAG (admin): chunk a text and index it, creating the collection when new. */
 export const collectionsIngestOp: OpDefinition = {
   type: "vectors.collections.ingest",
+  effects: "idempotent",
   title: "vectors.collections.ingest",
   description:
     "Ingest pasted text into a collection (admin): chunk → embed → upsert, creating the collection (with the " +
@@ -117,6 +119,7 @@ export const collectionsIngestOp: OpDefinition = {
 /** Try a query (admin): hybrid by default, scored matches back — the smoke test for what got indexed. */
 export const collectionsSearchOp: OpDefinition = {
   type: "vectors.collections.search",
+  effects: "pure",
   title: "vectors.collections.search",
   description:
     "Search a collection from the admin (hybrid by default): top-k scored matches with their text and meta — " +

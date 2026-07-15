@@ -279,6 +279,7 @@ function makeOps(getEngine: () => Engine | undefined, opts: MeOptions): OpDefini
   // single producer of the agent's `model` input in the turn pipeline.
   const resolveModel: OpDefinition = {
     type: "chat.model.resolve",
+    effects: "pure",
     title: "chat.model.resolve",
     description:
       "Resolve a turn's model: a per-turn language alias overrides the configured pin, which overrides the app " +

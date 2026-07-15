@@ -20,7 +20,7 @@ export interface RunSummary {
   workflowId: string;
   trigger: string;
   principal: Principal;
-  status: "ok" | "error" | "running" | "streaming";
+  status: "ok" | "error" | "canceled" | "running" | "streaming";
   /** epoch ms */
   startTime: number;
   /** epoch ms; undefined while running */

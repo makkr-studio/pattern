@@ -39,6 +39,7 @@ function configSvc(ctx: OpContext): AiConfigService {
 
 const providersList: OpDefinition = {
   type: "ai.providers.list",
+  effects: "pure",
   title: "ai.providers.list",
   description: "List the supported providers + their secret/option field specs (drives the alias form).",
   reusable: false,
@@ -52,6 +53,7 @@ const providersList: OpDefinition = {
 
 const aliasesRead: OpDefinition = {
   type: "ai.aliases.read",
+  effects: "pure",
   title: "ai.aliases.read",
   description: "List the configured model aliases (secret NAMES/sources only, never values).",
   reusable: false,
@@ -104,6 +106,7 @@ async function readAliasFields(ctx: OpContext) {
 
 const aliasWrite: OpDefinition = {
   type: "ai.aliases.write",
+  effects: "idempotent",
   title: "ai.aliases.write",
   description: "Create or update a model alias (upsert by name).",
   reusable: false,
@@ -120,6 +123,7 @@ const aliasWrite: OpDefinition = {
 
 const aliasDelete: OpDefinition = {
   type: "ai.aliases.delete",
+  effects: "idempotent",
   title: "ai.aliases.delete",
   description: "Delete a model alias by name.",
   reusable: false,
@@ -137,6 +141,7 @@ const aliasDelete: OpDefinition = {
 
 const modelsList: OpDefinition = {
   type: "ai.models.list",
+  effects: "pure",
   title: "ai.models.list",
   description: "List the model catalog (static suggestions + live gateway listing) for the settings UI.",
   reusable: false,

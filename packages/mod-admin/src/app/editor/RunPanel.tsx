@@ -297,7 +297,7 @@ export function RunPanel({ open, onClose, doc, opMap }: { open: boolean; onClose
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Dot color={statusColor(result.status)} />
-                  <Badge hue={result.status === "error" ? 340 : 150}>{result.status}</Badge>
+                  <Badge hue={result.status === "error" ? 340 : result.status === "canceled" ? 45 : 150}>{result.status}</Badge>
                   <button className="text-muted ml-auto text-xs underline" onClick={() => navigate(`/runs/${result.runId}`)}>
                     open in Runs ↗
                   </button>

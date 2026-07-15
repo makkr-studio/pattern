@@ -34,6 +34,7 @@ function randomFloat(): number {
 export const cryptoOps: OpDefinition[] = [
   defineOp({
     type: "core.random.number",
+    effects: "pure",
     title: "core.random.number",
     description: "Random number in [min, max). config: { min, max, integer? } (non-deterministic).",
     inputs: {},
@@ -47,6 +48,7 @@ export const cryptoOps: OpDefinition[] = [
   }),
   defineOp({
     type: "core.random.uuid",
+    effects: "pure",
     title: "core.random.uuid",
     description: "Random UUID v4 (non-deterministic).",
     inputs: {},
@@ -55,6 +57,7 @@ export const cryptoOps: OpDefinition[] = [
   }),
   defineOp({
     type: "core.random.pick",
+    effects: "pure",
     title: "core.random.pick",
     description: "Pick a random element from an array (non-deterministic).",
     inputs: { values: required(z.array(z.unknown())) },

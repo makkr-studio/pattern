@@ -33,6 +33,7 @@ const docSchema = z.object({
 
 const collectionEnsure: OpDefinition = {
   type: "vectors.collection.ensure",
+  effects: "idempotent",
   title: "vectors.collection.ensure",
   description:
     "Declare (idempotently) an embedding collection: name + embedding alias + filterable meta fields. " +
@@ -49,6 +50,7 @@ const collectionEnsure: OpDefinition = {
 
 const upsert: OpDefinition = {
   type: "vectors.upsert",
+  effects: "idempotent",
   title: "vectors.upsert",
   description:
     "Write items into a collection: { items: [{ id?, text, meta? } | { id, vector, meta? }] } → { count, embedded }. " +
@@ -66,6 +68,7 @@ const upsert: OpDefinition = {
 
 const query: OpDefinition = {
   type: "vectors.query",
+  effects: "pure",
   title: "vectors.query",
   description:
     "Search a collection: text (embedded via the collection's alias) or a raw vector → { matches: [{ id, score, text, meta }] }. " +
@@ -100,6 +103,7 @@ const query: OpDefinition = {
 
 const del: OpDefinition = {
   type: "vectors.delete",
+  effects: "idempotent",
   title: "vectors.delete",
   description: "Delete rows by id from a collection: { ids } → { count }.",
   config: z.object({ collection: z.string().min(1) }),
@@ -114,6 +118,7 @@ const del: OpDefinition = {
 
 const chunk: OpDefinition = {
   type: "vectors.chunk",
+  effects: "pure",
   title: "vectors.chunk",
   description:
     "Split text for indexing (recursive character splitter, overlap carried across boundaries). " +
@@ -136,6 +141,7 @@ const chunk: OpDefinition = {
 
 const index: OpDefinition = {
   type: "vectors.index",
+  effects: "idempotent",
   title: "vectors.index",
   description:
     "Chunk → embed → upsert in one node (the RAG ingestion convenience). Input `docs` ([{ id?, text, meta? }]); " +

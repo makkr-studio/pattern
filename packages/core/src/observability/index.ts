@@ -14,7 +14,7 @@ import type { SpanData, TraceSink, Principal } from "../types.js";
 export class CollectingTraceSink implements TraceSink {
   readonly runs: Array<{ runId: string; workflowId: string; trigger: string; principal: Principal }> = [];
   readonly spans: SpanData[] = [];
-  readonly ended: Array<{ runId: string; status: "ok" | "error"; error?: unknown }> = [];
+  readonly ended: Array<{ runId: string; status: "ok" | "error" | "canceled"; error?: unknown }> = [];
 
   onRunStart(run: { runId: string; workflowId: string; trigger: string; principal: Principal }): void {
     this.runs.push(run);
@@ -22,7 +22,7 @@ export class CollectingTraceSink implements TraceSink {
   onSpanEnd(span: SpanData): void {
     this.spans.push(span);
   }
-  onRunEnd(run: { runId: string; status: "ok" | "error"; error?: unknown }): void {
+  onRunEnd(run: { runId: string; status: "ok" | "error" | "canceled"; error?: unknown }): void {
     this.ended.push(run);
   }
 }

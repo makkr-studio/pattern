@@ -28,6 +28,7 @@ async function maybe<T>(ctx: OpContext, port: string): Promise<T | undefined> {
 
 const storeGet: OpDefinition = {
   type: "store.get",
+  effects: "pure",
   title: "store.get",
   description: "Read one document by id. `found` is false (and data null) when missing.",
   config: collectionConfig,
@@ -41,6 +42,7 @@ const storeGet: OpDefinition = {
 
 const storePut: OpDefinition = {
   type: "store.put",
+  effects: "idempotent",
   title: "store.put",
   description:
     "Write a document. Upsert without `version`; compare-and-swap with it (ok:false on a lost race; re-read and retry).",
@@ -60,6 +62,7 @@ const storePut: OpDefinition = {
 
 const storePatch: OpDefinition = {
   type: "store.patch",
+  effects: "idempotent",
   title: "store.patch",
   description: "Shallow-merge a patch into a document (CAS: version required).",
   config: collectionConfig,
@@ -82,6 +85,7 @@ const storePatch: OpDefinition = {
 
 const storeDelete: OpDefinition = {
   type: "store.delete",
+  effects: "idempotent",
   title: "store.delete",
   description: "Delete a document by id.",
   config: collectionConfig,
@@ -92,6 +96,7 @@ const storeDelete: OpDefinition = {
 
 const storeQuery: OpDefinition = {
   type: "store.query",
+  effects: "pure",
   title: "store.query",
   description:
     "Query a collection: equality on indexed fields + orderBy (indexed or createdAt/updatedAt/id) + limit/offset.",
@@ -190,6 +195,7 @@ const blobPut: OpDefinition = {
 
 const blobGet: OpDefinition = {
   type: "store.blob.get",
+  effects: "pure",
   title: "store.blob.get",
   description:
     "Read a blob: bytes as a stream + meta + ready-to-serve headers (wire stream/headers straight into an HTTP response, mode chunked).",
@@ -226,6 +232,7 @@ const blobGet: OpDefinition = {
 
 const blobDelete: OpDefinition = {
   type: "store.blob.delete",
+  effects: "idempotent",
   title: "store.blob.delete",
   description: "Delete a blob (bytes + metadata).",
   inputs: { id: required(z.string()) },
@@ -261,6 +268,7 @@ const leaseOutputs = {
 
 const leaseAcquire: OpDefinition = {
   type: "store.lease.acquire",
+  effects: "idempotent",
   title: "store.lease.acquire",
   description:
     "Claim a TTL'd lease (owner defaults to this runId; auto-released when the run settles). Conflict → ok:false + current owner; branch on it instead of throwing.",
@@ -278,6 +286,7 @@ const leaseAcquire: OpDefinition = {
 
 const leaseRenew: OpDefinition = {
   type: "store.lease.renew",
+  effects: "idempotent",
   title: "store.lease.renew",
   description: "Extend a lease you hold (heartbeat for long work).",
   config: leaseConfig,
@@ -294,6 +303,7 @@ const leaseRenew: OpDefinition = {
 
 const leaseRelease: OpDefinition = {
   type: "store.lease.release",
+  effects: "idempotent",
   title: "store.lease.release",
   description: "Release a lease you hold (runs also auto-release on settle).",
   config: z.object({ key: z.string().optional() }),

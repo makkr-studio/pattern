@@ -29,7 +29,8 @@ describe("in-flight run control", () => {
     expect(runId).toBeDefined();
     expect(engine.cancelRun(runId!)).toBe(true);
     const res = await result;
-    expect(res.status).toBe("error");
+    // A cancel is its own terminal status — not a failure (0.5.0).
+    expect(res.status).toBe("canceled");
     expect(String(res.error)).toContain("cancelled");
     expect(engine.inflightRunIds()).toHaveLength(0);
     // Unknown / settled runs report false.
@@ -64,6 +65,6 @@ describe("in-flight run control", () => {
     await tick(100); // d2 held at the gate
     engine.cancelRun(runId!);
     const res = await result;
-    expect(res.status).toBe("error");
+    expect(res.status).toBe("canceled");
   });
 });

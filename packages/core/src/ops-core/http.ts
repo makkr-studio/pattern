@@ -12,6 +12,10 @@ const headersSchema = z.record(z.string(), z.string());
 export const httpFetch: OpDefinition = defineOp({
   type: "core.http.fetch",
   title: "core.http.fetch",
+  // Deliberately unstamped (⇒ effects: "external"): the method arrives on a
+  // PORT at run time, so replay-safety can't be judged from config. A GET is
+  // idempotent in practice — authors who wire one can accept the validator's
+  // retry warning knowingly.
   description: "Outbound HTTP request via fetch. Inputs: { url, method?, headers?, body? }.",
   inputs: {
     url: required(z.string()),

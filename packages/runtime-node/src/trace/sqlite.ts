@@ -237,7 +237,7 @@ export class SqliteTraceStore implements TraceStore {
     }
   }
 
-  onRunReady(run: { runId: string; traceId: string; status: "ok" | "error"; at: number }): void {
+  onRunReady(run: { runId: string; traceId: string; status: "ok" | "error" | "canceled"; at: number }): void {
     if (this.excludedTraces.has(run.traceId)) return;
     const r = this.db.prepare("SELECT start_time FROM trace_runs WHERE trace_id = ?").get(run.traceId) as Raw | undefined;
     if (!r) return;
@@ -251,7 +251,7 @@ export class SqliteTraceStore implements TraceStore {
   onRunEnd(run: {
     runId: string;
     traceId: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "canceled";
     error?: unknown;
     at?: number;
     endedBy?: "drain" | "timeout";

@@ -31,7 +31,7 @@ import {
 import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
 import { collectIssues, validateWorkflow } from "./validate.js";
-import { WorkflowValidationError } from "./errors.js";
+import { RunCanceled, WorkflowValidationError } from "./errors.js";
 import type { FrontendContribution, SettingsSection } from "./frontend.js";
 import type { DocsContribution } from "./docs.js";
 import {
@@ -718,7 +718,7 @@ export class Engine {
   cancelRun(runId: string, reason?: unknown): boolean {
     const h = this.inflightRuns.get(runId);
     if (!h) return false;
-    h.abort(reason ?? new Error("cancelled from admin"));
+    h.abort(reason ?? new RunCanceled("cancelled from admin"));
     return true;
   }
 

@@ -230,6 +230,7 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
 
   const recall: OpDefinition = {
     type: "chat.memory.recall",
+    effects: "pure",
     title: "chat.memory.recall",
     description:
       "Per-user memory recall in the turn pipeline: top-k memories for THIS user (hybrid search, filter-pruned " +
@@ -292,6 +293,7 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
 
   const save: OpDefinition = {
     type: "chat.memory.save",
+    effects: "idempotent",
     title: "chat.memory.save",
     description:
       "The body of the `remember` tool: save one durable fact about the CURRENT user (the tool sub-run inherits " +
@@ -337,6 +339,7 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
 
   const memoriesList: OpDefinition = {
     type: "chat.admin.memories",
+    effects: "pure",
     title: "chat.admin.memories",
     description:
       "Every remembered fact, newest first (admin): who it's about, the statement, when it was learned — and the " +
@@ -368,6 +371,7 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
 
   const memoryForget: OpDefinition = {
     type: "chat.admin.memory.forget",
+    effects: "idempotent",
     title: "chat.admin.memory.forget",
     description: "Delete one remembered fact (admin) — the right to be forgotten, one row at a time. Args { id }.",
     reusable: false,

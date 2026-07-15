@@ -188,14 +188,14 @@ export interface TraceSink {
   onRunReady?(run: {
     runId: string;
     traceId: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "canceled";
     /** High-res epoch ms when the result was ready. */
     at: number;
   }): void;
   onRunEnd?(run: {
     runId: string;
     traceId: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "canceled";
     error?: unknown;
     /** High-res epoch ms of the true end (so a forwarded worker run isn't
      *  inflated by transit). Falls back to the sink's clock if absent. */
@@ -385,6 +385,16 @@ export type OpResult = Record<string, unknown | Promise<unknown> | ReadableStrea
 
 export type OpExecute = (ctx: OpContext) => OpResult | Promise<OpResult>;
 
+/**
+ * Replay-safety of an op (§5, durable execution):
+ *  - "pure":       no external mutation (reads are fine) — re-execute freely.
+ *  - "idempotent": mutates, but repeating with the same inputs converges
+ *                  (CAS writes, content-hashed upserts, deletes).
+ *  - "external":   a visible effect or a per-invocation cost (send, charge,
+ *                  generate) — replay may duplicate it.
+ */
+export type OpEffects = "pure" | "idempotent" | "external";
+
 /** A reusable op definition; lives in the `OpRegistry` keyed by `type` (§5). */
 export interface OpDefinition {
   /** Globally unique, namespaced: "core.stream.split", "boundary.http.request". */
@@ -458,6 +468,23 @@ export interface OpDefinition {
    * graph on the worker pool), not a per-op switch. Unset = ordinary/I-O-bound.
    */
   cpuHeavy?: boolean;
+  /**
+   * Declares the op's replay-safety — a *signal*, never an enforcement (the
+   * validator warns when a retry sits on an `"external"` op; durable resume
+   * refuses to blindly re-run an ambiguous `"external"` node). May depend on
+   * config (e.g. `core.http.fetch`: GET ⇒ idempotent, POST ⇒ external).
+   * **Absent ⇒ treated as `"external"`** — deliberately inverted from its
+   * siblings' absent-means-benign: a missing stamp must mean "ask before
+   * re-running", never "silently double-charge".
+   */
+  effects?: OpEffects | ((config: any) => OpEffects);
+}
+
+/** Resolve an op's declared `effects` for a node's config (absent ⇒ "external"). */
+export function effectsOf(op: OpDefinition, config: unknown): OpEffects {
+  const e = op.effects;
+  if (typeof e === "function") return e(config);
+  return e ?? "external";
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -615,7 +642,7 @@ export interface RunRequest {
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */
 export interface RunResult {
   runId: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "canceled";
   /** out-gate node id → its resolved external payload. */
   outputs: Record<string, Record<string, unknown>>;
   error?: unknown;

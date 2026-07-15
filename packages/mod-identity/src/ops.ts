@@ -729,3 +729,29 @@ export const identityOps: OpDefinition[] = [
   bootstrapPage,
   bootstrapSubmit,
 ];
+
+// Replay-safety stamps for the helper-built ops above (absent ⇒ "external").
+// Reads are pure; CAS-guarded writes converge on repeat. Deliberately NOT
+// stamped: invite/loginLink/apiTokens.create (each call mints or sends).
+const OP_EFFECTS: Record<string, NonNullable<OpDefinition["effects"]>> = {
+  "identity.whoami": "pure",
+  "identity.users.list": "pure",
+  "identity.users.get": "pure",
+  "identity.users.runStats": "pure",
+  "identity.invites.list": "pure",
+  "identity.settings.get": "pure",
+  "identity.sessions.list": "pure",
+  "identity.apiTokens.list": "pure",
+  "identity.users.setRoles": "idempotent",
+  "identity.users.toggleDisabled": "idempotent",
+  "identity.users.revokeSessions": "idempotent",
+  "identity.users.delete": "idempotent",
+  "identity.invites.revoke": "idempotent",
+  "identity.settings.set": "idempotent",
+  "identity.sessions.revoke": "idempotent",
+  "identity.apiTokens.revoke": "idempotent",
+};
+for (const op of identityOps) {
+  const e = OP_EFFECTS[op.type];
+  if (e) op.effects = e;
+}

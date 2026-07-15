@@ -32,6 +32,7 @@ import { REMOTE } from "./app.js";
 
 const providersList: OpDefinition = {
   type: "email.providers.list",
+  effects: "pure",
   title: "email.providers.list",
   description: "List the registered email drivers + their secret/option field specs (drives the account form).",
   reusable: false,
@@ -64,6 +65,7 @@ async function readAccountFields(ctx: OpContext) {
 
 const accountsRead: OpDefinition = {
   type: "email.accounts.read",
+  effects: "pure",
   title: "email.accounts.read",
   description: "List the configured email accounts (secret NAMES/sources only, never values).",
   reusable: false,
@@ -76,6 +78,7 @@ const accountsRead: OpDefinition = {
 
 const accountsWrite: OpDefinition = {
   type: "email.accounts.write",
+  effects: "idempotent",
   title: "email.accounts.write",
   description: "Create or update an email account (upsert by name).",
   reusable: false,
@@ -92,6 +95,7 @@ const accountsWrite: OpDefinition = {
 
 const accountsDelete: OpDefinition = {
   type: "email.accounts.delete",
+  effects: "idempotent",
   title: "email.accounts.delete",
   description: "Delete an email account by name.",
   reusable: false,

@@ -38,6 +38,7 @@ const asArray = <T>(v: unknown): T[] => (v == null ? [] : Array.isArray(v) ? (v 
 
 const agentOp: OpDefinition = {
   type: "agents.agent",
+  effects: "pure",
   title: "agents.agent",
   description:
     "Define an agent (a value you wire into agents.run, a handoff, or a tool). Wire a model from ai.model; " +
@@ -266,6 +267,7 @@ const compactOp: OpDefinition = {
 
 const mcpOp: OpDefinition = {
   type: "agents.mcp.client",
+  effects: "pure",
   title: "agents.mcp.client",
   description:
     "Connect to an MCP server and expose its tools as a toolset value (connection pooled by mod-ai). http: url (+headers) · stdio: command (+args). " +

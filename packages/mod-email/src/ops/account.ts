@@ -7,6 +7,7 @@ import { emailConfig, maybe } from "./shared.js";
 
 export const accountOp: OpDefinition = {
   type: "email.account",
+  effects: "pure",
   title: "email.account",
   description:
     "Resolve a named email account (configured in admin → System → Email) to an account reference. " +

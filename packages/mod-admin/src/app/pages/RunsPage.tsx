@@ -295,7 +295,7 @@ function RunDetail({ runId }: { runId: string }) {
       <div className="mb-4 flex items-center gap-3">
         <Dot color={paused ? "var(--color-neon-amber)" : statusColor(summary.status)} pulse={(summary.status === "running" || summary.status === "streaming") && !paused} />
         <span className="font-mono text-sm font-semibold">{summary.workflowId}</span>
-        <Badge hue={summary.status === "error" ? 340 : summary.status === "streaming" ? 280 : 150}>{summary.status}</Badge>
+        <Badge hue={summary.status === "error" ? 340 : summary.status === "streaming" ? 280 : summary.status === "canceled" ? 45 : 150}>{summary.status}</Badge>
         {paused && <Badge hue={45}>paused</Badge>}
         {summary.executor && <Badge hue={150} title={`ran on ${summary.executor}`}>{summary.executor}</Badge>}
         <span className="text-muted text-xs">{runDuration(summary)}</span>

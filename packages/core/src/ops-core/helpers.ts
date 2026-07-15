@@ -9,7 +9,7 @@
  */
 
 import { z } from "zod";
-import type { OpContext, OpDefinition, PortSpec, Ports } from "../types.js";
+import type { OpContext, OpDefinition, OpEffects, PortSpec, Ports } from "../types.js";
 
 // ── Port builders ──
 
@@ -58,6 +58,8 @@ export function pureOp<C = unknown>(opts: {
   /** Output schema; default `z.any()`. */
   output?: z.ZodType;
   config?: z.ZodType;
+  /** Replay-safety override; a `pureOp` is, by construction, "pure". */
+  effects?: OpEffects;
   compute: (inputs: Record<string, any>, ctx: OpContext & { config: C }) => unknown | Promise<unknown>;
 }): OpDefinition {
   const outPort = opts.outPort ?? "out";
@@ -68,6 +70,7 @@ export function pureOp<C = unknown>(opts: {
     inputs: opts.inputs,
     outputs: { [outPort]: value(opts.output ?? z.any()) },
     config: opts.config,
+    effects: opts.effects ?? "pure",
     execute: async (ctx) => {
       const names = Object.entries(opts.inputs).filter(([, s]) => s.kind === "value");
       const entries = await Promise.all(
