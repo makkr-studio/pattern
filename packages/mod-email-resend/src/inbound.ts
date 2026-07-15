@@ -35,6 +35,41 @@ interface ResendInboundPayload {
 const addr = (v: string | { email?: string; name?: string } | undefined): string =>
   typeof v === "string" ? v : (v?.email ?? "");
 
+/* ── redelivery dedup (0.5) ───────────────────────────────────────────────
+ * Svix redelivers on non-2xx and timeouts with the SAME `svix-id`. A CAS'd
+ * docs row (the upsert's returned version says who created it — version 1
+ * owns the ingest) makes ingestion exactly-once, mirroring mod-billing's
+ * webhook dedup. mod-store is duck-typed, never imported: without it, dedup
+ * degrades gracefully to the 0.4 at-least-once behavior. */
+
+const EVENTS_COLLECTION = "email.inbound.events";
+
+/** The slice of mod-store's documents API the dedup row needs. */
+interface DocsLike {
+  docs: {
+    ensureCollection(def: { name: string; indexes: string[] }): Promise<void>;
+    put(
+      collection: string,
+      id: string,
+      data: Record<string, unknown>,
+      expectedVersion?: number,
+    ): Promise<{ version: number } | null>;
+  };
+}
+
+/** True when this delivery is a redelivery someone else already ingested. */
+async function isRedelivery(
+  services: Record<string, unknown>,
+  svixId: string,
+  account: string,
+): Promise<boolean> {
+  const store = services["storeService"] as DocsLike | undefined;
+  if (!store?.docs || !svixId) return false;
+  await store.docs.ensureCollection({ name: EVENTS_COLLECTION, indexes: ["account"] });
+  const row = await store.docs.put(EVENTS_COLLECTION, `resend:${svixId}`, { account, at: Date.now() });
+  return Boolean(row && row.version > 1);
+}
+
 const headerMap = (
   h: Record<string, string> | Array<{ name: string; value: string }> | undefined,
 ): Record<string, string> => {
@@ -107,6 +142,10 @@ export const resendWebhookOp: OpDefinition = {
     }
     // Resend sends several event families to one endpoint — ack what isn't inbound mail.
     if (payload.type && !/received/i.test(payload.type)) return { result: { ok: true, ignored: payload.type } };
+    // A redelivery (same svix-id) is acknowledged without re-ingesting.
+    if (await isRedelivery(ctx.services as unknown as Record<string, unknown>, headers["svix-id"] ?? "", account)) {
+      return { result: { ok: true, duplicate: true } };
+    }
     const data = payload.data ?? {};
     const headersIn = headerMap(data.headers);
 

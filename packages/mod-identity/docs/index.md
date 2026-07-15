@@ -43,6 +43,15 @@ roles surface on the admin Users screen and are settable there
 (`identity.users.setRoles`, which **ends the user's sessions**, because a
 privilege change must re-login).
 
+**Entitlements from billing (0.5).** Because scopes recompile from roles on
+every request, a paid plan can *be* a scope: `@pattern-js/mod-billing` projects
+subscription status into a role (say `member`) as verified webhooks arrive, and
+your map turns it into scopes (`{ member: ["pro"] }`) — so
+`requireAuth: { scopes: ["pro"] }` gates a route behind an active plan with no
+new enforcement code. The projection only writes on actual entitlement
+*transitions* (a renewal never logs anyone out). See the **Billing** chapter in
+the handbook — the `saas-starter` scaffold wires the whole bridge.
+
 ## Bootstrap on first boot
 
 With an empty user store, the mod's `ready` hook mints a one-time **bootstrap

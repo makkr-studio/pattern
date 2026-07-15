@@ -114,6 +114,36 @@ One trace per run, one span per node, OTLP-*shaped* but zero-dependency. The
 engine **emits** to a subscribable `TraceSink` and stores nothing. Subscribe with
 `engine.onTrace(sink)`; `@pattern-js/runtime-node` ships JSONL and SQLite sinks.
 
+## Durable execution
+
+Three layers, each usable alone (0.5):
+
+- **Effects**: every op carries a replay-safety stamp — `pure` (no external
+  mutation), `idempotent` (repeating converges: CAS writes, content-hashed
+  upserts), or `external` (a send, a charge, a generation — replay may
+  duplicate it). *Absent means external*: an unstamped op must read as "ask
+  before re-running", never "silently double-charge".
+- **Retry as node config**: `retry: { attempts, backoffMs, factor, maxBackoffMs }`
+  on any node re-runs its execute with exponential backoff. Always explicit —
+  the house stance stays "failure is a value you branch on". Skips are never
+  retried; a cancelled run stops immediately; each attempt lands on the trace.
+  The validator warns when a retry sits on an `external` op or a stream input.
+- **The RunLedger**: a workflow flagged `durable: true` writes a full-fidelity
+  record as it runs — the exact trigger input and every node's exact value
+  outputs (unlike the trace store, which is sampled, capped, and masked as a
+  display surface). It lives in `.pattern-data/ledger.db` and records *real*
+  values: protect `.pattern-data/` like your database, because it is one.
+
+The ledger is what **resume** and **re-run** replay from. Resume seeds every
+completed node's recorded outputs back into the slots (the same move that seeds
+a trigger) and re-executes only the failed frontier — an `email.send` that
+already happened is *seeded, not re-sent*. The workflow's structure is
+hash-pinned to the run (roll back first if it changed); external-effect nodes
+that *started but never finished* are the danger zone — resume refuses to cross
+them until a human confirms. Streaming nodes re-run whole (streams keep no
+history). A cancel, meanwhile, is its own terminal status — `canceled`, not
+`error` — through the result, the trace stores, and the admin.
+
 ## Distribution (an invariant)
 
 Nothing may preclude distribution: workflow definitions, trigger inputs, run

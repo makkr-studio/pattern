@@ -1,4 +1,4 @@
-import { type LucideIcon, Bot, BookOpen, Database, KeyRound, Mail, MessagesSquare, Puzzle, ScanSearch, Shield, Sparkles, Users } from "lucide-react";
+import { type LucideIcon, Bot, BookOpen, Database, KeyRound, Mail, MessagesSquare, Puzzle, ScanSearch, Shield, Sparkles, Users, CreditCard } from "lucide-react";
 import { motion } from "motion/react";
 import { SectionShell } from "../components/SectionShell";
 import { GlowCard } from "../components/ui";
@@ -19,6 +19,7 @@ const MODS: Mod[] = [
   { icon: KeyRound, name: "Vault", pkg: "@pattern-js/mod-vault", body: "Secrets and API keys, resolved straight into the ops that need them.", hue: 258 },
   { icon: Users, name: "Identity", pkg: "@pattern-js/mod-identity", body: "Users, sessions, roles and invites — sign in by magic link or any OIDC provider.", hue: 152 },
   { icon: Mail, name: "Email", pkg: "@pattern-js/mod-email", body: "Send and receive: Resend or SMTP drivers, sign-in links that deliver themselves, inbound email that triggers workflows.", hue: 22 },
+  { icon: CreditCard, name: "Billing", pkg: "@pattern-js/mod-billing", body: "Stripe checkout, portal and verified webhooks — an active plan becomes a scope, and agent usage meters itself.", hue: 120 },
   { icon: Bot, name: "Agents", pkg: "@pattern-js/mod-agents", body: "An agent loop with tools, guardrails and streaming turns — plus MCP in both directions.", hue: 270 },
   { icon: Sparkles, name: "Buddy", pkg: "@pattern-js/mod-buddy", body: "The assistant in the editor: it drafts and repairs workflows on your canvas, and debugs failed runs from their traces.", hue: 285 },
   { icon: MessagesSquare, name: "Chat", pkg: "@pattern-js/mod-chat", body: "A full hosted chat application running over one shared backend.", hue: 199 },

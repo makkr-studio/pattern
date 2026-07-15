@@ -22,7 +22,18 @@ is served through the app boundary alongside the rest of your app.
   canvas as undoable edits — Save and Deploy stay yours.
 - **Runs + replay**: trigger a workflow, watch the per-node waterfall, then
   scrub the replay back over the graph as nodes animate pending → running →
-  ok / error / skipped. Run I/O is sampled (capped, secrets masked).
+  ok / error / skipped. Run I/O is sampled (capped, secrets masked). Retried
+  nodes show their `retry` attempts inline in the waterfall; cancelled runs
+  wear their own `canceled` badge (0.5).
+- **Resume & re-run** (0.5): runs of `durable: true` workflows carry two extra
+  buttons on the run detail — **Resume** (failed runs: completed nodes are
+  seeded from the RunLedger, only the failed frontier re-executes) and
+  **Re-run** (any run: a fresh run with the recorded trigger input). When
+  resume would cross an external-effect node that started but never finished,
+  a confirm panel lists the ambiguous nodes and waits for a human call.
+  Resumed runs link their lineage both ways (“↻ resumed from …”). The gear
+  modal's **Durable runs** toggle opts a workflow in; the Inspector's
+  **Reliability** group sets a node's retry policy.
 - **Versions + diff**: one live version per slug over an immutable history;
   structural JSON diff between any two versions; promote / rollback are
   one-click pointer moves with an audit trail.

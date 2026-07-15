@@ -10,6 +10,7 @@ const MODPACKS = [
   { name: "blank", desc: "engine + one example" },
   { name: "headless", desc: "API-first, no UI" },
   { name: "studio", desc: "the visual admin" },
+  { name: "saas-starter", desc: "sign-in, billing, a gated app" },
   { name: "studio-ai", desc: "studio + AI ops" },
   { name: "agentic", desc: "studio + AI + agents" },
   { name: "agent-chat", desc: "a full chat app" },

@@ -124,7 +124,7 @@ describe("@pattern-js/mod-auth-oidc", () => {
   });
 
   it("state mismatch → login?error=oidc-state, no session, no token exchange", async () => {
-    const { base } = await boot(5106);
+    const { base } = await boot(5112);
     const { cb } = await drive(base, { breakState: true });
     expect(cb.status).toBe(302);
     expect(cb.headers.get("location")).toBe("/auth/login?error=oidc-state");
@@ -166,7 +166,7 @@ describe("@pattern-js/mod-auth-oidc", () => {
   });
 
   it("links by verified email: an existing magic-link user logs in via OIDC as the SAME user", async () => {
-    const { base, service } = await boot(5106, { signup: "invite" });
+    const { base, service } = await boot(5113, { signup: "invite" });
     const existing = await service.findOrCreateByIdentity({
       provider: "magic-link",
       subject: "ada@x.io",

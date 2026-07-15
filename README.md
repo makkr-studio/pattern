@@ -57,8 +57,10 @@ npm run dev                      # then open http://localhost:3000/admin
 ```
 
 Pick the **studio** modpack and you land in a visual workspace with example
-workflows you can edit, run, and trace. Or go straight to code: drop a `.json`
-workflow into `workflows/` and the dev server picks it up on save.
+workflows you can edit, run, and trace — or **saas-starter** for a subscription
+SaaS with sign-in, Stripe billing, and a gated page out of the box. Or go
+straight to code: drop a `.json` workflow into `workflows/` and the dev server
+picks it up on save.
 
 ```jsonc
 // workflows/hello.json  ·  GET /hello/:name
@@ -108,6 +110,14 @@ undoable edit. It debugs failed runs from their traces, and the same ten
 via `pattern mcp` on stdio — so Claude Code or Cursor author Pattern workflows
 too (`.mcp.json` ships in the scaffolds).
 
+**Durable execution (0.5).** Flag a workflow `durable: true` and every run
+records its exact inputs and outputs to the RunLedger — so a failed run can
+**resume from the failing node** (completed work is seeded, not repeated: an
+email that already went out is never re-sent) and any run can **re-run with
+the same input**, straight from the Runs page. Retry lives on the node
+(`retry: { attempts, backoff }`), every op declares its replay-safety, and
+resume refuses to cross an ambiguous side effect until a human confirms.
+
 **Agents and apps, expressed as workflows.** A tool is a workflow. A chat turn is
 a workflow you can fork in the admin. You can serve a built single-page app from a
 workflow, and host many branded copies of it over a single backend. With
@@ -125,6 +135,14 @@ and `email.reply` answers in-thread.
 Microsoft, any issuer) over one identity layer, and a transactional email
 contract with Resend and SMTP drivers — install a driver, create the account in
 the admin, and sign-in links send themselves.
+
+**Billing (0.5).** A payments contract (`@pattern-js/mod-billing`) with a
+zero-dependency Stripe driver: checkout and the customer portal as ops,
+signature-verified webhooks as triggers, and a subscription→roles bridge — an
+active plan becomes a scope, so gating a route behind payment is an auth
+requirement, not code. AI usage metering is an edge on the canvas: agent token
+counts flow into Stripe meter events. `npm create pattern` has a
+**saas-starter** pack that wires the whole loop, Dockerfile included.
 
 <p align="center">
   <img src="assets/screenshots/chat.jpg" width="820" alt="A branded chat app served from a workflow" />
@@ -147,6 +165,7 @@ Everything beyond the engine is an optional mod you `engine.use()`.
 | [`@pattern-js/mod-docs`](packages/mod-docs) | the served handbook and the generated op reference |
 | [`@pattern-js/mod-identity`](packages/mod-identity) · [`@pattern-js/mod-auth-magic-link`](packages/mod-auth-magic-link) · [`@pattern-js/mod-auth-oidc`](packages/mod-auth-oidc) | users, sessions, roles — sign in by magic link or any OIDC provider |
 | [`@pattern-js/mod-email`](packages/mod-email) · [`@pattern-js/mod-email-resend`](packages/mod-email-resend) · [`@pattern-js/mod-email-smtp`](packages/mod-email-smtp) | the transactional-email contract and its drivers; delivers sign-in links out of the box |
+| [`@pattern-js/mod-billing`](packages/mod-billing) · [`@pattern-js/mod-billing-stripe`](packages/mod-billing-stripe) | the payments contract and its Stripe driver: checkout, portal, verified webhooks, subscription→roles, metering |
 | [`@pattern-js/mod-store`](packages/mod-store) · [`@pattern-js/mod-vault`](packages/mod-vault) | document / blob / lease persistence and encrypted secrets |
 | [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-ai`](packages/mod-ai) | the neutral agent contracts + native run loop, and the AI capability layer (model provider, text / image / embeddings / STT / TTS / video, MCP) |
 | [`@pattern-js/mod-chat`](packages/mod-chat) | a complete chat application, with per-user cross-conversation memory |

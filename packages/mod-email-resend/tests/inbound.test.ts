@@ -27,6 +27,7 @@ let fakeResend: Server;
 let outbound: Array<Record<string, unknown>> = [];
 let closer: (() => Promise<void>) | undefined;
 let base = "";
+let engineRef: Engine;
 
 beforeAll(async () => {
   fakeResend = createServer((req, res) => {
@@ -42,6 +43,7 @@ beforeAll(async () => {
 
   const dir = await mkdtemp(join(tmpdir(), "resend-inbound-"));
   const engine = new Engine({ env: { RESEND_KEY: "re_test", RESEND_WEBHOOK_SECRET: SECRET } });
+  engineRef = engine;
   const mods = [emailMod({ configPath: join(dir, "email-config.json") }), resendEmailMod()];
   for (const mod of mods) await engine.useAsync(mod, { deferReady: true });
   for (const mod of mods) await mod.ready?.(engine);
@@ -144,5 +146,32 @@ describe("Resend inbound webhook (ports 5065 + fake Resend 5106)", () => {
     expect((await res.json()) as object).toMatchObject({ ignored: "email.delivered" });
     await new Promise((r) => setTimeout(r, 80));
     expect(outbound).toHaveLength(0);
+  });
+
+  it("dedups svix redeliveries when mod-store is present — ingest is exactly-once (0.5)", async () => {
+    // The duck-typed docs slice the dedup row needs: version 1 owns the ingest.
+    const rows = new Map<string, number>();
+    engineRef.provideService("storeService", {
+      docs: {
+        ensureCollection: async () => {},
+        put: async (_collection: string, id: string) => {
+          const version = (rows.get(id) ?? 0) + 1;
+          rows.set(id, version);
+          return { version };
+        },
+      },
+    });
+    outbound = [];
+    const first = await post(payload, svixHeaders(payload, { id: "msg_redelivered" }));
+    expect(first.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(outbound).toHaveLength(1);
+
+    // Svix redelivers the SAME svix-id on a timeout — acknowledged, not re-ingested.
+    const second = await post(payload, svixHeaders(payload, { id: "msg_redelivered" }));
+    expect(second.status).toBe(200);
+    expect((await second.json()) as object).toMatchObject({ ok: true, duplicate: true });
+    await new Promise((r) => setTimeout(r, 120));
+    expect(outbound).toHaveLength(1); // still exactly one auto-reply
   });
 });

@@ -3,6 +3,118 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.5.0 — unreleased
+
+Open for business: durable execution (retry, resume, re-run — exactly-once
+where it counts), a payments contract with a Stripe driver, AI usage metering,
+failure alerts, and a `saas-starter` scaffold with a deploy story.
+
+### Durable execution
+
+- **Ops declare their replay-safety.** Every op can carry `effects: "pure" |
+  "idempotent" | "external"` — and *absent means external*: a missing stamp
+  must read as "ask before re-running", never "silently double-charge". The
+  base catalog and first-party mods are stamped (`pureOp`-built ops are pure
+  by construction); `core.http.fetch` stays deliberately unstamped because its
+  method arrives on a port.
+- **Retry as node config.** `retry: { attempts, backoffMs, factor,
+  maxBackoffMs }` on any node re-runs its execute with exponential backoff —
+  always explicit (failure stays a value you branch on). Skips are never
+  retried, a cancelled run stops immediately, the pause gate holds between
+  attempts, and every attempt lands on the trace (the waterfall shows them).
+  The validator warns on retrying `external` ops (`retry_external_effects`)
+  and wired stream inputs (`retry_stream_input`); the Inspector grows a
+  **Reliability** group.
+- **The RunLedger.** A workflow flagged `durable: true` records each run in
+  full fidelity — the exact trigger input and every node's exact value
+  outputs — to `.pattern-data/ledger.db` (deliberately NOT the trace store,
+  which stays sampled/capped/masked as a display surface; the ledger stores
+  real values — protect `.pattern-data/` like your database). Zero per-node
+  cost when off; offloaded runs bridge records to the host ledger; boot
+  sweeps convert crashed runs into *resumable* interrupted errors (the trace
+  store's stuck `finished = 0` rows get the same treatment), with a one-minute
+  grace for a concurrent `pattern run` beside the dev server.
+- **Resume & re-run.** `engine.rerun(runId)` — surfaced as **Resume** and
+  **Re-run** buttons on the run detail — seeds every completed node's
+  recorded outputs (the trigger-seeding move, generalized) and re-executes
+  only the failed frontier: *fail after a send, fix, resume — the send count
+  stays at one.* The workflow's structure is hash-pinned to the run;
+  external-effect nodes that started but never finished are the danger zone —
+  resume refuses until a human confirms (the run page lists them). Resumed
+  runs carry `resumedFrom` lineage both ways; `from: "start"` replays the
+  recorded input as a fresh run.
+- **A cancel is not an error.** Cancellation (admin stop, client disconnect,
+  worker abort) now records `status: "canceled"` through the engine, the
+  trace stores, the admin badges and filters — and Buddy's tool descriptions,
+  which advertised the status before it existed.
+
+### Billing
+
+- **`@pattern-js/mod-billing` — the payments contract.** Provider-neutral
+  driver SPI and a normalized event union (`checkout.completed`,
+  `subscription.updated/deleted`, `invoice.paid/payment_failed`); accounts
+  with `{ vault | env }` secret refs in `.pattern-data/billing-config.json`;
+  ops for checkout, the customer portal, subscription state,
+  `billing.entitled` (reads the local mapping, never the provider), and
+  `billing.usage.record`; a `billing.event` trigger so "on payment failed →
+  email the user" is a canvas workflow. Webhook ingestion dedups on the
+  provider's stable event id and **projects subscription status into an
+  identity role only on actual entitlement transitions** — a renewal never
+  logs anyone out — so an active plan becomes a scope and
+  `requireAuth: { scopes: ["pro"] }` gates paid features with no new code.
+  mod-store and mod-identity are duck-typed: billing degrades gracefully
+  without either. Admin → System → **Billing** manages accounts, customers,
+  and recent events.
+- **`@pattern-js/mod-billing-stripe` — the Stripe driver, zero dependencies.**
+  A hand-rolled client (form-encoded v1, pinned `Stripe-Version`,
+  `Idempotency-Key` on every POST) and hand-rolled webhook verification
+  (hex HMAC over `t.rawBody`, the `whsec_` secret used verbatim, multi-`v1`
+  rotation, ±5 min tolerance — deliberately not the svix routine). Checkout
+  sessions, customer portal (its configuration ensured on first use),
+  subscription lookup, and Billing Meter events. The signed webhook route
+  (`POST /billing/webhook/stripe`) arrives seeded, raw-bytes mode, signature
+  as the gate.
+
+### Alerts & metering
+
+- **`ai.usage` — every model call counted at one seam.** A fail-open
+  middleware inside the provider service (the single choke point every LLM
+  call crosses — plain ops, agents, chat, compaction) stamps token counts on
+  the node span and emits `ai.usage` with per-user attribution. The agent
+  loop stops dropping usage: turn totals surface on `agents.run`'s outputs
+  and the terminal `done` event. With billing's `meterAiUsage` on, a seeded,
+  editable workflow forwards attributed usage to a Stripe meter — **agent
+  usage → metered billing is an edge on the canvas, not code**.
+- **`run.failed` + failure alerts.** The engine emits `run.failed` for
+  parent-less failed runs (recursion-guarded, cancels excluded); mod-email
+  ships a seeded, editable `alert-failed-run` workflow — set
+  `PATTERN_ALERTS_TO` and a failed run emails you its error and a deep link
+  to the run. Unset, it no-ops; zero-config posture preserved.
+
+### Deploy & scaffolder
+
+- **`saas-starter`** — `npm create pattern` grows a subscription-SaaS pack:
+  magic-link sign-in, Stripe billing wired to roles (`member → ["pro"]`), a
+  public landing page with checkout, a gated `/pro` route, and the customer
+  portal — with the checkout/portal workflows shipped `durable: true` (0.5
+  dogfooding its own headliner). Editable app-local wrappers (`mods/billing.mjs`,
+  `mods/identity.mjs`) carry the knobs; AGENTS.md walks the first test
+  subscription in five minutes (`stripe listen`, card 4242…).
+- **A Dockerfile in every server scaffold** (+ `.dockerignore`), documenting
+  the two state volumes (`.pattern/` vs `.pattern-data/`) and required env —
+  and a new handbook guide, **Deploying**, with the container contract and
+  Fly.io / Railway / Render walk-throughs.
+
+### Core & fixes
+
+- Inbound email (Resend) now **dedups svix redeliveries** when mod-store is
+  present (a CAS'd row per `svix-id` — ingest becomes exactly-once; without
+  mod-store, the 0.4 at-least-once behavior is unchanged).
+- `RunSummary`, the admin protocol, and the runs UI carry the `canceled`
+  status; run detail exposes `ledgered` + `resumedFrom`.
+- The op count grows to **365** across the first-party mods (175 in the base
+  catalog).
+
 ## 0.4.0 — 2026-07-15
 
 The framework learns to build itself: Buddy (the in-editor workflow
