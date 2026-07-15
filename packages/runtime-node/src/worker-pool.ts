@@ -148,6 +148,8 @@ class WorkerWrapper {
         sampleIo: req.sampleIo,
         hookDepth: req.hookDepth,
         parent: req.parent,
+        seed: req.seed,
+        resumedFrom: req.resumedFrom,
       });
     });
   }

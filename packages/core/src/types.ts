@@ -665,6 +665,15 @@ export interface RunRequest {
   hookDepth?: number;
   /** The run + node that started this one (`ctx.invoke` or a hook chain). */
   parent?: RunParentRef;
+  /**
+   * Durable resume (0.5): completed/skipped node records to SEED instead of
+   * executing — the frontier a resumed run replays from. Values stay in their
+   * encoded ledger form so the request survives transport seams; the scheduler
+   * decodes on seeding.
+   */
+  seed?: import("./durable/ledger.js").LedgerNodeRecord[];
+  /** Lineage: the ledgered run this one resumes / re-runs (recorded, not read). */
+  resumedFrom?: string;
 }
 
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */

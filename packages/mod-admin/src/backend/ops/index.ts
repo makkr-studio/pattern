@@ -9,6 +9,8 @@
  */
 
 import {
+  RUN_LEDGER,
+  ResumeBlockedError,
   boundaries,
   collectIssues,
   httpOutcome,
@@ -19,6 +21,7 @@ import {
   type OpContext,
   type OpDefinition,
   type Ports,
+  type RunLedger,
   type Workflow,
 } from "@pattern-js/core";
 import { adminServices, ASSETS_FS } from "../services.js";
@@ -95,6 +98,7 @@ const OP_SCOPES: Record<string, AdminScope> = {
   "admin.run.tail": "runs:read",
   "admin.metrics.summary": "runs:read",
   "admin.run": "runs:write",
+  "admin.run.rerun": "runs:write",
   "admin.run.cancel": "runs:write",
   "admin.run.pause": "runs:write",
   "admin.run.resume": "runs:write",
@@ -386,7 +390,17 @@ const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captu
   const paused = engine.runPaused(str(args.runId, "runId"));
   // Sub-runs this run started via ctx.invoke — the "invoked by" link's mirror.
   const children = await sink.children(str(args.runId, "runId"));
-  return { ...detail, inflight: paused !== undefined, paused: paused ?? false, children };
+  // Durable-run affordances: a ledger record means re-run/resume are possible.
+  const ledger = engine.service<RunLedger>(RUN_LEDGER);
+  const lrec = ledger ? await ledger.get(str(args.runId, "runId")) : null;
+  return {
+    ...detail,
+    inflight: paused !== undefined,
+    paused: paused ?? false,
+    children,
+    ledgered: Boolean(lrec),
+    resumedFrom: lrec?.header.resumedFrom,
+  };
 });
 
 // ── In-flight run control (cancel works on any entry path; pause needs the
@@ -400,6 +414,27 @@ const runPause = adminOp("admin.run.pause", "Pause an in-flight run: no new node
 const runResume = adminOp("admin.run.resume", "Resume a paused run.", { in: { runId: P() }, out: "result" }, (args, { engine }) => ({
   ok: engine.resumeRun(str(args.runId, "runId")),
 }));
+const runRerun = adminOp(
+  "admin.run.rerun",
+  "Re-run a ledgered (durable) run: from=start replays the recorded input as a fresh run; from=failure seeds every completed node's recorded outputs and re-executes the failed frontier onward. Returns { ok, runId } or { ok: false, blocked } when ambiguous external-effects nodes need confirmExternal.",
+  { in: { runId: P(), from: Bd(z.enum(["failure", "start"]).optional()), confirmExternal: Bd(z.boolean().optional()) }, out: "result" },
+  async (args, { engine }) => {
+    try {
+      const h = await engine.rerun(str(args.runId, "runId"), {
+        from: (args.from as "failure" | "start" | undefined) ?? "failure",
+        confirmExternal: Boolean(args.confirmExternal),
+      });
+      // Fire-and-return: the caller navigates to the new run and watches it live.
+      void h.result.catch(() => {});
+      return { ok: true, runId: h.runId };
+    } catch (err) {
+      // The danger zone is a CONVERSATION, not a failure: hand the node list to
+      // the UI so a human can confirm.
+      if (err instanceof ResumeBlockedError) return { ok: false, blocked: err.nodes, message: err.message };
+      throw new DomainError("invalid", err instanceof Error ? err.message : String(err));
+    }
+  },
+);
 const metricsSummary = adminOp("admin.metrics.summary", "Windowed run/error counters + per-workflow latency.", { in: { window: Q(z.unknown().optional()) }, out: "metrics" }, (args, { sink }) =>
   sink.metrics(args.window ? { minutes: Number((args.window as { minutes?: number }).minutes ?? args.window) } : undefined),
 );
@@ -643,6 +678,7 @@ export const adminOps: OpDefinition[] = [
   runCancel,
   runPause,
   runResume,
+  runRerun,
   runTail,
   metricsSummary,
   modListOp,

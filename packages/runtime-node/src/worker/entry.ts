@@ -83,6 +83,8 @@ interface RunMessage {
   sampleIo?: boolean;
   hookDepth?: number;
   parent?: { runId: string; workflowId: string; nodeId: string };
+  seed?: import("@pattern-js/core").LedgerNodeRecord[];
+  resumedFrom?: string;
 }
 
 port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
@@ -94,7 +96,7 @@ port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
 });
 
 async function handleRun(msg: RunMessage): Promise<void> {
-  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent } = msg;
+  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent, seed, resumedFrom } = msg;
   const ac = new AbortController();
   aborts.set(id, ac);
 
@@ -110,7 +112,10 @@ async function handleRun(msg: RunMessage): Promise<void> {
       /* boundary config ports — resolved on the host, run directly here */
     }
     // Run under the HOST's run id so forwarded spans match the pool's handle.
-    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, id, parent);
+    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, id, parent, {
+      seed,
+      resumedFrom,
+    });
   } catch (err) {
     port.postMessage({ type: "result", id, status: "error", outputs: {}, error: serializeError(err) });
     port.postMessage({ type: "done", id });

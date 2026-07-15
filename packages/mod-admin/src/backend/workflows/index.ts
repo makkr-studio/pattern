@@ -134,6 +134,7 @@ export const endpointSpecs: EndpointSpec[] = [
   { id: "admin.api.runs.tail", method: "GET", path: `${API}/runs/tail`, op: "admin.run.tail", mode: "sse" },
   { id: "admin.api.runs.list", method: "GET", path: `${API}/runs`, op: "admin.run.list" },
   { id: "admin.api.runs.get", method: "GET", path: `${API}/runs/:runId`, op: "admin.run.get" },
+  { id: "admin.api.runs.rerun", method: "POST", path: `${API}/runs/:runId/rerun`, op: "admin.run.rerun" },
   { id: "admin.api.runs.cancel", method: "POST", path: `${API}/runs/:runId/cancel`, op: "admin.run.cancel" },
   { id: "admin.api.runs.pause", method: "POST", path: `${API}/runs/:runId/pause`, op: "admin.run.pause" },
   { id: "admin.api.runs.resume", method: "POST", path: `${API}/runs/:runId/resume`, op: "admin.run.resume" },

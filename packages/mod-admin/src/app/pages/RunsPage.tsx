@@ -7,7 +7,7 @@ import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } fro
 import { ago, ms, runDuration, statusColor } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { Pause, Play, Search } from "../components/icon";
-import { ChevronLeft, ChevronRight, Square } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Square, StepForward } from "lucide-react";
 import { sfx } from "../lib/sfx";
 
 const PAGE_SIZE = 25;
@@ -281,15 +281,42 @@ function whoOf(principal: unknown): string | null {
 function RunDetail({ runId }: { runId: string }) {
   const { data, isLoading } = useRun(runId);
   const control = useRunControl(runId);
+  const navigate = useNavigate();
+  // Durable re-run/resume: the danger-zone node list awaiting a human call.
+  const [blocked, setBlocked] = useState<Array<{ nodeId: string; op: string }> | null>(null);
+  const [rerunNotice, setRerunNotice] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
   if (isLoading) return <Spinner />;
   if (!data) return <GlassPanel className="text-muted p-8 text-sm">Run not found (it may have been evicted from the ring buffer).</GlassPanel>;
-  const { summary, spans, inflight, paused, children } = data;
+  const { summary, spans, inflight, paused, children, ledgered, resumedFrom } = data;
   const runStart = Math.min(...spans.map((s) => s.startTime), summary.startTime);
   const runEnd = Math.max(...spans.map((s) => s.endTime), summary.endTime ?? summary.startTime);
   const act = (action: "cancel" | "pause" | "resume") => {
     sfx.play(action === "cancel" ? "error" : "toggle");
     control.mutate(action);
   };
+  const doRerun = async (from: "failure" | "start", confirmExternal = false) => {
+    setRerunning(true);
+    setRerunNotice(null);
+    try {
+      const res = await api.runs.rerun(runId, { from, confirmExternal });
+      if (res.ok && res.runId) {
+        setBlocked(null);
+        sfx.play("click");
+        navigate(`/runs/${res.runId}`);
+      } else if (res.blocked) {
+        setBlocked(res.blocked);
+      } else {
+        setRerunNotice(res.message ?? "re-run refused");
+      }
+    } catch (err) {
+      sfx.play("error");
+      setRerunNotice(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRerunning(false);
+    }
+  };
+  const resumable = ledgered && !inflight && (summary.status === "error" || summary.status === "canceled");
   return (
     <GlassPanel className="p-5">
       <div className="mb-4 flex items-center gap-3">
@@ -305,6 +332,32 @@ function RunDetail({ runId }: { runId: string }) {
         >
           <Play size={12} /> replay on graph
         </Link>
+        {/* Durable-run affordances: resume seeds the completed frontier; re-run
+            replays the recorded input. Only ledgered (durable) runs have them. */}
+        {!inflight && ledgered && (
+          <span className="ml-auto flex items-center gap-1">
+            {resumable && (
+              <NeonButton
+                variant="ghost"
+                className="!px-2 !py-1"
+                title="Resume from failure — completed nodes are seeded from the ledger; only the failed frontier re-executes"
+                disabled={rerunning}
+                onClick={() => void doRerun("failure")}
+              >
+                <StepForward size={12} /> <span className="ml-1 text-xs">Resume</span>
+              </NeonButton>
+            )}
+            <NeonButton
+              variant="ghost"
+              className="!px-2 !py-1"
+              title="Re-run from start — a fresh run with this run's recorded trigger input"
+              disabled={rerunning}
+              onClick={() => void doRerun("start")}
+            >
+              <RotateCcw size={12} /> <span className="ml-1 text-xs">Re-run</span>
+            </NeonButton>
+          </span>
+        )}
         {/* In-flight controls: pause holds new node starts; stop aborts. */}
         {inflight && (
           <span className="ml-auto flex items-center gap-1">
@@ -330,8 +383,35 @@ function RunDetail({ runId }: { runId: string }) {
             </NeonButton>
           </span>
         )}
-        <span className={`text-muted font-mono text-xs ${inflight ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
+        <span className={`text-muted font-mono text-xs ${inflight || ledgered ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
       </div>
+      {blocked && (
+        <div className="mb-3 rounded-lg border border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 p-3 text-xs">
+          <div className="mb-1 font-semibold text-[var(--color-neon-amber)]">Resume needs a human call</div>
+          <p className="text-muted mb-2">
+            These external-effect nodes started but never finished — the effect (a send, a charge) may already have
+            happened: <span className="font-mono">{blocked.map((b) => `${b.nodeId} (${b.op})`).join(", ")}</span>.
+            Resuming re-runs them.
+          </p>
+          <div className="flex gap-2">
+            <NeonButton variant="danger" className="!px-2 !py-1 text-xs" disabled={rerunning} onClick={() => void doRerun("failure", true)}>
+              Resume anyway
+            </NeonButton>
+            <NeonButton variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setBlocked(null)}>
+              Keep it parked
+            </NeonButton>
+          </div>
+        </div>
+      )}
+      {rerunNotice && <div className="mb-3 text-xs text-[var(--color-neon-amber)]">{rerunNotice}</div>}
+      {resumedFrom && (
+        <div className="text-muted mb-3 text-xs">
+          ↻ resumed from{" "}
+          <Link to={`/runs/${resumedFrom}`} className="font-mono text-[var(--color-neon-cyan)] hover:underline">
+            {resumedFrom.slice(0, 8)}
+          </Link>
+        </div>
+      )}
       {whoOf(summary.principal) && (
         <div className="text-muted mb-3 text-xs">
           run as <span className="font-mono text-[var(--color-neon-cyan)]">{whoOf(summary.principal)}</span>

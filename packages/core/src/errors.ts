@@ -129,6 +129,29 @@ export class WorkflowError extends Error {
   }
 }
 
+/**
+ * Raised when a durable resume would re-run external-effects nodes whose fate
+ * is AMBIGUOUS — recorded `started` with no terminal record (a crash
+ * mid-execute), so the side effect may or may not have happened. The caller
+ * lists the nodes to a human and retries with `confirmExternal: true`.
+ * (A node that recorded its own `error` re-runs without confirmation — the op
+ * reported its failure, that's what makes "fix creds → resume" work.)
+ */
+export class ResumeBlockedError extends Error {
+  readonly nodes: Array<{ nodeId: string; op: string }>;
+
+  constructor(nodes: Array<{ nodeId: string; op: string }>) {
+    const list = nodes.map((n) => `"${n.nodeId}" (${n.op})`).join(", ");
+    super(
+      `resume blocked: ${list} ${nodes.length === 1 ? "is" : "are"} external-effect node${
+        nodes.length === 1 ? "" : "s"
+      } that started but never finished — the effect may already have happened. Confirm to re-run them anyway.`,
+    );
+    this.name = "ResumeBlockedError";
+    this.nodes = nodes;
+  }
+}
+
 /** Raised when a hook chain exceeds its recursion guard (§8). */
 export class HookRecursionError extends Error {
   constructor(hook: string, maxDepth: number) {

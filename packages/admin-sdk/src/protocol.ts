@@ -251,6 +251,10 @@ export interface RunDetail {
   paused?: boolean;
   /** Sub-runs this run started via `ctx.invoke`, oldest first. */
   children?: RunSummary[];
+  /** A RunLedger record exists (durable workflow) — re-run/resume available. */
+  ledgered?: boolean;
+  /** The ledgered run this one resumed/re-ran (lineage chip). */
+  resumedFrom?: string;
 }
 
 export interface LatencyStats {

@@ -31,11 +31,19 @@ import {
 import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
 import { collectIssues, validateWorkflow } from "./validate.js";
-import { RunCanceled, WorkflowValidationError } from "./errors.js";
+import { ResumeBlockedError, RunCanceled, WorkflowValidationError } from "./errors.js";
+import {
+  RUN_LEDGER,
+  decodeLedgerValue,
+  ledgerWorkflowHash,
+  type LedgerNodeRecord,
+  type RunLedger,
+} from "./durable/ledger.js";
 import type { FrontendContribution, SettingsSection } from "./frontend.js";
 import type { DocsContribution } from "./docs.js";
 import {
   ANONYMOUS,
+  effectsOf,
   type AuthContext,
   type AuthProvider,
   type ConnectionRegistry,
@@ -683,6 +691,7 @@ export class Engine {
     hookDepth?: number,
     runId?: string,
     parent?: RunParentRef,
+    extra?: { seed?: LedgerNodeRecord[]; resumedFrom?: string },
   ): Promise<RunResult> {
     // Per-run routing at the dispatch seam: an `offload`-flagged workflow goes
     // to the worker pool when one is configured; everything else stays inline.
@@ -698,6 +707,8 @@ export class Engine {
       hookDepth,
       runId,
       parent,
+      seed: extra?.seed,
+      resumedFrom: extra?.resumedFrom,
     });
     // Track every in-flight run (whatever the entry path) so the admin can
     // cancel / pause it by runId while it executes.
@@ -737,6 +748,90 @@ export class Engine {
   runPaused(runId: string): boolean | undefined {
     const h = this.inflightRuns.get(runId);
     return h ? (h.paused?.() ?? false) : undefined;
+  }
+
+  /**
+   * Re-run a ledgered run (0.5 durable execution). `from: "start"` replays the
+   * recorded trigger input as a fresh run; `from: "failure"` (default) seeds
+   * every completed node's recorded outputs and re-executes only the failed
+   * frontier onward. Only terminal runs of `durable: true` workflows have a
+   * ledger record; the workflow must be structurally unchanged since the run
+   * (roll back to that version first, or re-run from start after a redeploy).
+   * Throws `ResumeBlockedError` when external-effects nodes are in the
+   * ambiguous started-but-never-finished state, unless `confirmExternal`.
+   */
+  async rerun(
+    runId: string,
+    opts: { from?: "failure" | "start"; confirmExternal?: boolean } = {},
+  ): Promise<{ runId: string; result: Promise<RunResult> }> {
+    const from = opts.from ?? "failure";
+    const ledger = this.service<RunLedger>(RUN_LEDGER);
+    if (!ledger) throw new Error("no RunLedger is configured — durable re-run needs one (loadProject provides it)");
+    const rec = await ledger.get(runId);
+    if (!rec) {
+      throw new Error(
+        `run "${runId}" has no ledger record — only runs of durable: true workflows can be re-run (turn on Durable in the workflow settings)`,
+      );
+    }
+    if (rec.header.status === "running") {
+      throw new Error(`run "${runId}" is still running — cancel it first, or wait for it to settle`);
+    }
+    const workflow = this.workflows.get(rec.header.workflowId);
+    if (!workflow) throw new Error(`workflow "${rec.header.workflowId}" is no longer registered`);
+    if (ledgerWorkflowHash(workflow) !== rec.header.workflowHash) {
+      throw new Error(
+        `workflow "${rec.header.workflowId}" changed since run "${runId}" — resume needs the exact structure that ran. Roll back to that version and resume, or re-run fresh with new input`,
+      );
+    }
+
+    // The recorded trigger input, decoded (stream inputs were unserializable —
+    // they decode to undefined, and the validator warned at save time).
+    const input: TriggerInput = {};
+    for (const [k, v] of Object.entries(rec.header.input)) input[k] = decodeLedgerValue(v);
+
+    let seed: LedgerNodeRecord[] | undefined;
+    if (from === "failure") {
+      if (rec.header.status === "ok") {
+        throw new Error(`run "${runId}" completed fine — use from: "start" to run it again`);
+      }
+      // The frontier: done + serializable nodes seed; skipped nodes seed as
+      // skip; error/started/streaming/unserializable re-run.
+      seed = rec.nodes.filter(
+        (n) => (n.status === "done" && !n.streaming && !n.unserializable) || n.status === "skipped",
+      );
+      // Danger zone: external-effects nodes that STARTED but never finished —
+      // the effect may or may not have happened. Refuse unless confirmed.
+      if (!opts.confirmExternal) {
+        const ambiguous = rec.nodes
+          .filter((n) => n.status === "started")
+          .map((n) => ({ record: n, node: workflow.nodes.find((wn) => wn.id === n.nodeId) }))
+          .filter((x): x is { record: LedgerNodeRecord; node: Workflow["nodes"][number] } => Boolean(x.node))
+          .filter((x) => {
+            const op = this.ops.get(x.node.op);
+            return op ? effectsOf(op, x.node.config ?? {}) === "external" : true;
+          })
+          .map((x) => ({ nodeId: x.node.id, op: x.node.op }));
+        if (ambiguous.length) throw new ResumeBlockedError(ambiguous);
+      }
+    }
+
+    const newRunId = crypto.randomUUID();
+    // The recorded principal: the run must behave as it did — gating the rerun
+    // itself is the caller's job (the admin route requires runs:write).
+    const result = this.runFrom(
+      workflow,
+      rec.header.triggerNodeId,
+      input,
+      rec.header.principal,
+      undefined,
+      rec.header.params,
+      undefined,
+      undefined,
+      newRunId,
+      undefined,
+      { seed, resumedFrom: runId },
+    );
+    return { runId: newRunId, result };
   }
 
   /** Ids of runs currently executing. */

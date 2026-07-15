@@ -235,7 +235,9 @@ export function toolWorkflows(): Workflow[] {
       name: "pattern_get_run",
       description:
         "One run's full trace: per-node spans with status, timings, error messages/stacks, and masked I/O " +
-        "samples — everything needed to answer \"why did this run fail?\".",
+        "samples — everything needed to answer \"why did this run fail?\". Runs of durable workflows also " +
+        "report `ledgered: true`: those can be resumed from the failing node or re-run with the same input " +
+        "from the Runs page (suggest it when a fix has been deployed).",
       params: { runId: { type: "string" } },
       required: ["runId"],
       extract: ["runId"],
