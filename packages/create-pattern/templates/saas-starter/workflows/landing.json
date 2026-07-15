@@ -1,0 +1,88 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "landing",
+  "name": "GET / (landing)",
+  "description": "The public landing page: Subscribe posts to /billing/checkout, Manage posts to /billing/portal; both redirect the browser to the provider-hosted page.",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": {
+        "method": "GET",
+        "path": "/",
+        "requireAuth": false
+      },
+      "ui": {
+        "x": 40,
+        "y": 120
+      }
+    },
+    {
+      "id": "html",
+      "op": "core.const.json",
+      "config": {
+        "value": "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{{name}}</title><style>body{font:16px/1.6 system-ui;max-width:640px;margin:8vh auto;padding:0 24px;color:#1a1a2e}h1{font-size:2rem}button{font:inherit;padding:10px 22px;border-radius:10px;border:0;background:#4f46e5;color:#fff;cursor:pointer}button.ghost{background:#eef;color:#4f46e5}a{color:#4f46e5}#msg{color:#b45309;min-height:1.5em}</style><h1>{{name}}</h1><p>A subscription SaaS scaffolded by Pattern: sign in, subscribe, and the <a href=/pro>members area</a> unlocks — the paid role arrives over a signed webhook, not a promise.</p><p><button onclick=\"go('/billing/checkout')\">Subscribe</button> <button class=ghost onclick=\"go('/billing/portal')\">Manage subscription</button></p><p id=msg></p><p><small><a href='/auth/login?next=/'>Sign in</a> · <a href=/pro>Members</a> · <a href=/admin>Admin</a></small></p><script>async function go(p){var m=document.getElementById('msg');m.textContent='';var r=await fetch(p,{method:'POST'});if(r.status===401){location='/auth/login?next=/';return}var j=await r.json().catch(function(){return{}});if(j.url){location=j.url}else{m.textContent=j.message||j.error||'Billing is not configured yet — add the Stripe account in /admin → System → Billing.'}}</script>"
+      },
+      "ui": {
+        "x": 320,
+        "y": 80
+      }
+    },
+    {
+      "id": "ctype",
+      "op": "core.const.json",
+      "config": {
+        "value": {
+          "content-type": "text/html; charset=utf-8"
+        }
+      },
+      "ui": {
+        "x": 320,
+        "y": 220
+      }
+    },
+    {
+      "id": "out",
+      "op": "boundary.http.response",
+      "config": {
+        "mode": "buffered"
+      },
+      "ui": {
+        "x": 600,
+        "y": 120
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "node": "in",
+        "port": "out"
+      },
+      "to": {
+        "node": "html",
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "node": "html",
+        "port": "out"
+      },
+      "to": {
+        "node": "out",
+        "port": "body"
+      }
+    },
+    {
+      "from": {
+        "node": "ctype",
+        "port": "out"
+      },
+      "to": {
+        "node": "out",
+        "port": "headers"
+      }
+    }
+  ]
+}

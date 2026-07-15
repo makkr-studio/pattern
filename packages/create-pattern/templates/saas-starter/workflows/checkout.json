@@ -1,0 +1,139 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "billing-checkout",
+  "name": "POST /billing/checkout",
+  "description": "Start a subscription: the signed-in user’s id becomes the checkout reference (the completion webhook maps the new customer back to them). Durable: exact inputs and outputs land in the RunLedger, so a failure resumes instead of re-charging.",
+  "durable": true,
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": {
+        "method": "POST",
+        "path": "/billing/checkout",
+        "requireAuth": true
+      },
+      "ui": {
+        "x": 40,
+        "y": 140
+      }
+    },
+    {
+      "id": "who",
+      "op": "core.object.extract",
+      "config": {
+        "keys": [
+          "id",
+          "email"
+        ]
+      },
+      "comment": "The trigger’s user port carries the signed-in identity.",
+      "ui": {
+        "x": 300,
+        "y": 80
+      }
+    },
+    {
+      "id": "checkout",
+      "op": "billing.checkout.create",
+      "config": {
+        "account": "default",
+        "mode": "subscription"
+      },
+      "retry": {
+        "attempts": 3,
+        "backoffMs": 400
+      },
+      "ui": {
+        "x": 560,
+        "y": 140
+      }
+    },
+    {
+      "id": "reply",
+      "op": "core.object.build",
+      "config": {
+        "keys": [
+          "url"
+        ]
+      },
+      "ui": {
+        "x": 820,
+        "y": 140
+      }
+    },
+    {
+      "id": "out",
+      "op": "boundary.http.response",
+      "config": {
+        "mode": "buffered"
+      },
+      "ui": {
+        "x": 1080,
+        "y": 140
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "node": "in",
+        "port": "user"
+      },
+      "to": {
+        "node": "who",
+        "port": "object"
+      }
+    },
+    {
+      "from": {
+        "node": "who",
+        "port": "id"
+      },
+      "to": {
+        "node": "checkout",
+        "port": "userId"
+      }
+    },
+    {
+      "from": {
+        "node": "who",
+        "port": "email"
+      },
+      "to": {
+        "node": "checkout",
+        "port": "email"
+      }
+    },
+    {
+      "from": {
+        "node": "in",
+        "port": "url"
+      },
+      "to": {
+        "node": "checkout",
+        "port": "origin"
+      }
+    },
+    {
+      "from": {
+        "node": "checkout",
+        "port": "url"
+      },
+      "to": {
+        "node": "reply",
+        "port": "url"
+      }
+    },
+    {
+      "from": {
+        "node": "reply",
+        "port": "out"
+      },
+      "to": {
+        "node": "out",
+        "port": "body"
+      }
+    }
+  ]
+}

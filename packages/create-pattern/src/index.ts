@@ -74,7 +74,7 @@ interface Modpack {
    * identity brick (magic-link login, users/sessions, secured admin). Absent
    * → the question is never asked (blank has no HTTP host).
    */
-  auth?: { default: boolean };
+  auth?: { default: boolean; required?: boolean };
   /**
    * Docs is a DIMENSION too: any pack serving HTTP can ship `/docs` — the
    * Pattern handbook + a live op reference, where every installed mod
@@ -339,12 +339,16 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
   "@pattern-js/mod-vectors": "vector search: embedding collections, hybrid retrieval, RAG",
   "@pattern-js/mod-buddy": "Buddy: the editor assistant + the pattern_* MCP control plane",
+  "@pattern-js/mod-billing": "billing contract: checkout · portal · subscriptions → roles · metering",
+  "@pattern-js/mod-billing-stripe": "the Stripe driver: hosted checkout, portal, signed webhooks",
+  "./mods/billing.mjs (app-local)": "app-local: billing configured — the subscription→role bridge",
+  "./mods/identity.mjs (app-local)": "app-local: identity configured — roles→scopes (member → pro)",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
 };
 
 /** Ladder order (ascending capability) for the picker + --list. */
-const LADDER = ["blank", "headless", "studio", "studio-ai", "agentic", "agent-chat"];
+const LADDER = ["blank", "headless", "studio", "saas-starter", "studio-ai", "agentic", "agent-chat"];
 
 const MODPACKS: Modpack[] = [
   {
@@ -434,6 +438,47 @@ const MODPACKS: Modpack[] = [
         examples
           ? `${pc.cyan("→")} the editor opens with 3 example workflows — fork one, or ${pc.dim("curl localhost:3000/hello/world")}`
           : `${pc.cyan("→")} build your first workflow in the editor ${pc.dim("(or drop JSON in workflows/ — see AGENTS.md)")}`,
+      ].filter((l) => l !== ""),
+  },
+  {
+    id: "saas-starter",
+    label: "SaaS starter",
+    hint: "a subscription SaaS — sign-in, Stripe billing, and a members area gated by a scope",
+    rung: "+ billing — checkout, webhooks, subscriptions → roles",
+    tagline: "Studio + identity + billing — sign in, subscribe via Stripe, and a /pro area only an active subscription opens",
+    mods: [
+      "@pattern-js/mod-billing",
+      "@pattern-js/mod-billing-stripe",
+      "@pattern-js/mod-email",
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-admin",
+      "./mods/billing.mjs (app-local)",
+      "./mods/identity.mjs (app-local)",
+    ],
+    exampleSummary: "a landing page, checkout + portal routes (durable), and the gated /pro page",
+    serves: () => ["/", "/pro", "/billing/checkout", "/billing/portal", "/admin"],
+    env: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
+    generates: () => [
+      "workflows/landing.json + checkout, portal, pro",
+      "mods/billing.mjs + mods/identity.mjs",
+      "Dockerfile",
+      "src/index.ts",
+      ".env.example",
+    ],
+    // Billing without sign-in has nobody to entitle — auth is part of the pack.
+    auth: { default: true, required: true },
+    docs: { default: true },
+    next: ({ name, runCmd, installed, installLine }) =>
+      [
+        `${pc.dim("$")} cd ${name}`,
+        installed ? "" : installLine,
+        `${pc.dim("$")} ${runCmd} dev`,
+        "",
+        `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} — open it, you're the owner`,
+        `${pc.cyan("→")} landing at ${pc.bold("http://localhost:3000/")} — Subscribe 401s until Stripe is connected`,
+        `${pc.cyan("→")} connect Stripe (test mode): keys in ${pc.bold(".env")}, the account in admin → System → Billing,`,
+        `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("(the walkthrough lives in AGENTS.md)")}`,
+        `${pc.cyan("→")} pay with ${pc.bold("4242 4242 4242 4242")} — the webhook grants the member role and ${pc.bold("/pro")} unlocks`,
       ].filter((l) => l !== ""),
   },
   {
@@ -753,7 +798,10 @@ function packCard(pack: Modpack, dims: Dims): string {
  */
 function resolveDims(pack: Modpack, flags: Flags): { dims: Dims; notes: string[] } {
   const notes: string[] = [];
-  const auth = pack.auth ? (flags.auth ?? pack.auth.default) : false;
+  const auth = pack.auth ? (pack.auth.required ? true : (flags.auth ?? pack.auth.default)) : false;
+  if (pack.auth?.required && flags.auth === false) {
+    notes.push(`--no-auth ignored (the ${pack.id} pack is built around sign-in — billing needs someone to entitle)`);
+  }
   const magicLink = auth ? (flags.magicLink ?? true) : false;
   const oidc = auth ? (flags.oidc ?? false) : false;
   if (auth && !magicLink && !oidc) {
@@ -879,13 +927,17 @@ function usage(): void {
 async function copyTemplate(packId: string, targetDir: string, vars: Record<string, string>): Promise<void> {
   const src = join(TEMPLATES_DIR, packId);
   await cp(src, targetDir, { recursive: true });
-  // _gitignore → .gitignore (npm strips .gitignore from published packages).
-  if (existsSync(join(targetDir, "_gitignore"))) {
-    await rename(join(targetDir, "_gitignore"), join(targetDir, ".gitignore"));
-  }
-  // _env.example → .env.example (same npm-stripping dance for dotfiles).
-  if (existsSync(join(targetDir, "_env.example"))) {
-    await rename(join(targetDir, "_env.example"), join(targetDir, ".env.example"));
+  // Underscore-prefixed template files → their real names (npm strips dotfiles
+  // from published packages, and a real Dockerfile in the template would look
+  // like OUR container). One table, extended as templates grow.
+  const RENAMES: Array<[string, string]> = [
+    ["_gitignore", ".gitignore"],
+    ["_env.example", ".env.example"],
+    ["_Dockerfile", "Dockerfile"],
+    ["_dockerignore", ".dockerignore"],
+  ];
+  for (const [from, to] of RENAMES) {
+    if (existsSync(join(targetDir, from))) await rename(join(targetDir, from), join(targetDir, to));
   }
   // Replace {{name}} / {{pkgName}} / … placeholders in text files.
   await replacePlaceholders(targetDir, vars);
@@ -945,17 +997,51 @@ async function normalizeDepRanges(targetDir: string): Promise<void> {
 }
 
 /**
+ * The app-local identity wrapper the saas-starter writes: the roles→scopes map
+ * is the second half of billing's entitlement bridge (mods/billing.mjs grants
+ * the ROLE; this map turns it into the SCOPE routes gate on). Editing it
+ * applies on the next request — scopes are compiled per request, not stored.
+ */
+const IDENTITY_WRAPPER_SAAS = `/**
+ * Identity, app-configured (docs: /docs → “Identity”).
+ *
+ * The roles→scopes map is half of the entitlement bridge: billing grants the
+ * “member” role when a subscription is active (mods/billing.mjs), and this map
+ * turns it into the “pro” scope — which requireAuth: { scopes: ["pro"] }
+ * gates on. Add roles/scopes freely; changes apply on the next request.
+ */
+import { identityMod } from "@pattern-js/mod-identity";
+
+export default identityMod({
+  roles: {
+    admin: ["admin"],
+    member: ["pro"],
+  },
+});
+`;
+
+/**
  * Flip the auth dimension on: wire identity + the chosen sign-in methods into
  * the manifest and the config (FIRST in the list — they're infrastructure),
  * and give headless packs a protected /whoami route so the value is curl-able
  * in minute one. OIDC's wrapper file is applyOidc's job.
  */
 async function applyAuth(targetDir: string, packId: string, magicLink: boolean): Promise<void> {
-  const mods = [IDENTITY_MOD, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
+  const deps = [IDENTITY_MOD, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
-  for (const mod of mods) pkg.dependencies[mod] = PATTERN_RANGE;
+  for (const mod of deps) pkg.dependencies[mod] = PATTERN_RANGE;
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  // The saas-starter configures identity (the roles→scopes map is the other
+  // half of billing's entitlement bridge) — an app-local wrapper, like OIDC's.
+  let identityEntry = IDENTITY_MOD;
+  if (packId === "saas-starter") {
+    await mkdir(join(targetDir, "mods"), { recursive: true });
+    await writeFile(join(targetDir, "mods", "identity.mjs"), IDENTITY_WRAPPER_SAAS);
+    identityEntry = "./mods/identity.mjs";
+  }
+  const mods = [identityEntry, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
 
   const cfgPath = join(targetDir, "pattern.config.json");
   const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
@@ -986,8 +1072,16 @@ async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<v
   const cfgPath = join(targetDir, "pattern.config.json");
   const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
   // After identity + magic-link (email only applies when magic link is on).
+  // Templates that already carry mod-email (saas-starter) just gain the driver,
+  // right after it — a doubled mod would register its workflows twice.
   const at = 2;
-  cfg.mods = [...cfg.mods.slice(0, at), EMAIL_MOD, driver, ...cfg.mods.slice(at)];
+  const add = cfg.mods.includes(EMAIL_MOD) ? [] : [EMAIL_MOD];
+  if (cfg.mods.includes(EMAIL_MOD)) {
+    const emailAt = cfg.mods.indexOf(EMAIL_MOD) + 1;
+    cfg.mods = [...cfg.mods.slice(0, emailAt), driver, ...cfg.mods.slice(emailAt)];
+  } else {
+    cfg.mods = [...cfg.mods.slice(0, at), ...add, driver, ...cfg.mods.slice(at)];
+  }
   await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
   const hint =
@@ -1399,7 +1493,9 @@ async function runInteractive(flags: Flags): Promise<void> {
   // Auth is orthogonal to the pack — asked only where it makes sense.
   const packHasAdmin = pack.mods.some((m) => m.includes("mod-admin"));
   let auth = false;
-  if (pack.auth) {
+  if (pack.auth?.required) {
+    auth = true; // part of the pack (billing needs someone to entitle) — not asked
+  } else if (pack.auth) {
     if (flags.auth !== undefined) {
       auth = flags.auth;
     } else {

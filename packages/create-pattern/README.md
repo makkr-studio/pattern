@@ -40,6 +40,7 @@ Pick by **how much you want running**. The six sit on one ladder:
 | **Engine only** | `blank` | (base) | a program, no server: run a workflow from code and watch it print |
 | **Headless server** | `headless` | the HTTP/WS/CLI host | a running server, no UI: serve workflows as endpoints |
 | **Studio** | `studio` | `@pattern-js/mod-admin` | a visual workspace at `/admin`: build, version, run & trace workflows |
+| **SaaS starter** | `saas-starter` | identity + `@pattern-js/mod-billing` (+ Stripe driver, email, store) | a **subscription SaaS**: sign in, subscribe via Stripe checkout, and a `/pro` area gated by a scope the webhook grants |
 | **Studio + AI** | `studio-ai` | `@pattern-js/mod-ai` (+ vectors, store, vault) | plain **AI workflows** (text · object · image · speech) in the editor, no agent loop |
 | **Studio + Agents** | `agentic` | the agent stack (agents + Buddy) | build **agentic workflows** (`agents.agent` → `agents.run`, tools as workflows) in the editor, no chat UI |
 | **Studio + Agentic Chat** | `agent-chat` | `@pattern-js/mod-chat` | a chat product at `/chat`: tools, guardrails, HITL; its turn pipeline is an agentic workflow |

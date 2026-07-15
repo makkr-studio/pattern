@@ -106,6 +106,8 @@ You now have a running engine. Pick the path that matches what you're building:
 - **Go further**: [Agents & chat](guides/agents-and-chat.md),
   [Identity](guides/identity.md), or build a
   [third-party mod](guides/creating-a-mod.md).
+- **Ship it** with [Deploying](guides/deploying.md): every scaffold carries a
+  Dockerfile — two volumes and a `PATTERN_PUBLIC_URL` and you're live.
 
 > No API key needed for the basics. When you add a model, mod-ai resolves a
 > provider key (e.g. `OPENAI_API_KEY` for OpenAI) from a `.env` next to

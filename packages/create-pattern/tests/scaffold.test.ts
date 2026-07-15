@@ -146,6 +146,51 @@ describe("create-pattern scaffold dimensions", () => {
     expect(cfg.mods).toContain("@pattern-js/mod-docs");
   });
 
+  it("saas-starter: auth is part of the pack, both bridge wrappers written, config in install order", () => {
+    const { read, json } = scaffold("saas1", "--modpack", "saas-starter", "--no-auth"); // --no-auth is ignored (noted)
+    expect(json("pattern.config.json").mods).toEqual([
+      "./mods/identity.mjs",
+      "@pattern-js/mod-auth-magic-link",
+      "@pattern-js/mod-admin",
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-email",
+      "./mods/billing.mjs",
+      "@pattern-js/mod-billing-stripe",
+      "@pattern-js/mod-docs",
+    ]);
+    // The two halves of the entitlement bridge:
+    expect(read("mods/identity.mjs")).toContain('member: ["pro"]');
+    expect(read("mods/billing.mjs")).toContain('entitlement: { role: "member" }');
+    const deps = json("package.json").dependencies as Record<string, string>;
+    expect(deps["@pattern-js/mod-billing"]).toBe(RANGE);
+    expect(deps["@pattern-js/mod-billing-stripe"]).toBe(RANGE);
+    expect(deps["@pattern-js/mod-identity"]).toBe(RANGE);
+    const env = read(".env.example");
+    expect(env).toContain("STRIPE_API_KEY");
+    expect(env).toContain("STRIPE_WEBHOOK_SECRET");
+    // Money workflows ship durable + retry (the 0.5 toolkit).
+    expect(json("workflows/checkout.json").durable).toBe(true);
+    expect(json("workflows/portal.json").durable).toBe(true);
+  });
+
+  it("saas-starter --email resend: the driver joins AFTER the pack's own mod-email — never doubled", () => {
+    const { json } = scaffold("saas2", "--modpack", "saas-starter", "--email", "resend");
+    const mods = json("pattern.config.json").mods as string[];
+    expect(mods.filter((m) => m === "@pattern-js/mod-email")).toHaveLength(1);
+    expect(mods[mods.indexOf("@pattern-js/mod-email") + 1]).toBe("@pattern-js/mod-email-resend");
+  });
+
+  it("every app template ships a Dockerfile + .dockerignore; blank (no server) doesn't", () => {
+    for (const pack of ["headless", "studio", "saas-starter", "studio-ai", "agentic", "agent-chat"]) {
+      const { dir } = scaffold(`docker-${pack}`, "--modpack", pack);
+      expect(existsSync(join(dir, "Dockerfile")), `${pack} Dockerfile`).toBe(true);
+      expect(existsSync(join(dir, ".dockerignore")), `${pack} .dockerignore`).toBe(true);
+      expect(readFileSync(join(dir, "Dockerfile"), "utf8")).toContain(".pattern-data");
+    }
+    const { dir } = scaffold("docker-blank", "--modpack", "blank");
+    expect(existsSync(join(dir, "Dockerfile"))).toBe(false);
+  });
+
   it("flags a pack can't honor produce notes, not silence", () => {
     const res = spawnSync(
       process.execPath,

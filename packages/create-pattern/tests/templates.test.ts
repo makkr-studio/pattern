@@ -20,6 +20,10 @@ import { agentsMod } from "@pattern-js/mod-agents";
 import { aiMod } from "@pattern-js/mod-ai";
 import { adminMod } from "@pattern-js/mod-admin";
 import { chatMod } from "@pattern-js/mod-chat";
+import { emailMod } from "@pattern-js/mod-email";
+import { identityMod } from "@pattern-js/mod-identity";
+import { magicLinkMod } from "@pattern-js/mod-auth-magic-link";
+import { stripeBillingMod } from "@pattern-js/mod-billing-stripe";
 import { vectorsMod } from "@pattern-js/mod-vectors";
 import { buddyMod } from "@pattern-js/mod-buddy";
 import { docsMod } from "@pattern-js/mod-docs";
@@ -38,6 +42,8 @@ const FACTORIES: Record<string, () => PatternMod> = {
   "@pattern-js/mod-chat": () => chatMod(),
   "@pattern-js/mod-vectors": () => vectorsMod({ path: ":memory:" }),
   "@pattern-js/mod-buddy": () => buddyMod({ indexOnBoot: false }),
+  "@pattern-js/mod-email": () => emailMod(),
+  "@pattern-js/mod-billing-stripe": () => stripeBillingMod(),
 };
 
 async function resolveMod(templateDir: string, entry: string): Promise<PatternMod> {
@@ -63,7 +69,7 @@ const templates = readdirSync(TEMPLATES).filter((t) => {
 
 describe("create-pattern templates", () => {
   it("sweep is non-empty and covers the agent templates", () => {
-    expect(templates).toEqual(expect.arrayContaining(["agentic", "agent-chat", "blank", "headless"]));
+    expect(templates).toEqual(expect.arrayContaining(["agentic", "agent-chat", "blank", "headless", "saas-starter"]));
   });
 
   it.each(templates)("%s: every workflow graph validates against its declared mods", async (t) => {
@@ -106,5 +112,40 @@ describe("create-pattern templates", () => {
     await engine.useAsync(docsMod(), { deferReady: true, deferWorkflows: true }); // the docs dimension, appended last
     await engine.flushDeferredWorkflows(); // threw `unknown op "docs.ops.list"` before the deferral fix
     expect(engine.workflows.get("buddy.tool.list-ops")).toBeDefined();
+  });
+
+  it("saas-starter: the full SCAFFOLDED install (auth prepended, docs appended) boots with routes intact", async () => {
+    // Exactly what a scaffolded pattern.config.json lists after the dimensions
+    // run: [identity wrapper, magic-link] prepended by applyAuth, the template
+    // mods, mod-docs appended by applyDocs — installed the way loadMods does.
+    const dir = join(TEMPLATES, "saas-starter");
+    const cfg = JSON.parse(readFileSync(join(dir, "pattern.config.json"), "utf8")) as { mods: string[] };
+    const engine = new Engine();
+    const scaffolded: PatternMod[] = [
+      identityMod({ storage: "memory", roles: { admin: ["admin"], member: ["pro"] } }),
+      magicLinkMod(),
+      ...(await Promise.all(cfg.mods.map((entry) => resolveMod(dir, entry)))),
+      docsMod(),
+    ];
+    for (const mod of scaffolded) {
+      await engine.useAsync(mod, { deferReady: true, deferWorkflows: true });
+    }
+    await engine.flushDeferredWorkflows();
+    // The driver seeded its signed webhook route; the file workflows register
+    // on top of this engine too (the config's workflows dir) — validate them
+    // against the fully-installed registry, requireAuth scopes and all.
+    expect(engine.workflows.get("billing.stripe.inbound")).toBeDefined();
+    const wfDir = join(dir, "workflows");
+    for (const f of readdirSync(wfDir).filter((x) => x.endsWith(".json"))) {
+      const doc = JSON.parse(readFileSync(join(wfDir, f), "utf8"));
+      engine.registerWorkflow(await engine.resolveWorkflowDoc(doc));
+    }
+    expect(engine.workflows.get("pro")).toBeDefined();
+    expect(engine.workflows.get("billing-checkout")?.durable).toBe(true);
+    expect(engine.workflows.get("billing-portal")?.durable).toBe(true);
+    // The gated route demands the scope the identity map grants to "member".
+    const pro = engine.workflows.get("pro")!;
+    const trigger = pro.nodes.find((n) => n.op === "boundary.http.request")!;
+    expect((trigger.config as { requireAuth?: unknown }).requireAuth).toEqual({ scopes: ["pro"] });
   });
 });

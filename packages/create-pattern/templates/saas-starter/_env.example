@@ -1,0 +1,12 @@
+# Stripe — the billing account in admin → System → Billing references these
+# (test keys from https://dashboard.stripe.com/test/apikeys; the webhook secret
+# comes from `stripe listen` in dev, or the endpoint config in production)
+STRIPE_API_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+# The app's public origin (e.g. https://app.example.com) — checkout redirects
+# and emailed links (invites, sign-in) are built on it. Unset in dev = localhost.
+# PATTERN_PUBLIC_URL=
+
+# A failed run emails this address (needs a "default" email account)
+# PATTERN_ALERTS_TO=

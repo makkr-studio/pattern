@@ -1,0 +1,11 @@
+{
+  "$schema": "pattern/config/v1",
+  "mods": [
+    "@pattern-js/mod-admin",
+    "@pattern-js/mod-store",
+    "@pattern-js/mod-email",
+    "./mods/billing.mjs",
+    "@pattern-js/mod-billing-stripe"
+  ],
+  "workflows": "./workflows"
+}

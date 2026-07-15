@@ -1,0 +1,92 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "pro",
+  "name": "GET /pro (members only)",
+  "description": "The paid feature. requireAuth demands the 'pro' scope — granted through billing’s subscription→role bridge and identity’s roles→scopes map. No billing code in sight.",
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": {
+        "method": "GET",
+        "path": "/pro",
+        "requireAuth": {
+          "scopes": [
+            "pro"
+          ]
+        }
+      },
+      "ui": {
+        "x": 40,
+        "y": 120
+      }
+    },
+    {
+      "id": "html",
+      "op": "core.const.json",
+      "config": {
+        "value": "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Members · {{name}}</title><style>body{font:16px/1.6 system-ui;max-width:640px;margin:8vh auto;padding:0 24px;color:#1a1a2e}h1{font-size:2rem}a{color:#4f46e5}</style><h1>You’re in 🎉</h1><p>This page is gated by <code>requireAuth: { scopes: ['pro'] }</code> — your subscription granted the <b>member</b> role, identity’s role map turned it into the <b>pro</b> scope, and the route let you through.</p><p>Build the actual product behind this door — it’s a workflow like any other.</p><p><a href=/>← back</a></p>"
+      },
+      "ui": {
+        "x": 320,
+        "y": 80
+      }
+    },
+    {
+      "id": "ctype",
+      "op": "core.const.json",
+      "config": {
+        "value": {
+          "content-type": "text/html; charset=utf-8"
+        }
+      },
+      "ui": {
+        "x": 320,
+        "y": 220
+      }
+    },
+    {
+      "id": "out",
+      "op": "boundary.http.response",
+      "config": {
+        "mode": "buffered"
+      },
+      "ui": {
+        "x": 600,
+        "y": 120
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "node": "in",
+        "port": "out"
+      },
+      "to": {
+        "node": "html",
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "node": "html",
+        "port": "out"
+      },
+      "to": {
+        "node": "out",
+        "port": "body"
+      }
+    },
+    {
+      "from": {
+        "node": "ctype",
+        "port": "out"
+      },
+      "to": {
+        "node": "out",
+        "port": "headers"
+      }
+    }
+  ]
+}

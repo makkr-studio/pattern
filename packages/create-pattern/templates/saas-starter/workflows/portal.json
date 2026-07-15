@@ -1,0 +1,126 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "billing-portal",
+  "name": "POST /billing/portal",
+  "description": "The provider’s own subscription UI (upgrade, cancel, invoices, cards) for the signed-in user’s customer. Durable, like everything that touches money.",
+  "durable": true,
+  "nodes": [
+    {
+      "id": "in",
+      "op": "boundary.http.request",
+      "config": {
+        "method": "POST",
+        "path": "/billing/portal",
+        "requireAuth": true
+      },
+      "ui": {
+        "x": 40,
+        "y": 140
+      }
+    },
+    {
+      "id": "who",
+      "op": "core.object.extract",
+      "config": {
+        "keys": [
+          "id"
+        ]
+      },
+      "ui": {
+        "x": 300,
+        "y": 80
+      }
+    },
+    {
+      "id": "portal",
+      "op": "billing.portal.create",
+      "config": {
+        "account": "default"
+      },
+      "retry": {
+        "attempts": 3,
+        "backoffMs": 400
+      },
+      "ui": {
+        "x": 560,
+        "y": 140
+      }
+    },
+    {
+      "id": "reply",
+      "op": "core.object.build",
+      "config": {
+        "keys": [
+          "url"
+        ]
+      },
+      "ui": {
+        "x": 820,
+        "y": 140
+      }
+    },
+    {
+      "id": "out",
+      "op": "boundary.http.response",
+      "config": {
+        "mode": "buffered"
+      },
+      "ui": {
+        "x": 1080,
+        "y": 140
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "node": "in",
+        "port": "user"
+      },
+      "to": {
+        "node": "who",
+        "port": "object"
+      }
+    },
+    {
+      "from": {
+        "node": "who",
+        "port": "id"
+      },
+      "to": {
+        "node": "portal",
+        "port": "userId"
+      }
+    },
+    {
+      "from": {
+        "node": "in",
+        "port": "url"
+      },
+      "to": {
+        "node": "portal",
+        "port": "origin"
+      }
+    },
+    {
+      "from": {
+        "node": "portal",
+        "port": "url"
+      },
+      "to": {
+        "node": "reply",
+        "port": "url"
+      }
+    },
+    {
+      "from": {
+        "node": "reply",
+        "port": "out"
+      },
+      "to": {
+        "node": "out",
+        "port": "body"
+      }
+    }
+  ]
+}
