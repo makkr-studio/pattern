@@ -25,6 +25,7 @@ export { runCli, type CliHostOptions } from "./cli.js";
 export { WsHost, createWsHost, type WsBinding, type WsHostOptions } from "./ws.js";
 export { NodeConnectionRegistry } from "./ws-registry.js";
 export { WorkerPoolTransport, type WorkerPoolOptions } from "./worker-pool.js";
+export { SqliteRunLedger, createRunLedger, type SqliteRunLedgerOptions } from "./durable/sqlite.js";
 export { ScheduleHost, createScheduleHost, cronMatcher } from "./schedule.js";
 export {
   jsonlTraceSink,

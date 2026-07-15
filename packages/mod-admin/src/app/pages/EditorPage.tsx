@@ -49,7 +49,7 @@ import { RequireAuthField } from "../editor/RequireAuthField";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
 import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
-import { Braces, Lock, Settings, Cpu, Sparkles } from "lucide-react";
+import { Braces, Lock, Settings, Cpu, Database, Sparkles } from "lucide-react";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -228,6 +228,8 @@ function EditorInner() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** Workflow-level Offload flag (mirrors baseDoc.current.offload for the UI). */
   const [offload, setOffload] = useState(false);
+  /** Workflow-level Durable flag (mirrors baseDoc.current.durable for the UI). */
+  const [durable, setDurable] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
   const [forkSlug, setForkSlug] = useState("");
   /** Inspector stretched over the whole editor (focus mode for big configs). */
@@ -387,6 +389,7 @@ function EditorInner() {
     (doc: WorkflowDoc, opts: { saved: WorkflowDoc | null }) => {
       baseDoc.current = doc;
       setOffload(doc.offload === true);
+      setDurable(doc.durable === true);
       history.current = { past: [], future: [] };
       const flow = buildFlow(doc, opMap);
       setNodes(flow.nodes);
@@ -500,9 +503,9 @@ function EditorInner() {
       setDirtyMap((m) => (m[tabKey]?.dirty === dirty && m[tabKey]?.newSlug === (newSlug || undefined) ? m : { ...m, [tabKey]: { dirty, newSlug: newSlug || undefined } }));
     }, 400);
     return () => clearTimeout(t);
-    // `offload` is metadata on baseDoc (a ref), so list it explicitly to recompute
-    // dirty when the Workflow-settings toggle flips it.
-  }, [nodes, edges, newSlug, slug, tabKey, offload]);
+    // `offload`/`durable` are metadata on baseDoc (a ref), so list them explicitly
+    // to recompute dirty when the Workflow-settings toggles flip them.
+  }, [nodes, edges, newSlug, slug, tabKey, offload, durable]);
 
   // ── Dynamic ports (§12): some ops derive ports from node config
   // (core.object.build keys, boundary.manual outputs, flow.sequence count…).
@@ -1591,6 +1594,32 @@ function EditorInner() {
                 <span className="font-mono"> pattern.config.json</span>); with none it runs inline. Offloaded
                 runs use the worker&rsquo;s own services, can&rsquo;t reach live WebSocket sockets, and aren&rsquo;t
                 pausable from the editor.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={durable}
+              className="mt-0.5 accent-[var(--color-neon-cyan)]"
+              onChange={(e) => {
+                const next = e.target.checked;
+                baseDoc.current = { ...baseDoc.current, durable: next ? true : undefined };
+                setDurable(next);
+              }}
+            />
+            <span>
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Database size={13} /> Durable runs (resume &amp; re-run)
+              </span>
+              <span className="text-muted mt-0.5 block text-xs leading-relaxed">
+                Record each run&rsquo;s exact input and every node&rsquo;s exact outputs in the RunLedger, so a
+                failed run can resume from the failing node and any run can re-run with the same input.
+                Costs one ledger write per node, and the ledger stores REAL values (under
+                <span className="font-mono"> .pattern-data/</span> — gitignored; protect it like your
+                database). Best for workflows where correctness beats latency: payments, webhooks,
+                provisioning.
               </span>
             </span>
           </label>

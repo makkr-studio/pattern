@@ -16,7 +16,7 @@
 
 import { Worker } from "node:worker_threads";
 import { availableParallelism } from "node:os";
-import type { RunHandle, RunRequest, RunResult, RunTransport, TraceEvent } from "@pattern-js/core";
+import type { LedgerEvent, RunHandle, RunRequest, RunResult, RunTransport, TraceEvent } from "@pattern-js/core";
 
 const WORKER_URL = new URL("./worker/entry.js", import.meta.url);
 
@@ -37,6 +37,7 @@ class WorkerWrapper {
     mods: string[],
     onFatal: (w: WorkerWrapper, err: unknown) => void,
     private readonly onTrace?: (evt: TraceEvent) => void,
+    private readonly onLedger?: (evt: LedgerEvent) => void,
   ) {
     this.worker = new Worker(WORKER_URL, { workerData: { mods } });
     this.worker.on("message", (msg: any) => this.onMessage(msg));
@@ -57,6 +58,13 @@ class WorkerWrapper {
     // worker ran it so the Runs view can show "ran on worker N".
     if (msg.type === "trace") {
       this.tagAndForward(msg.event as TraceEvent);
+      return;
+    }
+    // Durable-run ledger records from the worker land in the host's ledger —
+    // one file, one truth (mirrors the trace bridge; tolerant of records
+    // arriving around run-end).
+    if (msg.type === "ledger") {
+      this.onLedger?.(msg.event as LedgerEvent);
       return;
     }
     const p = this.pending.get(msg.id ?? msg.runId);
@@ -170,6 +178,13 @@ export interface WorkerPoolOptions {
    * worker traces (the runs still execute fine).
    */
   onTrace?: (evt: TraceEvent) => void;
+  /**
+   * Receive each offloaded durable run's ledger records — wire it to the host
+   * RunLedger (`applyLedgerEvent`) so worker runs are resumable like inline
+   * ones. Omit to drop them (offloaded durable runs then simply aren't
+   * ledgered).
+   */
+  onLedger?: (evt: LedgerEvent) => void;
 }
 
 export class WorkerPoolTransport implements RunTransport {
@@ -178,16 +193,18 @@ export class WorkerPoolTransport implements RunTransport {
   private closed = false;
   private readonly mods: string[];
   private readonly onTrace?: (evt: TraceEvent) => void;
+  private readonly onLedger?: (evt: LedgerEvent) => void;
 
   constructor(opts: WorkerPoolOptions = {}) {
     const size = Math.max(1, opts.size ?? availableParallelism() - 1);
     this.mods = opts.mods ?? [];
     this.onTrace = opts.onTrace;
+    this.onLedger = opts.onLedger;
     this.workers = Array.from({ length: size }, () => this.spawn());
   }
 
   private spawn(): WorkerWrapper {
-    return new WorkerWrapper(this.mods, (dead) => this.respawn(dead), this.onTrace);
+    return new WorkerWrapper(this.mods, (dead) => this.respawn(dead), this.onTrace, this.onLedger);
   }
 
   /** Replace a crashed worker so the pool keeps its capacity. */

@@ -107,6 +107,8 @@ export interface WorkflowDoc {
   source?: Source;
   /** Run this workflow off the host event loop on the worker pool (opt-in). */
   offload?: boolean;
+  /** Record runs in the RunLedger for resume/re-run (opt-in, 0.5). */
+  durable?: boolean;
   nodes: Array<{
     id: string;
     op: string;
@@ -188,7 +190,7 @@ export interface RunSummary {
   workflowId: string;
   trigger: string;
   principal: unknown;
-  status: "ok" | "error" | "running" | "streaming";
+  status: "ok" | "error" | "canceled" | "running" | "streaming";
   startTime: number;
   endTime?: number;
   /** Total run time, start → true end (all streams drained). */

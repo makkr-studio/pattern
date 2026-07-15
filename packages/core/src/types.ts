@@ -606,6 +606,15 @@ export const WorkflowSchema = z.object({
    */
   offload: z.boolean().optional(),
   /**
+   * Record this workflow's runs in the RunLedger (0.5 durable execution):
+   * exact trigger input + every node's exact value outputs, written as the
+   * run progresses. Powers "resume from the failing node" and "re-run with
+   * the same input". Opt-in — durable runs pay one ledger write per node, and
+   * the ledger records REAL values (protect `.pattern-data/` like a database).
+   * Like `offload`, toggling it isn't a behavioral version.
+   */
+  durable: z.boolean().optional(),
+  /**
    * Framework plumbing (a route endpoint, an asset mount, …) rather than a
    * user-meaningful workflow. Data-only: the admin catalog hides `internal`
    * workflows by default (a toggle reveals them), keeping the list focused on

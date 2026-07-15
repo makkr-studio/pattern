@@ -150,6 +150,14 @@ export class SqliteTraceStore implements TraceStore {
     this.capacity = opts.capacity ?? 500;
     this.now = opts.now ?? hiResNow;
     this.bootTime = this.now();
+    // Boot sweep: a crash leaves runs stuck `running`/`finished = 0` forever —
+    // close them out as errors. The one-minute grace protects the live runs of
+    // ANOTHER process sharing the file (`pattern run` beside the dev server).
+    this.db
+      .prepare(
+        "UPDATE trace_runs SET status = 'error', finished = 1, error = ? WHERE finished = 0 AND start_time < ?",
+      )
+      .run(JSON.stringify({ message: "interrupted (process exited mid-run)" }), Date.now() - 60_000);
   }
 
   config(): TraceStoreConfig {

@@ -75,6 +75,9 @@ export * from "./types.js";
 // Errors
 export * from "./errors.js";
 
+// Durable execution — the RunLedger (0.5)
+export * from "./durable/ledger.js";
+
 // Registries
 export {
   InMemoryOpRegistry,

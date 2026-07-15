@@ -15,9 +15,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Engine, TRACE_STORE, type TraceStore, type Workflow } from "@pattern-js/core";
+import { Engine, RUN_LEDGER, TRACE_STORE, applyLedgerEvent, type RunLedger, type TraceStore, type Workflow } from "@pattern-js/core";
 import { loadMods } from "./mods.js";
 import { createTraceStore } from "./trace/index.js";
+import { createRunLedger } from "./durable/sqlite.js";
 import { HttpHost } from "./http.js";
 import { WsHost } from "./ws.js";
 import { NodeConnectionRegistry } from "./ws-registry.js";
@@ -57,6 +58,15 @@ export interface PatternConfig {
    * in-memory automatically when `node:sqlite` is unavailable.
    */
   trace?: { persist?: boolean; path?: string; capacity?: number };
+  /**
+   * The RunLedger for `durable: true` workflows (0.5): exact run inputs +
+   * node outputs, powering resume and re-run. `persist: false` disables it;
+   * `path` overrides the default `<project>/.pattern-data/ledger.db` — kept
+   * OUT of `.pattern/` because it records real values (gitignored, like the
+   * identity and document stores). `keep` bounds retained terminal runs
+   * (default 200).
+   */
+  durable?: { persist?: boolean; path?: string; keep?: number };
 }
 
 /** Identity helper for authoring `pattern.config.ts` with type-checking. */
@@ -154,6 +164,22 @@ export async function loadProject(
   // broadcast…) reach the same sockets the WS host accepts.
   const engine = opts.engine ?? new Engine({ env: process.env, connections: new NodeConnectionRegistry() });
 
+  // The RunLedger (0.5 durable execution): created before the worker pool so
+  // offloaded durable runs can bridge their records here. Sqlite-backed in
+  // `.pattern-data/` (real values — gitignored); failure to open degrades to
+  // "durable runs aren't ledgered" with a warning, never a dead boot.
+  let runLedger: RunLedger | undefined;
+  if (!opts.engine && config.durable?.persist !== false) {
+    try {
+      runLedger = createRunLedger(config.durable?.path ?? resolve(baseDir, ".pattern-data/ledger.db"), {
+        keep: config.durable?.keep,
+      });
+      engine.provideService(RUN_LEDGER, runLedger);
+    } catch (err) {
+      console.warn(`[pattern] RunLedger unavailable (${err instanceof Error ? err.message : String(err)}) — durable workflows will run without capture`);
+    }
+  }
+
   if (!opts.engine && config.workers !== undefined) {
     const w = typeof config.workers === "number" ? { size: config.workers } : config.workers;
     // Forward each worker's trace into this engine's sink so offloaded runs land
@@ -163,6 +189,9 @@ export async function loadProject(
       size: w.size,
       mods: w.mods ?? config.mods,
       onTrace: (evt) => engine.ingestTrace(evt),
+      onLedger: (evt) => {
+        if (runLedger) void applyLedgerEvent(runLedger, evt);
+      },
     });
     engine.setOffloadTransport(offloadPool);
   }

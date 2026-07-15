@@ -14,7 +14,7 @@
  */
 
 import { parentPort, workerData } from "node:worker_threads";
-import { Engine, RunCanceled, type RunResult } from "@pattern-js/core";
+import { Engine, RUN_LEDGER, RunCanceled, type LedgerEvent, type RunLedger, type RunResult } from "@pattern-js/core";
 import { loadMods } from "../mods.js";
 
 const port = parentPort!;
@@ -39,6 +39,26 @@ engine.onTrace({
   onRunReady: (run) => forward({ kind: "runReady", run }),
   onRunEnd: (run) => forward({ kind: "runEnd", run: { ...run, error: run.error ? serializeError(run.error) : undefined } }),
 });
+
+// The RunLedger bridge: a durable workflow offloaded to this worker writes its
+// records here, and they land in the HOST's ledger (one file, one truth). The
+// records are already codec-encoded plain JSON, so structured clone is safe.
+function forwardLedger(event: LedgerEvent): void {
+  try {
+    port.postMessage({ type: "ledger", event });
+  } catch {
+    /* never crash the run over a ledger forward */
+  }
+}
+const ledgerBridge: RunLedger = {
+  begin: (header) => forwardLedger({ kind: "begin", header }),
+  nodeStarted: (runId, nodeId, at) => forwardLedger({ kind: "nodeStarted", runId, nodeId, at }),
+  nodeFinished: (record) => forwardLedger({ kind: "nodeFinished", record }),
+  end: (runId, status, error) => forwardLedger({ kind: "end", runId, status, error }),
+  get: async () => null, // reads happen on the host
+  prune: () => 0,
+};
+engine.provideService(RUN_LEDGER, ledgerBridge);
 
 /** Mods install before the first run executes (messages queue behind this). */
 const ready: Promise<void> = (async () => {
