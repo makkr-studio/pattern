@@ -22,6 +22,7 @@ import type {
   ToolsetDescriptor,
   TurnEvent,
   TurnStopReason,
+  Usage,
 } from "./types.js";
 
 interface Ids {
@@ -37,6 +38,8 @@ export interface TurnOutcome {
   history: NeutralMessage[] | null;
   /** Serialized loop state when interrupted (HITL resume token). */
   stateToken: string | null;
+  /** Token accounting summed across the turn's model steps, when reported. */
+  usage?: Usage;
 }
 
 export interface Decision {
@@ -199,6 +202,23 @@ export function startTurn(params: StartTurnParams): {
       const emit = (ev: TurnEvent) => controller.enqueue(ev);
       const settle = (o: TurnOutcome) => resolveOutcome(o);
 
+      // Token accounting: sum every model step's reported usage into a turn
+      // total (fields are optional — providers report what they report). The
+      // total rides the terminal `done` event and the outcome, so callers see
+      // what a turn cost without subscribing to anything else.
+      const turnUsage: Usage = {};
+      let usageSeen = false;
+      const addUsage = (u?: Usage): void => {
+        if (!u) return;
+        for (const k of ["inputTokens", "outputTokens", "totalTokens"] as const) {
+          if (typeof u[k] === "number") {
+            turnUsage[k] = (turnUsage[k] ?? 0) + u[k]!;
+            usageSeen = true;
+          }
+        }
+      };
+      const usage = (): Usage | undefined => (usageSeen ? { ...turnUsage } : undefined);
+
       const findAgent = (name: string): AgentDescriptor => {
         const walk = (a: AgentDescriptor): AgentDescriptor | undefined => {
           if (a.name === name) return a;
@@ -243,8 +263,8 @@ export function startTurn(params: StartTurnParams): {
           for (const g of guardrailsOf(active.descriptor, "input")) {
             if (await runGuardrail(g, lastUserText(messages), ctx)) {
               emit({ ...ids, type: "error", message: `input guardrail "${g.name}" tripped`, code: "guardrail.input" });
-              emit({ ...ids, type: "done", stopReason: "error" });
-              return settle({ stopReason: "error", output: null, history: null, stateToken: null });
+              emit({ ...ids, type: "done", stopReason: "error", usage: usage() });
+              return settle({ stopReason: "error", output: null, history: null, stateToken: null, usage: usage() });
             }
           }
         }
@@ -253,8 +273,8 @@ export function startTurn(params: StartTurnParams): {
         for (let turn = 0; ; turn++) {
           if (turn >= maxTurns) {
             emit({ ...ids, type: "error", message: `max turns (${maxTurns}) exceeded`, code: "max_turns" });
-            emit({ ...ids, type: "done", stopReason: "error" });
-            return settle({ stopReason: "error", output: null, history: null, stateToken: null });
+            emit({ ...ids, type: "done", stopReason: "error", usage: usage() });
+            return settle({ stopReason: "error", output: null, history: null, stateToken: null, usage: usage() });
           }
 
           let text = "";
@@ -274,12 +294,15 @@ export function startTurn(params: StartTurnParams): {
               emit({ ...ids, type: "text.delta", delta: chunk.delta });
             } else if (chunk.type === "tool-call" || chunk.type === "tool-approval-request") {
               toolCalls.push({ callId: chunk.callId, toolName: chunk.toolName, args: (chunk.args ?? {}) as Record<string, unknown> });
+            } else if (chunk.type === "finish") {
+              // The step's token accounting — summed into the turn total.
+              addUsage(chunk.usage);
             }
-            // `finish` and `tool-input-delta` carry no extra events here.
+            // `tool-input-delta` carries no extra events here.
           }
           if (signal.aborted) {
-            emit({ ...ids, type: "done", stopReason: "cancelled" });
-            return settle({ stopReason: "cancelled", output: null, history: null, stateToken: null });
+            emit({ ...ids, type: "done", stopReason: "cancelled", usage: usage() });
+            return settle({ stopReason: "cancelled", output: null, history: null, stateToken: null, usage: usage() });
           }
 
           // Record the assistant step.
@@ -295,13 +318,13 @@ export function startTurn(params: StartTurnParams): {
             for (const g of guardrailsOf(active.descriptor, "output")) {
               if (await runGuardrail(g, text, ctx)) {
                 emit({ ...ids, type: "error", message: `output guardrail "${g.name}" tripped`, code: "guardrail.output" });
-                emit({ ...ids, type: "done", stopReason: "error" });
-                return settle({ stopReason: "error", output: null, history: null, stateToken: null });
+                emit({ ...ids, type: "done", stopReason: "error", usage: usage() });
+                return settle({ stopReason: "error", output: null, history: null, stateToken: null, usage: usage() });
               }
             }
             const output = active.descriptor.outputSchema ? tryParse(text) : text;
-            emit({ ...ids, type: "done", stopReason: "complete" });
-            return settle({ stopReason: "complete", output, history: messages, stateToken: null });
+            emit({ ...ids, type: "done", stopReason: "complete", usage: usage() });
+            return settle({ stopReason: "complete", output, history: messages, stateToken: null, usage: usage() });
           }
 
           // A handoff outranks everything else this step.
@@ -338,19 +361,19 @@ export function startTurn(params: StartTurnParams): {
             for (const p of pending) {
               emit({ ...ids, type: "approval.request", interruption: { id: p.callId, toolName: p.toolName, args: p.args }, stateToken });
             }
-            emit({ ...ids, type: "done", stopReason: "interrupted" });
-            return settle({ stopReason: "interrupted", output: null, history: messages, stateToken });
+            emit({ ...ids, type: "done", stopReason: "interrupted", usage: usage() });
+            return settle({ stopReason: "interrupted", output: null, history: messages, stateToken, usage: usage() });
           }
           // else: dispatched tools → loop for the next model step.
         }
       } catch (err) {
         if (signal.aborted) {
-          emit({ ...ids, type: "done", stopReason: "cancelled" });
-          settle({ stopReason: "cancelled", output: null, history: null, stateToken: null });
+          emit({ ...ids, type: "done", stopReason: "cancelled", usage: usage() });
+          settle({ stopReason: "cancelled", output: null, history: null, stateToken: null, usage: usage() });
         } else {
           emit({ ...ids, type: "error", message: errMessage(err), code: errorCode(err) });
-          emit({ ...ids, type: "done", stopReason: "error" });
-          settle({ stopReason: "error", output: null, history: null, stateToken: null });
+          emit({ ...ids, type: "done", stopReason: "error", usage: usage() });
+          settle({ stopReason: "error", output: null, history: null, stateToken: null, usage: usage() });
         }
       } finally {
         controller.close();

@@ -95,6 +95,21 @@ agent is provider-agnostic: wire an `ai.model` into `agents.agent.model` (or rel
 on the default), and `agents.run` works against OpenAI, Anthropic, Google, a
 gateway model, anything.
 
+## Usage accounting
+
+Every language-model call — a plain `ai.text.generate`, an agent step, a chat
+turn, a history compaction — reports its token usage from ONE seam: the
+provider service taps the model itself, so nothing escapes the count. Each
+call lands `ai.inputTokens` / `ai.outputTokens` / `ai.totalTokens` on its node
+span (visible in the run waterfall) and emits an **`ai.usage`** event on the
+bus: `{ modelId, inputTokens, outputTokens, totalTokens, userId?, runId,
+workflowId, nodeId }` — `userId` present only for a signed-in caller.
+Subscribe with a `boundary.event` workflow to build quotas, dashboards, or
+billing (mod-billing ships that workflow ready-made). The agent loop also sums
+its steps: `agents.run` now outputs `usage`, and the terminal `done` turn
+event carries the same total. Accounting is fail-open telemetry — a metering
+hiccup never breaks a generation.
+
 ## MCP: both directions
 
 **Consume MCP servers** (client): `agents.mcp.client` (in mod-agents) builds a

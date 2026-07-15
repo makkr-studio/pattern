@@ -20,12 +20,7 @@ import type { OpContext } from "@pattern-js/core";
 import { generateText, jsonSchema, stepCountIs, streamText, tool, type ToolSet } from "./sdk.js";
 import type { AiProviderService } from "./provider.js";
 import { toModelMessages } from "./messages.js";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapUsage(u: any): Usage | undefined {
-  if (!u) return undefined;
-  return { inputTokens: u.inputTokens, outputTokens: u.outputTokens, totalTokens: u.totalTokens };
-}
+import { mapUsage } from "./ops/shared.js";
 
 function buildTools(defs: NeutralToolDef[] | undefined): ToolSet | undefined {
   if (!defs?.length) return undefined;

@@ -23,6 +23,7 @@ import {
 import type { Alias } from "./types.js";
 import { getSpec, type Creds, type ProviderSpec, type ProviderLike } from "./registry.js";
 import { vaultLike } from "./well-known.js";
+import { withUsageTap } from "./usage.js";
 
 export { listProviders, type ProviderInfo } from "./registry.js";
 
@@ -158,7 +159,11 @@ export class ProviderService implements AiProviderService {
   }
 
   async languageModel(ref: ModelRef, ctx: OpContext): Promise<LanguageModel> {
-    return this.model<LanguageModel>(await this.providerForRef(ref, ctx), "languageModel", ref);
+    const model = this.model<LanguageModel>(await this.providerForRef(ref, ctx), "languageModel", ref);
+    // The metering seam: EVERY language-model call funnels through here (plain
+    // ops, the agent loop, chat, compaction), so this one wrap taps them all —
+    // span attributes + an `ai.usage` bus event per call, fail-open.
+    return withUsageTap(model, ctx);
   }
   async textEmbeddingModel(ref: ModelRef, ctx: OpContext): Promise<EmbeddingModel> {
     return this.model<EmbeddingModel>(await this.providerForRef(ref, ctx), "textEmbeddingModel", ref);

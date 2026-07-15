@@ -20,6 +20,7 @@ import {
   modelRefSchema,
   toolsetSchema,
   turnEventSchema,
+  usageSchema,
   type AgentDescriptor,
   type GuardrailDescriptor,
   type MessagePart,
@@ -98,6 +99,8 @@ const runOutputs = {
   history: value(historySchema),
   stopReason: value(z.enum(["complete", "interrupted", "error", "cancelled"])),
   stateToken: value(z.string().nullable()),
+  /** Token accounting summed across the turn's model steps (0.5). */
+  usage: value(usageSchema.optional()),
 };
 
 function softOutputs(outcome: Promise<TurnOutcome>) {
@@ -106,6 +109,7 @@ function softOutputs(outcome: Promise<TurnOutcome>) {
     history: outcome.then((o) => o.history ?? []),
     stopReason: outcome.then((o) => o.stopReason),
     stateToken: outcome.then((o) => o.stateToken),
+    usage: outcome.then((o) => o.usage),
   };
 }
 

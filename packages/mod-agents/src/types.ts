@@ -218,6 +218,8 @@ export const turnEventSchema = z.discriminatedUnion("type", [
     ...base,
     type: z.literal("done"),
     stopReason: z.enum(["complete", "interrupted", "error", "cancelled"]),
+    /** Token accounting summed across the turn's model steps (0.5, additive). */
+    usage: usageSchema.optional(),
   }),
 ]);
 export type TurnEvent = z.infer<typeof turnEventSchema>;

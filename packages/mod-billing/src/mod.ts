@@ -19,6 +19,7 @@ import { DefaultBillingService, type BillingModOptions } from "./service.js";
 import { BILLING_CONFIG_SERVICE, BILLING_SERVICE } from "./well-known.js";
 import { billingOps } from "./ops.js";
 import { adminOps, billingAdminRoutes, billingFrontend } from "./admin.js";
+import { meterAiUsageWorkflow } from "./metering.js";
 
 /** The packaged docs/ chapter (the `docs` contribution points at "billing-docs"). */
 function packagedDocs(engine: Engine): void {
@@ -37,7 +38,12 @@ export function billingMod(options: BillingModOptions = {}): PatternMod {
     name: "@pattern-js/mod-billing",
     docs: { filesystem: "billing-docs", title: "Billing", order: 46 },
     ops: [...billingOps, ...adminOps],
-    workflows: billingAdminRoutes(),
+    // One flag turns on the usage-billing loop: mod-ai's ai.usage events →
+    // provider meter events, as an editable workflow (metering is an edge).
+    workflows: [
+      ...billingAdminRoutes(),
+      ...(options.meterAiUsage ? [meterAiUsageWorkflow(options.aiMeter ?? "ai_tokens")] : []),
+    ],
     frontend: billingFrontend(),
     setup: (engine: Engine) => {
       packagedDocs(engine);

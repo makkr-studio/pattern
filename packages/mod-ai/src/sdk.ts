@@ -24,11 +24,13 @@ export {
   jsonSchema,
   stepCountIs,
   createGateway,
+  wrapLanguageModel,
 } from "ai";
 
 export type {
   ModelMessage,
   LanguageModel,
+  LanguageModelMiddleware,
   EmbeddingModel,
   ImageModel,
   SpeechModel,

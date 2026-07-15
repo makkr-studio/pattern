@@ -73,7 +73,12 @@ from the local mapping — no provider round-trip, safe on every request.
 `billing.usage.record` reports `value` units on a provider **meter** against
 the user's customer; invoices aggregate automatically at period end. Pass a
 stable `identifier` and provider-side dedup makes retries safe. Combined with
-mod-ai's `ai.usage` events, metering agent tokens is an edge, not code.
+mod-ai's `ai.usage` events, metering agent tokens is an edge, not code:
+construct the mod with `meterAiUsage: true` and it seeds the
+**`billing.meter.ai-usage`** workflow — `ai.usage` → gate (signed-in user,
+tokens reported) → `billing.usage.record` on the `aiMeter` meter. It's an
+ordinary, non-internal workflow: open it in the editor to sample, split
+per-model meters, or bucket guests.
 
 ## Options
 
