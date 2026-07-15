@@ -3,7 +3,7 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
-## 0.4.0 — unreleased
+## 0.4.0 — 2026-07-15
 
 The framework learns to build itself: Buddy (the in-editor workflow
 assistant), a scoped-token control plane with a Pattern MCP server, vector

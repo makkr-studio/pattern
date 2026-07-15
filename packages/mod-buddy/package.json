@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-buddy",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Buddy — the in-admin workflow assistant for Pattern. A chat dock in the editor that drafts workflows, self-repairs against the validator, debugs failed runs from traces, and applies proposals to your open canvas. Its control-plane toolset (the pattern_* tools) doubles as the Pattern MCP server surface.",
   "keywords": [
     "pattern",

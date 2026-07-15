@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-vectors",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Vector search for Pattern — embedding collections that DECLARE their alias and dimensions (query-vs-index model mismatch becomes unrepresentable), filterable metadata, hybrid vector+keyword retrieval with RRF fusion, text chunking, and a zero-dependency sqlite-backed local engine with a driver SPI for sqlite-vec/pgvector later.",
   "keywords": [
     "pattern",
