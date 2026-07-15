@@ -55,6 +55,20 @@ anyway. Open the workflow in the admin editor to reword the email (two
 `core.string.template` nodes) or fork it entirely — see the
 [delivery guide](guides/delivery.md).
 
+## Failure alerts (0.5)
+
+A run fails, you get an email. The engine emits one `run.failed` event per
+failed top-level run (sub-run failures fold into their parent; cancels don't
+count), and this mod ships **`email.alert-failed-run`** subscribed to it: set
+`PATTERN_ALERTS_TO=ops@example.com` and every failure lands in that inbox
+with the workflow name, the error, and a deep link to the run's trace
+(`PATTERN_PUBLIC_URL` shapes the link; durable runs can resume right from
+that page). Unset, the workflow gates out silently — installing mod-email
+changes nothing until you opt in. It's an ordinary editable workflow: open it
+to reword the copy, alert only on certain workflows, or reroute to another
+channel. A failing alert can't alert about itself — the engine's recursion
+guard skips runs that `run.failed` itself triggered.
+
 ## Writing a driver
 
 A driver mod registers an `EmailDriverSpec` on the email service in `ready()`:

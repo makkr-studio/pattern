@@ -222,6 +222,42 @@ export class Engine {
     if (opts.registerCoreOps !== false) {
       registerCoreOps(this.ops);
     }
+
+    // ── run.failed (0.5 failure alerts): traces → one bus event per failure. ──
+    // The trace channel knows a run died; the event bus is what workflows can
+    // subscribe to (`boundary.event { event: "run.failed" }` → email, Slack,
+    // whatever the operator wires). This internal sink bridges the two:
+    //  - parent-less runs only (a sub-run's failure already fails its parent —
+    //    one incident, one event);
+    //  - errors only (a cancel is an operator's choice, not an incident);
+    //  - never for a run that was ITSELF triggered by run.failed — the honest
+    //    recursion guard for a failing alert workflow (checked by the firing
+    //    trigger node's config at emission time, so it also covers operator
+    //    edits made after registration).
+    const startInfo = new Map<string, { workflowId: string; trigger: string }>();
+    this.onTrace({
+      onRunStart: (run) => {
+        if (run.parent) return;
+        // Bounded: a run missing its end callback must not leak forever.
+        if (startInfo.size > 10_000) startInfo.delete(startInfo.keys().next().value!);
+        startInfo.set(run.runId, { workflowId: run.workflowId, trigger: run.trigger });
+      },
+      onRunEnd: (run) => {
+        const info = startInfo.get(run.runId);
+        if (!info) return;
+        startInfo.delete(run.runId);
+        if (run.status !== "error") return;
+        const trig = this.workflows.get(info.workflowId)?.nodes.find((n) => n.id === info.trigger);
+        if (trig?.op === "boundary.event" && (trig.config as { event?: string } | undefined)?.event === "run.failed") return;
+        this.events.emit("run.failed", {
+          runId: run.runId,
+          workflowId: info.workflowId,
+          trigger: info.trigger,
+          error: { message: run.error instanceof Error ? run.error.message : String(run.error ?? "unknown error") },
+          at: run.at ?? Date.now(),
+        });
+      },
+    });
   }
 
   /** The dependency bundle the scheduler/transport need. */

@@ -20,6 +20,7 @@ import { accountOp } from "./ops/account.js";
 import { inboundOps } from "./ops/inbound.js";
 import { sendOp } from "./ops/send.js";
 import { deliverTokenWorkflow } from "./delivery.js";
+import { alertFailedRunWorkflow } from "./alerts.js";
 import { emailAdminRoutes, emailFrontend, settingsOps } from "./settings.js";
 
 export interface EmailModOptions {
@@ -46,8 +47,9 @@ export function emailMod(options: EmailModOptions = {}): PatternMod {
     ops: [sendOp, accountOp, ...inboundOps, ...settingsOps],
     // The delivery workflow registers unconditionally: without mod-identity its
     // hook is auto-declared and never invoked (inert); with it, delivery starts
-    // the moment a "default" account exists.
-    workflows: [deliverTokenWorkflow(), ...emailAdminRoutes()],
+    // the moment a "default" account exists. Same posture for failure alerts:
+    // inert until PATTERN_ALERTS_TO is set.
+    workflows: [deliverTokenWorkflow(), alertFailedRunWorkflow(), ...emailAdminRoutes()],
     frontend: emailFrontend(),
     setup: (engine: Engine) => {
       packagedDocs(engine);
