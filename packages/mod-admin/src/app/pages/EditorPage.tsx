@@ -1762,7 +1762,7 @@ function Inspector({
   node: RFNode<OpNodeData>;
   op?: OpInfo;
   onChange: (config: Record<string, unknown>) => void;
-  onMeta: (meta: { title?: string; comment?: string }) => void;
+  onMeta: (meta: { title?: string; comment?: string; retry?: OpNodeData["retry"] }) => void;
 }) {
   const [raw, setRaw] = useState(false);
   const cat = categoryStyle(categoryOfType(node.data.op));
@@ -1826,6 +1826,57 @@ function Inspector({
             onChange={(e) => onMeta({ comment: e.target.value || undefined })}
           />
         </div>
+      </div>
+
+      {/* Reliability: the per-node retry policy (engine-read; validator warns
+          on external-effects ops and stream inputs — surfaced under Issues). */}
+      <div className="mt-4">
+        <div className="flex items-center justify-between">
+          <span className="text-muted text-xs font-semibold uppercase tracking-wider">Reliability</span>
+          {node.data.retry ? (
+            <button type="button" className="text-muted text-[10px] underline" onClick={() => onMeta({ retry: undefined })}>
+              remove retry
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-muted text-[10px] underline"
+              onClick={() => onMeta({ retry: { attempts: 3, backoffMs: 500 } })}
+            >
+              + retry on failure
+            </button>
+          )}
+        </div>
+        {node.data.retry && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {(
+              [
+                ["attempts", "Attempts (total)", 1, 10, "3"],
+                ["backoffMs", "Backoff (ms)", 0, undefined, "500"],
+                ["factor", "Backoff factor", 1, undefined, "2"],
+                ["maxBackoffMs", "Max backoff (ms)", 0, undefined, "30000"],
+              ] as const
+            ).map(([key, label, min, max, placeholder]) => (
+              <div key={key}>
+                <div className="text-muted mb-1 text-xs">{label}</div>
+                <input
+                  type="number"
+                  className={inputCls}
+                  min={min}
+                  max={max}
+                  placeholder={placeholder}
+                  value={node.data.retry?.[key] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value === "" ? undefined : Number(e.target.value);
+                    const next = { ...node.data.retry!, [key]: v };
+                    if (v === undefined) delete (next as Record<string, unknown>)[key];
+                    onMeta({ retry: { ...next, attempts: next.attempts ?? 3 } });
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-4 mb-2 flex items-center justify-between">

@@ -528,6 +528,25 @@ export const WorkflowNodeSchema = z.object({
    */
   comment: z.string().optional(),
   config: z.unknown().optional(),
+  /**
+   * Per-node retry policy — the first engine-read node field beyond `op` +
+   * `config`, and always explicit (the house stance stays "failure is a value
+   * you branch on"; nothing retries unless the author says so). `attempts` is
+   * the TOTAL count (1 = off). A failed attempt backs off `backoffMs`, then
+   * `× factor` per further attempt, capped at `maxBackoffMs`. Skips are never
+   * retried; a cancelled run stops retrying immediately. The validator warns
+   * when a retry sits on an op with `"external"` effects (a replay may
+   * duplicate its side effect) or with wired stream inputs (a failed attempt
+   * may have partially consumed them).
+   */
+  retry: z
+    .object({
+      attempts: z.number().int().min(1).max(10),
+      backoffMs: z.number().int().min(0).default(500),
+      factor: z.number().min(1).default(2),
+      maxBackoffMs: z.number().int().min(0).default(30_000),
+    })
+    .optional(),
   /** Editor canvas position + view hints (T3). Data-only. */
   ui: NodeUiSchema.optional(),
 });

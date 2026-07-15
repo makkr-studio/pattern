@@ -107,7 +107,16 @@ export interface WorkflowDoc {
   source?: Source;
   /** Run this workflow off the host event loop on the worker pool (opt-in). */
   offload?: boolean;
-  nodes: Array<{ id: string; op: string; title?: string; comment?: string; config?: unknown; ui?: { x: number; y: number; [k: string]: unknown } }>;
+  nodes: Array<{
+    id: string;
+    op: string;
+    title?: string;
+    comment?: string;
+    config?: unknown;
+    /** Per-node retry policy (0.5, engine-read — attempts is the TOTAL count). */
+    retry?: { attempts: number; backoffMs?: number; factor?: number; maxBackoffMs?: number };
+    ui?: { x: number; y: number; [k: string]: unknown };
+  }>;
   edges: Array<{ from: { node: string; port: string }; to: { node: string; port: string }; ui?: { portal?: string; [k: string]: unknown } }>;
   /** Visual annotation boxes (data-only; engine-ignored, hash-ignored). */
   frames?: Array<{ id: string; label?: string; comment?: string; x: number; y: number; w: number; h: number; hue?: number }>;
