@@ -139,11 +139,22 @@ export class ProviderService implements AiProviderService {
 
   /** A model getter on a provider, with a friendly error when that provider lacks the modality. */
   private model<T>(prov: ProviderLike, method: keyof ProviderLike, ref: ModelRef): T {
+    // An alias-only ref (mod-vectors passes `{ alias }`) takes the alias's
+    // model id — feeding undefined to the SDK reads as "you must provide a
+    // model parameter", which locates nothing.
+    const modelId = ref.modelId ?? (ref.alias ? this.lookup(ref.alias)?.modelId : undefined);
+    if (!modelId) {
+      throw new Error(
+        `mod-ai: the model reference carries no model id` +
+          (ref.alias ? ` and alias "${ref.alias}" resolves none` : "") +
+          ` — configure it in admin → Settings → AI Providers.`,
+      );
+    }
     const fn = prov[method];
     if (typeof fn !== "function") {
-      throw new Error(`mod-ai: provider "${ref.provider}" does not support ${String(method)} (model "${ref.modelId}").`);
+      throw new Error(`mod-ai: provider "${ref.provider}" does not support ${String(method)} (model "${modelId}").`);
     }
-    return (fn as (id: string) => T).call(prov, ref.modelId);
+    return (fn as (id: string) => T).call(prov, modelId);
   }
 
   async languageModel(ref: ModelRef, ctx: OpContext): Promise<LanguageModel> {

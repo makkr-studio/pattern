@@ -309,19 +309,29 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
       const p = ctx.principal as { kind?: string; id?: string };
       const ownerId = p?.kind === "user" && p.id ? p.id : null;
       if (!ownerId) return { result: { ok: false, error: "guests have no long-term memory — sign in first" } };
-      await ensureCollection(vec);
-      await vec.upsert(
-        cfg.collection,
-        [
-          {
-            id: memoryId(ownerId, fact),
-            text: fact.slice(0, 300),
-            meta: { userId: ownerId, conversationId: "", sourceRunId: ctx.runId, learnedAt: new Date().toISOString(), via: "remember" },
-          },
-        ],
-        ctx,
-      );
-      return { result: { ok: true, remembered: fact.slice(0, 300) } };
+      // Same probe as the extractor: without the embedding alias, answer with
+      // words the agent can relay — never a stack trace in the chat.
+      const aiConfig = ctx.services["aiConfig"] as AiConfigLike | undefined;
+      if (aiConfig && !aiConfig.alias(cfg.alias)) {
+        return { result: { ok: false, error: `memory needs an "${cfg.alias}" embedding alias — add it in admin → Settings → AI Providers` } };
+      }
+      try {
+        await ensureCollection(vec);
+        await vec.upsert(
+          cfg.collection,
+          [
+            {
+              id: memoryId(ownerId, fact),
+              text: fact.slice(0, 300),
+              meta: { userId: ownerId, conversationId: "", sourceRunId: ctx.runId, learnedAt: new Date().toISOString(), via: "remember" },
+            },
+          ],
+          ctx,
+        );
+        return { result: { ok: true, remembered: fact.slice(0, 300) } };
+      } catch (err) {
+        return { result: { ok: false, error: `couldn't save the memory: ${(err as Error).message}` } };
+      }
     },
   };
 
