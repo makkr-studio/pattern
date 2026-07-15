@@ -8,35 +8,56 @@ records what actually shipped.
 > without migration paths or legacy shims; the CHANGELOG calls out every
 > breaking change.
 
-## Next — 0.5.0: durable by default (direction)
+## Next — 0.5.0: open for business (direction)
 
-The headline candidate: **durable retries & resume** — retry policies as node
-config, and resuming a failed run from the failing node instead of from
-scratch. The event-sourced span log already records every node's I/O in
-order; the work is resumable-state persistence and idempotency semantics (an
-`email.send` must never replay). Alongside it, the scaffolder's composability
-rework (surfaces × stacks × recipes, `pattern add`) is under consideration —
-being shaped by real usage first.
+The theme: everything a real product needs the day it starts taking money.
+Two headliners that are secretly one story — payments demand durability:
+
+- **Durable execution** — retry policies as node config (attempts, backoff),
+  resuming a failed run from the failing node instead of from scratch, and
+  idempotency semantics so a retry can never double-send an email or
+  double-charge a card. The deep engine work of the release; it also unlocks
+  resumable approval gates in agent runs.
+- **Payments (`mod-stripe`)** — checkout, the customer portal, and
+  subscription state; a signed `stripe.webhook` trigger (the 0.4
+  inbound-email recipe); and a subscription→identity bridge so plan status
+  projects into roles — gating a route behind a paid plan becomes an auth
+  requirement, not code. Plus **usage metering**: record agent and model
+  usage to Stripe metered billing straight from the canvas.
+- **The `saas-starter` pack + a deploy story** — scaffold sign-in, real
+  email, billing, and a gated app in one command; a Dockerfile in every
+  scaffold and guides for the usual platforms. From `npm create pattern` to
+  a paying customer.
+- **Failure alerts** — a run exhausts its retries, you get an email. Nearly
+  free on `mod-email`, and it completes the reliability story durability
+  starts.
+
+The scaffolder's composability rework (surfaces × stacks × recipes,
+`pattern add`) stays under consideration — being shaped by real usage first.
 
 ## Later
 
 An unordered shelf — these are on the map, not yet in a milestone:
 
-- **Failure alerts** — a run fails, you get an email. Nearly free on `mod-email`.
+- **Orgs & teams** — multi-tenant identity: organizations, team invites,
+  per-org data scoping and billing. The natural sequel to a SaaS that takes
+  money.
+- **Durable timers & waits** — once durability lands: nodes that sleep for
+  days (drip campaigns) or wait for an event or approval (human-in-the-loop)
+  without holding a process open.
 - **Auth rate limiting** — throttle magic-link/invite issuance per address and
   IP; today a hostile client can make an app send email as fast as its driver
   allows.
 - **Workflow import/export & a public gallery** — copy-as-JSON, import-from-URL,
   and a gallery of ready-to-import examples on the site.
-- **Deploy story** — Dockerfile in every scaffold and guides for the usual
-  platforms; from `npm create pattern` to a URL in minutes.
 - **`pattern test`** — a workflow test harness: fixtures in, assertions out,
   trace snapshots.
 - **Typed clients** — generate a TypeScript client for your app's endpoints from
   the boundary schemas.
-- **Payments** — a Stripe mod, completing identity + email into a `saas-starter`
-  modpack.
-- **More vector drivers** — pgvector first.
+- **Document readers** — a text-extraction seam (PDF first) feeding
+  `mod-vectors` ingestion and file uploads in chat.
+- **Postgres drivers** — pgvector for vectors first; store and traces later,
+  so production can run on one database.
 - **Hosted docs** — the handbook, online at pattern-js.dev.
 - **Community mod registry** — discover third-party mods by npm keyword.
 
