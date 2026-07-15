@@ -49,7 +49,8 @@ export function Hero({ spin = false }: { spin?: boolean }) {
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-muted">
           Pattern is a workflow engine for APIs, agents, and apps. Wire typed operations into a graph, watch the data flow,
-          and ship. The visual editor, streaming, and live reload are built in.
+          and ship. The visual editor, streaming, and live reload are built in. So is Buddy — the assistant that drafts
+          workflows with you.
         </p>
         <div className="mt-9 flex flex-col items-center gap-5">
           <Terminal />

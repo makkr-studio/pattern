@@ -142,4 +142,80 @@ describe.each(drivers)("identity stores (%s)", (_name, open) => {
     expect(await stores.tokens.findByTokenHash(live.tokenHash)).not.toBeNull();
     await stores.close();
   });
+
+  it("deleteUser removes the user, their identity links AND their session rows", async () => {
+    const stores = await open();
+    const ada = await mkUser(stores, "ada@test");
+    const bob = await mkUser(stores, "bob@test");
+    await stores.sessions.create(session(ada.id));
+    const bobs = await stores.sessions.create(session(bob.id));
+
+    expect(await stores.users.deleteUser(ada.id)).toBe(true);
+    expect(await stores.users.findById(ada.id)).toBeNull();
+    expect(await stores.users.findByIdentity("test", "ada@test")).toBeNull();
+    expect(await stores.sessions.listForUser(ada.id)).toHaveLength(0);
+    // The email is free again, the neighbor untouched.
+    await expect(mkUser(stores, "ada@test")).resolves.toMatchObject({ email: "ada@test" });
+    expect((await stores.sessions.findById(bobs.id))?.userId).toBe(bob.id);
+    expect(await stores.users.deleteUser("nope")).toBe(false);
+    await stores.close();
+  });
+
+  it("invite acceptance is CAS single-shot, and revoke can't land on an accepted invite", async () => {
+    const stores = await open();
+    const mkInvite = () =>
+      stores.invites.create({
+        id: crypto.randomUUID(),
+        email: "new@test",
+        emailNorm: "new@test",
+        roles: ["admin"],
+        next: "/admin",
+        invitedBy: null,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        acceptedAt: null,
+        acceptedUserId: null,
+        revokedAt: null,
+      });
+
+    // Exactly one of N concurrent acceptors wins.
+    const a = await mkInvite();
+    const wins = await Promise.all(
+      Array.from({ length: 5 }, () => stores.invites.markAccepted(a.id, a.version, Date.now(), "user-1")),
+    );
+    expect(wins.filter(Boolean)).toHaveLength(1);
+
+    // Accepted → revoke misses (stale version AND the accepted_at guard).
+    const accepted = (await stores.invites.findById(a.id))!;
+    expect(await stores.invites.revoke(a.id, accepted.version, Date.now())).not.toBeNull(); // CAS itself allows it…
+    const b = await mkInvite();
+    const revoked = await stores.invites.revoke(b.id, b.version, Date.now());
+    expect(revoked?.revokedAt).not.toBeNull();
+    // …and a revoked invite refuses acceptance outright.
+    expect(await stores.invites.markAccepted(b.id, revoked!.version, Date.now(), "user-2")).toBeNull();
+    // Idempotent revoke: same answer, no error.
+    expect((await stores.invites.revoke(b.id, revoked!.version, Date.now()))?.revokedAt).not.toBeNull();
+    await stores.close();
+  });
+
+  it("invites list newest-first", async () => {
+    const stores = await open();
+    for (const email of ["one@test", "two@test"]) {
+      await stores.invites.create({
+        id: crypto.randomUUID(),
+        email,
+        emailNorm: email,
+        roles: [],
+        next: null,
+        invitedBy: null,
+        createdAt: email === "one@test" ? 1000 : 2000,
+        expiresAt: Date.now() + 60_000,
+        acceptedAt: null,
+        acceptedUserId: null,
+        revokedAt: null,
+      });
+    }
+    expect((await stores.invites.list()).map((i) => i.email)).toEqual(["two@test", "one@test"]);
+    await stores.close();
+  });
 });

@@ -11,15 +11,20 @@ export { default } from "./mod.js";
 export { resolveOptions, type IdentityOptions, type ResolvedIdentityOptions } from "./options.js";
 export {
   DefaultIdentityService,
+  API_TOKEN_PREFIX,
+  API_TOKEN_SCOPES,
+  type ApiTokenScope,
   type FindOrCreateInput,
   type IdentityService,
   type IssuedToken,
   type LoginMethod,
+  type MintedApiToken,
   type MintedSession,
   type ResolvedSession,
 } from "./service.js";
 export { identityService, IDENTITY_SERVICE } from "./service-key.js";
 export { sessionAuthProvider, SESSION_PROVIDER_NAME } from "./auth-provider.js";
+export { apiTokenAuthProvider, API_TOKEN_PROVIDER_NAME } from "./api-token-provider.js";
 export { deliverToken, absoluteUrl, DELIVER_TOKEN_HOOK, type DeliverInput, type DeliverResult } from "./deliver.js";
 export { parseCookies, serializeSessionCookie, clearSessionCookie } from "./cookies.js";
 export { isCrossSiteWrite, isStateChanging } from "./csrf.js";
@@ -31,6 +36,8 @@ export { sqliteIdentityStores } from "./store/sqlite.js";
 export { KeyedMutex } from "./store/mutex.js";
 export {
   UniqueViolationError,
+  type ApiTokenRow,
+  type ApiTokenStore,
   type IdentityStores,
   type SessionRow,
   type SessionStore,

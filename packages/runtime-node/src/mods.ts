@@ -46,13 +46,17 @@ export async function loadMods(
       throw new Error(`"${spec}" does not export a PatternMod (default export or named "mod")`);
     }
     // Await the mod's async `setup` — `start()` must observe installed mods.
-    // `ready` is deferred: it runs once ALL mods are in (see below).
-    await engine.useAsync(def, { deferReady: true });
+    // `ready` AND the mod's seeded workflows are deferred: both run once ALL
+    // mods are in (see below).
+    await engine.useAsync(def, { deferReady: true, deferWorkflows: true });
     loaded.push(def);
   }
-  // Second phase: every mod is installed (all ops registered) — now run the
-  // `ready` hooks. This is what lets the admin's control plane bootstrap
-  // stored workflows that use ops from mods listed *after* it in the config.
+  // Second phase: every mod is installed (all ops registered) — now the parked
+  // mod workflows resolve + validate, so a seeded workflow may wire ops from a
+  // mod listed *after* its own (mod-buddy's tools use mod-docs ops), then the
+  // `ready` hooks run. Same reason the admin's control plane can bootstrap
+  // stored workflows that use ops from mods listed after it in the config.
+  await engine.flushDeferredWorkflows();
   for (const def of loaded) {
     await def.ready?.(engine);
   }

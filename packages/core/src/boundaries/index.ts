@@ -120,6 +120,8 @@ export const schedule: OpDefinition = {
   description: "Cron/interval trigger. Outputs { timestamp }. config: { cron? | intervalMs? }.",
   boundary: "trigger",
   pair: "boundary.return",
+  // The scheduler discards the run result — an out-gate only records it.
+  outgateOptional: true,
   inputs: {},
   // Registration-time config ports: wire env/const values into the timing.
   configInputs: {
@@ -426,8 +428,10 @@ export const wsClose: OpDefinition = {
   title: "boundary.ws.close",
   description: "Connection-closed trigger. Outputs { connection, user, code?, reason? }.",
   boundary: "trigger",
-  // The socket is already gone — the run's outcome is just its recorded result.
+  // The socket is already gone — the run's outcome is just its recorded result,
+  // so an out-gate is optional (nothing can read it).
   pair: "boundary.return",
+  outgateOptional: true,
   inputs: {},
   outputs: {
     connection: value(connectionSchema),
@@ -510,6 +514,10 @@ export const eventTrigger: OpDefinition = {
     "reads the result; pair with boundary.return to record an outcome on the run.",
   boundary: "trigger",
   pair: "boundary.return",
+  // Emitters never read the result (§8), and the subscription is declared via
+  // the generic trigger seam — boundary.event is just its simplest consumer.
+  outgateOptional: true,
+  triggerEvents: (config: { event?: string }) => (config.event ? [{ event: config.event }] : []),
   inputs: {},
   configInputs: { event: value(z.string()) },
   outputs: { payload: value() },

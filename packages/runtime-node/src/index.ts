@@ -37,6 +37,7 @@ export {
   type SqliteTraceStoreOptions,
 } from "./trace/index.js";
 export { loadMods, type LoadModsOptions } from "./mods.js";
+export { runMcpStdio } from "./mcp-stdio.js";
 export {
   loadProject,
   loadWorkflowDir,

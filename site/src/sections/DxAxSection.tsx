@@ -20,7 +20,7 @@ const AX: Feature[] = [
   { icon: Bot, title: "AGENTS.md in every scaffold", body: "Each project ships a contract sheet so a coding agent knows the conventions before it writes a line." },
   { icon: FileText, title: "llms.txt", body: "The docs expose a single llms.txt so an agent can read the whole handbook in one fetch." },
   { icon: ScanText, title: "Self-describing ops", body: "Every op carries its name, ports, schemas, and prose. An agent can author a real workflow without guessing." },
-  { icon: Plug, title: "MCP ready", body: "Tools and workflows surface over MCP, so agents call your app directly with typed arguments." },
+  { icon: Plug, title: "MCP, both directions", body: "Your tool workflows surface over MCP — and `pattern mcp` hands your editor's agent the control plane: ops, docs, validation, drafts, runs." },
 ];
 
 function Column({ eyebrow, title, blurb, features, accent }: { eyebrow: string; title: string; blurb: string; features: Feature[]; accent: string }) {

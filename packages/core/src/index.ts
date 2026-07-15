@@ -59,6 +59,16 @@ export {
 // Secret-safe config (admin-spec P4) + I/O sample masking (T1)
 export { secret, redactConfig, collectSecretValues, maskSecretValues, REDACTED } from "./redact.js";
 
+// Sourced secret references ({ source: "vault" | "env", key }) + run-time resolution
+export {
+  secretRefSchema,
+  resolveSourced,
+  vaultLike,
+  VAULT_SERVICE_KEY,
+  type SecretRef,
+  type VaultLike,
+} from "./secret-ref.js";
+
 // Type contracts
 export * from "./types.js";
 
@@ -85,6 +95,7 @@ export {
   fromParams,
   fromQuery,
   fromBody,
+  fromRequestUrl,
   type HttpSrc,
   type PortSource,
   type RouteIO,

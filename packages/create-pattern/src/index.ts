@@ -23,6 +23,7 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { EMAIL_AGENT_REPLY_WORKFLOW, WHOAMI_WORKFLOW } from "./workflows.js";
 
 const TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
 
@@ -45,6 +46,8 @@ interface NextCtx {
   examples: boolean;
   /** A .env with a generated PATTERN_VAULT_KEY was written (skip the cp step). */
   vaultKey: boolean;
+  /** Model aliases pre-written from the provider picks (null = none seeded). */
+  seeded: SeedPlan | null;
 }
 
 interface Modpack {
@@ -123,27 +126,42 @@ const DOCS_MOD = "@pattern-js/mod-docs";
  * The @ai-sdk provider packages are at DIFFERENT majors (they share one spec
  * layer, @ai-sdk/provider@3, so all are ai-v6 compatible) — each range is pinned
  * to the package's real major (verified against npm) to avoid ETARGET installs.
+ *
+ * `seed` makes a pick work on FIRST boot: when a seeded provider is chosen, the
+ * scaffold pre-writes model aliases (`default` for language, `embeddings` for
+ * embedding — the names agents, RAG examples and Buddy resolve) into
+ * `.pattern-data/ai-config.json`, each authenticating via `{ source: "env",
+ * key: envKey }`. Ids come from mod-ai's curated catalog and stay editable in
+ * admin → Settings → AI Providers; provider ids match mod-ai's registry.
+ * Unseeded providers keep the status quo (create aliases in Settings).
  */
-const AI_PROVIDERS = [
-  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^3" },
+interface AiProviderChoice {
+  value: string;
+  label: string;
+  hint: string;
+  range: string;
+  seed?: { provider: string; envKey: string; language?: string; embedding?: string };
+}
+const AI_PROVIDERS: AiProviderChoice[] = [
+  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^3", seed: { provider: "xai", envKey: "XAI_API_KEY", language: "grok-4" } },
   { value: "@ai-sdk/vercel", label: "Vercel", hint: "v0 models", range: "^2" },
-  { value: "@ai-sdk/openai", label: "OpenAI", hint: "", range: "^3" },
+  { value: "@ai-sdk/openai", label: "OpenAI", hint: "", range: "^3", seed: { provider: "openai", envKey: "OPENAI_API_KEY", language: "gpt-5.1", embedding: "text-embedding-3-small" } },
   { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI on Azure", range: "^3" },
-  { value: "@ai-sdk/anthropic", label: "Anthropic", hint: "", range: "^3" },
+  { value: "@ai-sdk/anthropic", label: "Anthropic", hint: "", range: "^3", seed: { provider: "anthropic", envKey: "ANTHROPIC_API_KEY", language: "claude-sonnet-4-6" } },
   { value: "@ai-sdk/open-responses", label: "Open Responses", hint: "self-hosted Responses API", range: "^1" },
   { value: "@ai-sdk/anthropic-aws", label: "Claude on AWS", hint: "Claude via Bedrock", range: "^1" },
   { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "models on AWS", range: "^4" },
-  { value: "@ai-sdk/groq", label: "Groq", hint: "", range: "^3" },
+  { value: "@ai-sdk/groq", label: "Groq", hint: "", range: "^3", seed: { provider: "groq", envKey: "GROQ_API_KEY", language: "llama-3.3-70b-versatile" } },
   { value: "@ai-sdk/fal", label: "Fal", hint: "image/video/audio", range: "^2" },
   { value: "@ai-sdk/deepinfra", label: "DeepInfra", hint: "", range: "^2" },
   { value: "@ai-sdk/black-forest-labs", label: "Black Forest Labs", hint: "FLUX", range: "^1" },
-  { value: "@ai-sdk/google", label: "Google Generative AI", hint: "Gemini", range: "^3" },
+  { value: "@ai-sdk/google", label: "Google Generative AI", hint: "Gemini", range: "^3", seed: { provider: "google", envKey: "GOOGLE_GENERATIVE_AI_API_KEY", language: "gemini-2.5-flash", embedding: "gemini-embedding-001" } },
   { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP", range: "^4" },
-  { value: "@ai-sdk/mistral", label: "Mistral AI", hint: "", range: "^3" },
+  { value: "@ai-sdk/mistral", label: "Mistral AI", hint: "", range: "^3", seed: { provider: "mistral", envKey: "MISTRAL_API_KEY", language: "mistral-large-latest", embedding: "mistral-embed" } },
   { value: "@ai-sdk/togetherai", label: "Together.ai", hint: "", range: "^2" },
-  { value: "@ai-sdk/cohere", label: "Cohere", hint: "", range: "^3" },
+  { value: "@ai-sdk/cohere", label: "Cohere", hint: "", range: "^3", seed: { provider: "cohere", envKey: "COHERE_API_KEY", language: "command-a", embedding: "embed-v4.0" } },
   { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "", range: "^2" },
-  { value: "@ai-sdk/voyage", label: "Voyage AI", hint: "embeddings", range: "^1" },
+  { value: "@ai-sdk/voyage", label: "Voyage AI", hint: "embeddings", range: "^1", seed: { provider: "voyage", envKey: "VOYAGE_API_KEY", embedding: "voyage-3.5" } },
   { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "", range: "^2" },
   { value: "@ai-sdk/moonshotai", label: "Moonshot AI", hint: "Kimi", range: "^2" },
   { value: "@ai-sdk/alibaba", label: "Alibaba", hint: "Qwen", range: "^1" },
@@ -172,10 +190,66 @@ const AI_PROVIDERS_DEFAULT = ["@ai-sdk/openai", "@ai-sdk/anthropic"];
 function packUsesAi(pack: Modpack): boolean {
   return pack.mods.some((m) => m.includes("mod-ai"));
 }
+/** A pack that wires mod-buddy gets `.mcp.json` (Claude Code ⇄ `pattern mcp`). */
+function packHasBuddy(pack: Modpack): boolean {
+  return pack.mods.some((m) => m.includes("mod-buddy"));
+}
+
+/**
+ * Written into every mod-buddy pack: any MCP client that reads `.mcp.json`
+ * (Claude Code first among them) auto-connects `pattern mcp` — the project's
+ * tool workflows over stdio, including the ten `pattern_*` control-plane tools
+ * (list/search ops + docs, get/validate/save workflow drafts, inspect runs).
+ * Stdio is the local trust posture: no tokens, the shell already owns the box.
+ */
+const MCP_CONFIG = `{
+  "mcpServers": {
+    "pattern": {
+      "command": "npx",
+      "args": ["pattern", "mcp"]
+    }
+  }
+}
+`;
 /** Accept short ids ("azure") or full packages ("@ai-sdk/azure"). */
 const normProvider = (id: string): string => (id.startsWith("@ai-sdk/") ? id : "@ai-sdk/" + id);
 /** The version range for a provider package (falls back to latest for an unknown one). */
 const providerRange = (pkg: string): string => AI_PROVIDERS.find((p) => p.value === pkg)?.range ?? "latest";
+
+/** One alias the scaffold pre-writes into `.pattern-data/ai-config.json`. */
+interface SeededAlias {
+  name: "default" | "embeddings";
+  provider: string;
+  modelId: string;
+  modality: "language" | "embedding";
+  envKey: string;
+}
+interface SeedPlan {
+  aliases: SeededAlias[];
+  /** The env var(s) that unlock the seeded aliases (deduped). */
+  envKeys: string[];
+}
+
+/**
+ * What the picked providers let us seed: `default` from the first pick with a
+ * language seed, `embeddings` from the first with an embedding seed (they can
+ * differ — anthropic + openai seeds Claude for language, OpenAI for
+ * embeddings). No seedable pick → null, and the "create aliases in Settings"
+ * next-steps stay. Pure, so the manifest card and next-steps render the same
+ * plan the scaffold writes.
+ */
+function aliasSeedPlan(providers: string[]): SeedPlan | null {
+  const seeds = providers
+    .map((id) => AI_PROVIDERS.find((x) => x.value === normProvider(id))?.seed)
+    .filter((s): s is NonNullable<AiProviderChoice["seed"]> => s !== undefined);
+  const lang = seeds.find((s) => s.language);
+  const emb = seeds.find((s) => s.embedding);
+  if (!lang && !emb) return null;
+  const aliases: SeededAlias[] = [];
+  if (lang) aliases.push({ name: "default", provider: lang.provider, modelId: lang.language!, modality: "language", envKey: lang.envKey });
+  if (emb) aliases.push({ name: "embeddings", provider: emb.provider, modelId: emb.embedding!, modality: "embedding", envKey: emb.envKey });
+  return { aliases, envKeys: [...new Set(aliases.map((a) => a.envKey))] };
+}
 
 /** The model aliases an AI pack can use — one per modality. `default` (text) is the
  *  only one strictly required; the rest unlock image/speech/transcription ops. */
@@ -193,12 +267,39 @@ function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
   ];
 }
 
+/**
+ * The model-alias next steps: with a seed plan, the aliases already exist —
+ * the only step is the key; without one, the manual how-to (aliasLines).
+ */
+function modelLines(seeded: SeedPlan | null): string[] {
+  if (!seeded) return aliasLines();
+  const show = (a: SeededAlias) => `${pc.bold(a.name)} ${pc.dim(`(${a.provider} ${a.modelId})`)}`;
+  const lines = [
+    `${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Settings → AI Providers)")}`,
+  ];
+  if (!seeded.aliases.some((a) => a.name === "default")) {
+    lines.push(`${pc.cyan("→")} add a ${pc.bold("default")} language alias in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— agents and chat fall back to it")}`);
+  }
+  if (!seeded.aliases.some((a) => a.name === "embeddings")) {
+    lines.push(`${pc.cyan("→")} add an ${pc.bold("embeddings")} alias ${pc.dim("(modality: embedding)")} in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— RAG + semantic search need it")}`);
+  }
+  return lines;
+}
+
 /** The vault line for an AI pack. Provider keys are added per alias (vault or
  *  env) on the AI Providers page, so we only flag the auto-generated vault key. */
 function vaultLine(vaultKey: boolean): string {
   return vaultKey
     ? `${pc.cyan("→")} a vault key was generated in ${pc.bold(".env")} ${pc.dim("— it encrypts the provider keys you add")}`
     : `${pc.dim("$")} cp .env.example .env ${pc.dim("— then add a PATTERN_VAULT_KEY (openssl rand -base64 32)")}`;
+}
+
+/** The Buddy + Claude Code lines for packs that wire mod-buddy. */
+function buddyNextLines(): string[] {
+  return [
+    `${pc.green("✦")} Buddy: the ✦ toggle in the editor toolbar ${pc.dim("— drafts, validates and repairs workflows with you (talks through the default alias)")}`,
+    `${pc.green("✦")} Claude Code: open this folder — ${pc.bold(".mcp.json")} connects your app's ${pc.bold("pattern_*")} tools ${pc.dim("(ops, docs, validate, drafts, runs)")}`,
+  ];
 }
 
 /** A pack-aware "make it yours" tip — fork the thing that defines the agent. */
@@ -236,6 +337,8 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-email-resend": "Resend driver for mod-email",
   "@pattern-js/mod-email-smtp": "SMTP driver for mod-email (nodemailer)",
   "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
+  "@pattern-js/mod-vectors": "vector search: embedding collections, hybrid retrieval, RAG",
+  "@pattern-js/mod-buddy": "Buddy: the editor assistant + the pattern_* MCP control plane",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
 };
@@ -339,7 +442,7 @@ const MODPACKS: Modpack[] = [
     hint: "call AI ops directly in the editor — text/object/embed/image/speech ops + vault; no agent loop",
     rung: "+ mod-ai — text/object/image/speech ops, any provider",
     tagline: "Studio + mod-ai — build plain AI workflows (text · object · image · speech) in the editor",
-    mods: ["@pattern-js/mod-ai", "@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-admin"],
+    mods: ["@pattern-js/mod-ai", "@pattern-js/mod-vectors", "@pattern-js/mod-store", "@pattern-js/mod-vault", "@pattern-js/mod-admin"],
     exampleSummary: "an AI workflow (POST /summarize → ai.text.generate, no agent)",
     serves: (ex) => (ex ? ["/admin", "/summarize"] : ["/admin"]),
     env: ["PATTERN_VAULT_KEY"],
@@ -349,7 +452,7 @@ const MODPACKS: Modpack[] = [
         : ["workflows/ (your AI flows)", "src/index.ts", ".env.example"],
     auth: { default: true },
     docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
+    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey, seeded }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
@@ -359,7 +462,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        ...aliasLines(),
+        ...modelLines(seeded),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/summarize -H 'content-type: application/json' -d '{"text":"…"}' ${pc.dim("— ai.text.generate, no agent")}`
           : `${pc.cyan("→")} build an AI workflow: ${pc.bold("ai.alias → ai.text.generate")} (see AGENTS.md)`,
@@ -373,20 +476,22 @@ const MODPACKS: Modpack[] = [
     tagline: "Studio + AI + the agent stack — build agentic workflows (agent · run · tools) in the editor",
     mods: [
       "@pattern-js/mod-agents + mod-ai",
+      "@pattern-js/mod-vectors",
+      "@pattern-js/mod-buddy",
       "@pattern-js/mod-store",
       "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",
     ],
-    exampleSummary: "an agentic workflow (POST /ask → agent + tool) + a get_time tool",
-    serves: (ex) => (ex ? ["/admin", "/ask"] : ["/admin"]),
+    exampleSummary: "an agentic workflow (POST /ask → agent + tool), a get_time tool, and a RAG pair (ingest + ask)",
+    serves: (ex) => (ex ? ["/admin", "/ask", "/rag/ask"] : ["/admin"]),
     env: ["PATTERN_VAULT_KEY"],
     generates: (ex) =>
       ex
-        ? ["workflows/agent-answer.json", "workflows/tool-time.json", "src/index.ts", ".env.example"]
+        ? ["workflows/agent-answer.json", "workflows/tool-time.json", "workflows/rag-ingest.json", "workflows/rag-ask.json", "src/index.ts", ".env.example"]
         : ["workflows/ (your agentic flows)", "src/index.ts", ".env.example"],
     auth: { default: true },
     docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
+    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey, seeded }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
@@ -396,10 +501,16 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        ...aliasLines(),
+        ...modelLines(seeded),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time (a linked sub-run)")}`
           : `${pc.cyan("→")} build an agentic workflow: ${pc.bold("agents.agent → agents.run")} (see AGENTS.md)`,
+        ...(examples
+          ? [
+              `${pc.cyan("→")} RAG pair: POST ${pc.bold("/rag/ingest")} {"docs":[{"id":"…","text":"…"}]} feeds the kb, POST ${pc.bold("/rag/ask")} {"question":"…"} answers from it ${pc.dim("(needs the embeddings alias)")}`,
+            ]
+          : []),
+        ...buddyNextLines(),
       ].filter((l) => l !== ""),
   },
   {
@@ -411,6 +522,8 @@ const MODPACKS: Modpack[] = [
     mods: [
       "@pattern-js/mod-chat",
       "@pattern-js/mod-agents + mod-ai",
+      "@pattern-js/mod-vectors",
+      "@pattern-js/mod-buddy",
       "@pattern-js/mod-store",
       "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",
@@ -424,7 +537,7 @@ const MODPACKS: Modpack[] = [
         : ["workflows/ (your tools)", "src/index.ts", ".env.example"],
     auth: { default: true },
     docs: { default: true },
-    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey }) =>
+    next: ({ name, runCmd, installed, installLine, auth, examples, vaultKey, seeded }) =>
       [
         `${pc.dim("$")} cd ${name}`,
         installed ? "" : installLine,
@@ -435,10 +548,11 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link`]
           : [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`]),
-        ...aliasLines(),
+        ...modelLines(seeded),
         examples
           ? `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} ${pc.dim("— the agent calls the get_time tool (a linked sub-run)")}`
           : `${pc.cyan("→")} add a tool workflow (see AGENTS.md), then ask the agent to call it`,
+        ...buddyNextLines(),
       ].filter((l) => l !== ""),
   },
 ];
@@ -587,7 +701,7 @@ interface Dims {
  * env it needs. Everything here is derived from the actual selections.
  */
 function packCard(pack: Modpack, dims: Dims): string {
-  const { auth, magicLink, oidc, email, docs, examples, vaultKey } = dims;
+  const { auth, magicLink, oidc, email, docs, examples, vaultKey, providers } = dims;
   // Mods, in install order: identity + sign-in methods first (infra), email
   // delivery, pack mods, docs last.
   const packMods = examples ? pack.mods : pack.mods.filter((m) => !m.includes("(app-local)"));
@@ -602,18 +716,28 @@ function packCard(pack: Modpack, dims: Dims): string {
     ? modList.map((m) => `  ${pc.magenta(modPath(m).padEnd(width))}  ${pc.dim(roleOf(m))}`)
     : [`  ${pc.dim("none — just the engine, in-process")}`];
 
-  const files = pack.generates(examples);
+  const seeded = aliasSeedPlan(providers);
+  const files = [
+    ...pack.generates(examples),
+    ...(pack.id === "agentic" && examples && auth && magicLink && email === "resend" ? ["workflows/email-agent-reply.json"] : []),
+    ...(seeded ? [`.pattern-data/ai-config.json (model aliases: ${seeded.aliases.map((a) => a.name).join(" + ")})`] : []),
+    ...(packHasBuddy(pack) ? [".mcp.json (Claude Code → pattern mcp)"] : []),
+  ];
   const fileLines = files.map((f) => `  ${pc.cyan("›")} ${f}`);
 
   // /whoami ships whenever headless+auth (applyAuth writes it example-free too).
   const serves = [...pack.serves(examples), ...(docs ? ["/docs"] : []), ...(auth && pack.id === "headless" ? ["/whoami"] : [])];
-  const env = pack.env;
+  const env = [...pack.env, ...(seeded?.envKeys ?? [])];
 
   const blocks: string[] = [`${pc.dim(pack.tagline)}`, "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
   if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
   if (env.length) {
     const annotate = (e: string) =>
-      e === "PATTERN_VAULT_KEY" && vaultKey ? `${pc.magenta(e)} ${pc.green("(generated → .env)")}` : pc.magenta(e);
+      e === "PATTERN_VAULT_KEY" && vaultKey
+        ? `${pc.magenta(e)} ${pc.green("(generated → .env)")}`
+        : seeded?.envKeys.includes(e)
+          ? `${pc.magenta(e)} ${pc.dim("(model aliases)")}`
+          : pc.magenta(e);
     const hint = env.includes("PATTERN_VAULT_KEY") && !vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
     blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
   }
@@ -641,6 +765,7 @@ function resolveDims(pack: Modpack, flags: Flags): { dims: Dims; notes: string[]
   if (flags.email !== undefined && !auth) notes.push("--email ignored (auth is off)");
   if (flags.email !== undefined && auth && !magicLink) notes.push("--email ignored (magic link is off — email delivers magic links)");
   if (flags.docs !== undefined && !pack.docs) notes.push(`--docs ignored (the ${pack.id} pack has no HTTP host)`);
+  if (flags.docs === false && packHasBuddy(pack)) notes.push("--no-docs ignored (Buddy's knowledge engine reads the docs — this pack keeps /docs)");
   if (flags.vaultKey !== undefined && !packNeedsVault(pack)) notes.push(`--vault-key ignored (the ${pack.id} pack has no vault)`);
   if (flags.providers !== undefined && !packUsesAi(pack)) notes.push(`--providers ignored (the ${pack.id} pack has no mod-ai)`);
   return {
@@ -649,7 +774,10 @@ function resolveDims(pack: Modpack, flags: Flags): { dims: Dims; notes: string[]
       magicLink,
       oidc,
       email: auth && magicLink ? (flags.email ?? "console") : "console",
-      docs: pack.docs ? (flags.docs ?? pack.docs.default) : false,
+      // Buddy packs always ship docs: mod-buddy's tools wire docs.* ops and its
+      // knowledge engine retrieves over the handbook — without mod-docs the
+      // seeded tool workflows can't validate and the app won't boot.
+      docs: packHasBuddy(pack) ? true : pack.docs ? (flags.docs ?? pack.docs.default) : false,
       examples: flags.examples ?? true,
       vaultKey: packNeedsVault(pack) ? (flags.vaultKey ?? true) : false,
       providers: packUsesAi(pack) ? (flags.providers ?? []).map(normProvider) : [],
@@ -792,26 +920,6 @@ function packOrThrow(id: string): Modpack {
   return pack;
 }
 
-/** A protected route demoing requireAuth + the trigger's `user` port (headless). */
-const WHOAMI_WORKFLOW = `{
-  "$schema": "pattern/workflow/v1",
-  "id": "whoami",
-  "name": "GET /whoami (protected)",
-  "nodes": [
-    {
-      "id": "in",
-      "op": "boundary.http.request",
-      "config": { "method": "GET", "path": "/whoami", "requireAuth": true },
-      "comment": "requireAuth gates the route; the user port carries the signed-in identity."
-    },
-    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" } }
-  ],
-  "edges": [
-    { "from": { "node": "in", "port": "user" }, "to": { "node": "out", "port": "body" } }
-  ]
-}
-`;
-
 /**
  * Pin every @pattern-js/* range in the scaffolded package.json to this CLI's
  * own minor (PATTERN_RANGE). The static templates carry whatever range was
@@ -886,7 +994,13 @@ async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<v
     delivery === "resend"
       ? "# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
       : "# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
-  await appendEnvHint(targetDir, hint);
+  await appendEnvHint(
+    targetDir,
+    hint +
+      "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +
+      "# (invites, sign-in) are built on it. Unset in dev = the request's host.\n" +
+      "# PATTERN_PUBLIC_URL=\n",
+  );
 }
 
 /** Append a commented hint to .env.example, creating the file for templates that ship none. */
@@ -976,6 +1090,40 @@ async function applyVaultKey(targetDir: string): Promise<void> {
     ? example.replace(/^PATTERN_VAULT_KEY=.*$/m, `PATTERN_VAULT_KEY=${key}`)
     : `${example}\nPATTERN_VAULT_KEY=${key}\n`;
   await writeFile(join(targetDir, ".env"), env);
+}
+
+/**
+ * Pre-write the seeded model aliases into `.pattern-data/ai-config.json` —
+ * exactly the file admin → Settings → AI Providers manages, so a scaffold with
+ * a provider pick boots with `default` (+ `embeddings`) already resolvable and
+ * the ONLY remaining step is the key in `.env`. Each alias authenticates via an
+ * env-sourced secret REF ({ source: "env", key }) — no value ever lands in the
+ * scaffold. Runs BEFORE applyVaultKey so appended env hints reach the generated
+ * `.env` too.
+ */
+async function applyAiAliases(targetDir: string, plan: SeedPlan): Promise<void> {
+  const aliases = plan.aliases.map((a) => ({
+    name: a.name,
+    provider: a.provider,
+    modelId: a.modelId,
+    modality: a.modality,
+    secrets: { apiKey: { source: "env", key: a.envKey } },
+    options: {},
+  }));
+  await mkdir(join(targetDir, ".pattern-data"), { recursive: true });
+  await writeFile(join(targetDir, ".pattern-data", "ai-config.json"), JSON.stringify({ aliases }, null, 2) + "\n");
+
+  // Every referenced env key gets a line in .env.example (unless the template
+  // already carries one, commented or not).
+  const envPath = join(targetDir, ".env.example");
+  const current = existsSync(envPath) ? await readFile(envPath, "utf8") : "";
+  const missing = plan.envKeys.filter((k) => !new RegExp(`^#?\\s*${k}=`, "m").test(current));
+  if (missing.length) {
+    await appendEnvHint(
+      targetDir,
+      `# The seeded model aliases (admin → Settings → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
+    );
+  }
 }
 
 /**
@@ -1310,9 +1458,13 @@ async function runInteractive(flags: Flags): Promise<void> {
     }
   }
 
-  // Docs is orthogonal too — same tri-state as auth.
+  // Docs is orthogonal too — same tri-state as auth. Buddy packs don't ask:
+  // mod-buddy's tools wire docs.* ops and its knowledge retrieves over the
+  // handbook, so /docs is part of the pack.
   let docs = false;
-  if (pack.docs) {
+  if (packHasBuddy(pack)) {
+    docs = true;
+  } else if (pack.docs) {
     if (flags.docs !== undefined) {
       docs = flags.docs;
     } else {
@@ -1395,7 +1547,16 @@ async function runInteractive(flags: Flags): Promise<void> {
   const runCmd = pm === "npm" ? "npm run" : String(pm);
   p.note(
     [
-      ...pack.next({ name: String(name), runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth, examples, vaultKey }),
+      ...pack.next({
+        name: String(name),
+        runCmd,
+        installed: install,
+        installLine: `${pc.dim("$")} ${pm} install`,
+        auth,
+        examples,
+        vaultKey,
+        seeded: aliasSeedPlan(providers),
+      }),
       ...(oidc
         ? [
             `${pc.cyan("→")} OIDC: fill in ${pc.bold("mods/oidc.mjs")} ${pc.dim("(issuer + client id; the secret via env or vault), register")} ${pc.bold("/auth/oidc/<id>/callback")} ${pc.dim("at your IdP — the button appears on the login page")}`,
@@ -1404,6 +1565,11 @@ async function runInteractive(flags: Flags): Promise<void> {
       ...(auth && magicLink && email !== "console"
         ? [
             `${pc.cyan("→")} email: admin → ${pc.bold("System → Email")} ${pc.dim(`— create the "default" account (${email === "resend" ? "Resend API key" : "SMTP host + password"} via vault or env); sign-in links then send automatically (console until then)`)}`,
+          ]
+        : []),
+      ...(pack.id === "agentic" && examples && email === "resend"
+        ? [
+            `${pc.cyan("→")} email → agent: point a Resend inbound webhook at ${pc.bold("POST /email/inbound/resend")} ${pc.dim("— workflows/email-agent-reply.json answers every email, threaded (add the webhook secret to the account)")}`,
           ]
         : []),
       ...(docs ? [`${pc.cyan("→")} docs: ${pc.bold("http://localhost:3000/docs")} ${pc.dim("(public — DOCS_REQUIRE_AUTH gates it)")}`] : []),
@@ -1440,11 +1606,15 @@ async function runHeadless(flags: Flags): Promise<void> {
   );
   for (const n of notes) console.log(`note: ${n}`);
   await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, ...dims });
+  const seeded = aliasSeedPlan(providers);
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Settings → AI Providers).`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — set ${seeded.envKeys.join(", ")} in .env.`);
+  if (packHasBuddy(pack)) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\` (the pattern_* tools).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console${magicLink ? " (magic links print there too)" : ""}.`);
   if (oidc) console.log(`OIDC: fill in mods/oidc.mjs (issuer + client id; secret via env or vault), register /auth/oidc/<id>/callback at your IdP.`);
   if (auth && magicLink && email !== "console") console.log(`Email delivery: create the "default" account in admin → System → Email — sign-in links then send via ${email} (console until then).`);
+  if (pack.id === "agentic" && examples && email === "resend") console.log(`Inbound demo: workflows/email-agent-reply.json — point a Resend inbound webhook at POST /email/inbound/resend and an agent answers every email.`);
   for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
 }
 
@@ -1469,11 +1639,18 @@ async function scaffold(opts: Dims & {
   if (!opts.examples) await applyNoExamples(targetDir, opts.pack, opts.name);
   if (opts.auth) await applyAuth(targetDir, opts.pack, opts.magicLink);
   if (opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);
+  // Resend delivery on the agent pack unlocks the inbound demo: email → agent → threaded reply.
+  if (opts.pack === "agentic" && opts.examples && opts.email === "resend") {
+    await writeFile(join(targetDir, "workflows", "email-agent-reply.json"), EMAIL_AGENT_REPLY_WORKFLOW);
+  }
   if (opts.auth && opts.oidc) await applyOidc(targetDir, opts.magicLink);
   if (opts.docs) await applyDocs(targetDir);
+  const seeded = aliasSeedPlan(opts.providers ?? []);
+  if (seeded) await applyAiAliases(targetDir, seeded); // before applyVaultKey — its env hints belong in .env too
   if (opts.vaultKey) await applyVaultKey(targetDir);
   if (opts.providers?.length) await applyProviders(targetDir, opts.providers);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.oidc ? " + oidc" : ""}${opts.auth && opts.magicLink && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""})`);
+  if (packHasBuddy(packOrThrow(opts.pack))) await writeFile(join(targetDir, ".mcp.json"), MCP_CONFIG);
+  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.oidc ? " + oidc" : ""}${opts.auth && opts.magicLink && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""}${seeded ? " + model aliases" : ""})`);
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });

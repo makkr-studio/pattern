@@ -51,7 +51,7 @@ export function DeclarativeView({ view, params = {} }: { view: View; params?: Re
     return <iframe src={view.url} className="glass h-[70vh] w-full rounded-2xl" title="embedded" />;
   }
   if (view.kind === "form") {
-    return <FormView schema={view.schema} route={view.route} />;
+    return <FormView schema={view.schema} route={view.route} params={params} />;
   }
   if (view.kind === "graph") {
     return <GraphView slug={view.workflow} />;
@@ -134,7 +134,7 @@ function CopyField({ value }: { value: string }) {
 
 /** `form` kind: a FormFromSchema over the declared JSON schema; submit calls
  *  the target route with the values and shows its result. */
-function FormView({ schema, route }: { schema: unknown; route: RouteRef }) {
+function FormView({ schema, route, params = {} }: { schema: unknown; route: RouteRef; params?: Record<string, string> }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [result, setResult] = useState<unknown>();
   const [pending, setPending] = useState(false);
@@ -142,7 +142,9 @@ function FormView({ schema, route }: { schema: unknown; route: RouteRef }) {
   const onSubmit = async () => {
     setPending(true);
     try {
-      setResult(await runAction(route, values));
+      // Page params ride along (a details page's :userId fills the route's
+      // token) — this is what lets a form live on a parameterized page.
+      setResult(await runAction(route, { ...params, ...values }));
     } catch (err) {
       setResult({ error: err instanceof Error ? err.message : String(err) });
     } finally {

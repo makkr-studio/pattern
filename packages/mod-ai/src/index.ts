@@ -8,12 +8,22 @@ export { ProviderService, type AiProviderService } from "./provider.js";
 export { ModelCatalog, type ModelCatalogService } from "./catalog.js";
 export { ModelServiceImpl } from "./model-service-impl.js";
 export { McpService } from "./mcp.js";
+export {
+  handleMcp,
+  mcpServerWorkflow,
+  workflowToolSource,
+  type JsonRpcMessage,
+  type McpSource,
+  type McpToolInfo,
+} from "./mcp-server.js";
 export { aiOps } from "./ops/index.js";
 export {
+  aliasSchema,
   mediaRefSchema,
   genProgressSchema,
   modelCapabilitySchema,
   modelRefSchema,
+  type Alias,
   type MediaRef,
   type GenProgress,
   type ModelCapability,

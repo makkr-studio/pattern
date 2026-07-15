@@ -1,0 +1,23 @@
+{
+  "$schema": "pattern/workflow/v1",
+  "id": "rag-ingest",
+  "name": "POST /rag/ingest: index documents for RAG",
+  "description": "Feed the knowledge base: POST { docs: [{ id, text, meta? }] } → declare the collection (idempotent) → chunk + embed + upsert in one node. Unchanged docs are skipped (content hash), so re-ingesting is free.",
+  "nodes": [
+    { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/rag/ingest" }, "ui": { "x": 40, "y": 160 } },
+    { "id": "docs", "op": "core.object.get", "config": { "path": "docs" }, "comment": "The request body's `docs` array.", "ui": { "x": 300, "y": 100 } },
+    { "id": "ensure", "op": "vectors.collection.ensure", "config": { "name": "kb", "alias": "embeddings", "filterables": ["topic"] }, "comment": "The collection DECLARES its embedding alias — define \"embeddings\" in admin → Settings → AI Providers (modality: embedding).", "ui": { "x": 300, "y": 260 } },
+    { "id": "index", "op": "vectors.index", "config": { "collection": "kb" }, "comment": "Chunk → embed (via the collection's alias) → upsert. Meta rides on every chunk, so `topic` stays filterable.", "ui": { "x": 580, "y": 160 } },
+    { "id": "body", "op": "core.object.build", "config": { "keys": ["indexed", "chunks"] }, "ui": { "x": 840, "y": 160 } },
+    { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" }, "ui": { "x": 1080, "y": 160 } }
+  ],
+  "edges": [
+    { "from": { "node": "in", "port": "body" }, "to": { "node": "docs", "port": "object" } },
+    { "from": { "node": "in", "port": "out" }, "to": { "node": "ensure", "port": "in" } },
+    { "from": { "node": "ensure", "port": "out" }, "to": { "node": "index", "port": "in" } },
+    { "from": { "node": "docs", "port": "out" }, "to": { "node": "index", "port": "docs" } },
+    { "from": { "node": "index", "port": "count" }, "to": { "node": "body", "port": "indexed" } },
+    { "from": { "node": "index", "port": "chunks" }, "to": { "node": "body", "port": "chunks" } },
+    { "from": { "node": "body", "port": "out" }, "to": { "node": "out", "port": "body" } }
+  ]
+}

@@ -38,6 +38,7 @@ export class AgentsRegistry implements AgentsService {
         params?: Record<string, unknown>;
         needsApproval?: boolean;
         guardrail?: boolean;
+        restricted?: boolean;
       };
       if (!cfg.name) continue;
       const existing = this.workflowTools.get(cfg.name);
@@ -55,6 +56,7 @@ export class AgentsRegistry implements AgentsService {
         params: cfg.params,
         needsApproval: cfg.needsApproval,
         guardrail: cfg.guardrail,
+        restricted: cfg.restricted,
       });
     }
   }

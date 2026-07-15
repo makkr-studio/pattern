@@ -83,6 +83,29 @@ The declared `secrets`/`options` fields drive the account form in admin — a
 driver mod ships zero UI. `mod-email-resend` is the worked example to copy
 (one fetch, ~60 lines).
 
+## Receiving (0.4)
+
+The contract also receives: a workflow starting with the **`email.inbound`
+trigger** runs once per incoming message (`config.account` narrows to one
+receiving account). The message carries from/to/cc, subject, text/html,
+lower-cased headers, threading ids, and attachments **as blob references**
+(bytes land in mod-store; without it the meta survives and the bytes are
+dropped, loudly). No out-gate needed — the sender's mail server never reads
+your run's result.
+
+Delivery comes from a webhook driver. `mod-email-resend` ships a seeded route
+at **POST `/email/inbound/resend`**: point your Resend inbound webhook there,
+paste the `whsec_…` signing secret into the account's *Inbound webhook
+secret* field, done. The route streams the RAW request bytes
+(`bodyMode: "stream"`) because the svix signature covers them exactly —
+verification is constant-time with a ±5 minute replay window, and bad
+signatures bounce with 401 before anything runs.
+
+**`email.reply`** closes the loop: wire the inbound `message` in and it
+derives the recipient (reply-to, else sender), prefixes `Re:` exactly once,
+and sets In-Reply-To/References so mail clients thread the exchange — the
+whole email-in → agent → email-out demo is three nodes.
+
 ## Config
 
 Defaults work from the bare config entry. The accounts file lives at

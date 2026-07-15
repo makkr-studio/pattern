@@ -57,6 +57,19 @@ function originOf(url: string | undefined): string | undefined {
   }
 }
 
+/**
+ * The origin `redirect_uri` is built on: `PATTERN_PUBLIC_URL` when set — the
+ * IdP has the PUBLIC address registered, and behind a proxy/tunnel the Host
+ * header is not it — else the request's own origin (zero-config dev). The
+ * start and callback ops MUST derive this identically: the token exchange
+ * repeats redirect_uri verbatim, and a mismatch fails the login.
+ */
+function redirectOrigin(ctx: OpContext, url: string | undefined): string | undefined {
+  const configured = ctx.env?.PATTERN_PUBLIC_URL;
+  if (typeof configured === "string" && configured.trim()) return configured.trim().replace(/\/$/, "");
+  return originOf(url);
+}
+
 export function buildOps(opts: ResolvedOidcOptions, runtime: OidcRuntime): OpDefinition[] {
   const providers = new Map<string, OidcProvider>(opts.providers.map((p) => [p.id, p]));
   const login = `${opts.mount}/login`;
@@ -93,9 +106,9 @@ export function buildOps(opts: ResolvedOidcOptions, runtime: OidcRuntime): OpDef
       });
       try {
         const [next, url] = await Promise.all([input(ctx, "next"), input(ctx, "url")]);
-        const origin = originOf(url);
+        const origin = redirectOrigin(ctx, url);
         if (!origin) {
-          ctx.log("warn", `oidc[${p.id}]: request carried no absolute url — cannot build redirect_uri`);
+          ctx.log("warn", `oidc[${p.id}]: request carried no absolute url and PATTERN_PUBLIC_URL is unset — cannot build redirect_uri`);
           return fail("oidc-failed");
         }
         const disco = await runtime.discovery(p.issuer);
@@ -187,7 +200,7 @@ export function buildOps(opts: ResolvedOidcOptions, runtime: OidcRuntime): OpDef
 
         // 3. Exchange the code — PKCE verifier + client secret.
         const disco = await runtime.discovery(p.issuer);
-        const origin = originOf(url);
+        const origin = redirectOrigin(ctx, url);
         if (!origin) return fail("oidc-failed");
         const exchange = await fetch(disco.token_endpoint, {
           method: "POST",

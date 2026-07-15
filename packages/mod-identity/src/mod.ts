@@ -20,6 +20,7 @@ import { AUTH_LOGIN_URL, IDENTITY_SERVICE, defineMod, z, type Engine, type Patte
 import { resolveOptions, type IdentityOptions } from "./options.js";
 import { DefaultIdentityService } from "./service.js";
 import { sessionAuthProvider } from "./auth-provider.js";
+import { apiTokenAuthProvider } from "./api-token-provider.js";
 import { identityOps } from "./ops.js";
 import { endpointWorkflows } from "./workflows.js";
 import { identityAdminRoutes } from "./admin-routes.js";
@@ -54,7 +55,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     // Auth-page routes + the admin Access screens' dedicated routes (one
     // purposeful endpoint per screen and action, replacing the invoke path).
     workflows: [...endpointWorkflows(opts.mount), ...identityAdminRoutes()],
-    authProviders: [sessionAuthProvider(() => service)],
+    authProviders: [sessionAuthProvider(() => service), apiTokenAuthProvider(() => service)],
     hooks: [
       {
         name: DELIVER_TOKEN_HOOK,
@@ -64,6 +65,11 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
             url: z.string(),
             purpose: z.string(),
             delivered: z.boolean(),
+            /** Ready-made human copy (purpose- and expiry-aware) — any channel may use or replace it. */
+            subject: z.string(),
+            message: z.string(),
+            /** Token expiry (ms epoch), when the issuer knows it. */
+            expiresAt: z.number().optional(),
           })
           .loose(),
       },
@@ -88,7 +94,8 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
         data: { roles: opts.bootstrapRoles },
       });
       const path = `${opts.mount}/bootstrap?t=${issued.token}`;
-      const guess = `http://localhost:${process.env.PORT ?? 3000}${path}`;
+      const configured = process.env.PATTERN_PUBLIC_URL?.trim().replace(/\/$/, "");
+      const guess = configured ? `${configured}${path}` : `http://localhost:${process.env.PORT ?? 3000}${path}`;
       console.log(
         `\n[pattern] ◆ No users yet. Create the first admin with this one-time link (valid 24h):\n` +
           `[pattern]   ${guess}\n` +

@@ -358,6 +358,13 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
         comment: "avatarOn ? avatar instructions : (unwired ⇒ the agent's configured instructions).",
         ui: { x: 900, y: 480 },
       },
+      {
+        id: "recall",
+        op: "chat.memory.recall",
+        config: { fallback: agent.instructions },
+        comment: "What we remember about this user (mod-vectors), appended to the system prompt — or a pass-through.",
+        ui: { x: 1080, y: 480 },
+      },
       ...aModel.nodes,
       {
         id: "resolveModel",
@@ -428,11 +435,15 @@ export function turnPipelineWorkflow(opts: ResolvedChatOptions, pin?: ResolvedPi
       { from: { node: "ex_body", port: "model" }, to: { node: "resolveModel", port: "alias" } },
       { from: { node: "resolveModel", port: "model" }, to: { node: "agent", port: "model" } },
       // Per-turn instruction style: body.avatar → bool → select avatar instructions
-      // (or leave unwired) → the agent's instructions input (overrides config).
+      // (or leave unwired) → memory recall (appends what we remember about this
+      // user, or passes through untouched) → the agent's instructions input.
       { from: { node: "ex_body", port: "avatar" }, to: { node: "avatarOn", port: "value" } },
       { from: { node: "avatarOn", port: "out" }, to: { node: "pickInstr", port: "cond" } },
       { from: { node: "avatarInstr", port: "out" }, to: { node: "pickInstr", port: "then" } },
-      { from: { node: "pickInstr", port: "out" }, to: { node: "agent", port: "instructions" } },
+      { from: { node: "pickInstr", port: "out" }, to: { node: "recall", port: "instructions" } },
+      { from: { node: "in", port: "user" }, to: { node: "recall", port: "user" } },
+      { from: { node: "begin", port: "input" }, to: { node: "recall", port: "content" } },
+      { from: { node: "recall", port: "instructions" }, to: { node: "agent", port: "instructions" } },
       { from: { node: "agent", port: "agent" }, to: { node: "run", port: "agent" } },
       { from: { node: "begin", port: "input" }, to: { node: "run", port: "input" } },
       { from: { node: "begin", port: "history" }, to: { node: "run", port: "history" } },

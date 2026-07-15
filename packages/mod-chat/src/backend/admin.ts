@@ -178,7 +178,10 @@ export const chatAdminOps: OpDefinition[] = [
 
 export function chatFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "Chat", label: "Conversations", icon: "messages-square", path: "/x/chat/conversations", order: 10 }],
+    menu: [
+      { category: "Chat", label: "Conversations", icon: "messages-square", path: "/x/chat/conversations", order: 10 },
+      { category: "Chat", label: "Memories", icon: "brain", path: "/x/chat/memories", order: 20 },
+    ],
     pages: [
       {
         path: "/x/chat/conversations",
@@ -226,6 +229,27 @@ export function chatFrontend(): FrontendContribution {
       {
         path: "/x/chat/turns/:id",
         view: { kind: "json", route: { method: "GET", path: PATHS.turn } },
+      },
+      {
+        // Memory with receipts: every remembered fact links to the exact run —
+        // the exact conversation moment — where it was learned. And a Forget
+        // button, because a memory you can't delete is a liability.
+        path: "/x/chat/memories",
+        subtitle: "What the assistant remembers about each user — with provenance. Needs mod-vectors + an embedding alias.",
+        view: {
+          kind: "table",
+          route: { method: "GET", path: PATHS.memories },
+          columns: [
+            { key: "user", label: "User" },
+            { key: "memory", label: "Remembers" },
+            { key: "learned", label: "Learned", format: "date" },
+          ],
+          rowActions: [
+            { label: "Source run", path: "/runs/:runId", args: { runId: "sourceRunId" }, icon: "activity" },
+            { label: "Conversation", path: "/x/chat/conversations/:id", args: { id: "conversation" }, icon: "eye" },
+            { label: "Forget", route: { method: "DELETE", path: PATHS.memory }, args: { id: "id" }, icon: "trash-2", confirm: true },
+          ],
+        },
       },
     ],
   };

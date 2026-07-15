@@ -69,6 +69,32 @@ export interface TokenRow {
   version: number;
 }
 
+/**
+ * An **invite** as a first-class record — what the admin sent, to whom, and
+ * what became of it. The single-use `TokenRow` remains the credential (its
+ * `data.inviteId` points back here); this row is the audit/status side:
+ * listable, revocable, and stamped on acceptance. Status is DERIVED, in
+ * precedence order: revoked → accepted → expired → pending.
+ */
+export interface InviteRow {
+  id: string;
+  email: string;
+  emailNorm: string;
+  /** Roles granted on acceptance. */
+  roles: string[];
+  /** Post-first-login destination (relative path), carried through the flow. */
+  next: string | null;
+  /** The admin who sent it (user id) — audit only, never authorization. */
+  invitedBy: string | null;
+  createdAt: number;
+  expiresAt: number;
+  acceptedAt: number | null;
+  /** The user the acceptance created (or linked). */
+  acceptedUserId: string | null;
+  revokedAt: number | null;
+  version: number;
+}
+
 /** Thrown when an insert hits the one-user-per-email constraint. */
 export class UniqueViolationError extends Error {
   constructor(field: string) {
@@ -99,6 +125,12 @@ export interface UserStore {
     patch: Partial<Pick<UserRow, "name" | "roles" | "disabled">>,
   ): Promise<UserRow | null>;
   listUsers(opts?: { limit?: number; offset?: number }): Promise<UserRow[]>;
+  /**
+   * Hard-delete a user with their identity links and sessions (FK order:
+   * sessions → identities → user, one transaction). Returns false when absent.
+   * The caller (service) revokes sessions FIRST so live sockets close.
+   */
+  deleteUser(id: string): Promise<boolean>;
 }
 
 export interface SessionStore {
@@ -129,6 +161,52 @@ export interface TokenStore {
   deleteExpired(now: number): Promise<number>;
 }
 
+/**
+ * A scoped, revocable **API token** (`pat_…` bearer credentials for the
+ * control-plane API / MCP server). Unlike `TokenRow` these are MULTI-use:
+ * they stay valid until revoked or expired. Same hashing discipline —
+ * storage only ever sees the sha256.
+ */
+export interface ApiTokenRow {
+  id: string;
+  /** sha256 hex of the full raw bearer secret (including the `pat_` prefix). */
+  tokenHash: string;
+  /** Operator-chosen label ("CI deploys", "Claude Code"). */
+  name: string;
+  scopes: string[];
+  /** The admin who minted it — audit only, never authorization. */
+  userId: string | null;
+  createdAt: number;
+  /** null = never expires (revocation is the kill switch). */
+  expiresAt: number | null;
+  revokedAt: number | null;
+  lastUsedAt: number | null;
+  version: number;
+}
+
+export interface ApiTokenStore {
+  create(row: Omit<ApiTokenRow, "version">): Promise<ApiTokenRow>;
+  findByTokenHash(tokenHash: string): Promise<ApiTokenRow | null>;
+  findById(id: string): Promise<ApiTokenRow | null>;
+  /** All tokens, newest first (admin screen). */
+  list(): Promise<ApiTokenRow[]>;
+  /** CAS revoke: null on version mismatch (re-read & retry). Idempotent on an already-revoked row. */
+  revoke(id: string, expectedVersion: number, at: number): Promise<ApiTokenRow | null>;
+  /** Best-effort usage stamp — NOT CAS; concurrent stamps race harmlessly toward "recent". */
+  touchLastUsed(id: string, at: number): Promise<void>;
+}
+
+export interface InviteStore {
+  create(row: Omit<InviteRow, "version">): Promise<InviteRow>;
+  findById(id: string): Promise<InviteRow | null>;
+  /** All invites, newest first (admin screen). */
+  list(): Promise<InviteRow[]>;
+  /** CAS acceptance stamp — only a live (un-accepted, un-revoked) invite takes it. */
+  markAccepted(id: string, expectedVersion: number, at: number, userId: string): Promise<InviteRow | null>;
+  /** CAS revoke: null on version mismatch. Idempotent on an already-revoked row. */
+  revoke(id: string, expectedVersion: number, at: number): Promise<InviteRow | null>;
+}
+
 /** Small persisted key/value bag for runtime-mutable identity settings (signup policy…). */
 export interface SettingsStore {
   get(key: string): Promise<string | null>;
@@ -139,6 +217,8 @@ export interface IdentityStores {
   users: UserStore;
   sessions: SessionStore;
   tokens: TokenStore;
+  apiTokens: ApiTokenStore;
+  invites: InviteStore;
   settings: SettingsStore;
   close(): Promise<void>;
 }

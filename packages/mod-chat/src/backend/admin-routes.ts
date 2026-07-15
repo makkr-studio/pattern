@@ -18,6 +18,8 @@ export const PATHS = {
   conversation: "/chat/conversations/:id",
   conversationTurns: "/chat/conversations/:id/turns",
   turn: "/chat/turns/:id",
+  memories: "/chat/memories",
+  memory: "/chat/memories/:id",
 } as const;
 
 /** The route workflows that back the admin Conversations screens (admin-scope gated). */
@@ -32,5 +34,7 @@ export function chatAdminRoutes(): Workflow[] {
     r("chat.route.admin.turns", "GET", PATHS.conversationTurns, "chat.admin.turns", { in: { id: fromParams() }, out: "turns" }),
     r("chat.route.admin.turn", "GET", PATHS.turn, "chat.admin.turn", { in: { id: fromParams() }, out: "turn" }),
     r("chat.route.admin.conversation.delete", "DELETE", PATHS.conversation, "chat.admin.conversation.delete", { in: { id: fromParams() }, out: "result" }),
+    r("chat.route.admin.memories", "GET", PATHS.memories, "chat.admin.memories", { out: "memories" }),
+    r("chat.route.admin.memory.forget", "DELETE", PATHS.memory, "chat.admin.memory.forget", { in: { id: fromParams() }, out: "result" }),
   ];
 }

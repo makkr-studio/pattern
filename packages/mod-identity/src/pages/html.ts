@@ -64,6 +64,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-token": "That link is invalid, expired, or was already used. Request a fresh one.",
   "signup-closed": "Sign-ups are invite-only. Ask an admin to invite you.",
   "account-disabled": "This account is disabled.",
+  "invite-revoked": "That invitation has been revoked. Ask an admin for a new one.",
   "invalid-email": "That doesn't look like an email address.",
   // The fixed codes mod-auth-oidc redirects back with (?error=<code>). The
   // provider's own error text is deliberately never reflected here — only

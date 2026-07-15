@@ -3,6 +3,190 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.4.0 — 2026-07-15
+
+The framework learns to build itself: Buddy (the in-editor workflow
+assistant), a scoped-token control plane with a Pattern MCP server, vector
+search, and inbound email.
+
+### Buddy & the control plane
+
+- **`@pattern-js/mod-buddy` — Buddy, the workflow assistant.** A chat dock in
+  the editor (the ✦ toggle; appears only when the mod is installed): describe
+  what you want and Buddy drafts the workflow — grounded in your app's
+  handbook + op catalog, validated before you ever see it — then **applies
+  proposals to your open canvas** as ordinary, undoable edits. It debugs
+  failed runs from traces ("why did this break at 3am?"), remembers the
+  conversation per workflow (mod-store), runs on the `buddy` model alias when
+  defined (else the default), and its whole turn pipeline is an editable
+  Pattern workflow. When a recent run failed, the dock offers the question as
+  a one-click chip — *Why did "daily-digest" fail 3m ago?* — instead of making
+  you type it; consecutive calls of the same tool collapse into one chip with
+  a `+n` badge.
+- **The `pattern_*` control plane: ten restricted tool workflows** (list/get
+  ops, search docs, get workflow, validate, propose, save-draft,
+  deploy-with-approval, list/get runs) — one capability layer consumed by
+  Buddy, by external MCP clients, and by the CLI. `boundary.tool` gains
+  `restricted: true`: excluded from EVERY `["*"]` expansion (agent toolsets
+  and MCP alike), offered only by explicit name.
+- **Scoped, revocable API tokens** (`@pattern-js/mod-identity`): `pat_…`
+  bearer credentials minted in admin → Access → API tokens (show-once, hashed
+  at rest), with a six-scope taxonomy — `workflows:read`/`workflows:write`,
+  `runs:read`/`runs:write`, `deploy`, `admin` (root) — so an authoring token
+  can draft all day and still can't touch production. The `admin.*` ops
+  re-check scopes in-op (advisory-open without an auth provider, mirroring
+  `engine.authorize`), and NEW `admin.workflow.validate` returns located
+  issues without saving.
+- **The Pattern MCP server.** `POST /mcp/pattern` (seeded by mod-buddy,
+  token-gated) serves the ten tools to Claude Code, Cursor, or any MCP
+  client; **`pattern mcp`** serves the same over stdio for local dev — no
+  tokens, your shell owns the box. `ai.mcp.serve`'s `tools/call` now enforces
+  the same exposure set as `tools/list`, and `mcpServerWorkflow()` accepts an
+  `auth` requirement.
+
+### Vector search
+
+- **The chat remembers you — with receipts.** With mod-vectors + an
+  `embeddings` alias installed, mod-chat grows cross-conversation, per-user
+  memory: after each completed turn an event-triggered, forkable workflow
+  (`chat.memory.pipeline`) extracts the durable facts about the user and
+  indexes them filter-pruned by `userId`; the next turn — in any conversation
+  — recalls the most relevant ones into the system prompt. Every memory
+  carries provenance (`{ userId, conversationId, sourceRunId }`): admin →
+  Chat → **Memories** shows what the assistant knows about whom, with a
+  **Source run** link to the exact moment it was learned and a **Forget**
+  button. Signed-in users only; `memory: false` turns it off; everything is
+  duck-typed, so without vectors chat runs unchanged. `VectorsService` gains
+  `list()` (row enumeration for browsers like this one), and the sink emits a
+  `chat.turn.completed` event anything can subscribe to.
+- **Memory that revises itself.** Extraction is a *reconciliation*: the model
+  sees the user's existing nearby memories and answers with operations —
+  `add` / `supersede` (with `revises` lineage) / `forget` — so contradictions
+  resolve at write time instead of piling up; ids are validated against the
+  fetched set, a per-user cap (default 200) bounds growth, recall runs under
+  a hard ~300-token prompt budget, and a `memory` alias routes extraction to
+  a mini model. The agent also gets a visible **`remember` tool** — the user
+  watches it decide to remember, and the memory's receipt is the tool call's
+  own run.
+- **The admin's Vectors page is now the whole RAG loop**: collections table +
+  **Ingest text** (paste → chunk → embed; collection created on first use,
+  content-hash dedupe on re-paste) + **Search** (hybrid, scored matches).
+  Testing retrieval is a form, not a curl. Tier-1 forms gained
+  `format: "multiline"` (a textarea) along the way.
+
+- **`@pattern-js/mod-vectors` — embedding collections.** A collection
+  **declares its embedding alias** and locks its dims on first write, so
+  indexing with one model and querying with another is unrepresentable.
+  Declared **filterable meta fields** land in an indexed side table and prune
+  BEFORE scoring (`filter: { field: value | values[] }`; undeclared fields are
+  located errors). `vectors.query` ranks in three modes — cosine, keyword
+  (FTS5 when available, token-overlap fallback), and **hybrid** via
+  reciprocal-rank fusion. `vectors.index` is chunk→embed→upsert in one node,
+  content-hashed so unchanged docs cost nothing. Zero-dependency sqlite
+  engine (durable AND offload-safe); a driver SPI carries `{filter, mode}`
+  for sqlite-vec/pgvector later. Admin: Data → Vectors.
+- Buddy dogfoods it: with mod-vectors + an embedding alias installed, a boot
+  indexer embeds the live handbook and `buddy.knowledge.search` silently
+  upgrades from lexical to hybrid semantic retrieval — same output shape.
+
+### Email
+
+- **Inbound email.** The `email.inbound` trigger runs a workflow once per
+  received message (per-account filtering); attachments land in the blob
+  store as references. `@pattern-js/mod-email-resend` ships a signed webhook
+  (svix scheme, hand-rolled on node:crypto: constant-time, ±5 min window,
+  raw-bytes verification over a `bodyMode: "stream"` route) at
+  `POST /email/inbound/resend`.
+- **`email.reply`** answers an inbound message with real threading —
+  In-Reply-To/References, `Re:` prefixed exactly once, reply-to respected —
+  and `EmailMessage` gains pass-through `headers`. Email your app a question;
+  a three-node workflow answers in-thread.
+
+### Identity
+
+- **Invite emails carried a relative (dead) link** — fixed at the root:
+  `PATTERN_PUBLIC_URL` is the app's canonical origin, and every delivered link
+  (invite, magic link) is built on it — it beats the request-derived origin,
+  because proxies and tunnels lie about Host. Without it, the invite route now
+  wires the request URL through (new core `fromRequestUrl()` port source), so
+  dev links are absolute too. The bootstrap console link uses it as well.
+- **Invites are records now**: admin → Access → **Invites** sends (email,
+  roles, and a **next path** — where the first login lands) and lists every
+  invite with a derived status (`pending` / `accepted` / `expired` /
+  `revoked`). Revoking a pending invite kills its link immediately — the
+  callback checks the record before creating any account. Ops:
+  `identity.invites.list` / `identity.invites.revoke`.
+- **Accepting an invite no longer silently signs you in.** The link creates
+  the account and lands on `/auth/invited` — "your account is ready, sign in
+  for the first time" — handing the invite's next path into the login screen.
+  Acceptance and first sign-in are two acts again.
+- **Real user administration**: delete a user (`identity.users.delete` —
+  sessions revoked, user + identity links + session rows removed), edit roles
+  from the user's details page (the setRoles op finally has a route + UI),
+  disable/enable stays reversible. Guards everywhere they matter: no
+  self-disable/self-delete, and the **last active admin** can't be demoted,
+  disabled or deleted.
+- Tier-1 admin forms on parameterized pages now carry the page's `:params`
+  into their submit — what makes the "Set roles" form on `/x/identity/users/:userId`
+  (and any future mod's detail-page form) possible.
+- **Token emails read like a human wrote them.** The `identity.deliverToken`
+  payload now carries ready-made, purpose- and expiry-aware copy (`subject`,
+  `message`, `expiresAt`) — "You've been invited … valid for 7 days" instead
+  of "Your invite link — click the button to continue". Identity owns the
+  wording (it knows the token's semantics), so every channel on the hook —
+  the packaged email workflow included — gets it for free, and a forked
+  workflow can still write its own.
+- OIDC's `redirect_uri` adopts `PATTERN_PUBLIC_URL` too: the IdP has the
+  public address registered, and behind a proxy the Host header is not it.
+
+### Core
+
+- **Any mod can ship a trigger op.** `OpDefinition.triggerEvents(config)`
+  declares event subscriptions the engine wires at registration (how
+  `email.inbound` works — zero host changes), and `outgateOptional` replaces
+  the validator's hardcoded out-gate exemption (also fixing
+  `boundary.ws.close`, which could never reach a meaningful out-gate).
+- `secretRefSchema` + `resolveSourced` hoisted to core (one sourced-secrets
+  implementation for mod-ai, mod-email, mod-vectors); `admin` is now the root
+  scope in `meetsRequirement`.
+- **Mod load order can't break seeded workflows.** `loadMods` parks every
+  mod-contributed workflow during install and registers them once ALL mods'
+  ops are in (`useAsync({ deferWorkflows })` +
+  `engine.flushDeferredWorkflows()`), so a mod's seeded workflow may wire
+  ops from a mod listed after it — mod-buddy's `pattern_*` tools wire
+  `docs.*` ops while mod-docs sits last in a scaffolded config. The same
+  deferral `ready` hooks always had.
+
+### Scaffolder
+
+- `studio-ai` adds mod-vectors; `agentic` and `agent-chat` add mod-vectors +
+  mod-buddy. The agentic examples gain a **RAG pair**: `POST /rag/ingest`
+  (declare + chunk + embed) and `POST /rag/ask` (hybrid retrieval → grounded
+  answer with sources).
+- **Provider picks seed model aliases.** Choosing e.g. OpenAI pre-writes
+  `default` (language) and `embeddings` (embedding) into
+  `.pattern-data/ai-config.json`, each authenticating through an env-sourced
+  secret reference (`{ source: "env", key: "OPENAI_API_KEY" }` — never a
+  value). A fresh scaffold answers `/rag/ask` and talks to Buddy the moment
+  the key lands in `.env`; re-point the aliases anytime in Settings.
+- **`.mcp.json` in the Buddy packs** (`agentic`, `agent-chat`): `npx pattern
+  mcp` is pre-wired, so opening the scaffold in Claude Code (or any MCP
+  client reading `.mcp.json`) hands it the `pattern_*` control-plane tools
+  with zero setup — plus a new AGENTS.md ground rule telling coding agents to
+  prefer them over guessing.
+- **Inbound email demo**: `agentic` with Resend delivery scaffolds
+  `workflows/email-agent-reply.json` — `email.inbound` → agent → threaded
+  `email.reply`, ready for a Resend webhook pointed at
+  `POST /email/inbound/resend`.
+- The Buddy packs always ship `/docs`: mod-buddy's tools and knowledge read
+  mod-docs, so `agentic`/`agent-chat` skip the docs question and `--no-docs`
+  earns a note instead of an app that can't boot.
+- Next-steps cards now cover the seeded aliases (and the env key that unlocks
+  them), the Buddy toggle, the Claude Code hookup, and the RAG curl pair; the
+  manifest card lists the seeded config and `.mcp.json` under *generates*.
+  Scaffold-written workflows (`whoami`, `email-agent-reply`) get the same
+  op-drift CI safety net as template workflows.
+
 ## 0.3.0 — 2026-07-02
 
 The AI, sign-in & email release: a native agent loop over any provider, a chat

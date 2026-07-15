@@ -1,0 +1,53 @@
+{
+  "name": "@pattern-js/mod-vectors",
+  "version": "0.4.0",
+  "description": "Vector search for Pattern — embedding collections that DECLARE their alias and dimensions (query-vs-index model mismatch becomes unrepresentable), filterable metadata, hybrid vector+keyword retrieval with RRF fusion, text chunking, and a zero-dependency sqlite-backed local engine with a driver SPI for sqlite-vec/pgvector later.",
+  "keywords": [
+    "pattern",
+    "mod",
+    "vectors",
+    "vector-search",
+    "embeddings",
+    "rag",
+    "hybrid-search"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pattern-js/core": "workspace:*",
+    "@pattern-js/runtime-node": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makkr-studio/pattern.git",
+    "directory": "packages/mod-vectors"
+  },
+  "homepage": "https://github.com/makkr-studio/pattern#readme",
+  "bugs": "https://github.com/makkr-studio/pattern/issues",
+  "author": "Makkr Studio (https://github.com/makkr-studio)"
+}

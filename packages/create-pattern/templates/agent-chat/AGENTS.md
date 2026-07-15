@@ -22,6 +22,13 @@ tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
    instead. `PATTERN_VAULT_KEY` (the vault's master key) belongs in `.env`.
 4. Don't edit `./.pattern` by hand; `./.pattern-data` is runtime data
    (conversations, blobs, secrets) and is gitignored.
+5. **Prefer the `pattern_*` MCP tools when you have them.** This project ships
+   `.mcp.json` → `pattern mcp`, so Claude Code (and any MCP client) connects to
+   the running engine's control plane: `pattern_list_ops` / `pattern_get_op`
+   (ground truth instead of guessing), `pattern_search_docs`,
+   `pattern_get_workflow`, `pattern_validate_workflow` (validate BEFORE you
+   propose), `pattern_save_workflow_draft` (drafts only — deploying stays
+   human), `pattern_list_runs` / `pattern_get_run` (debug from real traces).
 
 ## Mental model (60 seconds)
 

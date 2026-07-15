@@ -67,6 +67,9 @@ export function meetsRequirement(
   // resolves it before delegating, so this is only a defensive path.
   if (typeof requirement === "object" && "scopes" in requirement && requirement.scopes?.length) {
     const have = new Set(principal.scopes ?? []);
+    // `admin` is the root scope: it satisfies any requirement, so an admin
+    // session never needs the granular scopes minted for API tokens.
+    if (have.has("admin")) return { ok: true };
     const missing = requirement.scopes.filter((s) => !have.has(s));
     if (missing.length) {
       return { ok: false, reason: `missing required scope(s): ${missing.join(", ")}` };

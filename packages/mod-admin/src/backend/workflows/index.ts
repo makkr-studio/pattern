@@ -119,6 +119,7 @@ export const endpointSpecs: EndpointSpec[] = [
   { id: "admin.api.workflow.setEnabled", method: "POST", path: `${API}/workflows/:slug/enabled`, op: "admin.workflow.setEnabled" },
   { id: "admin.api.workflow.explain", method: "GET", path: `${API}/workflows/:slug/explain`, op: "admin.workflow.explain" },
   { id: "admin.api.workflow.import", method: "POST", path: `${API}/import`, op: "admin.workflow.import" },
+  { id: "admin.api.workflow.validate", method: "POST", path: `${API}/validate`, op: "admin.workflow.validate" },
   { id: "admin.api.deploy", method: "POST", path: `${API}/deploy/:slug`, op: "admin.workflow.deploy" },
   { id: "admin.api.versions.list", method: "GET", path: `${API}/workflows/:slug/versions`, op: "admin.version.list" },
   { id: "admin.api.versions.get", method: "GET", path: `${API}/workflows/:slug/versions/:v`, op: "admin.version.get" },

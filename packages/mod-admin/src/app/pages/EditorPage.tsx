@@ -20,7 +20,8 @@ import {
 import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern-js/admin-sdk";
 import { hasErrors, isWarning, issueSummary } from "../lib/issues";
 import { api } from "../lib/api";
-import { useDeploy, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
+import { useDeploy, useManifest, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
+import { BuddyDock } from "../editor/BuddyDock";
 import { OpNode } from "../editor/OpNode";
 import { FrameNode } from "../editor/FrameNode";
 import { PortalEdge } from "../editor/PortalEdge";
@@ -48,7 +49,7 @@ import { RequireAuthField } from "../editor/RequireAuthField";
 import { Markdown } from "../components/Markdown";
 import { tip } from "../components/Tooltip";
 import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
-import { Braces, Lock, Settings, Cpu } from "lucide-react";
+import { Braces, Lock, Settings, Cpu, Sparkles } from "lucide-react";
 import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
@@ -364,6 +365,22 @@ function EditorInner() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
+
+  // ── Buddy dock: shown when mod-buddy is installed (manifest carries its command). ──
+  const { data: uiManifest } = useManifest();
+  const buddyAvailable = Boolean(uiManifest?.commands?.some((c) => c.id === "buddy.open"));
+  const [buddyOpen, setBuddyOpen] = useState(false);
+  /** Apply a Buddy proposal to the OPEN canvas: undoable (⌘Z), marks dirty — Save/Deploy stay manual. */
+  const applyBuddyDoc = useCallback(
+    (doc: WorkflowDoc) => {
+      pushHistory();
+      const flow = buildFlow(doc, opMap);
+      setNodes(flow.nodes);
+      setEdges(flow.edges);
+      baseDoc.current = { ...baseDoc.current, name: doc.name ?? baseDoc.current.name, description: doc.description ?? baseDoc.current.description };
+    },
+    [opMap, pushHistory, setNodes, setEdges],
+  );
 
   /** Load a doc onto the canvas + reset history; `saved` sets the dirty baseline. */
   const mountDoc = useCallback(
@@ -1280,6 +1297,20 @@ function EditorInner() {
               e.target.value = ""; // allow re-importing the same file
             }}
           />
+          {buddyAvailable && (
+            <NeonButton
+              variant="ghost"
+              className="!px-2"
+              aria-label={buddyOpen ? "Close Buddy" : "Open Buddy"}
+              title={buddyOpen ? "Close Buddy" : "Buddy — describe a workflow, get it drafted on your canvas"}
+              onClick={() => {
+                setBuddyOpen((o) => !o);
+                sfx.play(buddyOpen ? "close" : "open");
+              }}
+            >
+              <Sparkles size={14} className={buddyOpen ? "text-[var(--color-neon-cyan)]" : undefined} />
+            </NeonButton>
+          )}
           <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
             <Play size={14} /> Run
           </NeonButton>
@@ -1346,7 +1377,10 @@ function EditorInner() {
         </button>
       </div>
 
-      <div className="relative grid min-h-0 flex-1 gap-0" style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px` }}>
+      <div
+        className="relative grid min-h-0 flex-1 gap-0"
+        style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px${buddyOpen ? " 10px 400px" : ""}` }}
+      >
         {/* Palette — searchable, drag onto the canvas */}
         <Palette ops={opsData ?? []} />
 
@@ -1494,6 +1528,14 @@ function EditorInner() {
             )}
           </div>
         </GlassPanel>
+
+        {/* Buddy — the assistant dock (4th pane; present only with mod-buddy installed) */}
+        {buddyOpen && (
+          <>
+            <div aria-hidden />
+            <BuddyDock slug={slug} getDoc={currentDoc} onApply={applyBuddyDoc} onClose={() => setBuddyOpen(false)} />
+          </>
+        )}
       </div>
 
       {runOpen && <RunPanel open={runOpen} onClose={() => setRunOpen(false)} doc={currentDoc()} opMap={opMap} />}

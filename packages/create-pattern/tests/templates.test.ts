@@ -20,6 +20,9 @@ import { agentsMod } from "@pattern-js/mod-agents";
 import { aiMod } from "@pattern-js/mod-ai";
 import { adminMod } from "@pattern-js/mod-admin";
 import { chatMod } from "@pattern-js/mod-chat";
+import { vectorsMod } from "@pattern-js/mod-vectors";
+import { buddyMod } from "@pattern-js/mod-buddy";
+import { docsMod } from "@pattern-js/mod-docs";
 
 const TEMPLATES = fileURLToPath(new URL("../templates", import.meta.url));
 const VAULT_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -33,6 +36,8 @@ const FACTORIES: Record<string, () => PatternMod> = {
   "@pattern-js/mod-ai": () => aiMod(),
   "@pattern-js/mod-admin": () => adminMod(),
   "@pattern-js/mod-chat": () => chatMod(),
+  "@pattern-js/mod-vectors": () => vectorsMod({ path: ":memory:" }),
+  "@pattern-js/mod-buddy": () => buddyMod({ indexOnBoot: false }),
 };
 
 async function resolveMod(templateDir: string, entry: string): Promise<PatternMod> {
@@ -85,5 +90,21 @@ describe("create-pattern templates", () => {
       }
       expect(error, error && `${t}/workflows/${f}: ${error.message}`).toBeUndefined();
     }
+  });
+
+  it.each(["agentic", "agent-chat"])("%s: seeded mod workflows survive the SCAFFOLDED mod order (docs appended last)", async (t) => {
+    // The 0.4.0 boot regression: mod-buddy SHIPS tool workflows wiring docs.*
+    // ops while applyDocs appends mod-docs AFTER it in pattern.config.json.
+    // This installs the real mods in that exact order the way loadMods does —
+    // workflows parked per-mod, flushed once every mod's ops are in.
+    const dir = join(TEMPLATES, t);
+    const cfg = JSON.parse(readFileSync(join(dir, "pattern.config.json"), "utf8")) as { mods?: string[] };
+    const engine = new Engine();
+    for (const entry of cfg.mods ?? []) {
+      await engine.useAsync(await resolveMod(dir, entry), { deferReady: true, deferWorkflows: true });
+    }
+    await engine.useAsync(docsMod(), { deferReady: true, deferWorkflows: true }); // the docs dimension, appended last
+    await engine.flushDeferredWorkflows(); // threw `unknown op "docs.ops.list"` before the deferral fix
+    expect(engine.workflows.get("buddy.tool.list-ops")).toBeDefined();
   });
 });

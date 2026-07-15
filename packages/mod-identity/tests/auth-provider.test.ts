@@ -46,6 +46,14 @@ describe("session AuthProvider", () => {
     await svc.revokeSession(minted.sessionId);
     expect(await provider.authenticate(ctx({ cookie: `pattern_session=${minted.token}` }))).toBeNull();
 
+    // A second admin, so the last-admin floor lets us disable the first.
+    await svc.findOrCreateByIdentity({
+      provider: "magic-link",
+      subject: "grace@x.io",
+      email: "grace@x.io",
+      allowCreate: true,
+      roles: ["admin"],
+    });
     const second = await svc.mintSession(user.id);
     await svc.setDisabled(user.id, true);
     expect(await provider.authenticate(ctx({ cookie: `pattern_session=${second.token}` }))).toBeNull();

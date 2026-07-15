@@ -17,6 +17,9 @@ is served through the app boundary alongside the rest of your app.
 - **Graph editor**: the hero. An `@xyflow/react` canvas with node types
   rendered from each `OpDefinition`'s ports, config forms from the op's Zod
   schema (secret fields redacted), live validation, and connection assist.
+  With `@pattern-js/mod-buddy` installed, a **Buddy dock** (the ✦ toolbar
+  toggle) drafts workflows in conversation and applies proposals to the open
+  canvas as undoable edits — Save and Deploy stay yours.
 - **Runs + replay**: trigger a workflow, watch the per-node waterfall, then
   scrub the replay back over the graph as nodes animate pending → running →
   ok / error / skipped. Run I/O is sampled (capped, secrets masked).

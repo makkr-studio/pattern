@@ -9,10 +9,10 @@
  * driver. Secret VALUES never sit in workflow values or persisted config.
  */
 
-import type { OpContext } from "@pattern-js/core";
+import { resolveSourced, type OpContext } from "@pattern-js/core";
 import { renderEmailMarkdown } from "./markdown.js";
 import { DEFAULT_ACCOUNT, type EmailConfigService } from "./config.js";
-import { blobStore, vaultLike } from "./well-known.js";
+import { blobStore, STORE_SERVICE_KEY, type BlobStoreLike } from "./well-known.js";
 import type {
   AttachmentInput,
   EmailAccount,
@@ -20,7 +20,9 @@ import type {
   EmailDriverInfo,
   EmailDriverSpec,
   EmailMessage,
-  SecretRef,
+  InboundAttachment,
+  InboundEmailMessage,
+  InboundInput,
   SendInput,
 } from "./types.js";
 
@@ -45,6 +47,15 @@ export interface EmailService {
   send(input: SendInput, ctx: OpContext): Promise<SendResult>;
   /** REAL test send of a canned message to `to`, from an (unsaved) draft account. */
   testAccount(draft: EmailAccount, to: string, ctx: OpContext): Promise<TestResult>;
+  /**
+   * Inbound (0.4.0): webhook drivers hand a verified, parsed message here.
+   * Attachments land in the blob store (meta-only when mod-store is absent),
+   * then `email.inbound` and `email.inbound.<account>` fire on the event bus —
+   * the `email.inbound` trigger op subscribes to exactly those.
+   */
+  ingestInbound(input: InboundInput, ctx: OpContext): Promise<InboundEmailMessage>;
+  /** Resolve ONE of an account's sourced secrets (webhook drivers verify signatures with this). */
+  accountSecret(accountName: string, field: string, ctx: OpContext): Promise<string | undefined>;
 }
 
 export class DefaultEmailService implements EmailService {
@@ -92,6 +103,61 @@ export class DefaultEmailService implements EmailService {
     }
   }
 
+  /* ── inbound ───────────────────────────────────────────────────────── */
+
+  async ingestInbound(input: InboundInput, ctx: OpContext): Promise<InboundEmailMessage> {
+    const list = (v: string | string[] | undefined): string[] =>
+      v === undefined ? [] : (Array.isArray(v) ? v : [v]).filter((s) => s.trim().length > 0);
+
+    // Attachments → blobs. Without mod-store the META survives (filename/mime/
+    // size) so workflows still see what arrived; only the bytes are dropped.
+    const attachments: InboundAttachment[] = [];
+    for (const [i, a] of (input.attachments ?? []).entries()) {
+      const filename = a.filename ?? `attachment-${i + 1}`;
+      const mime = a.mime ?? "application/octet-stream";
+      let blobId: string | undefined;
+      try {
+        const store = ctx.services[STORE_SERVICE_KEY] as BlobStoreLike | undefined;
+        if (store?.blobs && typeof store.blobs.put === "function") {
+          blobId = (await store.blobs.put(a.content, { mime })).id;
+        } else {
+          console.warn(`[pattern/mod-email] inbound attachment "${filename}" dropped — install @pattern-js/mod-store to keep attachment bytes`);
+        }
+      } catch (err) {
+        console.warn(`[pattern/mod-email] inbound attachment "${filename}" failed to store: ${(err as Error).message}`);
+      }
+      attachments.push({ blobId, filename, mime, size: a.content.byteLength });
+    }
+
+    const message: InboundEmailMessage = {
+      account: input.account,
+      from: input.from,
+      to: list(input.to),
+      cc: list(input.cc).length ? list(input.cc) : undefined,
+      subject: input.subject ?? "",
+      text: input.text,
+      html: input.html,
+      headers: input.headers ?? {},
+      messageId: input.messageId,
+      inReplyTo: input.inReplyTo,
+      references: input.references,
+      attachments,
+      receivedAt: input.receivedAt ?? Date.now(),
+    };
+
+    // Both the generic event and the per-account one — the trigger op picks.
+    ctx.services.events.emit("email.inbound", message);
+    ctx.services.events.emit(`email.inbound.${message.account}`, message);
+    return message;
+  }
+
+  async accountSecret(accountName: string, field: string, ctx: OpContext): Promise<string | undefined> {
+    const account = this.config.account(accountName);
+    const ref = account?.secrets[field];
+    if (!ref?.key) return undefined;
+    return resolveSourced(ctx, ref, "mod-email");
+  }
+
   /* ── internals ─────────────────────────────────────────────────────── */
 
   private async sendVia(account: EmailAccount, input: SendInput, ctx: OpContext): Promise<SendResult> {
@@ -123,20 +189,9 @@ export class DefaultEmailService implements EmailService {
     }
     const creds: Record<string, string> = {};
     for (const [field, ref] of Object.entries(account.secrets)) {
-      creds[field] = await this.resolveSourced(ctx, ref);
+      creds[field] = await resolveSourced(ctx, ref, "mod-email");
     }
     return creds;
-  }
-
-  private async resolveSourced(ctx: OpContext, ref: SecretRef): Promise<string> {
-    if (ref.source === "env") {
-      const v = ctx.env[ref.key];
-      if (v) return v;
-      throw new Error(`mod-email: env var "${ref.key}" is not set.`);
-    }
-    const vault = vaultLike(ctx);
-    if (vault?.unlocked() && (await vault.has(ref.key).catch(() => false))) return vault.read(ref.key);
-    throw new Error(`mod-email: no vault secret "${ref.key}" — add it in admin → System → Secrets (vault must be unlocked).`);
   }
 
   /** to/cc/bcc listed, bodies final (explicit html/text win over markdown per part), attachments as bytes. */
@@ -172,6 +227,7 @@ export class DefaultEmailService implements EmailService {
       html,
       text,
       attachments,
+      headers: input.headers && Object.keys(input.headers).length ? input.headers : undefined,
     };
   }
 

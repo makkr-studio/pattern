@@ -126,6 +126,22 @@ function Field({ name, schema, required, value, onChange }: { name: string; sche
   }
 
   if (type === "string") {
+    // `format: "multiline"` → a textarea (paste a document, write a prompt…).
+    if (s?.format === "multiline") {
+      return (
+        <div>
+          {label}
+          <textarea
+            id={id}
+            value={String(value ?? "")}
+            rows={6}
+            placeholder={s?.default != null ? String(s.default) : ""}
+            onChange={(e) => onChange(e.target.value)}
+            className={`${inputCls} min-h-[120px] resize-y`}
+          />
+        </div>
+      );
+    }
     const secret = s?.secret === true || s?.format === "password";
     return (
       <div>

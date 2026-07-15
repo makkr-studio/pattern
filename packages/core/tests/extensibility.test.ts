@@ -179,3 +179,44 @@ describe("observability (§10)", () => {
     expect(ops).toContain("boundary.return");
   });
 });
+
+describe("mod install: deferred workflows (§13)", () => {
+  // A mod that SHIPS a workflow wiring an op only a LATER mod registers — the
+  // scaffold scenario (mod-buddy's tools wire docs.* ops, mod-docs loads last).
+  const shipsFlow: Workflow = {
+    id: "deferred-flow",
+    nodes: [
+      { id: "in", op: "boundary.manual", config: { outputs: ["payload"] } },
+      { id: "tag", op: "test.tag", config: { label: "later" } },
+      { id: "out", op: "boundary.return" },
+    ],
+    edges: [
+      { from: { node: "in", port: "payload" }, to: { node: "tag", port: "payload" } },
+      { from: { node: "tag", port: "payload" }, to: { node: "out", port: "value" } },
+    ],
+  };
+  const modA = { name: "mod-a", workflows: [shipsFlow] };
+  const modB = { name: "mod-b", ops: [tagOp] };
+
+  it("eager install (no defer) still validates per-mod and fails loudly", async () => {
+    await expect(new Engine().useAsync(modA)).rejects.toThrow(/unknown op/);
+  });
+
+  it("deferWorkflows parks the workflow; flush registers it once all ops are in", async () => {
+    const engine = new Engine();
+    await engine.useAsync(modA, { deferReady: true, deferWorkflows: true }); // would throw eagerly
+    await engine.useAsync(modB, { deferReady: true, deferWorkflows: true });
+    await engine.flushDeferredWorkflows();
+    const res = await engine.run("deferred-flow", { input: { payload: {} } });
+    expect(res.status).toBe("ok");
+    expect((Object.values(res.outputs)[0] as any).value.order).toEqual(["later"]);
+  });
+
+  it("flush drains the queue — a second flush is a no-op", async () => {
+    const engine = new Engine();
+    await engine.useAsync(modA, { deferReady: true, deferWorkflows: true });
+    await engine.useAsync(modB, { deferReady: true, deferWorkflows: true });
+    await engine.flushDeferredWorkflows();
+    await expect(engine.flushDeferredWorkflows()).resolves.toBe(engine); // nothing re-registers
+  });
+});
