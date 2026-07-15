@@ -90,6 +90,11 @@ are built in.
 
 You now have a running engine. Pick the path that matches what you're building:
 
+- **Build with Buddy** (agent packs): the ✦ toggle in the editor toolbar opens
+  the assistant — describe a workflow and it drafts it onto your canvas,
+  validated; you keep Save and Deploy. The same tools reach your own editor's
+  agent: the scaffold's `.mcp.json` wires `pattern mcp`, so Claude Code or
+  Cursor can list ops, read docs, validate and save drafts directly.
 - **Understand the model** with [Concepts](concepts.md): ports, the three edge
   kinds, the scheduler, boundaries, hooks, auth.
 - **Author workflows** [in the admin](guides/workflow-in-the-admin.md) (visual)

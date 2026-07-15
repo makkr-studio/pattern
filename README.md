@@ -100,9 +100,26 @@ thing to a coding agent as one file.
   <img src="assets/screenshots/ops.jpg" width="820" alt="The op reference, generated from the live registry" />
 </p>
 
+**Buddy, the workflow assistant (0.4).** A chat dock in the editor: describe what
+you want and Buddy drafts the workflow — grounded in your app's own docs and op
+catalog, validated before you see it — then applies it to your canvas as an
+undoable edit. It debugs failed runs from their traces, and the same ten
+`pattern_*` tools it uses are served over **MCP**: token-guarded over HTTP, and
+via `pattern mcp` on stdio — so Claude Code or Cursor author Pattern workflows
+too (`.mcp.json` ships in the scaffolds).
+
 **Agents and apps, expressed as workflows.** A tool is a workflow. A chat turn is
 a workflow you can fork in the admin. You can serve a built single-page app from a
-workflow, and host many branded copies of it over a single backend.
+workflow, and host many branded copies of it over a single backend. With
+`@pattern-js/mod-vectors` installed, the chat even **remembers each user across
+conversations — with receipts**: every memory links to the run where it was
+learned, browsable and deletable in the admin.
+
+**Vector search and inbound email (0.4).** Embedding collections that declare
+their model alias and filterable fields, hybrid retrieval (vector + keyword),
+and an admin page that is the whole RAG loop — paste, search, read the scores.
+Plus `email.inbound`: a signed webhook turns received email into workflow runs,
+and `email.reply` answers in-thread.
 
 **Real sign-in and real email, in-box.** Magic-link and OIDC login (Google,
 Microsoft, any issuer) over one identity layer, and a transactional email
@@ -132,7 +149,9 @@ Everything beyond the engine is an optional mod you `engine.use()`.
 | [`@pattern-js/mod-email`](packages/mod-email) · [`@pattern-js/mod-email-resend`](packages/mod-email-resend) · [`@pattern-js/mod-email-smtp`](packages/mod-email-smtp) | the transactional-email contract and its drivers; delivers sign-in links out of the box |
 | [`@pattern-js/mod-store`](packages/mod-store) · [`@pattern-js/mod-vault`](packages/mod-vault) | document / blob / lease persistence and encrypted secrets |
 | [`@pattern-js/mod-agents`](packages/mod-agents) · [`@pattern-js/mod-ai`](packages/mod-ai) | the neutral agent contracts + native run loop, and the AI capability layer (model provider, text / image / embeddings / STT / TTS / video, MCP) |
-| [`@pattern-js/mod-chat`](packages/mod-chat) | a complete chat application |
+| [`@pattern-js/mod-chat`](packages/mod-chat) | a complete chat application, with per-user cross-conversation memory |
+| [`@pattern-js/mod-vectors`](packages/mod-vectors) | vector search: embedding collections, filterable metadata, hybrid retrieval, a driver SPI |
+| [`@pattern-js/mod-buddy`](packages/mod-buddy) | Buddy, the editor assistant + the `pattern_*` control-plane tools and MCP server |
 | [`create-pattern`](packages/create-pattern) | the scaffolder (`npm create pattern`) |
 
 Building your own? `npm create pattern -- --kind mod` scaffolds a publishable mod
@@ -157,6 +176,7 @@ pattern graph workflow.json    # print a workflow as a terminal graph
 pattern validate file.json     # validate, with located, readable errors
 pattern dev [entry]            # run with file-watch hot reload
 pattern run file.json|id       # run a CLI workflow once
+pattern mcp                    # serve your app's tools over MCP on stdio
 ```
 
 ## Develop
