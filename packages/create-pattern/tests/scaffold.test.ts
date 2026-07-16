@@ -90,6 +90,15 @@ describe("create-pattern scaffold dimensions", () => {
     expect(existsSync(join(dir, "load.example.json"))).toBe(false);
   });
 
+  it("studio --no-examples strips the demo mod from workers.mods too, not just mods", () => {
+    const { json } = scaffold("s-workers-clean", "--modpack", "studio", "--no-examples");
+    const cfg = json("pattern.config.json") as { mods: string[]; workers?: { mods?: string[] } };
+    expect(cfg.mods).not.toContain("./mods/quotes.mjs");
+    // The stale-entry bug: a removed demo mod lingering here made every worker
+    // boot try to import a deleted file.
+    expect(cfg.workers?.mods ?? []).not.toContain("./mods/quotes.mjs");
+  });
+
   it("agentic --providers openai: seeds default + embeddings aliases, writes .mcp.json", () => {
     const { read, json } = scaffold("s-seed", "--modpack", "agentic", "--no-auth", "--providers", "openai");
     const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };

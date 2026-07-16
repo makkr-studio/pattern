@@ -58,9 +58,10 @@ npm run dev                      # then open http://localhost:3000/admin
 
 Pick the **studio** modpack and you land in a visual workspace with example
 workflows you can edit, run, and trace — or **saas-starter** for a subscription
-SaaS with sign-in, Stripe billing, and a gated page out of the box. Or go
-straight to code: drop a `.json` workflow into `workflows/` and the dev server
-picks it up on save.
+SaaS with sign-in, Stripe billing, and a gated page out of the box — or
+**compose your own** layer by layer (`--with admin,auth,billing,…`) and grow
+any existing app later with `pattern add`. Or go straight to code: drop a
+`.json` workflow into `workflows/` and the dev server picks it up on save.
 
 ```jsonc
 // workflows/hello.json  ·  GET /hello/:name

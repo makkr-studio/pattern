@@ -104,6 +104,21 @@ coding agent. `--dry-run --with …` previews the manifest without writing.
 The packs above are curated presets over the same machinery: reach for a rung
 for a quick demo, compose when you know what you want.
 
+## Grow an existing project (`add`)
+
+The same layers, applied additively inside a scaffolded app:
+
+```bash
+npx create-pattern add billing        # or, from the project: pattern add billing
+npx create-pattern add                # list every layer + its status here
+```
+
+Deps install at the **project's** `@pattern-js` range (never this CLI's),
+config entries land in canonical positions (auth first, docs last), wrapper
+files are written only when absent, and your workflows are never overwritten —
+re-running the same `add` is a no-op. `pattern add` (the runtime CLI) delegates
+here, picking the create-pattern generation that matches your project.
+
 ## Flags (headless)
 
 ```

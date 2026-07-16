@@ -105,6 +105,26 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   and a new handbook guide, **Deploying**, with the container contract and
   Fly.io / Railway / Render walk-throughs.
 
+### Compose & add
+
+- **Compose your own** — the modpack picker's last entry, and the packs'
+  general case: pick capability **layers** in one multiselect (admin, auth,
+  email, AI, agents, chat, vectors, billing, buddy, docs), answer
+  sub-questions only for what you picked, and dependencies pull in **with a
+  printed note** (`--with chat` tells you it brought agents + AI + store
+  along). Scriptable as `--with admin,auth:magic-link,email:resend,billing`;
+  every composition ends by printing its **reproducible one-liner** — share
+  it, script it, or hand it to a coding agent. Each layer seeds its own
+  example workflows and documents itself in AGENTS.md.
+- **`pattern add`** — the same layers, applied to an EXISTING project:
+  `npx create-pattern add billing` (or `pattern add billing`, which delegates
+  to the scaffolder generation matching the project's own `@pattern-js`
+  range). Additive and idempotent: deps at the project's range, config
+  entries in canonical positions, wrappers only when absent, your workflows
+  never overwritten — and `add` alone lists every layer's status. Adding
+  billing onto a bare identity upgrades it to the app-local roles wrapper,
+  completing the entitlement bridge with a printed explanation.
+
 ### Core & fixes
 
 - Inbound email (Resend) now **dedups svix redeliveries** when mod-store is

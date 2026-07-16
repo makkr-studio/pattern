@@ -31,6 +31,8 @@ npm create pattern my-app -- --modpack studio
 | `studio-ai` | studio + **mod-ai**: plain AI workflows (text, object, image, speech) in the editor. |
 | `agentic` | studio + AI + the agent stack (agent, run, tools): an `/ask` endpoint. |
 | `agent-chat` | studio + the full **chat app** at `/chat`. |
+| `saas-starter` | studio + sign-in, **Stripe billing** wired to roles, a gated `/pro` page. |
+| *compose* | **pick your layers** — one multiselect (or `--with admin,auth,billing,…`); every composition prints its reproducible one-liner. |
 
 The wizard then offers the orthogonal **dimensions** — every one has a flag for
 scripting (`--help` lists them all):
@@ -44,6 +46,12 @@ scripting (`--help` lists them all):
   account in admin → System → Email and links send themselves.
 - **Docs** (`--docs`), **examples** (`--no-examples` for a clean scaffold), a
   generated **vault key**, and the **AI providers** to install (AI packs).
+
+**Grow it later.** A scaffold isn't a final answer — inside any project,
+`pattern add billing` (or `npx create-pattern add billing`) applies more
+layers additively: dependencies at your project's own version, config in the
+right order, and your files never overwritten. `pattern add` alone lists
+every layer's status.
 
 ## 2. Run it
 

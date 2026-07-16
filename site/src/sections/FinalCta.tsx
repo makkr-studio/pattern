@@ -14,6 +14,7 @@ const MODPACKS = [
   { name: "studio-ai", desc: "studio + AI ops" },
   { name: "agentic", desc: "studio + AI + agents" },
   { name: "agent-chat", desc: "a full chat app" },
+  { name: "compose your own", desc: "--with: pick your layers, grow later with pattern add" },
 ];
 
 /** The closing call to action, plus the footer. */

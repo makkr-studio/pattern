@@ -1386,8 +1386,11 @@ async function applyNoExamples(targetDir: string, packId: string, name: string):
 
   if (spec.configMods?.length) {
     const cfgPath = join(targetDir, "pattern.config.json");
-    const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
+    const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[]; workers?: { size: number; mods?: string[] } };
     cfg.mods = cfg.mods.filter((m) => !spec.configMods!.includes(m));
+    // An entry stripped from cfg.mods must never linger in workers.mods —
+    // the worker would try to load a demo mod file that was just deleted.
+    if (cfg.workers?.mods) cfg.workers.mods = cfg.workers.mods.filter((m) => !spec.configMods!.includes(m));
     await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
   }
 
