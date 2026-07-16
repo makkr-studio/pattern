@@ -24,6 +24,15 @@ import { randomBytes } from "node:crypto";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { EMAIL_AGENT_REPLY_WORKFLOW, WHOAMI_WORKFLOW } from "./workflows.js";
+import {
+  DEFAULT_LAYERS,
+  VISIBLE_LAYERS,
+  layerOrThrow,
+  parseWith,
+  pickLayers,
+  resolveLayers,
+  type WithToken,
+} from "./layers.js";
 
 const TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
 
@@ -636,6 +645,8 @@ interface Flags {
   vaultKey?: boolean;
   /** Extra AI providers (short id or @ai-sdk pkg) to install. undefined = ask (mod-ai packs). */
   providers?: string[];
+  /** Compose mode: the chosen layers (`--with admin,auth:oidc,billing`). */
+  with?: WithToken[];
   /** Print the manifest for the resolved selection and write nothing. */
   dryRun: boolean;
   /** What to scaffold: an app (default) or a publishable mod. undefined = ask. */
@@ -688,6 +699,7 @@ function parseFlags(argv: string[]): Flags {
       }
       flags.providers = ids;
     }
+    else if (a === "--with" || a === "-w") flags.with = parseWith(argv[++i] ?? "");
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (a === "--help" || a === "-h") flags.help = true;
@@ -702,6 +714,10 @@ function parseFlags(argv: string[]): Flags {
     else if (!a.startsWith("-") && !flags.name) flags.name = a;
   }
   if (flags.modpack && LEGACY_IDS[flags.modpack]) flags.modpack = LEGACY_IDS[flags.modpack];
+  if (flags.with && flags.modpack && flags.modpack !== "compose") {
+    throw new Error("--with composes your own stack — drop --modpack (a pack is a preset of the same layers)");
+  }
+  if (flags.with) flags.modpack = "compose";
   // A modpack implies an app (the app ladder); never ask kind then.
   if (flags.modpack) flags.kind = "app";
   return flags;
@@ -851,6 +867,21 @@ function previewManifest(flags: Flags): void {
     console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
     return;
   }
+  if (flags.modpack === "compose") {
+    const { layers, pulled, notes } = resolveComposeSelection(flags);
+    const { dims, notes: dimNotes } = composeDims(layers, flags);
+    console.log(`  ${pc.bold("Composed")} ${pc.dim(`(--with ${composeWithTokens(layers, dims)})`)}\n`);
+    for (const n of [...pullNotes(pulled).map((x) => `+ ${x}`), ...notes, ...dimNotes]) console.log(`  ${pc.yellow("note:")} ${n}`);
+    if (pulled.length || notes.length || dimNotes.length) console.log("");
+    console.log(
+      composeCard(layers, dims)
+        .split("\n")
+        .map((l) => "  " + l)
+        .join("\n"),
+    );
+    console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
+    return;
+  }
   const pack = packOrThrow(flags.modpack ?? "studio");
   const { dims, notes } = resolveDims(pack, flags);
   const { auth, oidc, email, docs, examples } = dims;
@@ -874,9 +905,11 @@ function listPacks(): void {
     const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"}, docs: ${pack.docs?.default ? "on" : "off"} by default)`) : "";
     console.log(`  ${pc.cyan(pack.id.padEnd(12))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
+  console.log(`\n  ${pc.cyan("compose".padEnd(12))}Compose your own — ${pc.dim("pick layers instead of a pack: admin, auth, email, AI, agents, chat, vectors, billing, buddy, docs")}`);
   console.log(
     `\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth] [--oidc] [--email console|resend|smtp] [--docs|--no-docs] [--examples|--no-examples]")}`,
   );
+  console.log(`  ${pc.dim("npm create pattern@latest my-app -- --with admin,auth:magic-link,email:resend,billing   (compose mode — dependencies pull in with a note)")}`);
   console.log(`  ${pc.dim("examples are included by default — pass --no-examples for a clean scaffold. --help for every flag.")}\n`);
 }
 
@@ -892,7 +925,11 @@ function usage(): void {
       `    npm create pattern@latest ${pc.dim("[name] [options]")}`,
       "",
       `  ${pc.bold("Modpacks")} ${pc.dim("(--list for the ladder)")}`,
-      f("--modpack, -m <id>", "blank | headless | studio | studio-ai | agentic | agent-chat"),
+      f("--modpack, -m <id>", "blank | headless | studio | saas-starter | studio-ai | agentic | agent-chat"),
+      "",
+      `  ${pc.bold("Compose")} ${pc.dim("(pick layers instead of a pack; deps pull in with a note)")}`,
+      f("--with, -w <a,b,…>", "admin | auth[:magic-link|oidc|both] | email[:console|resend|smtp]"),
+      f("", "| ai | agents | chat | vectors | billing | buddy | docs"),
       "",
       `  ${pc.bold("Dimensions")} ${pc.dim("(omit a flag = ask, or take the pack default)")}`,
       f("--auth | --no-auth", "identity + sign-in, users & sessions"),
@@ -1026,17 +1063,18 @@ export default identityMod({
  * and give headless packs a protected /whoami route so the value is curl-able
  * in minute one. OIDC's wrapper file is applyOidc's job.
  */
-async function applyAuth(targetDir: string, packId: string, magicLink: boolean): Promise<void> {
+async function applyAuth(targetDir: string, packId: string, magicLink: boolean, rolesWrapper?: boolean): Promise<void> {
   const deps = [IDENTITY_MOD, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
   for (const mod of deps) pkg.dependencies[mod] = PATTERN_RANGE;
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-  // The saas-starter configures identity (the roles→scopes map is the other
-  // half of billing's entitlement bridge) — an app-local wrapper, like OIDC's.
+  // The saas-starter — and a composed stack with billing — configures identity
+  // (the roles→scopes map is the other half of billing's entitlement bridge):
+  // an app-local wrapper, like OIDC's.
   let identityEntry = IDENTITY_MOD;
-  if (packId === "saas-starter") {
+  if (rolesWrapper ?? packId === "saas-starter") {
     await mkdir(join(targetDir, "mods"), { recursive: true });
     await writeFile(join(targetDir, "mods", "identity.mjs"), IDENTITY_WRAPPER_SAAS);
     identityEntry = "./mods/identity.mjs";
@@ -1084,16 +1122,21 @@ async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<v
   }
   await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
+  await appendEnvHint(targetDir, emailEnvHint(delivery)!);
+}
+
+/** The .env.example block a real email driver earns (null for console). */
+function emailEnvHint(delivery: EmailDelivery): string | null {
+  if (delivery === "console") return null;
   const hint =
     delivery === "resend"
       ? "# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
       : "# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
-  await appendEnvHint(
-    targetDir,
+  return (
     hint +
-      "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +
-      "# (invites, sign-in) are built on it. Unset in dev = the request's host.\n" +
-      "# PATTERN_PUBLIC_URL=\n",
+    "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +
+    "# (invites, sign-in) are built on it. Unset in dev = the request's host.\n" +
+    "# PATTERN_PUBLIC_URL=\n"
   );
 }
 
@@ -1444,6 +1487,273 @@ async function applyNoExamples(targetDir: string, packId: string, name: string):
   }
 }
 
+// ── Compose mode (--with / the picker's last entry) ──────────────────────────
+// Packs are curated presets; compose picks the LAYERS individually. One
+// multiselect, sub-questions only for what was chosen, dependencies auto-pull
+// with a printed note, and the result prints its own reproducible one-liner.
+
+/** Fold `--with` tokens + compatible dimension flags into a resolved layer set. */
+function resolveComposeSelection(flags: Flags): { layers: string[]; pulled: Array<{ id: string; by: string }>; notes: string[] } {
+  const tokens = flags.with ?? [];
+  const chosen = new Set(tokens.map((t) => t.id));
+  const notes: string[] = [];
+  // Dimension flags keep working in compose (scripting compatibility).
+  if (flags.auth) chosen.add("auth");
+  if (flags.docs) chosen.add("docs");
+  if (flags.email !== undefined && flags.email !== "console" && !chosen.has("email")) {
+    chosen.add("email");
+    notes.push(`--email ${flags.email} adds the email layer`);
+  }
+  // Token answers land on the flags the dimension resolution already reads.
+  for (const t of tokens) {
+    if (t.id === "auth" && t.answer) {
+      flags.magicLink = t.answer !== "oidc";
+      flags.oidc = t.answer !== "magic-link";
+    }
+    if (t.id === "email" && t.answer) flags.email = t.answer as EmailDelivery;
+  }
+  const { layers, pulled } = resolveLayers([...chosen]);
+  return { layers, pulled, notes };
+}
+
+/** The compose equivalent of resolveDims: flags + layer set → dims + notes. */
+function composeDims(layers: string[], flags: Flags): { dims: Dims; notes: string[] } {
+  const notes: string[] = [];
+  const auth = layers.includes("auth");
+  const magicLink = auth ? (flags.magicLink ?? true) : false;
+  const oidc = auth ? (flags.oidc ?? false) : false;
+  if (auth && !magicLink && !oidc) throw new Error("auth needs at least one sign-in method — keep magic link or add --oidc");
+  if (!auth && (flags.magicLink !== undefined || flags.oidc !== undefined)) notes.push("--magic-link/--oidc ignored (no auth layer in the stack)");
+  const hasVault = layers.includes("vault");
+  if (flags.vaultKey !== undefined && !hasVault) notes.push("--vault-key ignored (no vault in the stack — the AI layer pulls it in)");
+  const hasAi = layers.includes("ai");
+  if (flags.providers !== undefined && !hasAi) notes.push("--providers ignored (no AI layer in the stack)");
+  return {
+    dims: {
+      auth,
+      magicLink,
+      oidc,
+      email: layers.includes("email") ? (flags.email ?? "console") : "console",
+      docs: layers.includes("docs"),
+      examples: flags.examples ?? true,
+      vaultKey: hasVault ? (flags.vaultKey ?? true) : false,
+      providers: hasAi ? (flags.providers ?? []).map(normProvider) : [],
+    },
+    notes,
+  };
+}
+
+/** The chosen layers as `--with` tokens (auth/email carry their answers). */
+function composeWithTokens(layers: string[], dims: Dims): string {
+  return VISIBLE_LAYERS.filter((id) => layers.includes(id))
+    .map((id) => {
+      if (id === "auth") return `auth:${dims.magicLink && dims.oidc ? "both" : dims.oidc ? "oidc" : "magic-link"}`;
+      if (id === "email") return `email:${dims.email}`;
+      return id;
+    })
+    .join(",");
+}
+
+/** The reproducible one-liner — any composition is shareable and scriptable. */
+function composeCommand(name: string, layers: string[], dims: Dims): string {
+  const extra = [
+    ...(dims.providers.length ? [`--providers ${dims.providers.map((x) => x.replace("@ai-sdk/", "")).join(",")}`] : []),
+    ...(dims.examples ? [] : ["--no-examples"]),
+    ...(layers.includes("vault") && !dims.vaultKey ? ["--no-vault-key"] : []),
+  ];
+  return `npm create pattern@latest ${name} -- --with ${composeWithTokens(layers, dims)}${extra.length ? " " + extra.join(" ") : ""}`;
+}
+
+/** The composed config/display mod list, install order (docs appended by dims). */
+function composeModList(layers: string[], dims: Dims): string[] {
+  const annotate = (m: string) => (m.startsWith("./mods/") ? `${m} (app-local)` : m);
+  const mods: string[] = [];
+  if (dims.auth) {
+    mods.push(layers.includes("billing") ? "./mods/identity.mjs (app-local)" : IDENTITY_MOD);
+    if (dims.magicLink) mods.push(MAGIC_LINK_MOD);
+    if (dims.oidc) mods.push(OIDC_MOD, "./mods/oidc.mjs (app-local)");
+  }
+  for (const layer of pickLayers(layers)) {
+    const entries = [...layer.configMods];
+    if (layer.id === "email" && dims.email !== "console") entries.push(EMAIL_DRIVERS[dims.email]!);
+    mods.push(...entries.map(annotate));
+  }
+  if (layers.includes("admin")) {
+    mods.push("@pattern-js/mod-admin");
+    if (dims.examples) mods.push("./mods/quotes.mjs (app-local)");
+  } else if (dims.examples) {
+    mods.push("./mods/uppercase.mjs (app-local)");
+  }
+  if (dims.docs) mods.push(DOCS_MOD);
+  return mods;
+}
+
+/** Everything the composed scaffold serves (base examples + each layer). */
+function composeServes(layers: string[], dims: Dims): string[] {
+  const s = new Set<string>(layers.includes("admin") ? [] : packOrThrow("headless").serves(dims.examples));
+  for (const layer of pickLayers(layers)) for (const e of layer.serves(dims.examples)) s.add(e);
+  if (dims.auth && !layers.includes("admin")) s.add("/whoami");
+  return [...s];
+}
+
+/** The compose manifest card — packCard's shape over a layer set. */
+function composeCard(layers: string[], dims: Dims): string {
+  const visible = VISIBLE_LAYERS.filter((id) => layers.includes(id)).map((id) => layerOrThrow(id).label);
+  const modList = composeModList(layers, dims);
+  const width = Math.max(0, ...modList.map((m) => modPath(m).length));
+  const modLines = modList.map((m) => `  ${pc.magenta(modPath(m).padEnd(width))}  ${pc.dim(MOD_ROLES[m] ?? "")}`);
+
+  const seeded = aliasSeedPlan(dims.providers);
+  const files: string[] = [];
+  for (const layer of pickLayers(layers)) {
+    const wfs = [...(layer.platformWorkflows?.workflows ?? []), ...(dims.examples ? (layer.examples?.workflows ?? []) : [])];
+    files.push(...wfs.map((f) => `workflows/${f}`));
+  }
+  if (layers.includes("billing")) files.push("mods/billing.mjs + mods/identity.mjs");
+  if (dims.examples) files.push(layers.includes("admin") ? "3 seeded workflows (in the admin store) + mods/quotes.mjs" : "workflows/hello.json + echo, shout, health");
+  if (seeded) files.push(`.pattern-data/ai-config.json (model aliases: ${seeded.aliases.map((a) => a.name).join(" + ")})`);
+  if (layers.includes("buddy")) files.push(".mcp.json (Claude Code → pattern mcp)");
+  files.push("Dockerfile", "src/index.ts");
+  const fileLines = files.map((f) => `  ${pc.cyan("›")} ${f}`);
+
+  const serves = [...composeServes(layers, dims)];
+  const env = [...new Set([...pickLayers(layers).flatMap((l) => l.env), ...(seeded?.envKeys ?? [])])];
+
+  const blocks: string[] = [pc.dim(`your stack, composed — ${visible.join(" · ")}`), "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
+  if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
+  if (env.length) {
+    const annotate = (e: string) =>
+      e === "PATTERN_VAULT_KEY" && dims.vaultKey
+        ? `${pc.magenta(e)} ${pc.green("(generated → .env)")}`
+        : seeded?.envKeys.includes(e)
+          ? `${pc.magenta(e)} ${pc.dim("(model aliases)")}`
+          : pc.magenta(e);
+    const hint = env.includes("PATTERN_VAULT_KEY") && !dims.vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
+    blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
+  }
+  blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — each layer documents itself for your coding agent`);
+  return blocks.join("\n");
+}
+
+/**
+ * Apply the composed layers onto the base scaffold: deps, config mods (the
+ * stack ahead of the base's own entries), workers, the billing wrapper, each
+ * layer's workflows (surface always, demos with examples; first writer wins),
+ * env hints, and the per-layer AGENTS.md/README appendices. applyAuth /
+ * applyOidc / applyDocs run after, exactly as they do for packs.
+ */
+async function applyCompose(targetDir: string, layers: string[], dims: Dims): Promise<void> {
+  const chosen = pickLayers(layers);
+
+  const pkgPath = join(targetDir, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
+  for (const layer of chosen) for (const dep of layer.deps) pkg.dependencies[dep] = PATTERN_RANGE;
+  if (layers.includes("email") && dims.email !== "console") pkg.dependencies[EMAIL_DRIVERS[dims.email]!] = PATTERN_RANGE;
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[]; workers?: { size: number; mods?: string[] } };
+  const stack: string[] = [];
+  for (const layer of chosen) {
+    stack.push(...layer.configMods);
+    if (layer.id === "email" && dims.email !== "console") stack.push(EMAIL_DRIVERS[dims.email]!);
+  }
+  cfg.mods = [...stack, ...cfg.mods.filter((m) => !stack.includes(m))];
+  if (cfg.workers) {
+    // The offloadable stack + the base's surviving app-local mods (an entry
+    // stripped from cfg.mods must never linger in workers.mods).
+    const workerStack = chosen.flatMap((l) => l.workerMods);
+    const appLocal = (cfg.workers.mods ?? []).filter((m) => cfg.mods.includes(m) && !workerStack.includes(m));
+    cfg.workers.mods = [...workerStack, ...appLocal];
+  }
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+  if (layers.includes("billing")) {
+    await mkdir(join(targetDir, "mods"), { recursive: true });
+    await cp(join(TEMPLATES_DIR, "saas-starter", "mods", "billing.mjs"), join(targetDir, "mods", "billing.mjs"));
+  }
+
+  await mkdir(join(targetDir, "workflows"), { recursive: true });
+  const seedWorkflows = async (template: string, files: string[]): Promise<void> => {
+    for (const f of files) {
+      const dst = join(targetDir, "workflows", f);
+      if (!existsSync(dst)) await cp(join(TEMPLATES_DIR, template, "workflows", f), dst);
+    }
+  };
+  for (const layer of chosen) {
+    if (layer.platformWorkflows) await seedWorkflows(layer.platformWorkflows.template, layer.platformWorkflows.workflows);
+    if (dims.examples && layer.examples) await seedWorkflows(layer.examples.template, layer.examples.workflows);
+  }
+  // The known pair recipe: agents + real email (resend) → the inbound email agent.
+  if (dims.examples && layers.includes("agents") && dims.email === "resend") {
+    await writeFile(join(targetDir, "workflows", "email-agent-reply.json"), EMAIL_AGENT_REPLY_WORKFLOW);
+  }
+
+  for (const layer of chosen) if (layer.envHint) await appendEnvHint(targetDir, layer.envHint);
+  const mailHint = layers.includes("email") ? emailEnvHint(dims.email) : null;
+  if (mailHint) await appendEnvHint(targetDir, mailHint);
+
+  // Each layer documents itself: AGENTS.md gains a per-layer section, the
+  // README a bullet list, and both name the reproducible one-liner's tokens.
+  const agentsPath = join(targetDir, "AGENTS.md");
+  if (existsSync(agentsPath)) {
+    const current = await readFile(agentsPath, "utf8");
+    const sections = chosen.map((l) => l.agentsMd).join("\n\n");
+    await writeFile(
+      agentsPath,
+      current.replace(/\n*$/, "\n") +
+        `\n## Composed layers\n\nThis project was composed (\`--with ${composeWithTokens(layers, dims)}\`). What each layer gives you:\n\n${sections}\n`,
+    );
+  }
+  const readmePath = join(targetDir, "README.md");
+  if (existsSync(readmePath)) {
+    const current = await readFile(readmePath, "utf8");
+    const intro = current.replace(/with the \*\*(studio|headless)\*\* modpack/, "composed layer by layer (on the $1 base)");
+    const bullets = chosen.filter((l) => !l.hidden).map((l) => `- **${l.label}** — ${l.hint}`);
+    await writeFile(readmePath, intro.replace(/\n*$/, "\n") + `\n## Composed layers\n\n${bullets.join("\n")}\n`);
+  }
+}
+
+/** The pulled-dependency note ("chat pulls in agents · ai · store · vault"). */
+function pullNotes(pulled: Array<{ id: string; by: string }>): string[] {
+  if (!pulled.length) return [];
+  const byPuller = new Map<string, string[]>();
+  for (const { id, by } of pulled) byPuller.set(by, [...(byPuller.get(by) ?? []), id]);
+  return [...byPuller.entries()].map(([by, ids]) => `${by} pulls in ${ids.join(" + ")}`);
+}
+
+/** Compose-mode next steps, assembled from the layers that are actually there. */
+function composeNext(ctx: NextCtx, layers: string[], dims: Dims): string[] {
+  const admin = layers.includes("admin");
+  return [
+    `${pc.dim("$")} cd ${ctx.name}`,
+    ctx.installed ? "" : ctx.installLine,
+    ...(layers.includes("vault") ? [vaultLine(ctx.vaultKey)] : []),
+    `${pc.dim("$")} ${ctx.runCmd} dev`,
+    "",
+    ...(dims.auth
+      ? [`${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} in the console — open it, you're the owner`]
+      : []),
+    ...(admin ? [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`] : []),
+    ...(layers.includes("chat") ? [`${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`] : []),
+    ...(layers.includes("ai") ? modelLines(ctx.seeded) : []),
+    ...(layers.includes("agents") && ctx.examples
+      ? [`${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time")}`]
+      : []),
+    ...(layers.includes("vectors") && ctx.examples
+      ? [`${pc.cyan("→")} RAG pair: POST ${pc.bold("/rag/ingest")} feeds the kb, POST ${pc.bold("/rag/ask")} answers from it ${pc.dim("(needs the embeddings alias)")}`]
+      : []),
+    ...(layers.includes("billing")
+      ? [
+          `${pc.cyan("→")} connect Stripe (test mode): keys in ${pc.bold(".env")}, the account in admin → System → Billing,`,
+          `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("— pay with 4242 4242 4242 4242 and /pro unlocks")}`,
+        ]
+      : []),
+    ...(layers.includes("buddy") ? buddyNextLines() : []),
+    ...(dims.docs ? [`${pc.cyan("→")} docs: ${pc.bold("http://localhost:3000/docs")}`] : []),
+  ].filter((l) => l !== "");
+}
+
 async function runInteractive(flags: Flags): Promise<void> {
   banner();
   p.intro(pc.bgMagenta(pc.black(" create-pattern ")));
@@ -1485,9 +1795,13 @@ async function runInteractive(flags: Flags): Promise<void> {
     (await p.select({
       message: "Pick a modpack",
       initialValue: "studio",
-      options: LADDER.map((id) => packOrThrow(id)).map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
+      options: [
+        ...LADDER.map((id) => packOrThrow(id)).map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
+        { value: "compose", label: "Compose your own", hint: "pick your layers — admin, auth, email, AI, agents, chat, vectors, billing, buddy, docs" },
+      ],
     }))!;
   if (p.isCancel(packId)) return cancel();
+  if (String(packId) === "compose") return runComposeInteractive(flags, String(name));
   const pack = packOrThrow(String(packId));
 
   // Auth is orthogonal to the pack — asked only where it makes sense.
@@ -1687,10 +2001,153 @@ async function runInteractive(flags: Flags): Promise<void> {
   p.outro(pc.green("Done — happy building! ✦"));
 }
 
+/** The compose flow: one multiselect, then sub-questions only for the picks. */
+async function runComposeInteractive(flags: Flags, name: string): Promise<void> {
+  let tokens = flags.with;
+  if (!tokens) {
+    const sel = await p.multiselect({
+      message: `Pick your layers ${pc.dim("(space toggles; dependencies pull in automatically, with a note)")}`,
+      options: VISIBLE_LAYERS.map((id) => layerOrThrow(id)).map((l) => ({ value: l.id, label: l.label, hint: l.hint })),
+      initialValues: DEFAULT_LAYERS,
+      required: true,
+    });
+    if (p.isCancel(sel)) return cancel();
+    tokens = (sel as string[]).map((id) => ({ id }));
+    flags.with = tokens;
+  }
+  const { layers, pulled, notes } = resolveComposeSelection(flags);
+  const pulls = pullNotes(pulled);
+  if (pulls.length) p.note(pulls.map((l) => `${pc.cyan("+")} ${l}`).join("\n"), "Pulled in");
+
+  // Sub-questions, only for what's in the stack (flags short-circuit each).
+  let magicLink = layers.includes("auth");
+  let oidc = false;
+  if (layers.includes("auth")) {
+    if (flags.magicLink !== undefined || flags.oidc !== undefined) {
+      magicLink = flags.magicLink ?? true;
+      oidc = flags.oidc ?? false;
+      if (!magicLink && !oidc) throw new Error("auth needs at least one sign-in method — keep magic link or add --oidc");
+    } else {
+      const sel = await p.multiselect({
+        message: `Sign-in methods? ${pc.dim("both compose — the login page lists every method")}`,
+        options: [
+          { value: "magic-link", label: "Magic link", hint: "email links; console fallback in dev — zero config" },
+          { value: "oidc", label: "OIDC", hint: "Google, Microsoft, Keycloak, any issuer — fill mods/oidc.mjs after scaffold" },
+        ],
+        initialValues: ["magic-link"],
+        required: true,
+      });
+      if (p.isCancel(sel)) return cancel();
+      magicLink = (sel as string[]).includes("magic-link");
+      oidc = (sel as string[]).includes("oidc");
+    }
+    flags.magicLink = magicLink;
+    flags.oidc = oidc;
+  }
+
+  if (layers.includes("email") && flags.email === undefined) {
+    const answer = await p.select({
+      message: `Email driver? ${pc.dim("console works with zero config — add a real driver anytime")}`,
+      initialValue: "console" as EmailDelivery,
+      options: [
+        { value: "console", label: "Console (dev)", hint: "mod-email installed; sends print to the console until an account exists" },
+        { value: "resend", label: "Resend", hint: "the Resend driver; add the account in admin → System → Email" },
+        { value: "smtp", label: "SMTP", hint: "the SMTP driver (nodemailer); any relay or local catcher" },
+      ],
+    });
+    if (p.isCancel(answer)) return cancel();
+    flags.email = answer as EmailDelivery;
+  }
+
+  if (flags.examples === undefined) {
+    const answer = await p.confirm({
+      message: `Include examples? ${pc.dim("each layer seeds its own demo workflows — off = a clean scaffold + notes")}`,
+      initialValue: true,
+    });
+    if (p.isCancel(answer)) return cancel();
+    flags.examples = answer;
+  }
+
+  if (layers.includes("vault") && flags.vaultKey === undefined) {
+    const answer = await p.confirm({
+      message: `Generate a vault key? ${pc.dim("mod-vault encrypts secrets at rest and needs a master key — we'll write a fresh one to .env")}`,
+      initialValue: true,
+    });
+    if (p.isCancel(answer)) return cancel();
+    flags.vaultKey = answer;
+  }
+
+  if (layers.includes("ai") && flags.providers === undefined) {
+    const sel = await p.multiselect({
+      message: `AI providers to install? ${pc.dim("the AI Gateway is built in; pick the direct providers you'll use")}`,
+      options: AI_PROVIDERS,
+      initialValues: AI_PROVIDERS_DEFAULT,
+      required: false,
+    });
+    if (p.isCancel(sel)) return cancel();
+    flags.providers = sel as string[];
+  }
+
+  const { dims, notes: dimNotes } = composeDims(layers, flags);
+  for (const n of [...notes, ...dimNotes]) p.log.warn(n);
+  p.note(composeCard(layers, dims), "Your composition");
+
+  const pm =
+    flags.pm ??
+    (await p.select({
+      message: "Package manager",
+      initialValue: detectPm(),
+      options: PMS.map((m) => ({ value: m, label: m })),
+    }))!;
+  if (p.isCancel(pm)) return cancel();
+  const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
+
+  await scaffold({ name, pack: "compose", composeLayers: layers, pm: pm as Pm, install, git: flags.git, ...dims });
+
+  const runCmd = pm === "npm" ? "npm run" : String(pm);
+  p.note(
+    composeNext(
+      { name, runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth: dims.auth, examples: dims.examples, vaultKey: dims.vaultKey, seeded: aliasSeedPlan(dims.providers) },
+      layers,
+      dims,
+    ).join("\n"),
+    "Next steps",
+  );
+  p.note(
+    [
+      `${pc.dim("This exact composition, as one command (share it, script it, hand it to an agent):")}`,
+      `${pc.dim("$")} ${composeCommand(name, layers, dims)}`,
+    ].join("\n"),
+    "Reproducible",
+  );
+  p.outro(pc.green("Done — happy building! ✦"));
+}
+
+async function runHeadlessCompose(flags: Flags): Promise<void> {
+  const name = flags.name ?? "my-pattern-app";
+  const pm = flags.pm ?? detectPm();
+  const { layers, pulled, notes } = resolveComposeSelection(flags);
+  const { dims, notes: dimNotes } = composeDims(layers, flags);
+  console.log(`create-pattern: composing "${name}" — ${composeWithTokens(layers, dims)} (${pm}${dims.examples ? "" : ", no examples"})`);
+  for (const n of pullNotes(pulled)) console.log(`note: ${n}`);
+  for (const n of [...notes, ...dimNotes]) console.log(`note: ${n}`);
+  await scaffold({ name, pack: "compose", composeLayers: layers, pm, install: flags.install, git: flags.git, ...dims });
+  const seeded = aliasSeedPlan(dims.providers);
+  console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
+  if (dims.vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY.`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — set ${seeded.envKeys.join(", ")} in .env.`);
+  if (layers.includes("buddy")) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\`.`);
+  if (dims.auth) console.log(`First boot prints a one-time admin link in the console.`);
+  if (layers.includes("billing")) console.log(`Stripe: keys in .env, the account in admin → System → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
+  for (const ep of composeServes(layers, dims)) console.log(`  serves http://localhost:3000${ep}`);
+  console.log(`Reproduce: ${composeCommand(name, layers, dims)}`);
+}
+
 async function runHeadless(flags: Flags): Promise<void> {
   // Headless defaults to an app (every existing CI script is preserved); a mod
   // is scaffolded headlessly only with an explicit --kind mod.
   if ((flags.kind ?? "app") === "mod") return runHeadlessMod(flags);
+  if (flags.modpack === "compose") return runHeadlessCompose(flags);
   const name = flags.name ?? "my-pattern-app";
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
@@ -1717,6 +2174,8 @@ async function runHeadless(flags: Flags): Promise<void> {
 async function scaffold(opts: Dims & {
   name: string;
   pack: string;
+  /** Compose mode: the resolved layer set (opts.pack === "compose"). */
+  composeLayers?: string[];
   pm: Pm;
   install: boolean;
   git: boolean;
@@ -1726,15 +2185,23 @@ async function scaffold(opts: Dims & {
     throw new Error(`directory "${opts.name}" already exists and is not empty`);
   }
 
+  // Compose builds on a base skeleton: the studio template when the admin
+  // layer is in, the headless one otherwise. Everything else layers on top.
+  const composing = opts.pack === "compose";
+  const layers = opts.composeLayers ?? [];
+  const base = composing ? (layers.includes("admin") ? "studio" : "headless") : opts.pack;
+
   const spin = process.stdout.isTTY ? p.spinner() : undefined;
-  spin?.start(`Unpacking the ${opts.pack} modpack`);
-  await copyTemplate(opts.pack, targetDir, { name: opts.name });
+  spin?.start(composing ? "Composing your stack" : `Unpacking the ${opts.pack} modpack`);
+  await copyTemplate(base, targetDir, { name: opts.name });
   // The template's @pattern-js/* ranges follow this CLI's version, always.
   await normalizeDepRanges(targetDir);
   // Strip examples BEFORE auth (so auth's /whoami route survives the strip).
-  if (!opts.examples) await applyNoExamples(targetDir, opts.pack, opts.name);
-  if (opts.auth) await applyAuth(targetDir, opts.pack, opts.magicLink);
-  if (opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);
+  if (!opts.examples) await applyNoExamples(targetDir, base, opts.name);
+  if (composing) await applyCompose(targetDir, layers, opts);
+  if (opts.auth) await applyAuth(targetDir, base, opts.magicLink, composing ? layers.includes("billing") : undefined);
+  // Compose: the email LAYER already owns mod-email + the driver placement.
+  if (!composing && opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);
   // Resend delivery on the agent pack unlocks the inbound demo: email → agent → threaded reply.
   if (opts.pack === "agentic" && opts.examples && opts.email === "resend") {
     await writeFile(join(targetDir, "workflows", "email-agent-reply.json"), EMAIL_AGENT_REPLY_WORKFLOW);
@@ -1745,8 +2212,13 @@ async function scaffold(opts: Dims & {
   if (seeded) await applyAiAliases(targetDir, seeded); // before applyVaultKey — its env hints belong in .env too
   if (opts.vaultKey) await applyVaultKey(targetDir);
   if (opts.providers?.length) await applyProviders(targetDir, opts.providers);
-  if (packHasBuddy(packOrThrow(opts.pack))) await writeFile(join(targetDir, ".mcp.json"), MCP_CONFIG);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.oidc ? " + oidc" : ""}${opts.auth && opts.magicLink && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""}${seeded ? " + model aliases" : ""})`);
+  const wantsMcp = composing ? layers.includes("buddy") : packHasBuddy(packOrThrow(opts.pack));
+  if (wantsMcp) await writeFile(join(targetDir, ".mcp.json"), MCP_CONFIG);
+  spin?.stop(
+    composing
+      ? `Stack composed (${layers.filter((l) => VISIBLE_LAYERS.includes(l)).join(" + ")}${opts.examples ? "" : ", no examples"})`
+      : `Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.oidc ? " + oidc" : ""}${opts.auth && opts.magicLink && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""}${seeded ? " + model aliases" : ""})`,
+  );
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });

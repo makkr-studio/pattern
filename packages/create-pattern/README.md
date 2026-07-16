@@ -80,10 +80,34 @@ Every modpack ships **AGENTS.md + CLAUDE.md**: the contract sheet a coding
 agent needs to add ops, routes, workflows, and admin pages without guessing
 (paired with the `pattern ops` ground-truth catalog in the terminal).
 
+## Compose your own (`--with`)
+
+The picker's last entry — and the packs' general case. Instead of a curated
+pack, pick capability **layers** in one multiselect, answer sub-questions only
+for what you picked, and the scaffolder assembles the stack:
+
+```bash
+npm create pattern@latest my-app -- --with admin,auth:magic-link,email:resend,billing
+```
+
+Layers: `admin` · `auth[:magic-link|oidc|both]` · `email[:console|resend|smtp]`
+· `ai` · `agents` · `chat` · `vectors` · `billing` · `buddy` · `docs`.
+Dependencies pull in automatically **with a printed note** — `--with chat`
+tells you it brought agents, AI, store and vault along. Every layer seeds its
+own example workflows (billing brings the checkout/portal/`/pro` surface,
+vectors the RAG pair, agents the `/ask` demo), documents itself in AGENTS.md,
+and known pairs unlock recipes (agents + Resend email → the inbound
+email-answering agent). The scaffold ends by printing the **reproducible
+one-liner** for the exact composition — share it, script it, or hand it to a
+coding agent. `--dry-run --with …` previews the manifest without writing.
+
+The packs above are curated presets over the same machinery: reach for a rung
+for a quick demo, compose when you know what you want.
+
 ## Flags (headless)
 
 ```
-create-pattern <name> [--kind app|mod] [--modpack <id>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
+create-pattern <name> [--kind app|mod] [--modpack <id>] [--with <layers>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
 
 # mod (--kind mod):
 create-pattern <name> --kind mod [--scope @acme] [--ops|--no-ops] [--workflows|--no-workflows] [--admin none|tier1|tier2] [--docs|--no-docs]
