@@ -32,6 +32,7 @@ import {
   type Workflow,
 } from "@pattern-js/core";
 import { loadMods } from "../mods.js";
+import { planAddDelegation } from "../add-delegate.js";
 import { loadWorkflowDir, loadDotEnv } from "../project.js";
 import { runCli } from "../cli.js";
 import { createTraceStore } from "../trace/index.js";
@@ -59,6 +60,8 @@ async function main(): Promise<void> {
       return cmdRun(rest);
     case "mcp":
       return cmdMcp();
+    case "add":
+      return cmdAdd(rest);
     case "dev":
       return cmdDev(rest[0]);
     case "load":
@@ -84,11 +87,30 @@ function usage(): void {
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
   ${pc.cyan("pattern run")} <file.json|id> [-- args]  run a boundary.cli workflow once by file or id (records to the trace store)
   ${pc.cyan("pattern mcp")}                   serve this project's tool workflows to a local MCP client over stdio
+  ${pc.cyan("pattern add")} <layer>[,…]       grow this project by layers (billing, chat, vectors, …) — delegates to create-pattern add
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
   ${pc.cyan("pattern load")} <scenario.json>  open-loop load test with engine flight-recording
                               ${pc.dim("--sweep  find max sustainable rps   --url <u>  target a running server")}
                               ${pc.dim("--out <file>  write the JSON report   --p99 <ms>  sweep knee budget")}
 `);
+}
+
+/**
+ * `pattern add` — delegate to the project-generation-matched create-pattern.
+ * The scaffolder owns layer logic; this only derives WHICH scaffolder from
+ * the project's own @pattern-js range and hands over the terminal.
+ */
+function cmdAdd(args: string[]): void {
+  const pkgText = existsSync("package.json") ? readFileSync("package.json", "utf8") : null;
+  const plan = planAddDelegation(pkgText, args);
+  if (plan.warning) console.error(pc.yellow(`⚠ ${plan.warning}`));
+  const bin = process.platform === "win32" ? "npx.cmd" : "npx";
+  const child = spawn(bin, plan.argv, { stdio: "inherit" });
+  child.on("exit", (code) => process.exit(code ?? 0));
+  child.on("error", (err) => {
+    console.error(pc.red(`npx failed: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
+  });
 }
 
 /**

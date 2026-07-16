@@ -33,18 +33,22 @@ import {
   resolveLayers,
   type WithToken,
 } from "./layers.js";
+import {
+  DOCS_MOD,
+  EMAIL_DRIVERS,
+  EMAIL_MOD,
+  IDENTITY_MOD,
+  IDENTITY_WRAPPER_SAAS,
+  MAGIC_LINK_MOD,
+  OIDC_MOD,
+  OIDC_WRAPPER,
+  PATTERN_RANGE,
+  TEMPLATES_DIR,
+  appendEnvHint,
+  emailEnvHint,
+  type EmailDelivery,
+} from "./shared.js";
 
-const TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
-
-/**
- * The @pattern-js/* range every scaffold gets, derived from create-pattern's
- * OWN version (^major.minor.0) — a scaffold always resolves the mods published
- * alongside the CLI that created it. The static template package.jsons carry
- * whatever range was current when they were written; normalizeDepRanges
- * rewrites them at scaffold time, so they can never go stale.
- */
-const SELF_VERSION = (JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string }).version;
-const PATTERN_RANGE = `^${SELF_VERSION.split(".").slice(0, 2).join(".")}.0`;
 
 interface NextCtx {
   name: string;
@@ -95,8 +99,6 @@ interface Modpack {
 }
 
 /** What the auth toggle adds (pack card lines + config wiring). */
-const IDENTITY_MOD = "@pattern-js/mod-identity";
-const MAGIC_LINK_MOD = "@pattern-js/mod-auth-magic-link";
 
 /**
  * Sign-in METHODS (asked only when auth is on): magic link (the zero-config
@@ -106,7 +108,6 @@ const MAGIC_LINK_MOD = "@pattern-js/mod-auth-magic-link";
  * with a commented placeholder provider, so the project boots clean and the
  * login button appears the moment a provider is filled in.
  */
-const OIDC_MOD = "@pattern-js/mod-auth-oidc";
 
 /**
  * Sign-in link DELIVERY (asked only when auth is on): console (the zero-config
@@ -115,15 +116,7 @@ const OIDC_MOD = "@pattern-js/mod-auth-oidc";
  * the fallback until a "default" account exists in admin → System → Email, so
  * either choice boots with zero config.
  */
-const EMAIL_MOD = "@pattern-js/mod-email";
-const EMAIL_DRIVERS: Record<string, string> = {
-  resend: "@pattern-js/mod-email-resend",
-  smtp: "@pattern-js/mod-email-smtp",
-};
-type EmailDelivery = "console" | "resend" | "smtp";
 
-/** What the docs toggle adds: self-reflecting documentation at /docs. */
-const DOCS_MOD = "@pattern-js/mod-docs";
 
 /**
  * The AI provider packages offered when a pack uses mod-ai. mod-ai bundles NONE
@@ -931,6 +924,10 @@ function usage(): void {
       f("--with, -w <a,b,…>", "admin | auth[:magic-link|oidc|both] | email[:console|resend|smtp]"),
       f("", "| ai | agents | chat | vectors | billing | buddy | docs"),
       "",
+      `  ${pc.bold("Grow an existing project")}`,
+      f("add <layer>[,<layer>…]", "same layers, applied additively in a scaffolded app"),
+      f("add", "list the layers + their status in this project"),
+      "",
       `  ${pc.bold("Dimensions")} ${pc.dim("(omit a flag = ask, or take the pack default)")}`,
       f("--auth | --no-auth", "identity + sign-in, users & sessions"),
       f("--magic-link | --no-magic-link", "magic-link sign-in (default on with auth)"),
@@ -1034,30 +1031,6 @@ async function normalizeDepRanges(targetDir: string): Promise<void> {
 }
 
 /**
- * The app-local identity wrapper the saas-starter writes: the roles→scopes map
- * is the second half of billing's entitlement bridge (mods/billing.mjs grants
- * the ROLE; this map turns it into the SCOPE routes gate on). Editing it
- * applies on the next request — scopes are compiled per request, not stored.
- */
-const IDENTITY_WRAPPER_SAAS = `/**
- * Identity, app-configured (docs: /docs → “Identity”).
- *
- * The roles→scopes map is half of the entitlement bridge: billing grants the
- * “member” role when a subscription is active (mods/billing.mjs), and this map
- * turns it into the “pro” scope — which requireAuth: { scopes: ["pro"] }
- * gates on. Add roles/scopes freely; changes apply on the next request.
- */
-import { identityMod } from "@pattern-js/mod-identity";
-
-export default identityMod({
-  roles: {
-    admin: ["admin"],
-    member: ["pro"],
-  },
-});
-`;
-
-/**
  * Flip the auth dimension on: wire identity + the chosen sign-in methods into
  * the manifest and the config (FIRST in the list — they're infrastructure),
  * and give headless packs a protected /whoami route so the value is curl-able
@@ -1124,62 +1097,6 @@ async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<v
 
   await appendEnvHint(targetDir, emailEnvHint(delivery)!);
 }
-
-/** The .env.example block a real email driver earns (null for console). */
-function emailEnvHint(delivery: EmailDelivery): string | null {
-  if (delivery === "console") return null;
-  const hint =
-    delivery === "resend"
-      ? "# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
-      : "# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
-  return (
-    hint +
-    "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +
-    "# (invites, sign-in) are built on it. Unset in dev = the request's host.\n" +
-    "# PATTERN_PUBLIC_URL=\n"
-  );
-}
-
-/** Append a commented hint to .env.example, creating the file for templates that ship none. */
-async function appendEnvHint(targetDir: string, hint: string): Promise<void> {
-  const envPath = join(targetDir, ".env.example");
-  const current = existsSync(envPath) ? await readFile(envPath, "utf8") : "";
-  await writeFile(envPath, current ? `${current.replace(/\n*$/, "\n")}\n${hint}` : hint);
-}
-
-/**
- * The app-local OIDC wrapper the scaffold writes. The provider ships COMMENTED
- * OUT on purpose: the project boots clean (an empty provider list logs a hint
- * and contributes nothing), and the login button appears the moment a real
- * issuer + client id are filled in. The secret never lives in this file — it's
- * a { source, key } reference into env or the vault.
- */
-const OIDC_WRAPPER = `/**
- * OIDC sign-in — your providers, code-configured (docs: /docs → "OIDC login").
- *
- * Google, Microsoft, Keycloak, Auth0 — any OpenID Connect issuer works. Several
- * providers can sit side by side; each becomes a button on the login page.
- * OIDC composes with magic-link: the same verified email is the same user.
- */
-import { oidcMod } from "@pattern-js/mod-auth-oidc";
-
-export default oidcMod({
-  providers: [
-    // 1. Create an OAuth client at your IdP.
-    // 2. Register the redirect URI:
-    //      http://localhost:3000/auth/oidc/google/callback   (+ your production host)
-    // 3. Uncomment, fill in, and set GOOGLE_CLIENT_SECRET in .env —
-    //    the "Continue with Google" button appears on the login page.
-    // {
-    //   id: "google",
-    //   label: "Continue with Google",
-    //   issuer: "https://accounts.google.com",
-    //   clientId: "1234567890-abc.apps.googleusercontent.com",
-    //   clientSecret: { source: "env", key: "GOOGLE_CLIENT_SECRET" },
-    // },
-  ],
-});
-`;
 
 /**
  * Flip OIDC sign-in on: the mod-auth-oidc dep + an app-local wrapper mod at
@@ -2498,8 +2415,15 @@ function cancel(): void {
 
 async function main(): Promise<void> {
   try {
+    const argv = process.argv.slice(2);
+    // `add` grows an EXISTING project — its own tiny surface, before any
+    // scaffold flag parsing (its layers would read as a project name).
+    if (argv[0] === "add") {
+      const { runAdd } = await import("./add.js");
+      return await runAdd(argv.slice(1));
+    }
     // parseFlags inside the try: a bad flag value gets the friendly ✗, not a stack.
-    const flags = parseFlags(process.argv.slice(2));
+    const flags = parseFlags(argv);
     if (flags.help) return usage();
     if (flags.list) return listPacks();
     if (flags.dryRun) return previewManifest(flags);
