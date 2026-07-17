@@ -9,8 +9,8 @@
  * ordinary workflow.
  */
 
-import { value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
-import { BILLING_EVENT_KINDS, billingAccountRefSchema } from "./types.js";
+import { httpOutcome, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
+import { BILLING_EVENT_KINDS, BillingNoCustomerError, BillingNotConfiguredError, billingAccountRefSchema } from "./types.js";
 import { DEFAULT_ACCOUNT, type BillingConfigService } from "./config.js";
 import { BILLING_CONFIG_SERVICE, BILLING_SERVICE } from "./well-known.js";
 import type { BillingService } from "./service.js";
@@ -64,16 +64,43 @@ export const accountOp: OpDefinition = {
 
 /* ── checkout / portal ────────────────────────────────────────────────── */
 
+/**
+ * Setup-shaped failures become a friendly OUTCOME on `result` (409 via
+ * boundary.http.status) instead of a failed run: an unconfigured demo is a
+ * to-do with a pointer, not an error page — and no failure alert fires.
+ */
+function unavailableOutcome(err: unknown): Record<string, unknown> | null {
+  if (err instanceof BillingNotConfiguredError) {
+    return httpOutcome("conflict", {
+      error: "billing_not_configured",
+      message: err.message,
+      setup: "/admin",
+    });
+  }
+  if (err instanceof BillingNoCustomerError) {
+    return httpOutcome("conflict", { error: "billing_no_customer", message: err.message });
+  }
+  return null;
+}
+
+/** The provider retry seal, pinned to this run+node — a retried attempt replays, never repeats. */
+const retrySeal = (ctx: OpContext): string => `${ctx.runId}:${ctx.nodeId}`;
+
 export const checkoutCreateOp: OpDefinition = {
   type: "billing.checkout.create",
-  effects: "external",
+  // Idempotent by construction: the provider idempotency key is pinned to the
+  // run+node, so repeating with the same inputs replays the SAME session
+  // (Stripe stores idempotent POSTs ≥24h). A per-node retry converges; resume
+  // never re-runs a completed node; a FRESH run means a fresh key on purpose.
+  effects: "idempotent",
   title: "billing.checkout.create",
   description:
-    "Create a hosted checkout session and return its `url` — redirect the browser there and the provider " +
-    "handles cards, taxes, and 3DS. `userId` becomes the checkout's reference, so the completion webhook " +
-    "maps the new customer back to your user. `origin` (wire the trigger's request URL or leave it — " +
-    "PATTERN_PUBLIC_URL wins) anchors the success/cancel redirects. priceKey falls back to the account's " +
-    "defaultPriceKey option.",
+    "Create a hosted checkout session — redirect the browser to `url` and the provider handles cards, taxes, " +
+    "and 3DS. `userId` becomes the checkout's reference, so the completion webhook maps the new customer back " +
+    "to your user. `origin` (wire the trigger's request URL or leave it — PATTERN_PUBLIC_URL wins) anchors the " +
+    "success/cancel redirects; priceKey falls back to the account's defaultPriceKey. Retries are provider-side " +
+    "idempotent (the key is pinned to the run+node). `result` carries { url, sessionId } — or, when billing " +
+    "isn't set up yet, a friendly conflict outcome for boundary.http.status; `url` stays for happy-path wiring.",
   config: z.object({
     account: z.string().default(DEFAULT_ACCOUNT),
     mode: z.enum(["subscription", "payment"]).default("subscription"),
@@ -84,45 +111,72 @@ export const checkoutCreateOp: OpDefinition = {
     priceKey: value(z.string().optional()),
     quantity: value(z.number().optional()),
     origin: value(z.string().optional()),
+    idempotencyKey: value(z.string().optional()),
   },
-  outputs: { url: value(z.string()), sessionId: value(z.string().optional()) },
+  outputs: { result: value(), url: value(z.string().optional()), sessionId: value(z.string().optional()) },
   execute: async (ctx) => {
     const cfg = ctx.config as { account: string; mode: "subscription" | "payment" };
-    const res = await billingService(ctx).checkout(
-      {
-        account: cfg.account,
-        mode: cfg.mode,
-        userId: await maybe<string>(ctx, "userId"),
-        email: await maybe<string>(ctx, "email"),
-        priceKey: await maybe<string>(ctx, "priceKey"),
-        quantity: await maybe<number>(ctx, "quantity"),
-        origin: originOf(await maybe<string>(ctx, "origin")),
-      },
-      ctx,
-    );
-    return { url: res.url, sessionId: res.sessionId };
+    try {
+      const res = await billingService(ctx).checkout(
+        {
+          account: cfg.account,
+          mode: cfg.mode,
+          userId: await maybe<string>(ctx, "userId"),
+          email: await maybe<string>(ctx, "email"),
+          priceKey: await maybe<string>(ctx, "priceKey"),
+          quantity: await maybe<number>(ctx, "quantity"),
+          origin: originOf(await maybe<string>(ctx, "origin")),
+          idempotencyKey: (await maybe<string>(ctx, "idempotencyKey")) ?? retrySeal(ctx),
+        },
+        ctx,
+      );
+      return { result: { url: res.url, sessionId: res.sessionId }, url: res.url, sessionId: res.sessionId };
+    } catch (err) {
+      const outcome = unavailableOutcome(err);
+      if (outcome) return { result: outcome, url: undefined, sessionId: undefined };
+      throw err;
+    }
   },
 };
 
 export const portalCreateOp: OpDefinition = {
   type: "billing.portal.create",
-  effects: "external",
+  // Same construction as checkout.create: the run+node-pinned provider key
+  // makes a retried attempt replay the same portal session.
+  effects: "idempotent",
   title: "billing.portal.create",
   description:
-    "Create a customer-portal session for `userId`'s provider customer and return its `url` — the provider's " +
-    "own UI for upgrades, cancellation, invoices and payment methods. Requires an existing customer " +
-    "(i.e. a completed checkout).",
+    "Create a customer-portal session for `userId`'s provider customer — the provider's own UI for upgrades, " +
+    "cancellation, invoices and payment methods. Needs an existing customer (a completed checkout): before one " +
+    "exists, `result` carries a friendly conflict outcome for boundary.http.status (subscribe first) instead of " +
+    "failing the run; `url` stays for happy-path wiring. Retries are provider-side idempotent.",
   config: z.object({ account: z.string().default(DEFAULT_ACCOUNT) }),
   inputs: {
     userId: value(z.string()),
     origin: value(z.string().optional()),
+    idempotencyKey: value(z.string().optional()),
   },
-  outputs: { url: value(z.string()) },
+  outputs: { result: value(), url: value(z.string().optional()) },
   execute: async (ctx) => {
     const cfg = ctx.config as { account: string };
     const userId = (await ctx.input.value<string>("userId")) ?? "";
     if (!userId) throw new Error("billing.portal.create: `userId` is required (wire the trigger's user.id).");
-    return billingService(ctx).portal({ account: cfg.account, userId, origin: originOf(await maybe<string>(ctx, "origin")) }, ctx);
+    try {
+      const res = await billingService(ctx).portal(
+        {
+          account: cfg.account,
+          userId,
+          origin: originOf(await maybe<string>(ctx, "origin")),
+          idempotencyKey: (await maybe<string>(ctx, "idempotencyKey")) ?? retrySeal(ctx),
+        },
+        ctx,
+      );
+      return { result: res, url: res.url };
+    } catch (err) {
+      const outcome = unavailableOutcome(err);
+      if (outcome) return { result: outcome, url: undefined };
+      throw err;
+    }
   },
 };
 
@@ -209,7 +263,9 @@ export const usageRecordOp: OpDefinition = {
         customerId: await maybe<string>(ctx, "customerId"),
         meter,
         value: amount,
-        identifier: await maybe<string>(ctx, "identifier"),
+        // Default the provider dedup key to the run+node seal, so a retried
+        // node can never double-count usage.
+        identifier: (await maybe<string>(ctx, "identifier")) ?? retrySeal(ctx),
       },
       ctx,
     );

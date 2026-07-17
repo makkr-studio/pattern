@@ -110,6 +110,31 @@ export class BillingSignatureError extends Error {
   }
 }
 
+/**
+ * Thrown when billing simply isn't SET UP yet — no account, no driver, a
+ * missing required secret, no price to sell. The checkout/portal ops turn it
+ * into a friendly 409 outcome (with a pointer at admin → System → Billing)
+ * instead of a failed run: an unconfigured demo is a to-do, not an error.
+ */
+export class BillingNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BillingNotConfiguredError";
+  }
+}
+
+/**
+ * Thrown when the USER's billing state can't satisfy the call — e.g. opening
+ * the customer portal before any subscription exists. Mapped to a friendly
+ * conflict outcome ("subscribe first"), never a 500.
+ */
+export class BillingNoCustomerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BillingNoCustomerError";
+  }
+}
+
 /* ── driver-facing request/response shapes ────────────────────────────── */
 
 export interface DriverCheckoutRequest {
@@ -126,11 +151,19 @@ export interface DriverCheckoutRequest {
   email?: string;
   /** Reuse an existing provider customer. */
   customerId?: string;
+  /**
+   * Provider-side retry seal: the same key replays the SAME session instead of
+   * creating a second one (Stripe stores idempotent POSTs ≥24h). mod-billing
+   * pins it to the run+node, so a per-node retry converges by construction.
+   */
+  idempotencyKey?: string;
 }
 
 export interface DriverPortalRequest {
   customerId: string;
   returnUrl: string;
+  /** Provider-side retry seal — see DriverCheckoutRequest.idempotencyKey. */
+  idempotencyKey?: string;
 }
 
 /** What `getSubscription` returns — the mapping doc's provider-fresh mirror. */

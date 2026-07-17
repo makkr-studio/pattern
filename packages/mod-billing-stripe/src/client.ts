@@ -54,6 +54,7 @@ export async function stripeRequest<T = Record<string, unknown>>(
   method: "GET" | "POST" | "DELETE",
   path: string,
   params?: Record<string, unknown>,
+  opts?: { idempotencyKey?: string },
 ): Promise<T> {
   const base = (creds.apiBase || DEFAULT_API_BASE).replace(/\/$/, "");
   const encoded = params && Object.keys(params).length ? formEncode(params) : "";
@@ -65,8 +66,10 @@ export async function stripeRequest<T = Record<string, unknown>>(
   let body: string | undefined;
   if (method === "POST") {
     headers["content-type"] = "application/x-www-form-urlencoded";
-    // Safe-retry seal: Stripe stores the first response under this key.
-    headers["idempotency-key"] = crypto.randomUUID();
+    // Safe-retry seal: Stripe stores the first response under this key. A
+    // caller-provided key (mod-billing pins one to the run+node) makes OUR
+    // retries converge on one session/charge; otherwise each call is its own.
+    headers["idempotency-key"] = opts?.idempotencyKey ?? crypto.randomUUID();
     body = encoded;
   }
   const res = await fetch(url, { method, headers, body });

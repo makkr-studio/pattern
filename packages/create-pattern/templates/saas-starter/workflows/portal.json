@@ -2,7 +2,7 @@
   "$schema": "pattern/workflow/v1",
   "id": "billing-portal",
   "name": "POST /billing/portal",
-  "description": "The provider’s own subscription UI (upgrade, cancel, invoices, cards) for the signed-in user’s customer. Durable, like everything that touches money.",
+  "description": "The provider\u2019s own subscription UI (upgrade, cancel, invoices, cards) for the signed-in user\u2019s customer. Durable, like everything that touches money.",
   "durable": true,
   "nodes": [
     {
@@ -47,13 +47,9 @@
       }
     },
     {
-      "id": "reply",
-      "op": "core.object.build",
-      "config": {
-        "keys": [
-          "url"
-        ]
-      },
+      "id": "status",
+      "op": "boundary.http.status",
+      "comment": "Setup-shaped outcomes (billing not configured / no customer yet) map to 409 with friendly JSON; success stays 200.",
       "ui": {
         "x": 820,
         "y": 140
@@ -105,17 +101,27 @@
     {
       "from": {
         "node": "portal",
-        "port": "url"
+        "port": "result"
       },
       "to": {
-        "node": "reply",
-        "port": "url"
+        "node": "status",
+        "port": "result"
       }
     },
     {
       "from": {
-        "node": "reply",
-        "port": "out"
+        "node": "status",
+        "port": "status"
+      },
+      "to": {
+        "node": "out",
+        "port": "status"
+      }
+    },
+    {
+      "from": {
+        "node": "status",
+        "port": "body"
       },
       "to": {
         "node": "out",

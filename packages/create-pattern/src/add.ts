@@ -37,6 +37,7 @@ import {
   TEMPLATES_DIR,
   appendEnvHint,
   emailEnvHint,
+  seedFile,
   type EmailDelivery,
 } from "./shared.js";
 
@@ -233,6 +234,9 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
       report.envKeysHinted.push(...(missingKeys.length ? missingKeys : layerEnv));
     }
   };
+  // Scaffold-var substitution for seeds: an existing project's name comes from
+  // its package.json (falling back to the directory name).
+  const projectName = pkg.name || root.split("/").at(-1) || "app";
   const seedWorkflows = async (layer: ComposeLayer): Promise<void> => {
     const groups = [
       ...(layer.platformWorkflows ? [layer.platformWorkflows] : []),
@@ -246,7 +250,7 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
         if (existsSync(dst)) {
           report.workflowsSkipped.push(f);
         } else {
-          if (!flags.dryRun) await cp(join(TEMPLATES_DIR, g.template, "workflows", f), dst);
+          if (!flags.dryRun) await seedFile(join(TEMPLATES_DIR, g.template, "workflows", f), dst, { name: projectName });
           report.workflowsSeeded.push(f);
         }
       }

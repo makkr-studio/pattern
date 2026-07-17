@@ -10,7 +10,7 @@
 import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Engine, type OpContext } from "@pattern-js/core";
+import { Engine, type OpContext, type Workflow } from "@pattern-js/core";
 import { createHttpHost } from "@pattern-js/runtime-node";
 import { BILLING_SERVICE, BillingConfigService, billingMod, type BillingService } from "@pattern-js/mod-billing";
 import { formEncode, resetPortalCache, stripeBillingMod, verifyStripeSignature } from "@pattern-js/mod-billing-stripe";
@@ -88,9 +88,10 @@ interface Captured {
   body: string;
 }
 
-function fakeStripe(): { server: Server; requests: Captured[]; configs: string[] } {
+function fakeStripe(): { server: Server; requests: Captured[]; configs: string[]; flaky: { failCheckouts: number } } {
   const requests: Captured[] = [];
   const configs: string[] = [];
+  const flaky = { failCheckouts: 0 };
   const server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
@@ -107,7 +108,15 @@ function fakeStripe(): { server: Server; requests: Captured[]; configs: string[]
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(v));
       };
-      if (path.startsWith("/v1/checkout/sessions")) return json({ id: "cs_test_1", url: "https://checkout.stripe.example/cs_test_1" });
+      if (path.startsWith("/v1/checkout/sessions")) {
+        if (flaky.failCheckouts > 0) {
+          flaky.failCheckouts--;
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: { type: "api_error", message: "transient blip" } }));
+          return;
+        }
+        return json({ id: "cs_test_1", url: "https://checkout.stripe.example/cs_test_1" });
+      }
       if (path.startsWith("/v1/billing_portal/configurations") && req.method === "GET") {
         return json({ data: configs.map((id) => ({ id })) });
       }
@@ -129,7 +138,7 @@ function fakeStripe(): { server: Server; requests: Captured[]; configs: string[]
       res.end(JSON.stringify({ error: { type: "invalid_request_error", message: `no fake for ${path}` } }));
     });
   });
-  return { server, requests, configs };
+  return { server, requests, configs, flaky };
 }
 
 /* ── fakes for the sibling services ───────────────────────────────────── */
@@ -186,6 +195,7 @@ function fakeIdentity() {
 /* ── e2e harness ──────────────────────────────────────────────────────── */
 
 let stripe: ReturnType<typeof fakeStripe>;
+let appEngine: Engine;
 let closeApp: (() => Promise<void>) | undefined;
 let svc: BillingService;
 let identity: ReturnType<typeof fakeIdentity>;
@@ -198,6 +208,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => stripe.server.listen(STRIPE_PORT, r));
 
   const engine = new Engine({ env: { PATTERN_PUBLIC_URL: "https://app.example", STRIPE_KEY: "sk_test_x", STRIPE_WHSEC: SECRET } });
+  appEngine = engine;
   const billing = billingMod({ configPath: `/tmp/pattern-billing-stripe-test-${Date.now()}.json` });
   const stripeMod = stripeBillingMod();
   await engine.useAsync(billing, { deferReady: true });
@@ -336,3 +347,41 @@ describe("the client against the fake API", () => {
     expect(sub).toMatchObject({ status: "active", entitled: true, priceKeys: ["pro"], customerId: "cus_42" });
   });
 });
+
+describe("the retry seal — one key, one session, however many attempts", () => {
+  it("a per-node retry replays the SAME Idempotency-Key after a 500", async () => {
+    appEngine.registerWorkflow({
+      id: "retrying-checkout",
+      durable: true,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["userId"] } },
+        { id: "checkout", op: "billing.checkout.create", retry: { attempts: 3, backoffMs: 1 } },
+        { id: "status", op: "boundary.http.status" },
+        { id: "shape", op: "core.object.build", config: { keys: ["status", "body"] } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "userId" }, to: { node: "checkout", port: "userId" } },
+        { from: { node: "checkout", port: "result" }, to: { node: "status", port: "result" } },
+        { from: { node: "status", port: "status" }, to: { node: "shape", port: "status" } },
+        { from: { node: "status", port: "body" }, to: { node: "shape", port: "body" } },
+        { from: { node: "shape", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    } as Workflow);
+
+    const before = stripe.requests.filter((r) => r.path.startsWith("/v1/checkout/sessions")).length;
+    stripe.flaky.failCheckouts = 1; // first attempt 500s; the retry must land
+    const res = await appEngine.run("retrying-checkout", { input: { userId: "ada" } });
+    expect(res.status).toBe("ok");
+    const v = (Object.values(res.outputs)[0] as { value: { status: number; body: { url?: string } } }).value;
+    expect(v.status).toBe(200);
+    expect(v.body.url).toContain("checkout.stripe.example");
+
+    const calls = stripe.requests.filter((r) => r.path.startsWith("/v1/checkout/sessions")).slice(before);
+    expect(calls).toHaveLength(2); // the 500 + the successful retry
+    const keys = calls.map((c) => c.headers["idempotency-key"]);
+    expect(keys[0]).toBe(keys[1]); // the whole point: Stripe replays, never duplicates
+    expect(String(keys[0])).toContain(res.runId); // pinned to run+node, not random
+  });
+});
+

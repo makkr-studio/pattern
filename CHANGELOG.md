@@ -75,6 +75,20 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   (`POST /billing/webhook/stripe`) arrives seeded, raw-bytes mode, signature
   as the gate.
 
+- **Retries that can never double-charge.** Checkout, portal, and usage
+  recording pin their provider idempotency key to the run+node, so a per-node
+  `retry` (or a durable resume) replays the SAME session instead of minting a
+  second one — the ops are stamped `idempotent` by construction, and the
+  starter's payment workflows boot warning-free.
+- **Setup that guides instead of failing.** Billing that isn't configured yet
+  (no account, unresolved key, no price — or the portal before a first
+  subscription) answers a friendly 409 outcome the landing page renders as
+  guidance, not a failed run; and admin → System → Billing is now a real page:
+  a **setup checklist** that ticks itself as you go (driver → account → key →
+  price → webhook secret → *first event received*, live), driver-spec-driven
+  **editable accounts** with per-field vault/env secret refs, and the
+  customers + events tables beneath it.
+
 ### Alerts & metering
 
 - **`ai.usage` — every model call counted at one seam.** A fail-open
@@ -115,7 +129,9 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   along). Scriptable as `--with admin,auth:magic-link,email:resend,billing`;
   every composition ends by printing its **reproducible one-liner** — share
   it, script it, or hand it to a coding agent. Each layer seeds its own
-  example workflows and documents itself in AGENTS.md.
+  example workflows (with scaffold vars substituted — no stray `{{name}}` in
+  a page title) and documents itself in AGENTS.md; a composed billing app's
+  boot banner leads with its landing page, not the base demo curls.
 - **`pattern add`** — the same layers, applied to an EXISTING project:
   `npx create-pattern add billing` (or `pattern add billing`, which delegates
   to the scaffolder generation matching the project's own `@pattern-js`

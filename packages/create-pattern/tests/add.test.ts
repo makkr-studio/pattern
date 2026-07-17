@@ -125,6 +125,11 @@ describe("create-pattern add", () => {
     for (const f of ["checkout.json", "portal.json", "pro.json", "landing.json"]) {
       expect(existsSync(join(dir, "workflows", f)), f).toBe(true);
     }
+    // Seeds substitute the PROJECT's name (add runs long after copyTemplate's
+    // placeholder pass — a literal {{name}} must never reach the page).
+    const landing = read(dir, "workflows/landing.json");
+    expect(landing).toContain("<title>grown</title>");
+    expect(landing).not.toContain("{{name}}");
 
     // Restore a real range so the boot uses actual workspace mods, then boot.
     const pkg2 = json(dir, "package.json");

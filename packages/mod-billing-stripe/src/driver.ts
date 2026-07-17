@@ -100,7 +100,7 @@ export const stripeBillingDriver: BillingDriverSpec = {
       cancel_url: req.cancelUrl,
       ...(req.userRef ? { client_reference_id: req.userRef } : {}),
       ...(req.customerId ? { customer: req.customerId } : req.email ? { customer_email: req.email } : {}),
-    });
+    }, { idempotencyKey: req.idempotencyKey });
     return { url: session.url, sessionId: session.id };
   },
 
@@ -110,7 +110,7 @@ export const stripeBillingDriver: BillingDriverSpec = {
     const session = await stripeRequest<{ url: string }>(c, "POST", "/v1/billing_portal/sessions", {
       customer: req.customerId,
       return_url: req.returnUrl,
-    });
+    }, { idempotencyKey: req.idempotencyKey });
     return { url: session.url };
   },
 

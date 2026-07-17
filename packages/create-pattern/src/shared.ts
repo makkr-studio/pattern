@@ -110,6 +110,23 @@ export function emailEnvHint(delivery: EmailDelivery): string | null {
   );
 }
 
+/**
+ * `{{var}}` scaffold substitution (NO inner whitespace — `{{ name }}` WITH
+ * spaces is the runtime template syntax and must survive untouched). The same
+ * rule copyTemplate applies to whole template dirs; seeds written AFTER the
+ * copy (compose layers, `add`) must run their content through this too, or a
+ * literal {{name}} ends up as the page title.
+ */
+export function substituteVars(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (m, key: string) => vars[key] ?? m);
+}
+
+/** Copy one seed file with scaffold-var substitution (workflow JSON stays JSON). */
+export async function seedFile(src: string, dst: string, vars: Record<string, string>): Promise<void> {
+  const text = await readFile(src, "utf8");
+  await writeFile(dst, substituteVars(text, vars));
+}
+
 /** Append a commented hint to .env.example, creating the file for templates that ship none. */
 export async function appendEnvHint(targetDir: string, hint: string): Promise<void> {
   const envPath = join(targetDir, ".env.example");

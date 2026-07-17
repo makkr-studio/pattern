@@ -2,7 +2,7 @@
   "$schema": "pattern/workflow/v1",
   "id": "billing-checkout",
   "name": "POST /billing/checkout",
-  "description": "Start a subscription: the signed-in user’s id becomes the checkout reference (the completion webhook maps the new customer back to them). Durable: exact inputs and outputs land in the RunLedger, so a failure resumes instead of re-charging.",
+  "description": "Start a subscription: the signed-in user\u2019s id becomes the checkout reference (the completion webhook maps the new customer back to them). Durable: exact inputs and outputs land in the RunLedger, so a failure resumes instead of re-charging.",
   "durable": true,
   "nodes": [
     {
@@ -27,7 +27,7 @@
           "email"
         ]
       },
-      "comment": "The trigger’s user port carries the signed-in identity.",
+      "comment": "The trigger\u2019s user port carries the signed-in identity.",
       "ui": {
         "x": 300,
         "y": 80
@@ -50,13 +50,9 @@
       }
     },
     {
-      "id": "reply",
-      "op": "core.object.build",
-      "config": {
-        "keys": [
-          "url"
-        ]
-      },
+      "id": "status",
+      "op": "boundary.http.status",
+      "comment": "Setup-shaped outcomes (billing not configured / no customer yet) map to 409 with friendly JSON; success stays 200.",
       "ui": {
         "x": 820,
         "y": 140
@@ -118,17 +114,27 @@
     {
       "from": {
         "node": "checkout",
-        "port": "url"
+        "port": "result"
       },
       "to": {
-        "node": "reply",
-        "port": "url"
+        "node": "status",
+        "port": "result"
       }
     },
     {
       "from": {
-        "node": "reply",
-        "port": "out"
+        "node": "status",
+        "port": "status"
+      },
+      "to": {
+        "node": "out",
+        "port": "status"
+      }
+    },
+    {
+      "from": {
+        "node": "status",
+        "port": "body"
       },
       "to": {
         "node": "out",

@@ -18,6 +18,8 @@ import { resolveSourced, type OpContext } from "@pattern-js/core";
 import { DEFAULT_ACCOUNT, type BillingConfigService } from "./config.js";
 import { docsStore, identityLike, type DocsLike } from "./well-known.js";
 import {
+  BillingNoCustomerError,
+  BillingNotConfiguredError,
   isEntitled,
   type BillingAccount,
   type BillingCustomer,
@@ -68,6 +70,8 @@ export interface CheckoutInput {
   quantity?: number;
   /** Request-derived origin; PATTERN_PUBLIC_URL beats it (proxies lie). */
   origin?: string;
+  /** Provider-side retry seal (the ops pin it to run+node). */
+  idempotencyKey?: string;
 }
 
 export interface IngestResult {
@@ -89,7 +93,10 @@ export interface BillingService {
   /** Create a hosted checkout session; redirect the browser to `url`. */
   checkout(input: CheckoutInput, ctx: OpContext): Promise<{ url: string; sessionId?: string }>;
   /** Create a customer-portal session for the user's provider customer. */
-  portal(input: { account?: string; userId: string; origin?: string }, ctx: OpContext): Promise<{ url: string }>;
+  portal(
+    input: { account?: string; userId: string; origin?: string; idempotencyKey?: string },
+    ctx: OpContext,
+  ): Promise<{ url: string }>;
   /** Provider-fresh subscription state (falls back to the mapping). */
   subscription(
     input: { account?: string; userId: string },
@@ -139,8 +146,8 @@ export class DefaultBillingService implements BillingService {
     const { account, driver, creds } = await this.resolve(input.account, ctx);
     const priceKey = input.priceKey?.trim() || account.options.defaultPriceKey;
     if (!priceKey) {
-      throw new Error(
-        `mod-billing: no price to check out — pass \`priceKey\` or set the "${account.name}" account's defaultPriceKey option.`,
+      throw new BillingNotConfiguredError(
+        `no price to check out — set the "${account.name}" account's defaultPriceKey (admin → System → Billing) or pass \`priceKey\`.`,
       );
     }
     const origin = this.origin(ctx, input.origin);
@@ -155,6 +162,7 @@ export class DefaultBillingService implements BillingService {
         userRef: input.userId,
         email: input.email,
         customerId: mapping?.customerId,
+        idempotencyKey: input.idempotencyKey,
       },
       creds,
       account.options,
@@ -162,17 +170,24 @@ export class DefaultBillingService implements BillingService {
     );
   }
 
-  async portal(input: { account?: string; userId: string; origin?: string }, ctx: OpContext): Promise<{ url: string }> {
+  async portal(
+    input: { account?: string; userId: string; origin?: string; idempotencyKey?: string },
+    ctx: OpContext,
+  ): Promise<{ url: string }> {
     const { account, driver, creds } = await this.resolve(input.account, ctx);
     const mapping = await this.customerForUser(input.userId, ctx);
     if (!mapping?.customerId) {
-      throw new Error(
-        `mod-billing: user "${input.userId}" has no billing customer yet — the portal manages an existing subscription; start with a checkout.`,
+      throw new BillingNoCustomerError(
+        `nothing to manage yet — the portal drives an existing subscription; subscribe first.`,
       );
     }
     const origin = this.origin(ctx, input.origin);
     return driver.createPortal(
-      { customerId: mapping.customerId, returnUrl: `${origin}${this.options.portalReturnPath ?? "/"}` },
+      {
+        customerId: mapping.customerId,
+        returnUrl: `${origin}${this.options.portalReturnPath ?? "/"}`,
+        idempotencyKey: input.idempotencyKey,
+      },
       creds,
       account.options,
       ctx,
@@ -317,25 +332,32 @@ export class DefaultBillingService implements BillingService {
     const accountName = name?.trim() || DEFAULT_ACCOUNT;
     const account = this.config.account(accountName);
     if (!account) {
-      throw new Error(`mod-billing: no account "${accountName}" is configured — add it in admin → System → Billing.`);
+      throw new BillingNotConfiguredError(`no account "${accountName}" is configured — add it in admin → System → Billing.`);
     }
     const driver = this.registry.get(account.provider);
     if (!driver) {
-      throw new Error(
-        `mod-billing: account "${account.name}" uses provider "${account.provider}" but no such driver is registered — ` +
+      throw new BillingNotConfiguredError(
+        `account "${account.name}" uses provider "${account.provider}" but no such driver is registered — ` +
           `install its mod (e.g. @pattern-js/mod-billing-${account.provider}) and list it in pattern.config.json.`,
       );
     }
     for (const field of driver.secrets.filter((s) => s.required !== false)) {
       if (!account.secrets[field.field]) {
-        throw new Error(
-          `mod-billing: account "${account.name}" is missing the "${field.field}" secret its ${driver.label} driver requires.`,
+        throw new BillingNotConfiguredError(
+          `account "${account.name}" is missing the "${field.field}" secret its ${driver.label} driver requires (admin → System → Billing).`,
         );
       }
     }
     const creds: Record<string, string> = {};
     for (const [field, ref] of Object.entries(account.secrets)) {
-      creds[field] = await resolveSourced(ctx, ref, "mod-billing");
+      try {
+        creds[field] = await resolveSourced(ctx, ref, "mod-billing");
+      } catch (err) {
+        // An unset env var / missing vault secret is SETUP, not failure.
+        throw new BillingNotConfiguredError(
+          `account "${account.name}"'s "${field}" secret can't resolve — ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
     return { account, driver, creds };
   }

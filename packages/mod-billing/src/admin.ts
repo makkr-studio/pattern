@@ -10,12 +10,15 @@
  */
 
 import { fromBody, fromParams, httpEndpoint, required, value, z, type FrontendContribution, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
+import { DEFAULT_ACCOUNT } from "./config.js";
+import { REMOTE } from "./app.js";
 import { billingAccountSchema } from "./types.js";
 import { billingConfig, billingService } from "./ops.js";
 import { CUSTOMERS_COLLECTION, EVENTS_COLLECTION } from "./service.js";
 import { docsStore } from "./well-known.js";
 
 const API = "/admin/api";
+const STATUS_PATH = "/billing/api/status";
 const ACCOUNTS_PATH = "/billing/api/accounts";
 const PROVIDERS_PATH = "/billing/api/providers";
 const CUSTOMERS_PATH = "/billing/api/customers";
@@ -118,6 +121,62 @@ const accountsDelete: OpDefinition = {
   },
 };
 
+
+/**
+ * The setup checklist's data: how far this installation is from its first
+ * subscription — driver, account, secrets, price, webhook, and the last event
+ * actually received (the feedback loop for `stripe listen`).
+ */
+const adminStatus: OpDefinition = {
+  type: "billing.admin.status",
+  effects: "pure",
+  title: "billing.admin.status",
+  description: "Billing setup status for the admin checklist: driver/account/secrets/price/webhook state + the last ingested event.",
+  reusable: false,
+  sensitivity: "privileged",
+  config: z.object({}),
+  inputs: {},
+  outputs: { status: value() },
+  execute: async (ctx) => {
+    const drivers = billingService(ctx).drivers();
+    const accounts = billingConfig(ctx).accounts();
+    const account = accounts.find((a) => a.name === DEFAULT_ACCOUNT) ?? accounts[0];
+    const driver = account ? drivers.find((d) => d.id === account.provider) : drivers[0];
+    const requiredSecrets = (driver?.secrets ?? []).filter((f) => f.required !== false).map((f) => f.field);
+    const missingSecrets = requiredSecrets.filter((f) => !account?.secrets?.[f]);
+    const webhookFields = (driver?.secrets ?? []).map((f) => f.field).filter((f) => /webhook/i.test(f));
+    const hasWebhookSecret = webhookFields.some((f) => Boolean(account?.secrets?.[f]));
+    const origin = (ctx.env.PATTERN_PUBLIC_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
+    const provider = account?.provider ?? driver?.id ?? "stripe";
+    let lastEvent: { kind: unknown; at: unknown } | null = null;
+    const store = docsStore(ctx);
+    if (store) {
+      const rows = await store.docs
+        .query({ collection: EVENTS_COLLECTION, orderBy: "createdAt", orderDir: "desc", limit: 1 })
+        .catch(() => []);
+      const d = rows[0]?.data as Record<string, unknown> | undefined;
+      if (d) lastEvent = { kind: d.kind, at: d.at };
+    }
+    return {
+      status: {
+        drivers: drivers.map((d) => ({ id: d.id, label: d.label })),
+        account: account
+          ? {
+              name: account.name,
+              provider: account.provider,
+              missingSecrets,
+              hasWebhookSecret,
+              defaultPriceKey: account.options?.defaultPriceKey ?? "",
+            }
+          : null,
+        webhookUrl: `${origin}/billing/webhook/${provider}`,
+        publicUrlSet: Boolean(ctx.env.PATTERN_PUBLIC_URL?.trim()),
+        lastEvent,
+      },
+    };
+  },
+};
+
 const customersList: OpDefinition = {
   type: "billing.customers.list",
   effects: "pure",
@@ -182,13 +241,14 @@ const eventsList: OpDefinition = {
   },
 };
 
-export const adminOps: OpDefinition[] = [providersList, accountsRead, accountsWrite, accountsDelete, customersList, eventsList];
+export const adminOps: OpDefinition[] = [providersList, adminStatus, accountsRead, accountsWrite, accountsDelete, customersList, eventsList];
 
 export function billingAdminRoutes(): Workflow[] {
   const auth = { scopes: ["admin"] };
   const accountIn = { name: fromBody(), provider: fromBody(), secrets: fromBody(), options: fromBody() };
   return [
     httpEndpoint({ id: "billing.route.providers", name: `Billing · GET ${API}${PROVIDERS_PATH}`, method: "GET", path: `${API}${PROVIDERS_PATH}`, op: "billing.providers.list", io: { out: "providers" }, auth }),
+    httpEndpoint({ id: "billing.route.status", name: `Billing · GET ${API}${STATUS_PATH}`, method: "GET", path: `${API}${STATUS_PATH}`, op: "billing.admin.status", io: { out: "status" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.read", name: `Billing · GET ${API}${ACCOUNTS_PATH}`, method: "GET", path: `${API}${ACCOUNTS_PATH}`, op: "billing.accounts.read", io: { out: "accounts" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.write", name: `Billing · POST ${API}${ACCOUNTS_PATH}`, method: "POST", path: `${API}${ACCOUNTS_PATH}`, op: "billing.accounts.write", io: { in: accountIn, out: "result" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.delete", name: `Billing · DELETE ${API}${ACCOUNTS_PATH}/:name`, method: "DELETE", path: `${API}${ACCOUNTS_PATH}/:name`, op: "billing.accounts.delete", io: { in: { name: fromParams() }, out: "result" }, auth }),
@@ -200,79 +260,9 @@ export function billingAdminRoutes(): Workflow[] {
 export function billingFrontend(): FrontendContribution {
   return {
     menu: [{ category: "System", label: "Billing", icon: "credit-card", path: "/x/billing", order: 22 }],
-    pages: [
-      {
-        path: "/x/billing",
-        views: [
-          {
-            title: "Accounts",
-            view: {
-              kind: "table",
-              route: { method: "GET", path: ACCOUNTS_PATH },
-              columns: [
-                { key: "name", label: "Account" },
-                { key: "provider", label: "Provider" },
-              ],
-            },
-          },
-          {
-            title: "Add or update an account",
-            view: {
-              kind: "form",
-              schema: {
-                type: "object",
-                properties: {
-                  name: { type: "string", default: "default", description: "Account name (ops fall back to \"default\")" },
-                  provider: { type: "string", default: "stripe", description: "A registered driver id (install its mod, e.g. @pattern-js/mod-billing-stripe)" },
-                  secrets: {
-                    type: "string",
-                    format: "multiline",
-                    description:
-                      'Secret REFS as JSON — values stay in the vault/env: {"apiKey":{"source":"env","key":"STRIPE_API_KEY"},"webhookSecret":{"source":"env","key":"STRIPE_WEBHOOK_SECRET"}}',
-                  },
-                  options: {
-                    type: "string",
-                    format: "multiline",
-                    description: 'Driver options as JSON, e.g. {"defaultPriceKey":"price_123"}',
-                  },
-                },
-                required: ["name", "provider"],
-              },
-              route: { method: "POST", path: ACCOUNTS_PATH },
-            },
-          },
-          {
-            title: "Customers",
-            view: {
-              kind: "table",
-              route: { method: "GET", path: CUSTOMERS_PATH },
-              columns: [
-                { key: "userId", label: "User" },
-                { key: "customerId", label: "Customer" },
-                { key: "provider", label: "Provider" },
-                { key: "status", label: "Status" },
-                { key: "priceKeys", label: "Prices" },
-                { key: "entitled", label: "Entitled" },
-                { key: "updatedAt", label: "Updated" },
-              ],
-            },
-          },
-          {
-            title: "Recent events",
-            view: {
-              kind: "table",
-              route: { method: "GET", path: EVENTS_PATH },
-              columns: [
-                { key: "at", label: "At" },
-                { key: "kind", label: "Kind" },
-                { key: "eventId", label: "Event" },
-                { key: "provider", label: "Provider" },
-                { key: "account", label: "Account" },
-              ],
-            },
-          },
-        ],
-      },
-    ],
+    // The Tier-2 page is just its source; the admin serves + imports it. It owns
+    // the setup checklist, driver-spec-driven editable accounts (per-field
+    // secret refs), and the customers/events tables.
+    pages: [{ path: "/x/billing", title: "Billing", module: REMOTE }],
   };
 }

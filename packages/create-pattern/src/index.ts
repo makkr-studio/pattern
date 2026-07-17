@@ -46,6 +46,7 @@ import {
   TEMPLATES_DIR,
   appendEnvHint,
   emailEnvHint,
+  seedFile,
   type EmailDelivery,
 } from "./shared.js";
 
@@ -1562,7 +1563,7 @@ function composeCard(layers: string[], dims: Dims): string {
  * env hints, and the per-layer AGENTS.md/README appendices. applyAuth /
  * applyOidc / applyDocs run after, exactly as they do for packs.
  */
-async function applyCompose(targetDir: string, layers: string[], dims: Dims): Promise<void> {
+async function applyCompose(targetDir: string, layers: string[], dims: Dims, name: string): Promise<void> {
   const chosen = pickLayers(layers);
 
   const pkgPath = join(targetDir, "package.json");
@@ -1597,7 +1598,9 @@ async function applyCompose(targetDir: string, layers: string[], dims: Dims): Pr
   const seedWorkflows = async (template: string, files: string[]): Promise<void> => {
     for (const f of files) {
       const dst = join(targetDir, "workflows", f);
-      if (!existsSync(dst)) await cp(join(TEMPLATES_DIR, template, "workflows", f), dst);
+      // Substitute {{name}}-style scaffold vars at write time: these seeds land
+      // AFTER copyTemplate's placeholder pass already ran.
+      if (!existsSync(dst)) await seedFile(join(TEMPLATES_DIR, template, "workflows", f), dst, { name });
     }
   };
   for (const layer of chosen) {
@@ -1607,6 +1610,23 @@ async function applyCompose(targetDir: string, layers: string[], dims: Dims): Pr
   // The known pair recipe: agents + real email (resend) → the inbound email agent.
   if (dims.examples && layers.includes("agents") && dims.email === "resend") {
     await writeFile(join(targetDir, "workflows", "email-agent-reply.json"), EMAIL_AGENT_REPLY_WORKFLOW);
+  }
+
+  // A composed billing app's boot banner leads with ITS surface — the landing
+  // and the members area — not the base template's demo curls. Template-anchored
+  // line swap; if the base banner ever changes shape, this silently no-ops.
+  if (layers.includes("billing")) {
+    const idxPath = join(targetDir, "src", "index.ts");
+    const idx = await readFile(idxPath, "utf8");
+    const studioTry = "console.log(`  Try     curl ${base}/hello/world`);\nconsole.log(`          curl ${base}/quote`);";
+    const saasTry = "console.log(`  Landing ${base}/   (Subscribe → Stripe test checkout)`);\nconsole.log(`  Members ${base}/pro   (unlocks with an active subscription)`);";
+    const headlessAnchor = 'console.log("  GET  /hello/:name       (default port)");';
+    const headlessLead =
+      'console.log("  GET  /                  landing — Subscribe → Stripe test checkout");\n' +
+      'console.log("  GET  /pro               members area (unlocks with an active subscription)");\n' +
+      headlessAnchor;
+    if (idx.includes(studioTry)) await writeFile(idxPath, idx.replace(studioTry, saasTry));
+    else if (idx.includes(headlessAnchor)) await writeFile(idxPath, idx.replace(headlessAnchor, headlessLead));
   }
 
   for (const layer of chosen) if (layer.envHint) await appendEnvHint(targetDir, layer.envHint);
@@ -1665,7 +1685,8 @@ function composeNext(ctx: NextCtx, layers: string[], dims: Dims): string[] {
       : []),
     ...(layers.includes("billing")
       ? [
-          `${pc.cyan("→")} connect Stripe (test mode): keys in ${pc.bold(".env")}, the account in admin → System → Billing,`,
+          `${pc.cyan("→")} your landing page: ${pc.bold("http://localhost:3000/")} — Subscribe walks the Stripe test checkout`,
+          `${pc.cyan("→")} admin → ${pc.bold("System → Billing")} has the setup checklist (test key, price, webhook) — it ticks itself as you go,`,
           `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("— pay with 4242 4242 4242 4242 and /pro unlocks")}`,
         ]
       : []),
@@ -2118,7 +2139,7 @@ async function scaffold(opts: Dims & {
   await normalizeDepRanges(targetDir);
   // Strip examples BEFORE auth (so auth's /whoami route survives the strip).
   if (!opts.examples) await applyNoExamples(targetDir, base, opts.name);
-  if (composing) await applyCompose(targetDir, layers, opts);
+  if (composing) await applyCompose(targetDir, layers, opts, opts.name);
   if (opts.auth) await applyAuth(targetDir, base, opts.magicLink, composing ? layers.includes("billing") : undefined);
   // Compose: the email LAYER already owns mod-email + the driver placement.
   if (!composing && opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);

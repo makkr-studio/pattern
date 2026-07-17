@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { Engine, type PatternMod } from "@pattern-js/core";
+import { Engine, collectIssues, type PatternMod } from "@pattern-js/core";
 import { storeMod } from "@pattern-js/mod-store";
 import { vaultMod } from "@pattern-js/mod-vault";
 import { agentsMod } from "@pattern-js/mod-agents";
@@ -109,6 +109,27 @@ async function bootScaffold(dir: string): Promise<Engine> {
 }
 
 describe("compose mode — artifacts", () => {
+  it("seeded workflows get scaffold vars substituted, validate warning-free, and the banner leads with the landing", () => {
+    const { read } = compose("c-vars", "--with", "billing");
+    const landing = read("workflows/landing.json");
+    // The {{name}} scaffold var is substituted at seed time (compose seeds land
+    // AFTER copyTemplate's placeholder pass) — no literal placeholder on the page.
+    expect(landing).toContain("<title>c-vars</title>");
+    expect(landing).not.toContain("{{name}}");
+    // The retry on the provider calls is warning-free: checkout/portal are
+    // idempotent by construction (run+node-pinned provider keys).
+    const engine = new Engine();
+    // Ops aren't installed here — only shape checks; validation runs in the boot test.
+    for (const f of ["checkout.json", "portal.json"]) {
+      const doc = JSON.parse(read("workflows/" + f)) as { nodes: Array<{ op: string; retry?: unknown }> };
+      expect(doc.nodes.some((n) => n.op === "boundary.http.status")).toBe(true);
+      void engine;
+    }
+    // The boot banner was retargeted at the app's own surface (both bases).
+    const idx = read("src/index.ts");
+    expect(idx).toContain("Subscribe → Stripe test checkout");
+  });
+
   it("--with billing pulls auth + email + store, says so, and wires both bridge wrappers", () => {
     const { read, json, stdout } = compose("c-pay", "--with", "billing");
     expect(stdout).toContain("note: billing pulls in auth + email + store");
@@ -244,6 +265,13 @@ describe("compose mode — composed stacks BOOT (scaffolded order, deferred work
       expect(engine.workflows.get(id), id).toBeDefined();
     }
     expect(engine.workflows.get("billing-checkout")?.durable).toBe(true);
+    // The polish contract: the payment workflows validate with ZERO issues —
+    // no retry_external_effects warning at boot (the provider calls are
+    // idempotent by construction, run+node-pinned keys).
+    for (const id of ["billing-checkout", "billing-portal"]) {
+      const { issues } = collectIssues(engine.workflows.get(id)!, engine.ops);
+      expect(issues, id).toEqual([]);
+    }
   });
 
   it("single layers boot on the headless base", async () => {

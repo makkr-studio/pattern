@@ -82,7 +82,10 @@ function fakeDriver() {
   const spec: BillingDriverSpec = {
     id: "fake",
     label: "Fake Pay",
-    secrets: [{ field: "apiKey", label: "API key", required: true }],
+    secrets: [
+      { field: "apiKey", label: "API key", required: true },
+      { field: "webhookSecret", label: "Webhook secret", required: false },
+    ],
     options: [{ field: "defaultPriceKey", label: "Default price", required: false }],
     async createCheckout(req) {
       checkouts.push({ ...req });
@@ -107,8 +110,10 @@ function fakeDriver() {
 
 /* ── harness ──────────────────────────────────────────────────────────── */
 
-async function boot(opts: { entitlement?: { role: string; gracePastDue?: boolean } | false; identity?: ReturnType<typeof fakeIdentity> } = {}) {
-  const engine = new Engine({ env: { PATTERN_PUBLIC_URL: "https://app.example" } });
+async function boot(
+  opts: { entitlement?: { role: string; gracePastDue?: boolean } | false; identity?: ReturnType<typeof fakeIdentity>; account?: false } = {},
+) {
+  const engine = new Engine({ env: { PATTERN_PUBLIC_URL: "https://app.example", FAKE_KEY: "sk_fake", FAKE_WHSEC: "whsec_fake" } });
   const configPath = `/tmp/pattern-billing-test-${Math.random().toString(36).slice(2)}.json`;
   const mod = billingMod({ configPath, entitlement: opts.entitlement ?? { role: "member" } });
   await engine.useAsync(mod, { deferReady: true });
@@ -121,15 +126,17 @@ async function boot(opts: { entitlement?: { role: string; gracePastDue?: boolean
   const driver = fakeDriver();
   svc.registerDriver(driver.spec);
   const config = engine.service<BillingConfigService>("billingConfig")!;
-  await config.upsertAccount({
-    name: "default",
-    provider: "fake",
-    secrets: { apiKey: { source: "env", key: "FAKE_KEY" } },
-    options: { defaultPriceKey: "price_pro" },
-  });
+  if (opts.account !== false) {
+    await config.upsertAccount({
+      name: "default",
+      provider: "fake",
+      secrets: { apiKey: { source: "env", key: "FAKE_KEY" } },
+      options: { defaultPriceKey: "price_pro" },
+    });
+  }
   const ctx = {
     services: new Proxy({}, { get: (_t, p: string) => engine.service(p) ?? (p === "events" ? engine.events : undefined) }),
-    env: { PATTERN_PUBLIC_URL: "https://app.example", FAKE_KEY: "sk_fake" },
+    env: { PATTERN_PUBLIC_URL: "https://app.example", FAKE_KEY: "sk_fake", FAKE_WHSEC: "whsec_fake" },
     principal: { kind: "anonymous" },
   } as unknown as OpContext;
   return { engine, svc, config, driver, store, identity, ctx };
@@ -304,3 +311,115 @@ describe("billing.event trigger", () => {
     expect(seen[0]).toMatchObject({ kind: "invoice.payment_failed" });
   });
 });
+
+/* ── friendly unavailability + the setup checklist ────────────────────── */
+
+/** in → op → boundary.http.status → { status, body } on the return value. */
+const outcomeWf = (id: string, op: string, inputs: Array<[string, string]>): Workflow =>
+  ({
+    id,
+    nodes: [
+      { id: "in", op: "boundary.manual", config: { outputs: inputs.map(([port]) => port) } },
+      { id: "call", op },
+      { id: "status", op: "boundary.http.status" },
+      { id: "shape", op: "core.object.build", config: { keys: ["status", "body"] } },
+      { id: "out", op: "boundary.return" },
+    ],
+    edges: [
+      ...inputs.map(([port, to]) => ({ from: { node: "in", port }, to: { node: "call", port: to } })),
+      { from: { node: "call", port: "result" }, to: { node: "status", port: "result" } },
+      { from: { node: "status", port: "status" }, to: { node: "shape", port: "status" } },
+      { from: { node: "status", port: "body" }, to: { node: "shape", port: "body" } },
+      { from: { node: "shape", port: "out" }, to: { node: "out", port: "value" } },
+    ],
+  }) as Workflow;
+
+describe("setup-shaped failures are outcomes, not failed runs", () => {
+  it("an unconfigured checkout answers 409 billing_not_configured — and the run stays green", async () => {
+    const { engine } = await boot({ account: false });
+    engine.registerWorkflow(outcomeWf("co", "billing.checkout.create", [["userId", "userId"]]));
+    const res = await engine.run("co", { input: { userId: "ada" } });
+    expect(res.status).toBe("ok"); // no failed run, no failure alert
+    const v = (Object.values(res.outputs)[0] as { value: { status: number; body: Record<string, unknown> } }).value;
+    expect(v.status).toBe(409);
+    expect(v.body.error).toBe("billing_not_configured");
+    expect(String(v.body.message)).toContain("admin");
+  });
+
+  it("the portal before any subscription answers 409 billing_no_customer", async () => {
+    const { engine } = await boot();
+    engine.registerWorkflow(outcomeWf("po", "billing.portal.create", [["userId", "userId"]]));
+    const res = await engine.run("po", { input: { userId: "nobody" } });
+    expect(res.status).toBe("ok");
+    const v = (Object.values(res.outputs)[0] as { value: { status: number; body: Record<string, unknown> } }).value;
+    expect(v.status).toBe(409);
+    expect(v.body.error).toBe("billing_no_customer");
+  });
+
+  it("a configured checkout still reports { url } through result (and seals retries per run+node)", async () => {
+    const { engine, driver } = await boot();
+    engine.registerWorkflow(outcomeWf("ok", "billing.checkout.create", [["userId", "userId"]]));
+    const res = await engine.run("ok", { input: { userId: "ada" } });
+    expect(res.status).toBe("ok");
+    const v = (Object.values(res.outputs)[0] as { value: { status: number; body: Record<string, unknown> } }).value;
+    expect(v.status).toBe(200);
+    expect(v.body.url).toBe("https://pay.example/session_1");
+    // The provider retry seal is pinned to run+node — stable, not random.
+    expect(String(driver.checkouts[0]!.idempotencyKey)).toContain(res.runId);
+  });
+});
+
+describe("billing.admin.status — the checklist tells the truth", () => {
+  const statusWf: Workflow = {
+    id: "st",
+    nodes: [
+      { id: "in", op: "boundary.manual" },
+      { id: "s", op: "billing.admin.status" },
+      { id: "out", op: "boundary.return" },
+    ],
+    edges: [
+      { from: { node: "in", port: "out" }, to: { node: "s", port: "in" } },
+      { from: { node: "s", port: "status" }, to: { node: "out", port: "value" } },
+    ],
+  } as Workflow;
+  type Status = {
+    drivers: Array<{ id: string }>;
+    account: { missingSecrets: string[]; hasWebhookSecret: boolean; defaultPriceKey: string } | null;
+    webhookUrl: string;
+    lastEvent: { kind: string } | null;
+  };
+  const read = async (engine: Engine): Promise<Status> => {
+    const res = await engine.run("st", { input: {} });
+    return (Object.values(res.outputs)[0] as { value: Status }).value;
+  };
+
+  it("walks no-account → account → webhook secret → first event", async () => {
+    const { engine, svc, config, driver, ctx } = await boot({ account: false });
+    engine.registerWorkflow(statusWf);
+
+    let st = await read(engine);
+    expect(st.drivers.map((d) => d.id)).toContain("fake");
+    expect(st.account).toBeNull();
+    expect(st.webhookUrl).toBe("https://app.example/billing/webhook/fake");
+    expect(st.lastEvent).toBeNull();
+
+    await config.upsertAccount({ name: "default", provider: "fake", secrets: { apiKey: { source: "env", key: "FAKE_KEY" } }, options: {} });
+    st = await read(engine);
+    expect(st.account).toMatchObject({ missingSecrets: [], hasWebhookSecret: false, defaultPriceKey: "" });
+
+    await config.upsertAccount({
+      name: "default",
+      provider: "fake",
+      secrets: { apiKey: { source: "env", key: "FAKE_KEY" }, webhookSecret: { source: "env", key: "FAKE_WHSEC" } },
+      options: { defaultPriceKey: "price_pro" },
+    });
+    st = await read(engine);
+    expect(st.account).toMatchObject({ hasWebhookSecret: true, defaultPriceKey: "price_pro" });
+
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e_st", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    st = await read(engine);
+    expect(st.lastEvent).toMatchObject({ kind: "checkout.completed" });
+  });
+});
+
