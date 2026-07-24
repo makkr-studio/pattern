@@ -383,7 +383,7 @@ export function BuddyDock({
                     onApply(item.doc);
                     // `idx` is the position in `items` — the display list regroups.
                     setItems((prev) => prev.map((it, j) => (j === idx && it.kind === "apply" ? { ...it, applied: true } : it)));
-                    sfx.play("drop");
+                    sfx.play("add");
                   }}
                 >
                   {item.applied ? (

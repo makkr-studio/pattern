@@ -184,6 +184,33 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
 
 ### Admin
 
+- **The dashboard opens the door.** `/admin` stops blind-redirecting to the
+  workflow list: the front page shows runs and errors in the window, recent
+  failures one click from their run page, and users + paying customers when
+  those mods are installed (tiles are duck-typed — absent mod, absent tile).
+  Mods can now contribute **setup checklists** (`FrontendContribution.
+  checklists` — a route returning `{ steps }`), and the dashboard aggregates
+  them into one "open for business" board that ticks itself live; billing's
+  checklist moved server-side (`billing.admin.checklist`) so its page and the
+  dashboard render the same truth.
+- **Every declarative table learns search, sort, and pagination** — one
+  change in the Tier-1 renderer, inherited by users, sessions, invites,
+  customers, events, store docs… And the column `format` hints ("date",
+  "badge", "code"), declared since day one but never rendered, finally are:
+  timestamps read "3m ago", statuses become hued pills, booleans ✓/—.
+- **The user page grows up (Tier-2).** Identity card with the action strip
+  (sign-in link with copy, disable, log out everywhere, delete — destructive
+  ones behind the Modal), a roles editor that renders the configured roles
+  map as checkboxes and says out loud that saving signs the user out
+  everywhere, sessions with revoke, run stats — and the user's subscription
+  when mod-billing is present. Tier-2 pages now receive route `:params` as a
+  prop.
+- **The ops catalog keeps your place.** The install-shaped queries (ops,
+  mods, manifest) cache for five minutes instead of refetching a 370-op
+  payload on every visit, and the list's fuzzy search + mod filter live in
+  the URL — navigating into an op and back lands exactly where you left.
+  The icon map also learned the names mods were already declaring
+  (credit-card, key, mail, bot, database…) instead of falling back to a box.
 - **The Secrets page grows up (Tier-2) and imports your .env.** Paste a
   `.env` (or pick the file) and every `KEY=VALUE` line becomes an encrypted
   secret in one click (`vault.admin.import`): quotes/`export ` stripped,
@@ -194,6 +221,12 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
 
 ### Core & fixes
 
+- **The model catalog catches up with mid-2026.** The static baseline (a
+  suggestion list — the gateway `/v1/models` stays the live truth) now leads
+  with GPT-5.6 Sol/Terra/Luna, Claude Fable 5 + Sonnet 5, the Gemini 3.x
+  line, gpt-image-2 and the Nano Banana image models, Grok 4.5, Voyage 4,
+  Command A+; retired ids (DALL·E, Gemini 2.0, Llama 4 Scout on Groq)
+  dropped. Scaffold seeds and doc examples follow.
 - **`pattern dev` no longer crashes "database is locked" on restart.** A
   watch restart overlaps the new boot with the dying process's sqlite
   checkpoint-on-close, and every store's first statement was the

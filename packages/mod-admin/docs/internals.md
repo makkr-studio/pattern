@@ -124,6 +124,18 @@ motion, lucide) off the `__PATTERN_ADMIN__` global so each loads once;
 [`@pattern-js/mod-sample`](/sample) for the working proof: a Tier-1 page **and** a
 ⌘K command **and** a Tier-2 module with zero admin-core changes.
 
+**Setup checklists.** A mod can also contribute `checklists: [{ id, title,
+route }]` — the route (a dedicated admin endpoint) returns
+`{ steps: [{ ok, label, how?, detail? }], note? }`, server-computed so the copy
+lives once, next to the state it reports on. The **dashboard** (the admin's
+front page) aggregates every mod's into one "open for business" board that
+polls itself live; mod-billing's driver → account → key → price → webhook →
+first-event ladder is the working proof. Declarative table columns may carry a
+`format` hint (`"date"`, `"badge"`, `"code"`), and every Tier-1 table gets
+client-side search, column sort, and pagination for free. Tier-2 pages on
+parameterized paths (`/x/mymod/things/:thingId`) receive the extracted params
+as a `params` prop.
+
 **`@pattern-js/admin-sdk`** is the stable surface: the typed API client, theme tokens, a
 glass UI kit (`GlassPanel`, `NeonButton`, `Table`, `FormFromSchema`, `JsonView`,
 `Markdown`, …), and menu/page/command helpers. The admin's own pages use this exact

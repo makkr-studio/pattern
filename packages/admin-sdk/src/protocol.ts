@@ -342,7 +342,7 @@ export interface SaveResult {
 
 export type RunResult =
   | { ok: false; issues: ValidationIssue[] }
-  | { ok: true; runId: string; status: "ok" | "error"; outputs: Record<string, Record<string, unknown>>; error?: string };
+  | { ok: true; runId: string; status: "ok" | "error" | "canceled"; outputs: Record<string, Record<string, unknown>>; error?: string };
 
 export interface RunInput {
   slug?: string;

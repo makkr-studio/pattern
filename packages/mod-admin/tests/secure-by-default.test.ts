@@ -176,9 +176,10 @@ describe("admin secure-by-default (§9)", () => {
     );
     expect(identitySection?.section.fields[0]?.key).toBe("signup");
 
-    // The user-details page (multi-view + :param) survives manifest serialization…
+    // The user-details page (Tier-2 + :param) survives manifest serialization —
+    // the manifest carries the admin's serving URL for its module source…
     const detailsPage = manifest.pages.find((p: { path: string }) => p.path === "/x/identity/users/:userId");
-    expect(detailsPage?.views?.length).toBeGreaterThanOrEqual(2);
+    expect(String(detailsPage?.remote)).toContain("/admin/api/ui/page/");
 
     // …its profile route resolves…
     const profile = await fetch(`${base}/admin/api/identity/users/${users[0].id}`, { headers: { cookie } });
