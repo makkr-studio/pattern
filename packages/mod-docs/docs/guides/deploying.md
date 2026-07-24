@@ -47,7 +47,7 @@ docker run -p 3000:3000 --env-file .env \
   my-app
 ```
 
-The scaffolded `Dockerfile` is plain: `node:22-slim`, `npm ci --omit=dev`,
+The scaffolded `Dockerfile` is plain: `node:26-slim`, `npm ci --omit=dev`,
 `CMD ["node", "src/index.ts"]`. Edit freely — it's yours.
 
 ## Fly.io
