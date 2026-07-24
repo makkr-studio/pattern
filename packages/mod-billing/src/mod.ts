@@ -19,6 +19,7 @@ import { DefaultBillingService, type BillingModOptions } from "./service.js";
 import { BILLING_CONFIG_SERVICE, BILLING_SERVICE } from "./well-known.js";
 import { billingOps } from "./ops.js";
 import { adminOps, billingAdminRoutes, billingFrontend } from "./admin.js";
+import { billingPageWorkflows, pageOps } from "./pages.js";
 import { meterAiUsageWorkflow } from "./metering.js";
 
 /** The packaged docs/ chapter (the `docs` contribution points at "billing-docs"). */
@@ -34,14 +35,22 @@ function packagedDocs(engine: Engine): void {
 export function billingMod(options: BillingModOptions = {}): PatternMod {
   const config = new BillingConfigService(options.configPath);
   const service = new DefaultBillingService(config, options);
+  // The checkout return pages (+ the poller the success page uses). Where
+  // checkout REDIRECTS and what SERVES those paths stay one decision.
+  const pagePaths = {
+    success: options.successPath ?? "/billing/success",
+    cancel: options.cancelPath ?? "/billing/cancel",
+    status: options.statusPath ?? "/billing/status",
+  };
   return defineMod({
     name: "@pattern-js/mod-billing",
     docs: { filesystem: "billing-docs", title: "Billing", order: 46 },
-    ops: [...billingOps, ...adminOps],
+    ops: [...billingOps, ...adminOps, ...pageOps],
     // One flag turns on the usage-billing loop: mod-ai's ai.usage events →
     // provider meter events, as an editable workflow (metering is an edge).
     workflows: [
       ...billingAdminRoutes(),
+      ...(options.pages === false ? [] : billingPageWorkflows(pagePaths)),
       ...(options.meterAiUsage ? [meterAiUsageWorkflow(options.aiMeter ?? "ai_tokens")] : []),
     ],
     frontend: billingFrontend(),

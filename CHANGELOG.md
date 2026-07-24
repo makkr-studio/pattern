@@ -88,6 +88,15 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   price → webhook secret → *first event received*, live), driver-spec-driven
   **editable accounts** with per-field vault/env secret refs, and the
   customers + events tables beneath it.
+- **The return pages absorb the webhook race.** mod-billing now serves
+  `GET /billing/success` and `/billing/cancel` itself (dark-glass, like
+  identity's front door), so the second after payment is honest instead of a
+  404: the success page polls the new `GET /billing/status`
+  (principal-derived `{ signedIn, entitled, status }` — unprobeable) until
+  the completion webhook grants the role, then forwards to `next` — which
+  `billing.checkout.create` threads onto both return URLs (relative-path
+  guarded). Movable via `successPath`/`cancelPath`/`statusPath`, removable
+  via `pages: false`; the saas-starter's checkout sets `next: "/pro"`.
 
 ### Alerts & metering
 

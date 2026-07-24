@@ -12,6 +12,7 @@ import {
   BILLING_SERVICE,
   BillingConfigService,
   billingMod,
+  pageOps,
   type BillingDriverSpec,
   type BillingEvent,
   type BillingService,
@@ -423,3 +424,116 @@ describe("billing.admin.status — the checklist tells the truth", () => {
   });
 });
 
+
+describe("the return pages absorb the webhook race", () => {
+  // The pure page ops never see HTTP — a hand-rolled ctx is the whole harness.
+  const pageCtx = (
+    services: OpContext["services"],
+    principal: unknown,
+    inputs: Record<string, unknown> = {},
+    config: unknown = {},
+  ): OpContext =>
+    ({
+      services,
+      principal,
+      config,
+      input: {
+        has: (p: string) => p in inputs,
+        value: async (p: string) => inputs[p],
+        stream: () => {
+          throw new Error("unused");
+        },
+      },
+    }) as unknown as OpContext;
+
+  const opByType = (type: string) => {
+    const op = pageOps.find((o) => o.type === type)!;
+    expect(op).toBeDefined();
+    return op;
+  };
+
+  it("checkout threads `next` onto BOTH return URLs, open-redirect guarded", async () => {
+    const { svc, driver, ctx } = await boot();
+    await svc.checkout({ next: "/pro" }, ctx);
+    expect(driver.checkouts[0]).toMatchObject({
+      successUrl: "https://app.example/billing/success?next=%2Fpro",
+      cancelUrl: "https://app.example/billing/cancel?next=%2Fpro",
+    });
+    await svc.checkout({ next: "https://evil.example/phish" }, ctx);
+    expect(driver.checkouts[1]!.successUrl).toBe("https://app.example/billing/success?next=%2F");
+  });
+
+  it("success page: anonymous thank-you / signed-in poller / entitled redirect", async () => {
+    const { svc, driver, ctx } = await boot();
+    const success = opByType("billing.success.page");
+    const cfg = { statusPath: "/billing/status" };
+
+    const anon = (await success.execute(pageCtx(ctx.services, { kind: "anonymous" }, { next: "/pro" }, cfg))) as {
+      body?: string;
+      redirect?: string;
+    };
+    expect(anon.redirect).toBeUndefined();
+    expect(anon.body).toContain("Payment received");
+    expect(anon.body).toContain('href="/pro"');
+    expect(anon.body).not.toContain("fetch(");
+
+    const waiting = (await success.execute(
+      pageCtx(ctx.services, { kind: "user", id: "ada", provider: "test" }, { next: "/pro" }, cfg),
+    )) as { body?: string; redirect?: string };
+    expect(waiting.redirect).toBeUndefined();
+    expect(waiting.body).toContain("Unlocking your account");
+    expect(waiting.body).toContain('"/billing/status"'); // the poller target
+    expect(waiting.body).toContain('"/pro"'); // the forward destination
+
+    // The webhook lands → the same request now redirects straight through.
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push(subUpdated("e1"));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    const entitled = (await success.execute(
+      pageCtx(ctx.services, { kind: "user", id: "ada", provider: "test" }, { next: "/pro" }, cfg),
+    )) as { redirect?: string };
+    expect(entitled.redirect).toBe("/pro");
+  });
+
+  it("status.mine is principal-derived — anonymous stays blank, no userId input exists", async () => {
+    const { svc, driver, ctx } = await boot();
+    const status = opByType("billing.status.mine");
+    expect(Object.keys(status.inputs)).toHaveLength(0);
+
+    const anon = (await status.execute(pageCtx(ctx.services, { kind: "anonymous" }))) as { state: Record<string, unknown> };
+    expect(anon.state).toEqual({ signedIn: false, entitled: false });
+
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push(subUpdated("e1"));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    const mine = (await status.execute(pageCtx(ctx.services, { kind: "user", id: "ada", provider: "test" }))) as {
+      state: Record<string, unknown>;
+    };
+    expect(mine.state).toEqual({ signedIn: true, entitled: true, status: "active" });
+  });
+
+  it("cancel page reassures and points back", async () => {
+    const { ctx } = await boot();
+    const cancel = opByType("billing.cancel.page");
+    const out = (await cancel.execute(pageCtx(ctx.services, { kind: "anonymous" }, { next: "/pricing" }))) as { body?: string };
+    expect(out.body).toContain("No charge was made");
+    expect(out.body).toContain('href="/pricing"');
+  });
+
+  it("the routes are seeded by default, movable, and removable", async () => {
+    const { engine } = await boot();
+    expect(engine.workflows.get("billing.route.success")).toBeDefined();
+    expect(engine.workflows.get("billing.route.cancel")).toBeDefined();
+    expect(engine.workflows.get("billing.route.status.mine")).toBeDefined();
+    // The success page's poller is configured with the status route's path.
+    const call = engine.workflows.get("billing.route.success")!.nodes.find((n) => n.id === "call")!;
+    expect(call.config).toMatchObject({ statusPath: "/billing/status" });
+
+    const bare = new Engine({ env: {} });
+    await bare.useAsync(billingMod({ configPath: `/tmp/pattern-billing-test-${Math.random().toString(36).slice(2)}.json`, pages: false }), { deferReady: true });
+    expect(bare.workflows.get("billing.route.success")).toBeUndefined();
+    expect(bare.workflows.get("billing.route.status.mine")).toBeUndefined();
+  });
+});

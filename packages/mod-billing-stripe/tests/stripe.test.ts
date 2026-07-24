@@ -385,3 +385,27 @@ describe("the retry seal — one key, one session, however many attempts", () =>
   });
 });
 
+
+describe("the packaged return pages, over real HTTP", () => {
+  it("serves success/cancel/status; checkout's ?next survives the session_id join", async () => {
+    // `next` rides the success URL as a query — the driver must join with "&".
+    await svc.checkout({ userId: "ada", next: "/pro" }, opCtx);
+    const req = stripe.requests.filter((r) => r.path.startsWith("/v1/checkout/sessions")).at(-1)!;
+    expect(req.body).toContain("next%3D%252Fpro%26session_id%3D");
+
+    const success = await fetch(`http://localhost:${APP_PORT}/billing/success?next=/pro`);
+    expect(success.status).toBe(200);
+    expect(success.headers.get("content-type")).toContain("text/html");
+    const html = await success.text();
+    expect(html).toContain("Payment received");
+    expect(html).toContain('href="/pro"');
+
+    const cancel = await fetch(`http://localhost:${APP_PORT}/billing/cancel`);
+    expect(cancel.status).toBe(200);
+    expect(await cancel.text()).toContain("No charge was made");
+
+    const status = await fetch(`http://localhost:${APP_PORT}/billing/status`);
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ signedIn: false, entitled: false });
+  });
+});

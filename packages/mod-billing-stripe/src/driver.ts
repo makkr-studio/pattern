@@ -96,7 +96,8 @@ export const stripeBillingDriver: BillingDriverSpec = {
     const session = await stripeRequest<{ id: string; url: string }>(credsOf(creds, options), "POST", "/v1/checkout/sessions", {
       mode: req.mode,
       line_items: [{ price: req.priceKey, quantity: req.quantity }],
-      success_url: `${req.successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+      // The success URL may already carry a query (?next=…) — join accordingly.
+      success_url: `${req.successUrl}${req.successUrl.includes("?") ? "&" : "?"}session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: req.cancelUrl,
       ...(req.userRef ? { client_reference_id: req.userRef } : {}),
       ...(req.customerId ? { customer: req.customerId } : req.email ? { customer_email: req.email } : {}),

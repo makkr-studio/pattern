@@ -34,6 +34,26 @@ customer back to *your* user. Redirect URLs anchor on `PATTERN_PUBLIC_URL`
 (set it behind a proxy) with `/billing/success` and `/billing/cancel` paths
 you can change in the mod options.
 
+## The return pages absorb the webhook race
+
+The provider redirects the buyer to `/billing/success` the moment payment
+settles — usually **before** the completion webhook has granted the role. The
+mod serves both return paths itself, so that moment is honest instead of a
+404:
+
+- **success** greets the buyer and polls `/billing/status` until the webhook
+  flips `entitled`, then forwards to `next` — the gated page checkout was
+  started from. Already entitled → an immediate redirect; not signed in → a
+  static thank-you.
+- **cancel** reassures that no charge was made and points back.
+- **`/billing/status`** answers `{ signedIn, entitled, status }` for the
+  *calling* user (principal-derived — it can't probe anyone else), which any
+  frontend can also use to pick between "Upgrade" and "Manage subscription".
+
+Give `billing.checkout.create` a `next` (config or input, relative-path
+guarded) and it rides the return URLs as `?next=`. Want your own pages? Move
+the paths in the options, or set `pages: false` and serve them yourself.
+
 ## The webhook: verify → dedup → map → project → emit
 
 The driver mod seeds a signed webhook route. Every delivery is:
@@ -87,6 +107,8 @@ billingMod({
   entitlement: { role: "member", gracePastDue: false },  // or false to disable
   successPath: "/billing/success",
   cancelPath: "/billing/cancel",
+  statusPath: "/billing/status",  // the success page's entitlement poller
+  pages: true,                    // false = serve the return paths yourself
   portalReturnPath: "/",
   meterAiUsage: false,   // flip on to record ai.usage events to `aiMeter`
   aiMeter: "ai_tokens",

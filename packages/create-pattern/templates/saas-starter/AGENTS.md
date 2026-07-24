@@ -55,9 +55,11 @@ locks again. **No billing checks in app code** — entitlement is an auth scope.
 4. On the landing page: sign in (magic link prints to the console), hit
    **Subscribe**, pay with the test card `4242 4242 4242 4242` (any future
    date, any CVC).
-5. Watch the webhook run land in admin → **Runs**; your user now has the
-   `member` role (admin → **Access → Users**) — `/pro` is open. Cancel in
-   **Manage subscription** and it locks again.
+5. You land on `/billing/success` — a page mod-billing serves for you. It
+   polls until the completion webhook grants the `member` role, then forwards
+   to `/pro` (the checkout workflow set `next: "/pro"`). Watch the webhook run
+   land in admin → **Runs**; cancel in **Manage subscription** and `/pro`
+   locks again.
 
 ## The workflows this scaffold ships
 
@@ -67,6 +69,12 @@ locks again. **No billing checks in app code** — entitlement is an auth scope.
 | `workflows/checkout.json` | `POST /billing/checkout` | user → checkout session; **durable + retry** |
 | `workflows/portal.json` | `POST /billing/portal` | the provider's subscription UI |
 | `workflows/pro.json` | `GET /pro` | `requireAuth: { scopes: ["pro"] }` — the paid feature |
+
+Not files here, but part of the surface: mod-billing itself serves
+`GET /billing/success` (polls entitlement until the webhook lands, then
+forwards to `next`), `GET /billing/cancel`, and `GET /billing/status` (the
+calling user's `{ signedIn, entitled, status }`). Move or disable them via the
+mod's `successPath`/`cancelPath`/`pages` options if you want your own.
 
 The checkout and portal workflows carry `"durable": true`: their runs record
 exact inputs/outputs in the **RunLedger**, so a failed run can **Resume from

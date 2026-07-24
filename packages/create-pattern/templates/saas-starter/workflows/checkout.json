@@ -38,8 +38,10 @@
       "op": "billing.checkout.create",
       "config": {
         "account": "default",
-        "mode": "subscription"
+        "mode": "subscription",
+        "next": "/pro"
       },
+      "comment": "next rides the return URLs: after payment the packaged success page unlocks and forwards to /pro.",
       "retry": {
         "attempts": 3,
         "backoffMs": 400

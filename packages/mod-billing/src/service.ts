@@ -15,6 +15,7 @@
  */
 
 import { resolveSourced, type OpContext } from "@pattern-js/core";
+import { safeNextPath } from "./pages.js";
 import { DEFAULT_ACCOUNT, type BillingConfigService } from "./config.js";
 import { docsStore, identityLike, type DocsLike } from "./well-known.js";
 import {
@@ -48,6 +49,14 @@ export interface BillingModOptions {
   /** Where checkout lands (appended to the public origin). */
   successPath?: string;
   cancelPath?: string;
+  /**
+   * Serve the packaged return pages at `successPath`/`cancelPath` (plus the
+   * `statusPath` entitlement poller the success page uses). Default true —
+   * set false to serve those paths yourself.
+   */
+  pages?: boolean;
+  /** Where the success page polls the caller's entitlement. Default "/billing/status". */
+  statusPath?: string;
   /** Where the customer portal returns to. */
   portalReturnPath?: string;
   /**
@@ -70,6 +79,12 @@ export interface CheckoutInput {
   quantity?: number;
   /** Request-derived origin; PATTERN_PUBLIC_URL beats it (proxies lie). */
   origin?: string;
+  /**
+   * Where the buyer should land AFTER the return page (relative-path guarded):
+   * rides the success/cancel URLs as `?next=`, so the packaged pages forward
+   * back to the gated page checkout was started from.
+   */
+  next?: string;
   /** Provider-side retry seal (the ops pin it to run+node). */
   idempotencyKey?: string;
 }
@@ -152,13 +167,16 @@ export class DefaultBillingService implements BillingService {
     }
     const origin = this.origin(ctx, input.origin);
     const mapping = input.userId ? await this.customerForUser(input.userId, ctx) : undefined;
+    // `next` rides the return URLs so the packaged pages forward the buyer
+    // back to the gated page checkout started from (relative-path guarded).
+    const returnSuffix = input.next ? `?next=${encodeURIComponent(safeNextPath(input.next))}` : "";
     return driver.createCheckout(
       {
         mode: input.mode ?? "subscription",
         priceKey,
         quantity: input.quantity ?? 1,
-        successUrl: `${origin}${this.options.successPath ?? "/billing/success"}`,
-        cancelUrl: `${origin}${this.options.cancelPath ?? "/billing/cancel"}`,
+        successUrl: `${origin}${this.options.successPath ?? "/billing/success"}${returnSuffix}`,
+        cancelUrl: `${origin}${this.options.cancelPath ?? "/billing/cancel"}${returnSuffix}`,
         userRef: input.userId,
         email: input.email,
         customerId: mapping?.customerId,

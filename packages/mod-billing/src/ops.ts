@@ -100,10 +100,13 @@ export const checkoutCreateOp: OpDefinition = {
     "to your user. `origin` (wire the trigger's request URL or leave it — PATTERN_PUBLIC_URL wins) anchors the " +
     "success/cancel redirects; priceKey falls back to the account's defaultPriceKey. Retries are provider-side " +
     "idempotent (the key is pinned to the run+node). `result` carries { url, sessionId } — or, when billing " +
-    "isn't set up yet, a friendly conflict outcome for boundary.http.status; `url` stays for happy-path wiring.",
+    "isn't set up yet, a friendly conflict outcome for boundary.http.status; `url` stays for happy-path wiring. " +
+    "`next` (config or input; relative path) tells the packaged return pages where to forward the buyer after " +
+    "the unlock — usually the gated page this checkout was started from.",
   config: z.object({
     account: z.string().default(DEFAULT_ACCOUNT),
     mode: z.enum(["subscription", "payment"]).default("subscription"),
+    next: z.string().optional(),
   }),
   inputs: {
     userId: value(z.string().optional()),
@@ -111,11 +114,12 @@ export const checkoutCreateOp: OpDefinition = {
     priceKey: value(z.string().optional()),
     quantity: value(z.number().optional()),
     origin: value(z.string().optional()),
+    next: value(z.string().optional()),
     idempotencyKey: value(z.string().optional()),
   },
   outputs: { result: value(), url: value(z.string().optional()), sessionId: value(z.string().optional()) },
   execute: async (ctx) => {
-    const cfg = ctx.config as { account: string; mode: "subscription" | "payment" };
+    const cfg = ctx.config as { account: string; mode: "subscription" | "payment"; next?: string };
     try {
       const res = await billingService(ctx).checkout(
         {
@@ -126,6 +130,7 @@ export const checkoutCreateOp: OpDefinition = {
           priceKey: await maybe<string>(ctx, "priceKey"),
           quantity: await maybe<number>(ctx, "quantity"),
           origin: originOf(await maybe<string>(ctx, "origin")),
+          next: (await maybe<string>(ctx, "next")) ?? cfg.next,
           idempotencyKey: (await maybe<string>(ctx, "idempotencyKey")) ?? retrySeal(ctx),
         },
         ctx,
