@@ -363,6 +363,11 @@ const usersGet = jsonOp(
       created: new Date(user.createdAt).toLocaleString(),
       "active sessions": active.length,
       "user id": user.id,
+      // Raw fields for the Tier-2 user page (the display strings above stay
+      // for anything still rendering this as a plain detail view).
+      rolesList: user.roles,
+      knownRoles: Object.keys(svc.options.roles),
+      createdAt: user.createdAt,
     };
   },
   { sensitivity: "privileged" },
