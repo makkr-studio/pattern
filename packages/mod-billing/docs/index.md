@@ -15,10 +15,11 @@ workflows).
 ## Accounts: names, never secrets
 
 Like email, billing speaks in **accounts** — memorable names bound to a driver
-plus *sourced* secrets (`{"source":"env","key":"STRIPE_API_KEY"}` or a vault
-ref — never a value). Configure them in **admin → System → Billing**; ops fall
-back to the `"default"` account. Re-pointing an account re-targets every
-workflow that uses it.
+plus *sourced* secrets (`{"source":"vault","key":"STRIPE_API_KEY"}` — the
+default; an env ref is the alternative — never a value). Paste the keys in
+**admin → System → Secrets**, configure the account in **admin → System →
+Billing**; ops fall back to the `"default"` account. Re-pointing an account
+re-targets every workflow that uses it.
 
 ## Checkout and the portal are one node each
 

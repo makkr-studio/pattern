@@ -3,6 +3,7 @@
   "mods": [
     "@pattern-js/mod-admin",
     "@pattern-js/mod-store",
+    "@pattern-js/mod-vault",
     "@pattern-js/mod-email",
     "./mods/billing.mjs",
     "@pattern-js/mod-billing-stripe"

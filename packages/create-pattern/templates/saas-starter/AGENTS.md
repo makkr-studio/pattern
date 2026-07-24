@@ -42,16 +42,20 @@ locks again. **No billing checks in app code** — entitlement is an auth scope.
 ## First subscription in 5 minutes
 
 1. In [Stripe test mode](https://dashboard.stripe.com/test/apikeys): create a
-   product with a recurring price, copy the **price id** (`price_…`) and your
-   **secret key** (`sk_test_…`) into `.env` as `STRIPE_API_KEY`.
-2. `npm run dev`, open the one-time admin link from the console, then
+   product with a recurring price, note the **price id** (`price_…`) and your
+   **secret key** (`sk_test_…`).
+2. `npm run dev`, open the one-time admin link from the console. In
+   admin → **System → Secrets**, add `STRIPE_API_KEY` = your `sk_test_…`
+   (encrypted at rest; applies on the next call, no restart). Then
    admin → **System → Billing** → create the account `default`: provider
-   `stripe`, apiKey `{ source: "env", key: "STRIPE_API_KEY" }`, webhookSecret
-   `{ source: "env", key: "STRIPE_WEBHOOK_SECRET" }`, and set
-   `defaultPriceKey` to your `price_…`.
+   `stripe`, apiKey `vault / STRIPE_API_KEY`, webhookSecret
+   `vault / STRIPE_WEBHOOK_SECRET`, and set `defaultPriceKey` to your
+   `price_…`. (Prefer `.env`? Uncomment the keys in `.env.example`, copy to
+   `.env`, and pick `env` refs instead — that path needs a restart per change.)
 3. Tunnel the webhook:
    `stripe listen --forward-to localhost:3000/billing/webhook/stripe`
-   — copy the printed `whsec_…` into `.env` as `STRIPE_WEBHOOK_SECRET`, restart.
+   — paste the printed `whsec_…` into admin → **System → Secrets** as
+   `STRIPE_WEBHOOK_SECRET`. No restart needed.
 4. On the landing page: sign in (magic link prints to the console), hit
    **Subscribe**, pay with the test card `4242 4242 4242 4242` (any future
    date, any CVC).

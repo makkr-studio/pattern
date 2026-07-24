@@ -126,7 +126,18 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
 - **A Dockerfile in every server scaffold** (+ `.dockerignore`), documenting
   the two state volumes (`.pattern/` vs `.pattern-data/`) and required env —
   and a new handbook guide, **Deploying**, with the container contract and
-  Fly.io / Railway / Render walk-throughs.
+  Fly.io / Railway / Render walk-throughs. Containers now build on
+  `node:26-slim` (the engines floor stays ≥22.5).
+- **Scaffolds are vault-first.** Provider and processor keys stop defaulting
+  to `.env`: with a generated vault key, seeded model aliases reference
+  `{ source: "vault" }`, the saas-starter carries mod-vault (compose's
+  billing layer pulls it too), and `.env.example` shrinks to infrastructure —
+  the keys' home is admin → System → **Secrets**, where a paste applies on
+  the next call with no restart (that's what kills the old "edit .env,
+  restart" loop; the billing walkthrough lost a restart step). Every env line
+  survives as a commented alternative, `--no-vault-key` falls back to env
+  refs, and the pack card grows a "secrets → encrypted vault" line so the
+  preview stays honest.
 
 ### Compose & add
 

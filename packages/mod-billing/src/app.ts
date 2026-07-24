@@ -51,11 +51,11 @@ function Checklist({ status }) {
     { ok: Boolean(a), label: "An account exists",
       how: 'Save the form below as "default" — the ops and the starter workflows fall back to it.' },
     { ok: Boolean(a) && a.missingSecrets.length === 0, label: "API key connected",
-      how: "Stripe dashboard (TEST mode) → Developers → API keys: put sk_test_… in .env as STRIPE_API_KEY, then set the account's apiKey to env / STRIPE_API_KEY." },
+      how: "Stripe dashboard (TEST mode) → Developers → API keys: paste sk_test_… into admin → System → Secrets as STRIPE_API_KEY (encrypted, no restart), then set the account's apiKey to vault / STRIPE_API_KEY. (.env + an env ref works too.)" },
     { ok: Boolean(a && a.defaultPriceKey), label: "A price to sell",
       how: "Create a product with a recurring price (test mode) and paste its price_… id into the account's Default price field." },
     { ok: Boolean(a && a.hasWebhookSecret), label: "Webhook secret set",
-      how: "Run: stripe listen --forward-to " + status.webhookUrl + "  — copy the printed whsec_… into .env as STRIPE_WEBHOOK_SECRET and set the account's webhookSecret to env / STRIPE_WEBHOOK_SECRET." },
+      how: "Run: stripe listen --forward-to " + status.webhookUrl + "  — paste the printed whsec_… into admin → System → Secrets as STRIPE_WEBHOOK_SECRET and set the account's webhookSecret to vault / STRIPE_WEBHOOK_SECRET." },
     { ok: Boolean(status.lastEvent), label: "First event received",
       how: "Subscribe on your landing page with the test card 4242 4242 4242 4242 (any future date/CVC) — or fire one with: stripe trigger checkout.session.completed.",
       detail: status.lastEvent ? String(status.lastEvent.kind) + " · " + ago(status.lastEvent.at) : null },
@@ -85,7 +85,7 @@ function Checklist({ status }) {
 
 // ── One secret field: vault|env source + key (the email page's control) ──
 function SecretRow({ field, refValue, secrets, onChange }) {
-  const src = (refValue && refValue.source) || "env";
+  const src = (refValue && refValue.source) || "vault";
   const key = (refValue && refValue.key) || "";
   const set = (patch) => onChange({ source: src, key, ...patch });
   const vaultPicker = h("select", { className: inputCls, value: key, onChange: (e) => set({ key: e.target.value }) },
@@ -96,8 +96,8 @@ function SecretRow({ field, refValue, secrets, onChange }) {
   return h(Field, { key: field.field, label: "Secret · " + (field.label || field.field) + (field.required === false ? " (optional)" : "") },
     h("div", { className: "flex gap-2" },
       h("select", { className: "glass rounded-lg px-2 py-2 text-sm", style: { width: "5.5rem" }, value: src, onChange: (e) => set({ source: e.target.value }) },
-        h("option", { value: "env" }, "env"),
-        h("option", { value: "vault" }, "vault")),
+        h("option", { value: "vault" }, "vault"),
+        h("option", { value: "env" }, "env")),
       h("div", { className: "flex-1" }, src === "env" ? envInput : vaultPicker)));
 }
 

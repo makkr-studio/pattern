@@ -1,11 +1,12 @@
 # Copied to `.env` (gitignored), loaded automatically on boot — existing
 # environment variables always win over this file.
 
-# Provider keys are set per model alias in admin → Settings → AI Providers, each
-# sourced from the vault (encrypted) or an env var you name. To use an env var,
-# define it here — OPENAI_API_KEY below is just a common example. The Vercel AI
-# Gateway uses a single AI_GATEWAY_API_KEY instead.
-OPENAI_API_KEY=
+# Provider keys live in the ENCRYPTED VAULT: paste each one in admin → System →
+# Secrets (no restart), and the model alias in admin → Settings → AI Providers
+# reads it by name. Prefer an env var? Define it here (OPENAI_API_KEY below is
+# a common example) and point the alias at env instead. The Vercel AI Gateway
+# uses a single AI_GATEWAY_API_KEY.
+# OPENAI_API_KEY=
 
 # The vault's master key. Generate ONCE: openssl rand -base64 32
 # Same key forever — it decrypts .pattern-data/vault.db.

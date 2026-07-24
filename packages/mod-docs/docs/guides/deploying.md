@@ -31,11 +31,12 @@ ciphertext there.
 | `PATTERN_PUBLIC_URL` | your public origin, e.g. `https://app.example.com`. Emailed links (sign-in, invites), OIDC redirects, and checkout redirects are built on it. Behind ANY proxy this must be set — the request's Host header lies. |
 | `PATTERN_VAULT_KEY` | the vault's master key, if your app uses the vault (`.env.example` says) |
 | `PATTERN_ALERTS_TO` | optional: an operator address — a failed run sends an email there (needs a `default` email account) |
-| provider keys | whatever your `.env.example` lists: AI providers, `RESEND_API_KEY`, `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, … |
+| provider keys | only those you point at env: vault-sourced secrets (the scaffold default) travel inside the `.pattern-data` volume, unlocked by `PATTERN_VAULT_KEY` |
 
-Secrets referenced as `{ "source": "env", "key": "..." }` in accounts and
-aliases read from this environment; `{ "source": "vault", ... }` ones read from
-the vault. Values never live in config files.
+Secrets referenced as `{ "source": "vault", "key": "..." }` in accounts and
+aliases read from the encrypted vault (its data rides the `.pattern-data`
+volume — same key, same secrets, every deploy); `{ "source": "env", ... }`
+ones read from this environment. Values never live in config files.
 
 ## Docker, locally
 
@@ -69,8 +70,11 @@ dirs on it via a shared parent, or create two volumes):
 Then secrets and ship:
 
 ```bash
-fly secrets set PATTERN_PUBLIC_URL=https://my-app.fly.dev STRIPE_API_KEY=sk_...
+fly secrets set PATTERN_PUBLIC_URL=https://my-app.fly.dev PATTERN_VAULT_KEY=...
 fly deploy
+# provider keys live in the vault (admin → System → Secrets) on the mounted
+# volume — set extra env secrets here only for refs you pointed at env
+
 ```
 
 ## Railway

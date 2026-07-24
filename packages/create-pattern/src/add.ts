@@ -337,7 +337,7 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
             if (!(cfg.workers.mods ?? []).includes(w)) cfg.workers.mods = [...(cfg.workers.mods ?? []), w];
           }
         }
-        await envHintIfMissing(layer.env, layer.envHint);
+        await envHintIfMissing([...layer.env, ...(layer.vaultSecrets ?? [])], layer.envHint);
         did = true;
       }
     }

@@ -138,6 +138,7 @@ describe("compose mode — artifacts", () => {
       "./mods/identity.mjs",
       "@pattern-js/mod-auth-magic-link",
       "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
       "@pattern-js/mod-email",
       "./mods/billing.mjs",
       "@pattern-js/mod-billing-stripe",

@@ -107,21 +107,31 @@ describe("create-pattern scaffold dimensions", () => {
       ["embeddings", "embedding", "openai"],
     ]);
     for (const a of ai.aliases) {
-      expect(a.secrets.apiKey).toEqual({ source: "env", key: "OPENAI_API_KEY" });
+      // Vault-first: the pack has a vault + a generated key, so the seeded ref
+      // points at the encrypted vault (paste the key in admin → Secrets).
+      expect(a.secrets.apiKey).toEqual({ source: "vault", key: "OPENAI_API_KEY" });
       // The seeded records must stay valid against mod-ai's REAL alias schema.
       expect(aliasSchema.safeParse(a).success, JSON.stringify(a)).toBe(true);
     }
     expect(json(".mcp.json")).toEqual({ mcpServers: { pattern: { command: "npx", args: ["pattern", "mcp"] } } });
-    expect(read(".env")).toContain("OPENAI_API_KEY="); // vault-key generation copied the (existing) hint into .env
+    expect(read(".env")).toContain("# OPENAI_API_KEY="); // the env ALTERNATIVE, commented, copied into .env
   });
 
-  it("agentic --providers anthropic: language-only seed, env hint reaches .env.example AND the generated .env", () => {
+  it("agentic --providers anthropic: language-only seed, the commented env hint reaches .env.example AND the generated .env", () => {
     const { read, json } = scaffold("s-seed-claude", "--modpack", "agentic", "--no-auth", "--providers", "anthropic");
     const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
     expect(ai.aliases).toHaveLength(1); // anthropic has no embedding models — no embeddings alias
     expect(ai.aliases[0]).toMatchObject({ name: "default", provider: "anthropic", modality: "language" });
-    expect(read(".env.example")).toContain("ANTHROPIC_API_KEY=");
-    expect(read(".env")).toContain("ANTHROPIC_API_KEY="); // seeding ran BEFORE the vault-key .env copy
+    expect(read(".env.example")).toContain("# ANTHROPIC_API_KEY=");
+    expect(read(".env")).toContain("# ANTHROPIC_API_KEY="); // seeding ran BEFORE the vault-key .env copy
+  });
+
+  it("agentic --no-vault-key: the seeded refs fall back to env", () => {
+    const { read, json } = scaffold("s-seed-novault", "--modpack", "agentic", "--no-auth", "--providers", "openai", "--no-vault-key");
+    const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
+    for (const a of ai.aliases) expect(a.secrets.apiKey).toEqual({ source: "env", key: "OPENAI_API_KEY" });
+    // The template documents the env line (commented) — uncomment to use it.
+    expect(read(".env.example")).toMatch(/^#?\s*OPENAI_API_KEY=$/m);
   });
 
   it("no provider pick seeds nothing; a pack without mod-buddy gets no .mcp.json", () => {
@@ -162,6 +172,7 @@ describe("create-pattern scaffold dimensions", () => {
       "@pattern-js/mod-auth-magic-link",
       "@pattern-js/mod-admin",
       "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
       "@pattern-js/mod-email",
       "./mods/billing.mjs",
       "@pattern-js/mod-billing-stripe",
@@ -174,9 +185,13 @@ describe("create-pattern scaffold dimensions", () => {
     expect(deps["@pattern-js/mod-billing"]).toBe(RANGE);
     expect(deps["@pattern-js/mod-billing-stripe"]).toBe(RANGE);
     expect(deps["@pattern-js/mod-identity"]).toBe(RANGE);
+    // Vault-first: the pack carries mod-vault, and the Stripe keys are only a
+    // COMMENTED env alternative — their home is admin → System → Secrets.
+    expect(deps["@pattern-js/mod-vault"]).toBe(RANGE);
     const env = read(".env.example");
-    expect(env).toContain("STRIPE_API_KEY");
-    expect(env).toContain("STRIPE_WEBHOOK_SECRET");
+    expect(env).toContain("# STRIPE_API_KEY");
+    expect(env).toContain("# STRIPE_WEBHOOK_SECRET");
+    expect(env).toMatch(/^PATTERN_VAULT_KEY=/m);
     // Money workflows ship durable + retry (the 0.5 toolkit).
     expect(json("workflows/checkout.json").durable).toBe(true);
     expect(json("workflows/portal.json").durable).toBe(true);

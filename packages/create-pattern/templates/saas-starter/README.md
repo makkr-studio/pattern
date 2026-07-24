@@ -15,13 +15,14 @@ npm run dev     # first boot prints a one-time admin link — you're the owner
 
 ## Connect Stripe (test mode, ~5 minutes)
 
-1. Create a product + recurring price; put `sk_test_…` in `.env` as
-   `STRIPE_API_KEY`.
-2. Admin → System → Billing → account `default` (provider `stripe`, secrets as
-   env refs, `defaultPriceKey` = your `price_…`).
+1. Create a product + recurring price; paste `sk_test_…` into
+   admin → System → **Secrets** as `STRIPE_API_KEY` (encrypted, no restart).
+2. Admin → System → **Billing** → account `default` (provider `stripe`,
+   secrets as vault refs, `defaultPriceKey` = your `price_…`).
 3. `stripe listen --forward-to localhost:3000/billing/webhook/stripe` — the
-   printed `whsec_…` goes in `.env` as `STRIPE_WEBHOOK_SECRET`.
-4. Subscribe with the test card `4242 4242 4242 4242` — `/pro` unlocks.
+   printed `whsec_…` goes into Secrets as `STRIPE_WEBHOOK_SECRET`.
+4. Subscribe with the test card `4242 4242 4242 4242` — you land on the
+   success page, it unlocks, and `/pro` opens.
 
 The full walkthrough (and how the entitlement bridge works) is in
 [AGENTS.md](AGENTS.md); the deploy story (Dockerfile, volumes, env) is served

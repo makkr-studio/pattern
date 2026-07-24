@@ -81,6 +81,12 @@ interface Modpack {
   serves: (examples: boolean) => string[];
   /** Env vars the pack needs (the card's "needs" line). */
   env: string[];
+  /**
+   * Secret NAMES the pack expects in the encrypted vault (admin → System →
+   * Secrets) — the card's "secrets" line. When the vault key is declined they
+   * fall back to the "needs" line (env refs are the alternative).
+   */
+  vaultSecrets?: string[];
   /** Key generated paths shown as the card's file tree. */
   generates: (examples: boolean) => string[];
   /**
@@ -274,12 +280,13 @@ function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
  * The model-alias next steps: with a seed plan, the aliases already exist —
  * the only step is the key; without one, the manual how-to (aliasLines).
  */
-function modelLines(seeded: SeedPlan | null): string[] {
+function modelLines(seeded: SeedPlan | null, vaultKey = false): string[] {
   if (!seeded) return aliasLines();
   const show = (a: SeededAlias) => `${pc.bold(a.name)} ${pc.dim(`(${a.provider} ${a.modelId})`)}`;
-  const lines = [
-    `${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Settings → AI Providers)")}`,
-  ];
+  const keyHome = vaultKey
+    ? `add ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in admin → System → ${pc.bold("Secrets")} ${pc.dim("(encrypted vault, no restart — re-point to env anytime in Settings → AI Providers)")}`
+    : `set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Settings → AI Providers)")}`;
+  const lines = [`${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — ${keyHome}`];
   if (!seeded.aliases.some((a) => a.name === "default")) {
     lines.push(`${pc.cyan("→")} add a ${pc.bold("default")} language alias in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— agents and chat fall back to it")}`);
   }
@@ -454,13 +461,15 @@ const MODPACKS: Modpack[] = [
       "@pattern-js/mod-billing-stripe",
       "@pattern-js/mod-email",
       "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
       "@pattern-js/mod-admin",
       "./mods/billing.mjs (app-local)",
       "./mods/identity.mjs (app-local)",
     ],
     exampleSummary: "a landing page, checkout + portal routes (durable), and the gated /pro page",
     serves: () => ["/", "/pro", "/billing/checkout", "/billing/portal", "/admin"],
-    env: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
+    env: ["PATTERN_VAULT_KEY"],
+    vaultSecrets: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
     generates: () => [
       "workflows/landing.json + checkout, portal, pro",
       "mods/billing.mjs + mods/identity.mjs",
@@ -479,7 +488,7 @@ const MODPACKS: Modpack[] = [
         "",
         `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} — open it, you're the owner`,
         `${pc.cyan("→")} landing at ${pc.bold("http://localhost:3000/")} — Subscribe 401s until Stripe is connected`,
-        `${pc.cyan("→")} connect Stripe (test mode): keys in ${pc.bold(".env")}, the account in admin → System → Billing,`,
+        `${pc.cyan("→")} connect Stripe (test mode): keys in admin → System → ${pc.bold("Secrets")} (the encrypted vault), the account in admin → System → Billing,`,
         `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("(the walkthrough lives in AGENTS.md)")}`,
         `${pc.cyan("→")} pay with ${pc.bold("4242 4242 4242 4242")} — the webhook grants the member role and ${pc.bold("/pro")} unlocks`,
       ].filter((l) => l !== ""),
@@ -510,7 +519,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        ...modelLines(seeded),
+        ...modelLines(seeded, vaultKey),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/summarize -H 'content-type: application/json' -d '{"text":"…"}' ${pc.dim("— ai.text.generate, no agent")}`
           : `${pc.cyan("→")} build an AI workflow: ${pc.bold("ai.alias → ai.text.generate")} (see AGENTS.md)`,
@@ -549,7 +558,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        ...modelLines(seeded),
+        ...modelLines(seeded, vaultKey),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time (a linked sub-run)")}`
           : `${pc.cyan("→")} build an agentic workflow: ${pc.bold("agents.agent → agents.run")} (see AGENTS.md)`,
@@ -596,7 +605,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link`]
           : [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`]),
-        ...modelLines(seeded),
+        ...modelLines(seeded, vaultKey),
         examples
           ? `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} ${pc.dim("— the agent calls the get_time tool (a linked sub-run)")}`
           : `${pc.cyan("→")} add a tool workflow (see AGENTS.md), then ask the agent to call it`,
@@ -782,7 +791,10 @@ function packCard(pack: Modpack, dims: Dims): string {
 
   // /whoami ships whenever headless+auth (applyAuth writes it example-free too).
   const serves = [...pack.serves(examples), ...(docs ? ["/docs"] : []), ...(auth && pack.id === "headless" ? ["/whoami"] : [])];
-  const env = [...pack.env, ...(seeded?.envKeys ?? [])];
+  // With a generated vault key, provider/processor keys live in the ENCRYPTED
+  // VAULT (their own "secrets" line); declined → they fall back to env needs.
+  const vaultSecrets = vaultKey ? [...(pack.vaultSecrets ?? []), ...(seeded?.envKeys ?? [])] : [];
+  const env = [...pack.env, ...(vaultKey ? [] : [...(pack.vaultSecrets ?? []), ...(seeded?.envKeys ?? [])])];
 
   const blocks: string[] = [`${pc.dim(pack.tagline)}`, "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
   if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
@@ -795,6 +807,9 @@ function packCard(pack: Modpack, dims: Dims): string {
           : pc.magenta(e);
     const hint = env.includes("PATTERN_VAULT_KEY") && !vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
     blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
+  }
+  if (vaultSecrets.length) {
+    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → System → Secrets)")}`);
   }
   blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — the recipes your coding agent reads`);
   return blocks.join("\n");
@@ -1151,32 +1166,37 @@ async function applyVaultKey(targetDir: string): Promise<void> {
  * Pre-write the seeded model aliases into `.pattern-data/ai-config.json` —
  * exactly the file admin → Settings → AI Providers manages, so a scaffold with
  * a provider pick boots with `default` (+ `embeddings`) already resolvable and
- * the ONLY remaining step is the key in `.env`. Each alias authenticates via an
- * env-sourced secret REF ({ source: "env", key }) — no value ever lands in the
- * scaffold. Runs BEFORE applyVaultKey so appended env hints reach the generated
- * `.env` too.
+ * the ONLY remaining step is the key. With a generated vault key each alias
+ * authenticates via a VAULT-sourced secret REF ({ source: "vault", key }) —
+ * paste the key in admin → System → Secrets and the next call has it, no
+ * restart; without a vault the refs fall back to env. No value ever lands in
+ * the scaffold either way. Runs BEFORE applyVaultKey so appended env hints
+ * reach the generated `.env` too.
  */
-async function applyAiAliases(targetDir: string, plan: SeedPlan): Promise<void> {
+async function applyAiAliases(targetDir: string, plan: SeedPlan, useVault: boolean): Promise<void> {
   const aliases = plan.aliases.map((a) => ({
     name: a.name,
     provider: a.provider,
     modelId: a.modelId,
     modality: a.modality,
-    secrets: { apiKey: { source: "env", key: a.envKey } },
+    secrets: { apiKey: { source: useVault ? "vault" : "env", key: a.envKey } },
     options: {},
   }));
   await mkdir(join(targetDir, ".pattern-data"), { recursive: true });
   await writeFile(join(targetDir, ".pattern-data", "ai-config.json"), JSON.stringify({ aliases }, null, 2) + "\n");
 
-  // Every referenced env key gets a line in .env.example (unless the template
-  // already carries one, commented or not).
+  // Every referenced key gets a line in .env.example (unless the template
+  // already carries one, commented or not) — commented out in vault mode,
+  // where it documents the env ALTERNATIVE rather than the expected home.
   const envPath = join(targetDir, ".env.example");
   const current = existsSync(envPath) ? await readFile(envPath, "utf8") : "";
   const missing = plan.envKeys.filter((k) => !new RegExp(`^#?\\s*${k}=`, "m").test(current));
   if (missing.length) {
     await appendEnvHint(
       targetDir,
-      `# The seeded model aliases (admin → Settings → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
+      useVault
+        ? `# Model alias keys live in the ENCRYPTED VAULT: paste them in admin → System →\n# Secrets under these names (no restart needed). Prefer env? Uncomment here and\n# re-point the alias in admin → Settings → AI Providers.\n${missing.map((k) => `# ${k}=`).join("\n")}\n`
+        : `# The seeded model aliases (admin → Settings → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
     );
   }
 }
@@ -1538,7 +1558,16 @@ function composeCard(layers: string[], dims: Dims): string {
   const fileLines = files.map((f) => `  ${pc.cyan("›")} ${f}`);
 
   const serves = [...composeServes(layers, dims)];
-  const env = [...new Set([...pickLayers(layers).flatMap((l) => l.env), ...(seeded?.envKeys ?? [])])];
+  // Vault key generated → provider/processor keys live in the encrypted vault
+  // (their own "secrets" line); declined → they fall back to env needs.
+  const layerVaultSecrets = pickLayers(layers).flatMap((l) => l.vaultSecrets ?? []);
+  const vaultSecrets = dims.vaultKey ? [...new Set([...layerVaultSecrets, ...(seeded?.envKeys ?? [])])] : [];
+  const env = [
+    ...new Set([
+      ...pickLayers(layers).flatMap((l) => l.env),
+      ...(dims.vaultKey ? [] : [...layerVaultSecrets, ...(seeded?.envKeys ?? [])]),
+    ]),
+  ];
 
   const blocks: string[] = [pc.dim(`your stack, composed — ${visible.join(" · ")}`), "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
   if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
@@ -1551,6 +1580,9 @@ function composeCard(layers: string[], dims: Dims): string {
           : pc.magenta(e);
     const hint = env.includes("PATTERN_VAULT_KEY") && !dims.vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
     blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
+  }
+  if (vaultSecrets.length) {
+    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → System → Secrets)")}`);
   }
   blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — each layer documents itself for your coding agent`);
   return blocks.join("\n");
@@ -2076,10 +2108,10 @@ async function runHeadlessCompose(flags: Flags): Promise<void> {
   const seeded = aliasSeedPlan(dims.providers);
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (dims.vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY.`);
-  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — set ${seeded.envKeys.join(", ")} in .env.`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${dims.vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → System → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
   if (layers.includes("buddy")) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\`.`);
   if (dims.auth) console.log(`First boot prints a one-time admin link in the console.`);
-  if (layers.includes("billing")) console.log(`Stripe: keys in .env, the account in admin → System → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
+  if (layers.includes("billing")) console.log(`Stripe: keys in admin → System → Secrets (the encrypted vault), the account in admin → System → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
   for (const ep of composeServes(layers, dims)) console.log(`  serves http://localhost:3000${ep}`);
   console.log(`Reproduce: ${composeCommand(name, layers, dims)}`);
 }
@@ -2103,7 +2135,7 @@ async function runHeadless(flags: Flags): Promise<void> {
   const seeded = aliasSeedPlan(providers);
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Settings → AI Providers).`);
-  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — set ${seeded.envKeys.join(", ")} in .env.`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → System → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
   if (packHasBuddy(pack)) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\` (the pattern_* tools).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console${magicLink ? " (magic links print there too)" : ""}.`);
   if (oidc) console.log(`OIDC: fill in mods/oidc.mjs (issuer + client id; secret via env or vault), register /auth/oidc/<id>/callback at your IdP.`);
@@ -2150,7 +2182,7 @@ async function scaffold(opts: Dims & {
   if (opts.auth && opts.oidc) await applyOidc(targetDir, opts.magicLink);
   if (opts.docs) await applyDocs(targetDir);
   const seeded = aliasSeedPlan(opts.providers ?? []);
-  if (seeded) await applyAiAliases(targetDir, seeded); // before applyVaultKey — its env hints belong in .env too
+  if (seeded) await applyAiAliases(targetDir, seeded, opts.vaultKey); // before applyVaultKey — its env hints belong in .env too
   if (opts.vaultKey) await applyVaultKey(targetDir);
   if (opts.providers?.length) await applyProviders(targetDir, opts.providers);
   const wantsMcp = composing ? layers.includes("buddy") : packHasBuddy(packOrThrow(opts.pack));

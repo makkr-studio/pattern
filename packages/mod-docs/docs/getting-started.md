@@ -118,5 +118,6 @@ You now have a running engine. Pick the path that matches what you're building:
   Dockerfile — two volumes and a `PATTERN_PUBLIC_URL` and you're live.
 
 > No API key needed for the basics. When you add a model, mod-ai resolves a
-> provider key (e.g. `OPENAI_API_KEY` for OpenAI) from a `.env` next to
-> `pattern.config.json`, or from the vault.
+> provider key (e.g. `OPENAI_API_KEY` for OpenAI) from the encrypted vault
+> (admin → System → Secrets — the scaffold's default; a paste applies on the
+> next call, no restart) or from a `.env` next to `pattern.config.json`.

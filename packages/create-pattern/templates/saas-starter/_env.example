@@ -1,8 +1,15 @@
-# Stripe — the billing account in admin → System → Billing references these
+# Stripe keys live in the ENCRYPTED VAULT, not here: paste them in
+# admin → System → Secrets as STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET
 # (test keys from https://dashboard.stripe.com/test/apikeys; the webhook secret
-# comes from `stripe listen` in dev, or the endpoint config in production)
-STRIPE_API_KEY=
-STRIPE_WEBHOOK_SECRET=
+# comes from `stripe listen` in dev, or the endpoint config in production).
+# Vault writes apply on the next call — no restart. Prefer plain env? Uncomment
+# below and point the billing account's secret refs at env instead.
+# STRIPE_API_KEY=
+# STRIPE_WEBHOOK_SECRET=
+
+# The vault's master key — encrypts those secrets at rest (the scaffolder
+# generated one into .env; rotate with: openssl rand -base64 32)
+PATTERN_VAULT_KEY=
 
 # The app's public origin (e.g. https://app.example.com) — checkout redirects
 # and emailed links (invites, sign-in) are built on it. Unset in dev = localhost.

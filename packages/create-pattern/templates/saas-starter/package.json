@@ -12,6 +12,7 @@
     "@pattern-js/runtime-node": "^0.4.0",
     "@pattern-js/mod-admin": "^0.4.0",
     "@pattern-js/mod-store": "^0.4.0",
+    "@pattern-js/mod-vault": "^0.4.0",
     "@pattern-js/mod-email": "^0.4.0",
     "@pattern-js/mod-billing": "^0.4.0",
     "@pattern-js/mod-billing-stripe": "^0.4.0"

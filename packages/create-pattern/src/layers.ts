@@ -31,6 +31,9 @@ export interface ComposeLayer {
   workerMods: string[];
   /** Env vars the layer needs (the card's "needs" line). */
   env: string[];
+  /** Secret NAMES expected in the encrypted vault (the card's "secrets" line);
+   *  fall back to env needs when the vault key is declined. */
+  vaultSecrets?: string[];
   /** Example workflow files cherry-picked from a pack template (examples on). */
   examples?: { template: string; workflows: string[] };
   /** Workflow files that are the layer's SURFACE — seeded even without examples. */
@@ -43,11 +46,13 @@ export interface ComposeLayer {
   agentsMd: string;
 }
 
-const STRIPE_ENV_HINT = `# Stripe — the billing account in admin → System → Billing references these
-# (test keys from https://dashboard.stripe.com/test/apikeys; the webhook secret
-# comes from \`stripe listen\` in dev, or the endpoint config in production)
-STRIPE_API_KEY=
-STRIPE_WEBHOOK_SECRET=
+const STRIPE_ENV_HINT = `# Stripe keys live in the ENCRYPTED VAULT: paste them in admin → System →
+# Secrets as STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET (test keys from
+# https://dashboard.stripe.com/test/apikeys; the webhook secret comes from
+# \`stripe listen\` in dev). Vault writes apply on the next call — no restart.
+# Prefer env? Uncomment below and point the account's secret refs at env.
+# STRIPE_API_KEY=
+# STRIPE_WEBHOOK_SECRET=
 `;
 
 const VAULT_ENV_HINT = `# The vault's master key — encrypts provider keys and other secrets at rest
@@ -213,11 +218,12 @@ read scores. Needs an \`embeddings\` model alias.`,
     id: "billing",
     label: "Billing",
     hint: "Stripe checkout, portal & signed webhooks; subscriptions become roles → scopes",
-    requires: ["auth", "email", "store"],
+    requires: ["auth", "email", "store", "vault"],
     deps: ["@pattern-js/mod-billing", "@pattern-js/mod-billing-stripe"],
     configMods: ["./mods/billing.mjs", "@pattern-js/mod-billing-stripe"],
     workerMods: [],
-    env: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
+    env: [],
+    vaultSecrets: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
     // checkout/portal/pro are the billing SURFACE (kept even with --no-examples);
     // the landing page is the demo.
     platformWorkflows: { template: "saas-starter", workflows: ["checkout.json", "portal.json", "pro.json"] },
@@ -230,7 +236,8 @@ role (mods/billing.mjs) → identity's roles→scopes map turns it into the "pro
 scope (mods/identity.mjs) → a paid feature is just
 \`"requireAuth": { "scopes": ["pro"] }\` on a route. Checkout/portal ship as
 durable workflows; the signed Stripe webhook route is seeded by the driver.
-Dev loop: keys in .env, the account in admin → System → Billing, then
+Dev loop: keys in admin → System → Secrets (the encrypted vault — applies on
+the next call, no restart), the account in admin → System → Billing, then
 \`stripe listen --forward-to localhost:3000/billing/webhook/stripe\` and pay
 with 4242 4242 4242 4242.`,
   },
