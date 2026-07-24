@@ -2,17 +2,18 @@
  * @pattern-js/mod-billing — the Tier-2 "Billing" admin page.
  *
  * Same construction as mod-email's page: the ESM SOURCE of the component,
- * written against the shared `__PATTERN_ADMIN__` global. Four panels:
+ * written against the shared `__PATTERN_ADMIN__` global. The SETUP CHECKLIST
+ * leads — how far this installation is from its first subscription, each
+ * unmet step with the exact next action (dashboard step, the `stripe listen`
+ * command with the real forward URL, the test card), and "last event
+ * received" flipping green in front of the operator. Below it, two columns:
  *
- *  1. The SETUP CHECKLIST — how far this installation is from its first
- *     subscription, each unmet step with the exact next action (dashboard
- *     step, the `stripe listen` command with the real forward URL, the test
- *     card). "Last event received" closes the loop: when the webhook lands,
- *     the row flips green in front of the operator.
- *  2. Accounts — driver-spec-driven form (per-field secret refs from vault or
- *     env, options incl. the default price), click an account to EDIT it.
- *  3. Customers — the user ↔ provider mapping the webhooks maintain.
- *  4. Recent events — what the provider actually delivered.
+ *  - SETUP (left): the driver-spec-driven account form (per-field secret refs
+ *    from vault or env, options incl. the default price) and the accounts it
+ *    edits — click one to prefill.
+ *  - LIVE STATE (right): customers (the user ↔ provider mapping the webhooks
+ *    maintain — status badges, entitlement at a glance) and recent events
+ *    (what the provider actually delivered).
  */
 
 export const REMOTE = `
@@ -160,6 +161,8 @@ function AccountList({ accounts, onEdit, reload }) {
 }
 
 // ── Simple data tables (customers / events) ─────────────────────────────
+// A col may carry render(row) for anything richer than String() — status
+// badges, ✓ marks, "3m ago" — so provider timestamps never show as raw epochs.
 function DataTable({ title, empty, cols, rows }) {
   return h(GlassPanel, { className: "p-6 space-y-3" },
     h("h3", { className: "font-semibold" }, title),
@@ -170,7 +173,14 @@ function DataTable({ title, empty, cols, rows }) {
             h("thead", null, h("tr", { className: "text-left text-xs text-muted" }, cols.map((c) => h("th", { key: c.key, className: "py-1 pr-4 font-normal" }, c.label)))),
             h("tbody", null, rows.map((r, i) =>
               h("tr", { key: i, className: "border-t border-white/5" },
-                cols.map((c) => h("td", { key: c.key, className: "py-1.5 pr-4 font-mono text-xs" }, String(r[c.key] == null ? "—" : r[c.key])))))))));
+                cols.map((c) => h("td", { key: c.key, className: "py-1.5 pr-4 font-mono text-xs" },
+                  c.render ? c.render(r) : String(r[c.key] == null ? "—" : r[c.key])))))))));
+}
+
+var STATUS_HUE = { active: 140, trialing: 140, past_due: 45, canceled: 340, unpaid: 340, incomplete: 45 };
+function statusBadge(s) { return s ? h(Badge, { hue: STATUS_HUE[s] == null ? 200 : STATUS_HUE[s] }, s) : "—"; }
+function check(v) {
+  return h("span", { style: { color: v ? "var(--color-neon-lime)" : "var(--color-muted)" } }, v ? "✓" : "—");
 }
 
 export default function BillingPage() {
@@ -211,25 +221,36 @@ export default function BillingPage() {
         "), then reload this page."));
   }
 
+  // Checklist as the hero, then two columns: setup on the left (the form and
+  // the accounts it edits), live state on the right (what the webhooks built).
   return h("div", { className: "space-y-6" },
     h(Checklist, { status }),
-    h("div", { className: "grid gap-6 lg:grid-cols-2" },
-      h(AccountForm, { providers, secrets, form, setForm, reload }),
-      h(AccountList, { accounts, onEdit: edit, reload })),
-    h(DataTable, {
-      title: "Customers", empty: "No customers yet — they appear when the first checkout completes.",
-      cols: [
-        { key: "userId", label: "User" }, { key: "customerId", label: "Customer" }, { key: "status", label: "Status" },
-        { key: "priceKeys", label: "Prices" }, { key: "entitled", label: "Entitled" }, { key: "updatedAt", label: "Updated" },
-      ],
-      rows: customers,
-    }),
-    h(DataTable, {
-      title: "Recent events", empty: "Nothing delivered yet — this fills the moment stripe listen forwards the first webhook.",
-      cols: [
-        { key: "at", label: "At" }, { key: "kind", label: "Kind" }, { key: "eventId", label: "Event" }, { key: "account", label: "Account" },
-      ],
-      rows: events,
-    }));
+    h("div", { className: "grid gap-6 xl:grid-cols-2 items-start" },
+      h("div", { className: "space-y-6" },
+        h(AccountForm, { providers, secrets, form, setForm, reload }),
+        h(AccountList, { accounts, onEdit: edit, reload })),
+      h("div", { className: "space-y-6" },
+        h(DataTable, {
+          title: "Customers", empty: "No customers yet — they appear when the first checkout completes.",
+          cols: [
+            { key: "userId", label: "User" },
+            { key: "customerId", label: "Customer" },
+            { key: "status", label: "Status", render: (r) => statusBadge(r.status) },
+            { key: "priceKeys", label: "Prices", render: (r) => (Array.isArray(r.priceKeys) ? r.priceKeys.join(", ") : r.priceKeys) || "—" },
+            { key: "entitled", label: "Entitled", render: (r) => check(r.entitled) },
+            { key: "updatedAt", label: "Updated", render: (r) => ago(r.updatedAt) || "—" },
+          ],
+          rows: customers,
+        }),
+        h(DataTable, {
+          title: "Recent events", empty: "Nothing delivered yet — this fills the moment stripe listen forwards the first webhook.",
+          cols: [
+            { key: "at", label: "At", render: (r) => ago(r.at) || "—" },
+            { key: "kind", label: "Kind" },
+            { key: "eventId", label: "Event" },
+            { key: "account", label: "Account" },
+          ],
+          rows: events,
+        }))));
 }
 `;
