@@ -537,3 +537,43 @@ describe("the return pages absorb the webhook race", () => {
     expect(bare.workflows.get("billing.route.status.mine")).toBeUndefined();
   });
 });
+
+describe("billing.admin.checklist — server-owned steps for page + dashboard", () => {
+  it("normalizes the status into steps that tick, with the copy baked in", async () => {
+    const { engine, svc, config, driver, ctx } = await boot({ account: false });
+    engine.registerWorkflow({
+      id: "cl",
+      nodes: [
+        { id: "in", op: "boundary.manual" },
+        { id: "c", op: "billing.admin.checklist" },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "out" }, to: { node: "c", port: "in" } },
+        { from: { node: "c", port: "checklist" }, to: { node: "out", port: "value" } },
+      ],
+    } as Workflow);
+    const read = async () => {
+      const res = await engine.run("cl", { input: {} });
+      return (Object.values(res.outputs)[0] as { value: { steps: Array<{ ok: boolean; label: string; how?: string }>; done: boolean } }).value;
+    };
+
+    let cl = await read();
+    expect(cl.done).toBe(false);
+    expect(cl.steps.map((s) => s.ok)).toEqual([true, false, false, false, false, false]);
+    // The next-action copy rides server-side (the webhook URL is baked in).
+    expect(cl.steps[4]!.how).toContain("stripe listen --forward-to https://app.example/billing/webhook/fake");
+
+    await config.upsertAccount({
+      name: "default",
+      provider: "fake",
+      secrets: { apiKey: { source: "env", key: "FAKE_KEY" }, webhookSecret: { source: "env", key: "FAKE_WHSEC" } },
+      options: { defaultPriceKey: "price_pro" },
+    });
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e_cl", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    cl = await read();
+    expect(cl.done).toBe(true);
+    expect(cl.steps[5]!).toMatchObject({ ok: true });
+  });
+});

@@ -35,6 +35,8 @@ export type {
   CommandDef,
   SettingsField,
   SettingsSection,
+  ChecklistDef,
+  ChecklistStep,
 } from "./frontend.js";
 
 // Docs contribution contract (docs host: @pattern-js/mod-docs)

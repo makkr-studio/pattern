@@ -9,7 +9,7 @@
  * "didn't stick").
  */
 
-import { fromBody, fromParams, httpEndpoint, required, value, z, type FrontendContribution, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
+import { fromBody, fromParams, httpEndpoint, required, value, z, type ChecklistStep, type FrontendContribution, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
 import { DEFAULT_ACCOUNT } from "./config.js";
 import { REMOTE } from "./app.js";
 import { billingAccountSchema } from "./types.js";
@@ -19,6 +19,7 @@ import { docsStore } from "./well-known.js";
 
 const API = "/admin/api";
 const STATUS_PATH = "/billing/api/status";
+const CHECKLIST_PATH = "/billing/api/checklist";
 const ACCOUNTS_PATH = "/billing/api/accounts";
 const PROVIDERS_PATH = "/billing/api/providers";
 const CUSTOMERS_PATH = "/billing/api/customers";
@@ -122,6 +123,44 @@ const accountsDelete: OpDefinition = {
 };
 
 
+/** The status snapshot both admin ops read: driver/account/secrets/price/webhook + last event. */
+async function computeStatus(ctx: OpContext) {
+  const drivers = billingService(ctx).drivers();
+  const accounts = billingConfig(ctx).accounts();
+  const account = accounts.find((a) => a.name === DEFAULT_ACCOUNT) ?? accounts[0];
+  const driver = account ? drivers.find((d) => d.id === account.provider) : drivers[0];
+  const requiredSecrets = (driver?.secrets ?? []).filter((f) => f.required !== false).map((f) => f.field);
+  const missingSecrets = requiredSecrets.filter((f) => !account?.secrets?.[f]);
+  const webhookFields = (driver?.secrets ?? []).map((f) => f.field).filter((f) => /webhook/i.test(f));
+  const hasWebhookSecret = webhookFields.some((f) => Boolean(account?.secrets?.[f]));
+  const origin = (ctx.env.PATTERN_PUBLIC_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
+  const provider = account?.provider ?? driver?.id ?? "stripe";
+  let lastEvent: { kind: unknown; at: unknown } | null = null;
+  const store = docsStore(ctx);
+  if (store) {
+    const rows = await store.docs
+      .query({ collection: EVENTS_COLLECTION, orderBy: "createdAt", orderDir: "desc", limit: 1 })
+      .catch(() => []);
+    const d = rows[0]?.data as Record<string, unknown> | undefined;
+    if (d) lastEvent = { kind: d.kind, at: d.at };
+  }
+  return {
+    drivers: drivers.map((d) => ({ id: d.id, label: d.label })),
+    account: account
+      ? {
+          name: account.name,
+          provider: account.provider,
+          missingSecrets,
+          hasWebhookSecret,
+          defaultPriceKey: (account.options?.defaultPriceKey ?? "") as string,
+        }
+      : null,
+    webhookUrl: `${origin}/billing/webhook/${provider}`,
+    publicUrlSet: Boolean(ctx.env.PATTERN_PUBLIC_URL?.trim()),
+    lastEvent,
+  };
+}
+
 /**
  * The setup checklist's data: how far this installation is from its first
  * subscription — driver, account, secrets, price, webhook, and the last event
@@ -137,41 +176,79 @@ const adminStatus: OpDefinition = {
   config: z.object({}),
   inputs: {},
   outputs: { status: value() },
+  execute: async (ctx) => ({ status: await computeStatus(ctx) }),
+};
+
+function agoOf(at: unknown): string {
+  const ts = typeof at === "number" ? at : Number(at);
+  if (!Number.isFinite(ts)) return "";
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 90) return `${Math.round(s)}s ago`;
+  if (s < 5400) return `${Math.round(s / 60)}m ago`;
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+/**
+ * The checklist itself, server-computed — steps AND their next-action copy
+ * live once, next to the state they report on. The billing page and the
+ * dashboard's "open for business" board both render exactly this.
+ */
+const adminChecklist: OpDefinition = {
+  type: "billing.admin.checklist",
+  effects: "pure",
+  title: "billing.admin.checklist",
+  description:
+    "The billing setup checklist, normalized: { steps: [{ ok, label, how?, detail? }], done, note? }. " +
+    "Rendered by the Billing page and aggregated by the admin dashboard.",
+  reusable: false,
+  sensitivity: "privileged",
+  config: z.object({}),
+  inputs: {},
+  outputs: { checklist: value() },
   execute: async (ctx) => {
-    const drivers = billingService(ctx).drivers();
-    const accounts = billingConfig(ctx).accounts();
-    const account = accounts.find((a) => a.name === DEFAULT_ACCOUNT) ?? accounts[0];
-    const driver = account ? drivers.find((d) => d.id === account.provider) : drivers[0];
-    const requiredSecrets = (driver?.secrets ?? []).filter((f) => f.required !== false).map((f) => f.field);
-    const missingSecrets = requiredSecrets.filter((f) => !account?.secrets?.[f]);
-    const webhookFields = (driver?.secrets ?? []).map((f) => f.field).filter((f) => /webhook/i.test(f));
-    const hasWebhookSecret = webhookFields.some((f) => Boolean(account?.secrets?.[f]));
-    const origin = (ctx.env.PATTERN_PUBLIC_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
-    const provider = account?.provider ?? driver?.id ?? "stripe";
-    let lastEvent: { kind: unknown; at: unknown } | null = null;
-    const store = docsStore(ctx);
-    if (store) {
-      const rows = await store.docs
-        .query({ collection: EVENTS_COLLECTION, orderBy: "createdAt", orderDir: "desc", limit: 1 })
-        .catch(() => []);
-      const d = rows[0]?.data as Record<string, unknown> | undefined;
-      if (d) lastEvent = { kind: d.kind, at: d.at };
-    }
+    const st = await computeStatus(ctx);
+    const a = st.account;
+    const steps: ChecklistStep[] = [
+      {
+        ok: st.drivers.length > 0,
+        label: "A billing driver is installed",
+        how: "Install one and list it in pattern.config.json — e.g. @pattern-js/mod-billing-stripe (or run: pattern add billing).",
+      },
+      {
+        ok: Boolean(a),
+        label: "An account exists",
+        how: 'Save the account form (admin → System → Billing) as "default" — the ops and the starter workflows fall back to it.',
+      },
+      {
+        ok: Boolean(a) && a!.missingSecrets.length === 0,
+        label: "API key connected",
+        how: "Stripe dashboard (TEST mode) → Developers → API keys: paste sk_test_… into admin → System → Secrets as STRIPE_API_KEY (encrypted, no restart), then set the account's apiKey to vault / STRIPE_API_KEY.",
+      },
+      {
+        ok: Boolean(a?.defaultPriceKey),
+        label: "A price to sell",
+        how: "Create a product with a recurring price (test mode) and paste its price_… id into the account's Default price field.",
+      },
+      {
+        ok: Boolean(a?.hasWebhookSecret),
+        label: "Webhook secret set",
+        how: `Run: stripe listen --forward-to ${st.webhookUrl}  — paste the printed whsec_… into admin → System → Secrets as STRIPE_WEBHOOK_SECRET and set the account's webhookSecret to vault / STRIPE_WEBHOOK_SECRET.`,
+      },
+      {
+        ok: Boolean(st.lastEvent),
+        label: "First event received",
+        how: "Subscribe on your landing page with the test card 4242 4242 4242 4242 (any future date/CVC) — or fire one with: stripe trigger checkout.session.completed.",
+        detail: st.lastEvent ? `${String(st.lastEvent.kind)} · ${agoOf(st.lastEvent.at)}` : undefined,
+      },
+    ];
     return {
-      status: {
-        drivers: drivers.map((d) => ({ id: d.id, label: d.label })),
-        account: account
-          ? {
-              name: account.name,
-              provider: account.provider,
-              missingSecrets,
-              hasWebhookSecret,
-              defaultPriceKey: account.options?.defaultPriceKey ?? "",
-            }
-          : null,
-        webhookUrl: `${origin}/billing/webhook/${provider}`,
-        publicUrlSet: Boolean(ctx.env.PATTERN_PUBLIC_URL?.trim()),
-        lastEvent,
+      checklist: {
+        steps,
+        done: steps.every((s) => s.ok),
+        note: st.publicUrlSet
+          ? undefined
+          : "Behind a proxy or deployed? Set PATTERN_PUBLIC_URL so checkout redirects and the webhook URL use your real origin.",
       },
     };
   },
@@ -241,7 +318,7 @@ const eventsList: OpDefinition = {
   },
 };
 
-export const adminOps: OpDefinition[] = [providersList, adminStatus, accountsRead, accountsWrite, accountsDelete, customersList, eventsList];
+export const adminOps: OpDefinition[] = [providersList, adminStatus, adminChecklist, accountsRead, accountsWrite, accountsDelete, customersList, eventsList];
 
 export function billingAdminRoutes(): Workflow[] {
   const auth = { scopes: ["admin"] };
@@ -249,6 +326,7 @@ export function billingAdminRoutes(): Workflow[] {
   return [
     httpEndpoint({ id: "billing.route.providers", name: `Billing · GET ${API}${PROVIDERS_PATH}`, method: "GET", path: `${API}${PROVIDERS_PATH}`, op: "billing.providers.list", io: { out: "providers" }, auth }),
     httpEndpoint({ id: "billing.route.status", name: `Billing · GET ${API}${STATUS_PATH}`, method: "GET", path: `${API}${STATUS_PATH}`, op: "billing.admin.status", io: { out: "status" }, auth }),
+    httpEndpoint({ id: "billing.route.checklist", name: `Billing · GET ${API}${CHECKLIST_PATH}`, method: "GET", path: `${API}${CHECKLIST_PATH}`, op: "billing.admin.checklist", io: { out: "checklist" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.read", name: `Billing · GET ${API}${ACCOUNTS_PATH}`, method: "GET", path: `${API}${ACCOUNTS_PATH}`, op: "billing.accounts.read", io: { out: "accounts" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.write", name: `Billing · POST ${API}${ACCOUNTS_PATH}`, method: "POST", path: `${API}${ACCOUNTS_PATH}`, op: "billing.accounts.write", io: { in: accountIn, out: "result" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.delete", name: `Billing · DELETE ${API}${ACCOUNTS_PATH}/:name`, method: "DELETE", path: `${API}${ACCOUNTS_PATH}/:name`, op: "billing.accounts.delete", io: { in: { name: fromParams() }, out: "result" }, auth }),
@@ -264,5 +342,7 @@ export function billingFrontend(): FrontendContribution {
     // the setup checklist, driver-spec-driven editable accounts (per-field
     // secret refs), and the customers/events tables.
     pages: [{ path: "/x/billing", title: "Billing", module: REMOTE }],
+    // The dashboard aggregates this into the "open for business" board.
+    checklists: [{ id: "billing", title: "From zero to your first subscription", route: { path: CHECKLIST_PATH } }],
   };
 }

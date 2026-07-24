@@ -518,7 +518,15 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
   });
   // `authProvider` lets the editor tell authors that a declared requireAuth
   // won't actually be enforced until an auth provider (e.g. identity) is added.
-  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [], authProvider: engine.hasAuthProvider() };
+  return {
+    menu: fe.menu ?? [],
+    commands: fe.commands ?? [],
+    assets: fe.assets ?? [],
+    pages,
+    settings: fe.settings ?? [],
+    checklists: fe.checklists ?? [],
+    authProvider: engine.hasAuthProvider(),
+  };
 });
 
 /**

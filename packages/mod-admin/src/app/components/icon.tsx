@@ -47,6 +47,15 @@ import {
   LogOut,
   Ban,
   ShieldCheck,
+  LayoutDashboard,
+  Key,
+  CreditCard,
+  Mail,
+  Bot,
+  Database,
+  Eye,
+  FileArchive,
+  FolderOpen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -79,6 +88,15 @@ const MAP: Record<string, LucideIcon> = {
   "log-out": LogOut,
   ban: Ban,
   "shield-check": ShieldCheck,
+  "layout-dashboard": LayoutDashboard,
+  key: Key,
+  "credit-card": CreditCard,
+  mail: Mail,
+  bot: Bot,
+  database: Database,
+  eye: Eye,
+  "file-archive": FileArchive,
+  "folder-open": FolderOpen,
 };
 
 /** Render a lucide icon by its kebab name (from menu/command manifests). */

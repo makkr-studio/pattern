@@ -15,6 +15,7 @@ export function adminFrontend(_mount: string): FrontendContribution {
   return {
     assets: ASSETS_FS,
     menu: [
+      { category: "Overview", label: "Dashboard", icon: "layout-dashboard", path: "/", order: 1 },
       { category: "Author", label: "Workflows", icon: "workflow", path: "/workflows", order: 10 },
       { category: "Author", label: "Editor", icon: "git-branch", path: "/editor", order: 20 },
       { category: "Observe", label: "Runs", icon: "activity", path: "/runs", order: 10 },

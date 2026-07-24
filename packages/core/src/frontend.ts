@@ -198,6 +198,30 @@ export interface CommandDef {
 }
 
 /**
+ * A step of a mod's setup checklist. `ok` flips as the installation progresses;
+ * `how` is the exact next action for the first unmet step; `detail` annotates a
+ * met one (e.g. "checkout.completed · 3m ago").
+ */
+export interface ChecklistStep {
+  ok: boolean;
+  label: string;
+  how?: string;
+  detail?: string;
+}
+
+/**
+ * A mod's setup checklist: `route` is a dedicated admin endpoint returning
+ * `{ steps: ChecklistStep[] }` (server-computed — the copy lives once, next to
+ * the state it reports on). The admin dashboard aggregates every mod's into
+ * one "open for business" board that ticks itself live.
+ */
+export interface ChecklistDef {
+  id: string;
+  title: string;
+  route: RouteRef;
+}
+
+/**
  * A mod's frontend manifest (admin-spec P2). A custom page rides as `module`
  * source in `pages` (the admin serves + imports it); a full SPA still serves
  * itself via a `boundary.http.app` workflow and points `assets` at its
@@ -211,4 +235,6 @@ export interface FrontendContribution {
   commands?: CommandDef[];
   /** Sections rendered on the admin's Settings page (System → Settings). */
   settings?: SettingsSection[];
+  /** Setup checklists the admin dashboard aggregates (see ChecklistDef). */
+  checklists?: ChecklistDef[];
 }

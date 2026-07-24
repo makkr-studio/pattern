@@ -40,6 +40,8 @@ export interface UiManifest {
   pages: UiManifestPage[];
   /** Mod-contributed Settings-page sections. */
   settings?: Array<{ mod: string; section: SettingsSection }>;
+  /** Mod-contributed setup checklists — the dashboard's "open for business" board. */
+  checklists?: Array<{ mod: string; id: string; title: string; route: { method?: string; path: string } }>;
   /** Whether any auth provider is registered — i.e. whether a `requireAuth` is
    *  actually enforced (vs. declared-but-advisory). The editor warns when false. */
   authProvider?: boolean;

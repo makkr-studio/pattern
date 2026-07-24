@@ -14,6 +14,7 @@ import { TooltipHost, tip } from "../components/Tooltip";
 
 /** A sensible default nav if the manifest hasn't loaded yet (the admin's own). */
 const FALLBACK_MENU: MenuEntry[] = [
+  { category: "Overview", label: "Dashboard", icon: "layout-dashboard", path: "/", order: 1 },
   { category: "Author", label: "Workflows", icon: "workflow", path: "/workflows", order: 10 },
   { category: "Author", label: "Editor", icon: "git-branch", path: "/editor", order: 20 },
   { category: "Observe", label: "Runs", icon: "activity", path: "/runs", order: 10 },

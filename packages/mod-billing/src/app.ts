@@ -32,8 +32,9 @@ function Field({ label, hint, children }) {
 function arr(r, key) { return Array.isArray(r) ? r : ((r && r[key]) || []); }
 function obj(r, key) { return (r && typeof r === "object" && !Array.isArray(r) && key in r) ? r[key] : r; }
 
-function ago(ts) {
-  if (!ts) return "";
+function ago(v) {
+  var ts = typeof v === "number" ? v : v ? Date.parse(v) : NaN;
+  if (!isFinite(ts)) return "";
   var s = Math.max(0, (Date.now() - ts) / 1000);
   if (s < 90) return Math.round(s) + "s ago";
   if (s < 5400) return Math.round(s / 60) + "m ago";
@@ -41,25 +42,11 @@ function ago(ts) {
   return Math.round(s / 86400) + "d ago";
 }
 
-// ── The setup checklist ──────────────────────────────────────────────────
-function Checklist({ status }) {
-  if (!status) return null;
-  var a = status.account;
-  var steps = [
-    { ok: (status.drivers || []).length > 0, label: "A billing driver is installed",
-      how: "Install one and list it in pattern.config.json — e.g. @pattern-js/mod-billing-stripe (or run: pattern add billing)." },
-    { ok: Boolean(a), label: "An account exists",
-      how: 'Save the form below as "default" — the ops and the starter workflows fall back to it.' },
-    { ok: Boolean(a) && a.missingSecrets.length === 0, label: "API key connected",
-      how: "Stripe dashboard (TEST mode) → Developers → API keys: paste sk_test_… into admin → System → Secrets as STRIPE_API_KEY (encrypted, no restart), then set the account's apiKey to vault / STRIPE_API_KEY. (.env + an env ref works too.)" },
-    { ok: Boolean(a && a.defaultPriceKey), label: "A price to sell",
-      how: "Create a product with a recurring price (test mode) and paste its price_… id into the account's Default price field." },
-    { ok: Boolean(a && a.hasWebhookSecret), label: "Webhook secret set",
-      how: "Run: stripe listen --forward-to " + status.webhookUrl + "  — paste the printed whsec_… into admin → System → Secrets as STRIPE_WEBHOOK_SECRET and set the account's webhookSecret to vault / STRIPE_WEBHOOK_SECRET." },
-    { ok: Boolean(status.lastEvent), label: "First event received",
-      how: "Subscribe on your landing page with the test card 4242 4242 4242 4242 (any future date/CVC) — or fire one with: stripe trigger checkout.session.completed.",
-      detail: status.lastEvent ? String(status.lastEvent.kind) + " · " + ago(status.lastEvent.at) : null },
-  ];
+// ── The setup checklist (server-computed: billing.admin.checklist owns the
+//    steps AND the copy; this only renders — the dashboard shows the same) ──
+function Checklist({ data }) {
+  if (!data || !Array.isArray(data.steps)) return null;
+  var steps = data.steps;
   var done = steps.filter(function (s) { return s.ok; }).length;
   var next = steps.find(function (s) { return !s.ok; });
   return h(GlassPanel, { className: "p-6 space-y-3" },
@@ -79,8 +66,7 @@ function Checklist({ status }) {
           s.detail && h("span", { className: "text-xs text-muted font-mono" }, s.detail)),
         !s.ok && active && h("p", { className: "mt-1 pl-6 text-xs text-muted", style: { userSelect: "text" } }, s.how));
     })),
-    !status.publicUrlSet && h("p", { className: "text-xs text-muted/70" },
-      "Behind a proxy or deployed? Set PATTERN_PUBLIC_URL so checkout redirects and the webhook URL use your real origin."));
+    data.note && h("p", { className: "text-xs text-muted/70" }, data.note));
 }
 
 // ── One secret field: vault|env source + key (the email page's control) ──
@@ -185,7 +171,7 @@ function check(v) {
 
 export default function BillingPage() {
   const blank = { name: "", provider: "", secrets: {}, options: {} };
-  const [status, setStatus] = React.useState(null);
+  const [checklist, setChecklist] = React.useState(null);
   const [providers, setProviders] = React.useState([]);
   const [secrets, setSecrets] = React.useState([]);
   const [accounts, setAccounts] = React.useState([]);
@@ -193,8 +179,9 @@ export default function BillingPage() {
   const [events, setEvents] = React.useState([]);
   const [form, setForm] = React.useState(blank);
 
+  const pollChecklist = () => api.call("GET", "/billing/api/checklist").then((r) => setChecklist(obj(r, "checklist")));
   const reload = () => Promise.all([
-    api.call("GET", "/billing/api/status").then((r) => setStatus(obj(r, "status"))),
+    pollChecklist(),
     api.call("GET", "/billing/api/accounts").then((r) => setAccounts(arr(r, "accounts"))),
     api.call("GET", "/billing/api/customers").then((r) => setCustomers(arr(r, "customers"))),
     api.call("GET", "/billing/api/events").then((r) => setEvents(arr(r, "events"))),
@@ -205,7 +192,7 @@ export default function BillingPage() {
     api.call("GET", "/vault/secrets").then((r) => setSecrets(arr(r, "secrets").map((s) => (typeof s === "string" ? s : s.name)))).catch(() => {});
     reload();
     // The checklist's payoff: the "first event" row flips while you watch.
-    const t = setInterval(() => { api.call("GET", "/billing/api/status").then((r) => setStatus(obj(r, "status"))).catch(() => {}); }, 5000);
+    const t = setInterval(() => { pollChecklist().catch(() => {}); }, 5000);
     return () => clearInterval(t);
   }, []);
 
@@ -224,7 +211,7 @@ export default function BillingPage() {
   // Checklist as the hero, then two columns: setup on the left (the form and
   // the accounts it edits), live state on the right (what the webhooks built).
   return h("div", { className: "space-y-6" },
-    h(Checklist, { status }),
+    h(Checklist, { data: checklist }),
     h("div", { className: "grid gap-6 lg:grid-cols-2 items-start" },
       h("div", { className: "space-y-6" },
         h(AccountForm, { providers, secrets, form, setForm, reload }),
@@ -237,7 +224,7 @@ export default function BillingPage() {
             { key: "customerId", label: "Customer" },
             { key: "status", label: "Status", render: (r) => statusBadge(r.status) },
             { key: "priceKeys", label: "Prices", render: (r) => (Array.isArray(r.priceKeys) ? r.priceKeys.join(", ") : r.priceKeys) || "—" },
-            { key: "entitled", label: "Entitled", render: (r) => check(r.entitled) },
+            { key: "entitled", label: "Entitled", render: (r) => check(r.entitled === true || r.entitled === "yes") },
             { key: "updatedAt", label: "Updated", render: (r) => ago(r.updatedAt) || "—" },
           ],
           rows: customers,

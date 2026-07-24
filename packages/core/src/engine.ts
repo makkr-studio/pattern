@@ -39,7 +39,7 @@ import {
   type LedgerNodeRecord,
   type RunLedger,
 } from "./durable/ledger.js";
-import type { FrontendContribution, SettingsSection } from "./frontend.js";
+import type { ChecklistDef, FrontendContribution, SettingsSection } from "./frontend.js";
 import type { DocsContribution } from "./docs.js";
 import {
   ANONYMOUS,
@@ -582,12 +582,14 @@ export class Engine {
     pages: FrontendContribution["pages"];
     commands: FrontendContribution["commands"];
     settings: Array<{ mod: string; section: SettingsSection }>;
+    checklists: Array<{ mod: string } & ChecklistDef>;
   } {
     const assets: Array<{ mod: string; assets: string }> = [];
     const menu: NonNullable<FrontendContribution["menu"]> = [];
     const pages: NonNullable<FrontendContribution["pages"]> = [];
     const commands: NonNullable<FrontendContribution["commands"]> = [];
     const settings: Array<{ mod: string; section: SettingsSection }> = [];
+    const checklists: Array<{ mod: string } & ChecklistDef> = [];
     for (const mod of this.mods) {
       const f = mod.frontend;
       if (!f) continue;
@@ -596,9 +598,10 @@ export class Engine {
       if (f.pages) pages.push(...f.pages);
       if (f.commands) commands.push(...f.commands);
       if (f.settings) settings.push(...f.settings.map((section) => ({ mod: mod.name, section })));
+      if (f.checklists) checklists.push(...f.checklists.map((c) => ({ mod: mod.name, ...c })));
     }
     menu.sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label));
-    return { assets, menu, pages, commands, settings };
+    return { assets, menu, pages, commands, settings, checklists };
   }
 
   /**

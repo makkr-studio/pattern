@@ -1,10 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
 import "./index.css";
 import { Shell } from "./shell/Shell";
+import { DashboardPage } from "./pages/DashboardPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { EditorPage } from "./pages/EditorPage";
 import { RunsPage } from "./pages/RunsPage";
@@ -46,7 +47,7 @@ const router = createBrowserRouter(
     {
       element: <Shell />,
       children: [
-        { index: true, element: <Navigate to="/workflows" replace /> },
+        { index: true, element: <DashboardPage /> },
         { path: "workflows", element: <CatalogPage /> },
         { path: "editor", element: <EditorPage /> },
         { path: "editor/:slug", element: <EditorPage /> },
