@@ -182,6 +182,16 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   `message` copy ("…or enter the code 482 913…"), and prints with the console
   fallback — the seeded email workflow needed zero template changes.
 
+### Admin
+
+- **The Secrets page grows up (Tier-2) and imports your .env.** Paste a
+  `.env` (or pick the file) and every `KEY=VALUE` line becomes an encrypted
+  secret in one click (`vault.admin.import`): quotes/`export ` stripped,
+  comments and empty placeholders skipped, and `PATTERN_VAULT_KEY` refused —
+  the master key can't live inside the vault it unlocks. The page previews
+  parsed NAMES client-side, values never render, and the add-or-rotate form
+  now clears on save with a "stored — won't be shown again" receipt.
+
 ### Core & fixes
 
 - **`pattern dev` no longer crashes "database is locked" on restart.** A

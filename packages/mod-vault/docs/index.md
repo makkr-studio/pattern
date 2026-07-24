@@ -51,6 +51,14 @@ the vault loads *locked*: nothing breaks at boot, but reads/writes fail with a
 setup hint and the Secrets page shows a warning row. Lose the key and the
 ciphertext is unrecoverable, so back it up where you keep other root secrets.
 
+## Import a .env
+
+Arriving with a filled `.env`? The **System → Secrets** page has an **Import
+.env** panel: paste the file (or pick it) and every `KEY=VALUE` line becomes
+an encrypted secret in one click (`vault.admin.import`). Comments, blanks,
+empty placeholders and `PATTERN_VAULT_KEY` are skipped — the master key can't
+live inside the vault it unlocks — and only names ever ride the response.
+
 ## Rotation
 
 There are two distinct things people mean by "rotation":

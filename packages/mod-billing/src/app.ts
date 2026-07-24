@@ -225,7 +225,7 @@ export default function BillingPage() {
   // the accounts it edits), live state on the right (what the webhooks built).
   return h("div", { className: "space-y-6" },
     h(Checklist, { status }),
-    h("div", { className: "grid gap-6 xl:grid-cols-2 items-start" },
+    h("div", { className: "grid gap-6 lg:grid-cols-2 items-start" },
       h("div", { className: "space-y-6" },
         h(AccountForm, { providers, secrets, form, setForm, reload }),
         h(AccountList, { accounts, onEdit: edit, reload })),

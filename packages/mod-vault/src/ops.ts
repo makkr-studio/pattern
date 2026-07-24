@@ -108,4 +108,55 @@ const adminDelete = adminOp("vault.admin.delete", "Delete a secret.", { in: { na
   ok: await vaultService(ctx).delete(String(args.name ?? "")),
 }));
 
-export const vaultOps: OpDefinition[] = [vaultRead, adminList, adminWrite, adminDelete];
+/**
+ * Parse dotenv text into [name, value] pairs, dropping what must not import:
+ * comments/blanks, malformed names, empty values (a `KEY=` placeholder is not
+ * a secret), and PATTERN_VAULT_KEY — the master key unlocks the vault, it can
+ * never live inside it. Returns skips WITH reasons so the UI can say why.
+ */
+export function parseDotenv(text: string): {
+  entries: Array<[string, string]>;
+  skipped: Array<{ name: string; reason: string }>;
+} {
+  const entries: Array<[string, string]> = [];
+  const skipped: Array<{ name: string; reason: string }> = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = /^(?:export\s+)?([^=\s]+)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const name = m[1]!;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      skipped.push({ name, reason: "not a valid variable name" });
+      continue;
+    }
+    let value = m[2]!.trim();
+    const q = value[0];
+    if ((q === '"' || q === "'") && value.length >= 2 && value.endsWith(q)) value = value.slice(1, -1);
+    if (!value) {
+      skipped.push({ name, reason: "empty value" });
+      continue;
+    }
+    if (name === "PATTERN_VAULT_KEY") {
+      skipped.push({ name, reason: "the master key unlocks the vault — it can't live inside it" });
+      continue;
+    }
+    entries.push([name, value]);
+  }
+  return { entries, skipped };
+}
+
+const adminImport = adminOp(
+  "vault.admin.import",
+  "Import a pasted .env: each KEY=VALUE line becomes an encrypted secret (same name = rotate). Comments, " +
+    "blanks, empty values and PATTERN_VAULT_KEY are skipped. Returns names only — values are never echoed.",
+  { in: { dotenv: z.string() }, out: "result" },
+  async (args, ctx) => {
+    const { entries, skipped } = parseDotenv(String(args.dotenv ?? ""));
+    const svc = vaultService(ctx);
+    for (const [name, value] of entries) await svc.write(name, value);
+    return { ok: true, imported: entries.map(([n]) => n), skipped };
+  },
+);
+
+export const vaultOps: OpDefinition[] = [vaultRead, adminList, adminWrite, adminDelete, adminImport];
