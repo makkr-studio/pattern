@@ -295,3 +295,40 @@ describe("admin ingest + search ops (the paste-to-RAG loop)", () => {
     ).rejects.toThrow(/JSON object/);
   });
 });
+
+describe("dev-restart lock contention", () => {
+  it("boots while another process holds the db (busy_timeout must precede the WAL switch)", async () => {
+    const { spawn } = await import("node:child_process");
+    const path = join(dir(), "vec.db");
+    // First boot creates the file and establishes WAL, like any prior dev run.
+    await new LocalVectorsEngine({ path, disableFts: true }).close();
+
+    // Stand-in for the dying dev server's checkpoint-on-close: a child holds
+    // an OS-exclusive lock on the file for ~600ms, then releases and exits.
+    const holder = spawn(
+      process.execPath,
+      [
+        "-e",
+        `const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+         const db = new DatabaseSync(process.argv[1]);
+         db.exec("PRAGMA locking_mode = EXCLUSIVE");
+         db.exec("CREATE TABLE IF NOT EXISTS hold (x)"); // first write takes the exclusive lock
+         console.log("locked");
+         setTimeout(() => { db.close(); }, 600);`,
+        path,
+      ],
+      { stdio: ["ignore", "pipe", "inherit"] },
+    );
+    await new Promise<void>((resolve, reject) => {
+      holder.stdout.on("data", (d: Buffer) => d.toString().includes("locked") && resolve());
+      holder.on("exit", () => reject(new Error("lock holder died before signalling")));
+    });
+
+    // Pre-fix this threw ERR_SQLITE_ERROR "database is locked" instantly:
+    // the WAL pragma ran with busy_timeout still 0. Now it waits the lock out.
+    const engine = new LocalVectorsEngine({ path, disableFts: true });
+    await engine.ensureCollection({ name: "kb", alias: "test-embed", dims: 2, metric: "cosine", filterables: [] });
+    await engine.close();
+    holder.kill();
+  }, 15_000);
+});

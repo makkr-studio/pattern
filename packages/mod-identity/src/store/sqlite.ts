@@ -497,6 +497,9 @@ export async function sqliteIdentityStores(filePath: string): Promise<IdentitySt
   }
   if (filePath !== ":memory:") mkdirSync(dirname(filePath), { recursive: true });
   const db = new DatabaseSync(filePath);
+  // busy_timeout before the WAL switch — the switch takes locks, and a dev
+  // restart overlaps the old process's checkpoint-on-close.
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   runMigrations(db);

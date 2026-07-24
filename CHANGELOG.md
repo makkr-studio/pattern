@@ -164,6 +164,16 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
 
 ### Core & fixes
 
+- **`pattern dev` no longer crashes "database is locked" on restart.** A
+  watch restart overlaps the new boot with the dying process's sqlite
+  checkpoint-on-close, and every store's first statement was the
+  `journal_mode = WAL` switch — a locking operation — executed while
+  `busy_timeout` was still 0. All six sqlite openers (identity, store, vault,
+  vectors, trace, ledger) now set `busy_timeout = 5000` *before* the WAL
+  switch, so a booting process waits the lock out instead of dying; a
+  regression test holds the file from a second process while the engine
+  boots.
+
 - Inbound email (Resend) now **dedups svix redeliveries** when mod-store is
   present (a CAS'd row per `svix-id` — ingest becomes exactly-once; without
   mod-store, the 0.4 at-least-once behavior is unchanged).
