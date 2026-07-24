@@ -13,6 +13,7 @@ export {
   DefaultIdentityService,
   API_TOKEN_PREFIX,
   API_TOKEN_SCOPES,
+  MAX_CODE_ATTEMPTS,
   type ApiTokenScope,
   type FindOrCreateInput,
   type IdentityService,
@@ -28,7 +29,7 @@ export { apiTokenAuthProvider, API_TOKEN_PROVIDER_NAME } from "./api-token-provi
 export { deliverToken, absoluteUrl, DELIVER_TOKEN_HOOK, type DeliverInput, type DeliverResult } from "./deliver.js";
 export { parseCookies, serializeSessionCookie, clearSessionCookie } from "./cookies.js";
 export { isCrossSiteWrite, isStateChanging } from "./csrf.js";
-export { randomToken, sha256hex, normalizeEmail, looksLikeEmail } from "./tokens.js";
+export { randomToken, randomCode, normalizeCode, formatCode, sha256hex, normalizeEmail, looksLikeEmail } from "./tokens.js";
 export { renderLoginPage, renderSentPage } from "./pages/login.js";
 export { layout, escapeHtml, safeNextPath } from "./pages/html.js";
 export { memoryIdentityStores } from "./store/memory.js";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DefaultIdentityService } from "../src/service.js";
+import { DefaultIdentityService, MAX_CODE_ATTEMPTS } from "../src/service.js";
 import { memoryIdentityStores } from "../src/store/memory.js";
 import { resolveOptions } from "../src/options.js";
 
@@ -133,5 +133,86 @@ describe("DefaultIdentityService", () => {
     svc.registerLoginMethod({ id: "oidc", label: "SSO", kind: "redirect", startUrl: "/auth/oidc/start" });
     expect(svc.loginMethods().map((m) => m.id)).toEqual(["magic-link", "oidc"]);
     expect(svc.scopesForRoles(["a", "b", "ghost"]).sort()).toEqual(["x", "y", "z"]);
+  });
+});
+
+describe("short sign-in codes (the PWA path)", () => {
+  it("issues a 6-digit code bound to the same row; either path consumes, whichever lands first burns both", async () => {
+    const svc = makeService();
+    const issued = await svc.issueToken({ purpose: "login", email: "Ada@X.io", code: true });
+    expect(issued.code).toMatch(/^\d{6}$/);
+
+    // The code path accepts the display spacing ("482 913") and any purpose filter.
+    const spaced = `${issued.code!.slice(0, 3)} ${issued.code!.slice(3)}`;
+    const consumed = await svc.consumeTokenByCode("ada@x.io", spaced, "login");
+    expect(consumed?.emailNorm).toBe("ada@x.io");
+
+    // One row, one use: the code again AND the link are both dead now.
+    expect(await svc.consumeTokenByCode("ada@x.io", issued.code!)).toBeNull();
+    expect(await svc.consumeToken(issued.token)).toBeNull();
+
+    // And the mirror image: link first → code dead.
+    const second = await svc.issueToken({ purpose: "login", email: "ada@x.io", code: true });
+    expect(await svc.consumeToken(second.token)).not.toBeNull();
+    expect(await svc.consumeTokenByCode("ada@x.io", second.code!)).toBeNull();
+  });
+
+  it("burns the token (link included) after MAX_CODE_ATTEMPTS wrong guesses", async () => {
+    const svc = makeService();
+    const issued = await svc.issueToken({ purpose: "login", email: "ada@x.io", code: true });
+    const wrong = issued.code === "000000" ? "000001" : "000000";
+
+    for (let i = 0; i < MAX_CODE_ATTEMPTS - 1; i++) {
+      expect(await svc.consumeTokenByCode("ada@x.io", wrong)).toBeNull();
+    }
+    // Budget not yet spent: the right code would still work… but guess wrong once more.
+    expect(await svc.consumeTokenByCode("ada@x.io", wrong)).toBeNull();
+
+    // Burned: the RIGHT code fails now, and so does the emailed link.
+    expect(await svc.consumeTokenByCode("ada@x.io", issued.code!)).toBeNull();
+    expect(await svc.consumeToken(issued.token)).toBeNull();
+  });
+
+  it("keeps the code usable while the wrong-guess budget lasts", async () => {
+    const svc = makeService();
+    const issued = await svc.issueToken({ purpose: "login", email: "ada@x.io", code: true });
+    const wrong = issued.code === "111111" ? "111112" : "111111";
+    for (let i = 0; i < MAX_CODE_ATTEMPTS - 1; i++) {
+      expect(await svc.consumeTokenByCode("ada@x.io", wrong)).toBeNull();
+    }
+    expect((await svc.consumeTokenByCode("ada@x.io", issued.code!))?.emailNorm).toBe("ada@x.io");
+  });
+
+  it("scopes guesses to the email, charges every pending candidate, and honors TTL", async () => {
+    const svc = makeService();
+    const ada = await svc.issueToken({ purpose: "login", email: "ada@x.io", code: true });
+    const both1 = await svc.issueToken({ purpose: "login", email: "grace@x.io", code: true });
+    const both2 = await svc.issueToken({ purpose: "login", email: "grace@x.io", code: true });
+    const wrong = ["000000", "111111", "222222"].find((c) => c !== both1.code && c !== both2.code)!;
+
+    // Grace's wrong guesses burn BOTH of grace's tokens…
+    for (let i = 0; i < MAX_CODE_ATTEMPTS; i++) {
+      expect(await svc.consumeTokenByCode("grace@x.io", wrong)).toBeNull();
+    }
+    expect(await svc.consumeTokenByCode("grace@x.io", both1.code!)).toBeNull();
+    expect(await svc.consumeTokenByCode("grace@x.io", both2.code!)).toBeNull();
+    // …while ada's token is untouched.
+    expect((await svc.consumeTokenByCode("ada@x.io", ada.code!))?.emailNorm).toBe("ada@x.io");
+
+    // Expired code-bearing tokens are never candidates.
+    const stale = await svc.issueToken({ purpose: "login", email: "late@x.io", ttlMs: -1, code: true });
+    expect(await svc.consumeTokenByCode("late@x.io", stale.code!)).toBeNull();
+  });
+
+  it("issues no code without an email, and malformed guesses are refused without charging", async () => {
+    const svc = makeService();
+    expect((await svc.issueToken({ purpose: "bootstrap", code: true })).code).toBeUndefined();
+
+    const issued = await svc.issueToken({ purpose: "login", email: "ada@x.io", code: true });
+    // Not 6 digits → refused outright; the budget is only for real guesses.
+    for (let i = 0; i < MAX_CODE_ATTEMPTS + 1; i++) {
+      expect(await svc.consumeTokenByCode("ada@x.io", "12345")).toBeNull();
+    }
+    expect((await svc.consumeTokenByCode("ada@x.io", issued.code!))?.emailNorm).toBe("ada@x.io");
   });
 });

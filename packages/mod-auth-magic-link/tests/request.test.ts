@@ -40,6 +40,9 @@ const requestLink = (base: string, body: Record<string, string>) =>
 const printedLink = (logSpy: ReturnType<typeof vi.spyOn>): string | undefined =>
   /(https?:\/\/\S*\/auth\/token\?t=\S+)/.exec(logSpy.mock.calls.map((c) => String(c[0])).join("\n"))?.[1];
 
+const printedCode = (logSpy: ReturnType<typeof vi.spyOn>): string | undefined =>
+  /code: (\d{3} \d{3})/.exec(logSpy.mock.calls.map((c) => String(c[0])).join("\n"))?.[1];
+
 describe("@pattern-js/mod-auth-magic-link", () => {
   it("registers its login method in either config order", async () => {
     const a = await boot(4881);
@@ -140,6 +143,43 @@ describe("@pattern-js/mod-auth-magic-link", () => {
     logSpy.mockClear();
     await requestLink(base, { email: "another@x.io" });
     expect(printedLink(logSpy)).toBeUndefined();
+  });
+
+  it("the code ride (PWA path): sent page carries the form, the typed code signs in right here", async () => {
+    const { base, logSpy } = await boot(4889);
+
+    const res = await requestLink(base, { email: "ada@x.io", next: "/admin" });
+    const sentPage = await res.text();
+    // The sent page IS the code-entry surface — posting to /auth/code sets the
+    // cookie in THIS browsing context, not the mail client's browser.
+    expect(sentPage).toContain('action="/auth/code"');
+    expect(sentPage).toContain('autocomplete="one-time-code"');
+    expect(sentPage).toContain('name="next" value="/admin"');
+
+    // The console fallback (stand-in for the emailed copy) printed the code.
+    const code = printedCode(logSpy);
+    expect(code).toMatch(/^\d{3} \d{3}$/);
+
+    const verify = await fetch(`${base}/auth/code`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email: "ada@x.io", code: code!, next: "/admin" }).toString(),
+      redirect: "manual",
+    });
+    expect(verify.status).toBe(302);
+    expect(verify.headers.get("location")).toBe("/admin");
+    const cookie = (verify.headers.get("set-cookie") ?? "").split(";")[0]!;
+    const who = await fetch(`${base}/auth/whoami`, { headers: { cookie } });
+    expect((await who.json()).email).toBe("ada@x.io");
+
+    // The same code again: the row burned with the first use.
+    const replay = await fetch(`${base}/auth/code`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email: "ada@x.io", code: code!, next: "/admin" }).toString(),
+      redirect: "manual",
+    });
+    expect(replay.status).toBe(401);
   });
 
   it("a workflow subscribed to identity.deliverToken claims delivery (no console fallback)", async () => {

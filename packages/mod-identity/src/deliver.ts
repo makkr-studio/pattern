@@ -10,6 +10,7 @@
  */
 
 import type { OpContext } from "@pattern-js/core";
+import { formatCode } from "./tokens.js";
 
 export const DELIVER_TOKEN_HOOK = "identity.deliverToken";
 
@@ -22,6 +23,12 @@ export interface DeliverInput {
   origin?: string | null;
   /** Token expiry (ms epoch) — turns "expires soon" into "valid for 7 days" in the copy. */
   expiresAt?: number;
+  /**
+   * The short sign-in code bound to the same token (raw digits, e.g. "482913").
+   * Rides the hook payload so custom templates can render it — the PWA path,
+   * where the link opens in the wrong cookie jar and the user types this instead.
+   */
+  code?: string;
 }
 
 export interface DeliverResult {
@@ -63,8 +70,9 @@ function humanTtl(expiresAt: number | undefined): string | null {
  * every channel subscribed to the hook (email, SMS, chat…) gets sensible
  * wording for free, and a forked delivery workflow may still write its own.
  */
-function copyFor(purpose: string, ttl: string | null): { subject: string; message: string } {
-  const expiry = ttl ? `The link is single-use and valid for ${ttl}.` : "The link is single-use and expires soon.";
+function copyFor(purpose: string, ttl: string | null, code?: string): { subject: string; message: string } {
+  const what = code ? "link and code are" : "link is";
+  const expiry = ttl ? `The ${what} single-use and valid for ${ttl}.` : `The ${what} single-use and expire${code ? "" : "s"} soon.`;
   switch (purpose) {
     case "invite":
       return {
@@ -72,7 +80,14 @@ function copyFor(purpose: string, ttl: string | null): { subject: string; messag
         message: `You've been invited to join. Open the link below to accept the invitation — your account is created on the spot, then you sign in for the first time. ${expiry}`,
       };
     case "login":
-      return { subject: "Your sign-in link", message: `Open the link below to sign in. ${expiry}` };
+      return {
+        subject: "Your sign-in link",
+        message: code
+          ? // The code is the installed-app path: the link would open in the
+            // system browser, but a typed code signs in wherever the user is.
+            `Open the link below to sign in — or enter the code ${formatCode(code)} where you requested it. ${expiry}`
+          : `Open the link below to sign in. ${expiry}`,
+      };
     default:
       return { subject: `Your ${purpose} link`, message: `Open the link below to continue. ${expiry}` };
   }
@@ -80,7 +95,7 @@ function copyFor(purpose: string, ttl: string | null): { subject: string; messag
 
 export async function deliverToken(ctx: OpContext, input: DeliverInput): Promise<DeliverResult> {
   const url = absoluteUrl(input.path, configuredOrigin(ctx) ?? input.origin);
-  const { subject, message } = copyFor(input.purpose, humanTtl(input.expiresAt));
+  const { subject, message } = copyFor(input.purpose, humanTtl(input.expiresAt), input.code);
   const payload = {
     email: input.email,
     url,
@@ -88,6 +103,7 @@ export async function deliverToken(ctx: OpContext, input: DeliverInput): Promise
     delivered: false,
     subject,
     message,
+    ...(input.code !== undefined ? { code: input.code } : {}),
     ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
   };
   let result: unknown;
@@ -103,6 +119,7 @@ export async function deliverToken(ctx: OpContext, input: DeliverInput): Promise
     console.log(
       `\n[pattern] ✉ ${input.purpose} link for ${input.email}\n` +
         `[pattern]   ${url}\n` +
+        (input.code ? `[pattern]   code: ${formatCode(input.code)}\n` : "") +
         `[pattern]   (deliver these yourself by subscribing a workflow to the "${DELIVER_TOKEN_HOOK}" hook)\n`,
     );
   }

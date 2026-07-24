@@ -4,4 +4,6 @@ and redirect to `next` with the cookie set. An HTTP-shaped op backing
 `GET /auth/token`. Provider mods (magic-link, OIDC) issue tokens whose links
 land here; they never mint sessions themselves. Bootstrap tokens are refused
 here (they have their own flow), and with a closed signup an unknown email
-returns to the login page with an error.
+returns to the login page with an error. The same token may also carry a
+short sign-in code consumed by `identity.code.callback` (`POST /auth/code`) —
+one row, one use, whichever path lands first.

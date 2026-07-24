@@ -62,6 +62,7 @@ ${body}
 
 const ERROR_MESSAGES: Record<string, string> = {
   "invalid-token": "That link is invalid, expired, or was already used. Request a fresh one.",
+  "invalid-code": "That code didn't match. Check the newest email — or request a fresh sign-in link.",
   "signup-closed": "Sign-ups are invite-only. Ask an admin to invite you.",
   "account-disabled": "This account is disabled.",
   "invite-revoked": "That invitation has been revoked. Ask an admin for a new one.",

@@ -100,6 +100,7 @@ export function endpointWorkflows(mount: string): Workflow[] {
   const specs: EndpointSpec[] = [
     { id: "identity.route.login", method: "GET", path: `${mount}/login`, op: "identity.login.page", shape: "http" },
     { id: "identity.route.token", method: "GET", path: `${mount}/token`, op: "identity.token.callback", shape: "http" },
+    { id: "identity.route.code", method: "POST", path: `${mount}/code`, op: "identity.code.callback", shape: "http" },
     { id: "identity.route.logout", method: "POST", path: `${mount}/logout`, op: "identity.logout", shape: "http" },
     { id: "identity.route.whoami", method: "GET", path: `${mount}/whoami`, op: "identity.whoami", shape: "json", out: "whoami" },
     { id: "identity.route.welcome", method: "GET", path: `${mount}/welcome`, op: "identity.welcome.page", shape: "http" },

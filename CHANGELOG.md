@@ -141,6 +141,27 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   billing onto a bare identity upgrades it to the app-local roles wrapper,
   completing the entitlement bridge with a printed explanation.
 
+### Identity
+
+- **Magic links grow a magic code — installed PWAs can finally sign in.** The
+  emailed link opens in the *system browser's* cookie jar, so a
+  standalone-display app stayed logged out after "I clicked the link". Every
+  login token now also carries a **6-digit code** bound to the same
+  single-use row: the "check your inbox" page grows a code form (with
+  `autocomplete="one-time-code"` for OS autofill), and identity's new
+  `POST /auth/code` consumes it and sets the session cookie **in the browsing
+  context that asked**. Whichever of link or code is used first burns both.
+- **Budgeted, not entropic.** A 6-digit code can't lean on hash lookup the way
+  256-bit tokens do: verification compares in constant time against the
+  email's pending code-bearing rows, five wrong guesses burn the token (link
+  included, atomic increment — concurrent guesses all count), and failures
+  render identically for unknown emails and wrong codes (401, no
+  enumeration).
+- **The code reaches every channel for free.** It rides the
+  `identity.deliverToken` payload (`code`), is worked into the default
+  `message` copy ("…or enter the code 482 913…"), and prints with the console
+  fallback — the seeded email workflow needed zero template changes.
+
 ### Core & fixes
 
 - Inbound email (Resend) now **dedups svix redeliveries** when mod-store is

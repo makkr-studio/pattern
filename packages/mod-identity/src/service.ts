@@ -12,12 +12,13 @@
  * map applies on the next request — sessions store no scopes.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import type { ConnectionRegistry } from "@pattern-js/core";
 import type { ResolvedIdentityOptions } from "./options.js";
 import type { ApiTokenRow, IdentityStores, InviteRow, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
 import { UniqueViolationError } from "./store/types.js";
 import { KeyedMutex } from "./store/mutex.js";
-import { normalizeEmail, randomToken, sha256hex } from "./tokens.js";
+import { normalizeCode, normalizeEmail, randomCode, randomToken, sha256hex } from "./tokens.js";
 
 /**
  * The API-token scope taxonomy (0.4.0). Granular scopes gate the control-plane
@@ -43,6 +44,13 @@ const API_TOKEN_TOUCH_THROTTLE_MS = 60_000;
 
 /** Invites get a week, not the 15-minute login-token TTL. */
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Wrong-guess budget per code-bearing token — spend it and the token burns,
+ * link included. 5 tries against a million combinations per issuance keeps a
+ * 6-digit code honest without any per-IP machinery.
+ */
+export const MAX_CODE_ATTEMPTS = 5;
 
 /** An invite's derived status, in precedence order. */
 export function inviteStatus(invite: InviteRow, now: number = Date.now()): "revoked" | "accepted" | "expired" | "pending" {
@@ -82,6 +90,8 @@ export interface IssuedToken {
   token: string;
   /** Path-only callback URL (`{mount}/token?t=…[&next=…]`); callers prepend an origin if needed. */
   path: string;
+  /** The RAW short sign-in code (issued with `code: true`) — same row, same TTL, same single use. */
+  code?: string;
   expiresAt: number;
 }
 
@@ -134,8 +144,18 @@ export interface IdentityService {
     email?: string;
     ttlMs?: number;
     data?: Record<string, unknown>;
+    /** Also derive a short sign-in code bound to the same row (needs `email`). */
+    code?: boolean;
   }): Promise<IssuedToken>;
   consumeToken(rawToken: string, purpose?: TokenPurpose): Promise<TokenRow | null>;
+  /**
+   * Consume a token by its short sign-in code (the PWA path — the caller sets
+   * the cookie in the browsing context that typed the code). Constant-time
+   * compare over the email's pending code-bearing rows; a wrong guess charges
+   * every candidate and at MAX_CODE_ATTEMPTS the token burns, link included.
+   * Null for wrong/expired/burned — indistinguishable from an unknown email.
+   */
+  consumeTokenByCode(email: string, code: string, purpose?: TokenPurpose): Promise<TokenRow | null>;
 
   // invites (first-class records; the single-use token stays the credential)
   /** Record the invite AND mint its token (data carries { inviteId, roles, next }). */
@@ -381,8 +401,12 @@ export class DefaultIdentityService implements IdentityService {
     email?: string;
     ttlMs?: number;
     data?: Record<string, unknown>;
+    code?: boolean;
   }): Promise<IssuedToken> {
     const token = randomToken();
+    // A code is only verifiable through an email's pending rows — issuing one
+    // without an email would mint a credential nothing can ever check.
+    const code = input.code && input.email ? randomCode() : undefined;
     const now = Date.now();
     const row = await this.stores.tokens.create({
       id: crypto.randomUUID(),
@@ -390,6 +414,8 @@ export class DefaultIdentityService implements IdentityService {
       purpose: input.purpose,
       emailNorm: input.email ? normalizeEmail(input.email) : null,
       data: input.data ?? null,
+      codeHash: code ? sha256hex(code) : null,
+      attempts: 0,
       createdAt: now,
       expiresAt: now + (input.ttlMs ?? this.options.tokenTtlMs),
       consumedAt: null,
@@ -398,7 +424,7 @@ export class DefaultIdentityService implements IdentityService {
     const path = `${this.options.mount}/token?t=${token}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
     // Opportunistic sweep: issuing is rare enough to piggyback cleanup on.
     await this.stores.tokens.deleteExpired(now).catch(() => {});
-    return { token, path, expiresAt: row.expiresAt };
+    return { token, path, ...(code ? { code } : {}), expiresAt: row.expiresAt };
   }
 
   async consumeToken(rawToken: string, purpose?: TokenPurpose): Promise<TokenRow | null> {
@@ -409,6 +435,29 @@ export class DefaultIdentityService implements IdentityService {
     return this.mutex.run(`token:${found.id}`, () =>
       this.stores.tokens.consume(found.id, found.version, Date.now()),
     );
+  }
+
+  async consumeTokenByCode(email: string, code: string, purpose?: TokenPurpose): Promise<TokenRow | null> {
+    // Hash the guess before any lookup so the work is flat across outcomes.
+    const guessHash = sha256hex(normalizeCode(code));
+    if (normalizeCode(code).length !== 6) return null;
+    const now = Date.now();
+    const candidates = (await this.stores.tokens.listPendingWithCode(normalizeEmail(email), now)).filter(
+      (t) => t.codeHash != null && (!purpose || t.purpose === purpose),
+    );
+    const match = candidates.find((t) => timingSafeEqual(Buffer.from(t.codeHash!), Buffer.from(guessHash)));
+    if (match) {
+      // Same CAS single-use as the link — whichever path lands first burns both.
+      return this.mutex.run(`token:${match.id}`, () =>
+        this.stores.tokens.consume(match.id, match.version, Date.now()),
+      );
+    }
+    // Wrong guess: charge every candidate — the guesser doesn't get to pick
+    // which outstanding token they were aiming at.
+    for (const t of candidates) {
+      await this.stores.tokens.recordCodeAttempt(t.id, MAX_CODE_ATTEMPTS, now).catch(() => {});
+    }
+    return null;
   }
 
   /* ── invites ─────────────────────────────────────────────────────────── */

@@ -224,6 +224,58 @@ describe("identity over HTTP (e2e)", () => {
     expect((await who.json()).email).toBe("persist@x.io");
   });
 
+  it("sign-in code: POST /auth/code sets the cookie in the posting context (the PWA path)", async () => {
+    const { base, service, logSpy } = await boot(4870, { signup: "open" });
+    await bootstrapAdmin(base, logSpy);
+
+    const issued = await service.issueToken({ purpose: "login", email: "ada@x.io", data: { next: "/secret" }, code: true });
+    const spaced = `${issued.code!.slice(0, 3)} ${issued.code!.slice(3)}`; // as the email renders it
+
+    const verify = await fetch(`${base}/auth/code`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email: "ada@x.io", code: spaced, next: "/secret" }).toString(),
+      redirect: "manual",
+    });
+    expect(verify.status).toBe(302);
+    expect(verify.headers.get("location")).toBe("/secret");
+    const cookie = cookieOf(verify);
+    expect(cookie).toMatch(/^pattern_session=/);
+    const who = await fetch(`${base}/auth/whoami`, { headers: { cookie } });
+    expect((await who.json()).email).toBe("ada@x.io");
+
+    // One row, one use: the emailed link died the moment the code landed.
+    const replayLink = await fetch(`${base}${issued.path}`, { redirect: "manual" });
+    expect(replayLink.headers.get("location")).toContain("error=invalid-token");
+  });
+
+  it("sign-in code failures don't enumerate: same page for wrong code and unknown email", async () => {
+    const { base, service, logSpy } = await boot(4871);
+    await bootstrapAdmin(base, logSpy);
+    await service.issueToken({ purpose: "login", email: "ada@x.io", code: true });
+
+    const guess = (email: string) =>
+      fetch(`${base}/auth/code`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ email, code: "000 000", next: "/" }).toString(),
+        redirect: "manual",
+      });
+
+    // ada has an account AND a pending code; ghost has neither. Both must get
+    // the same 401 sent-page (modulo the echoed email), no cookie either way.
+    const known = await guess("ada@x.io");
+    const unknown = await guess("ghost@x.io");
+    expect(known.status).toBe(401);
+    expect(unknown.status).toBe(401);
+    expect(known.headers.get("set-cookie")).toBeNull();
+    expect(unknown.headers.get("set-cookie")).toBeNull();
+    const knownBody = (await known.text()).replaceAll("ada@x.io", "&");
+    const unknownBody = (await unknown.text()).replaceAll("ghost@x.io", "&");
+    expect(knownBody).toBe(unknownBody);
+    expect(knownBody).toContain("didn&#39;t match");
+  });
+
   it("refuses open redirects in next", async () => {
     const { base, service, logSpy } = await boot(4867);
     await bootstrapAdmin(base, logSpy);

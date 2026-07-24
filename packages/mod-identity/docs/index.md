@@ -128,9 +128,10 @@ console** until delivery is wired. The packaged way: install
 `@pattern-js/mod-email` + a driver (Resend or SMTP) and create the `default`
 account in admin → System → Email — links then send by email automatically.
 Any other channel works through the `identity.deliverToken` hook
-(`payload: { email, url, purpose, delivered }`): send the link by email/SMS/chat
-and return `delivered: true`. No subscriber (or `delivered: false`) falls back
-to the console, which **is** the zero-config dev login. Tokens are single-use, short-TTL (15 min; invites 7 days), sha256 at
+(`payload: { email, url, purpose, delivered, subject, message, code? }`): send
+the link by email/SMS/chat and return `delivered: true`. No subscriber (or
+`delivered: false`) falls back to the console, which **is** the zero-config dev
+login. Tokens are single-use, short-TTL (15 min; invites 7 days), sha256 at
 rest, consumed via CAS so replays fail closed. Purposes: `login`, `invite`
 (carries roles), `bootstrap`. The `/auth/token` callback turns a consumed token
 into a user + session per the **signup policy**: `invite` (default; unknown
@@ -143,6 +144,25 @@ origin — it beats the request-derived origin on purpose, because behind a
 proxy or tunnel the Host header is whatever the hop put there. Unset (dev),
 the request's own origin is used, so localhost links still work with zero
 config.
+
+## Sign-in codes (0.5)
+
+A login token issued with `code: true` (magic-link does this) also carries a
+**6-digit code** bound to the same row — same TTL, same single use. It exists
+for **installed PWAs and standalone web apps**: the emailed link opens in the
+*system browser's* cookie jar, so the session lands in Safari/Chrome while the
+installed app stays signed out. The code closes that gap — the "check your
+inbox" page carries a code form, and `POST /auth/code` `{ email, code, next }`
+consumes the token and sets the cookie **in the browsing context that asked**.
+Whichever of link or code lands first burns both.
+
+A short code can't lean on hash lookup the way 256-bit tokens do, so its
+safety is budgeted instead: verification compares in constant time against
+the email's pending code-bearing tokens, **five wrong guesses burn the token**
+(link included), and failures render identically for unknown emails and wrong
+codes (status 401, no enumeration). The code travels to custom templates as
+`code` on the `identity.deliverToken` payload, is worked into the default
+`message` copy, and prints with the console fallback.
 
 ## Invites (0.4)
 
@@ -229,6 +249,7 @@ workflow storage.
 | --- | --- |
 | `GET /auth/login` | Login page (a section per registered method) |
 | `GET /auth/token?t=…` | Token callback → session cookie → redirect `next` |
+| `POST /auth/code` | Sign-in code callback `{ email, code, next? }` → cookie **here** (the PWA path) |
 | `POST /auth/logout` | Revoke the current session, clear the cookie |
 | `GET /auth/whoami` | The current principal (JSON) |
 | `GET /auth/welcome` | Post-login landing when no home is advertised |

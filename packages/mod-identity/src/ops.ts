@@ -19,6 +19,7 @@
 import { AUTH_HOME_URL, value, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { identityService } from "./service-key.js";
 import { API_TOKEN_SCOPES, inviteStatus, type IdentityService } from "./service.js";
+import type { TokenRow, UserRow } from "./store/types.js";
 import { deliverToken } from "./deliver.js";
 import { looksLikeEmail } from "./tokens.js";
 import { renderLoginPage, renderSentPage } from "./pages/login.js";
@@ -564,7 +565,14 @@ const loginPage = authOp(
   "Render the login page from the registered login methods. Query { next?, error?, sent? }.",
   { query: ["next", "error", "sent"] },
   (args, svc) => {
-    if (args.sent) return page(renderSentPage(String(args.sent)));
+    if (args.sent)
+      return page(
+        renderSentPage(String(args.sent), {
+          action: `${svc.options.mount}/code`,
+          email: String(args.sent),
+          next: typeof args.next === "string" ? args.next : undefined,
+        }),
+      );
     return page(
       renderLoginPage({
         methods: svc.loginMethods(),
@@ -574,6 +582,27 @@ const loginPage = authOp(
     );
   },
 );
+
+/**
+ * The shared login tail (link AND code callbacks): a just-consumed token →
+ * the user, per the EFFECTIVE signup policy (admin-toggleable, not the
+ * construction-time option). Returns only vetted error codes.
+ */
+async function userFromToken(svc: IdentityService, token: TokenRow): Promise<{ user?: UserRow; error?: string }> {
+  if (!token.emailNorm) return { error: "invalid-token" };
+  const data = token.data ?? {};
+  const invite = token.purpose === "invite";
+  const user = await svc.findOrCreateByIdentity({
+    provider: typeof data.provider === "string" ? data.provider : "magic-link",
+    subject: token.emailNorm,
+    email: token.emailNorm,
+    allowCreate: invite || (await svc.getSignup()) === "open",
+    roles: invite && Array.isArray(data.roles) ? (data.roles as string[]) : undefined,
+  });
+  if (!user) return { error: "signup-closed" };
+  if (user.disabled) return { error: "account-disabled" };
+  return { user };
+}
 
 const tokenCallback = authOp(
   "identity.token.callback",
@@ -601,16 +630,9 @@ const tokenCallback = authOp(
       return redirectTo(`${loginUrl}?error=invite-revoked`);
     }
 
-    const user = await svc.findOrCreateByIdentity({
-      provider: typeof data.provider === "string" ? data.provider : "magic-link",
-      subject: token.emailNorm,
-      email: token.emailNorm,
-      // The EFFECTIVE policy (admin-toggleable), not the construction-time option.
-      allowCreate: invite || (await svc.getSignup()) === "open",
-      roles: invite && Array.isArray(data.roles) ? (data.roles as string[]) : undefined,
-    });
-    if (!user) return redirectTo(`${loginUrl}?error=signup-closed`);
-    if (user.disabled) return redirectTo(`${loginUrl}?error=account-disabled`);
+    const resolved = await userFromToken(svc, token);
+    if (resolved.error || !resolved.user) return redirectTo(`${loginUrl}?error=${resolved.error}`);
+    const user = resolved.user;
 
     const next = safeNextPath(args.next ?? data.next ?? req.home);
 
@@ -623,6 +645,36 @@ const tokenCallback = authOp(
 
     const minted = await svc.mintSession(user.id, { userAgent: (args.userAgent as string) ?? null });
     return redirectTo(next, sessionCookie(svc, minted.token));
+  },
+);
+
+const codeCallback = authOp(
+  "identity.code.callback",
+  "The sign-in code callback: consumes a code-bearing login token by { email, code } and mints the session in the browsing context that POSTED — the PWA/standalone path, where the emailed link would land its cookie in the system browser's jar instead of the installed app's. Wrong guesses re-render the sent page identically for unknown emails and wrong codes (no enumeration) with status 401; the token's wrong-guess budget burns it, link included.",
+  { body: ["email", "code", "next"], userAgent: true },
+  async (args, svc, req) => {
+    const email = String(args.email ?? "").trim();
+    const next = safeNextPath(args.next);
+    const token = looksLikeEmail(email)
+      ? await svc.consumeTokenByCode(email, String(args.code ?? ""), "login")
+      : null;
+    if (!token) {
+      // One page for wrong code / unknown email / expired / burned — nothing
+      // to enumerate. The 401 makes the outcome machine-readable for SPAs.
+      return page(
+        renderSentPage(looksLikeEmail(email) ? email : "that address", {
+          action: `${svc.options.mount}/code`,
+          email,
+          next,
+          error: "invalid-code",
+        }),
+        401,
+      );
+    }
+    const resolved = await userFromToken(svc, token);
+    if (resolved.error || !resolved.user) return redirectTo(`${svc.options.mount}/login?error=${resolved.error}`);
+    const minted = await svc.mintSession(resolved.user.id, { userAgent: (args.userAgent as string) ?? null });
+    return redirectTo(safeNextPath(args.next ?? token.data?.next ?? req.home), sessionCookie(svc, minted.token));
   },
 );
 
@@ -723,6 +775,7 @@ export const identityOps: OpDefinition[] = [
   apiTokensRevoke,
   loginPage,
   tokenCallback,
+  codeCallback,
   logout,
   welcomePage,
   invitedPage,

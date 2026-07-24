@@ -62,6 +62,16 @@ export interface TokenRow {
   emailNorm: string | null;
   /** Extra payload: roles to grant on invite, a `next` url, … */
   data: Record<string, unknown> | null;
+  /**
+   * sha256 hex of the short sign-in code (the PWA path: the emailed link opens
+   * in the system browser's cookie jar, so the user types the code where they
+   * actually are). Null = link-only token. A code has ~20 bits of entropy —
+   * unlike `tokenHash` it MUST NOT be findable by hash lookup; verification
+   * scans the email's pending rows and is budgeted by `attempts`.
+   */
+  codeHash: string | null;
+  /** Wrong code guesses so far; at the store's cap the token burns (link included). */
+  attempts: number;
   createdAt: number;
   expiresAt: number;
   /** Set exactly once via CAS — null means unconsumed. */
@@ -158,6 +168,14 @@ export interface TokenStore {
    * the rest get null.
    */
   consume(id: string, expectedVersion: number, at: number): Promise<TokenRow | null>;
+  /** Unconsumed, unexpired, code-bearing tokens for an email (the code-verify candidates). */
+  listPendingWithCode(emailNorm: string, now: number): Promise<TokenRow[]>;
+  /**
+   * Charge one wrong code guess; at `maxAttempts` the token burns (consumed_at
+   * set — the link dies with the code). Not CAS: a relative increment is
+   * commutative, so concurrent guessers compose correctly without retries.
+   */
+  recordCodeAttempt(id: string, maxAttempts: number, at: number): Promise<void>;
   deleteExpired(now: number): Promise<number>;
 }
 

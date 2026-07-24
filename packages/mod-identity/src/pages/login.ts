@@ -52,12 +52,33 @@ ${inputs}
 </form></div>`;
 }
 
-/** Post-request page ("check your email / console"). */
-export function renderSentPage(email: string): string {
+/**
+ * Post-request page ("check your email / console"). With `code`, it also
+ * carries the code-entry form — the PWA path: the emailed LINK opens in the
+ * system browser's cookie jar, but a code typed HERE sets the session cookie
+ * in the browsing context the user is actually in. Rendered identically
+ * whether or not a token was issued (no enumeration), so the form always
+ * shows; a code for a non-account simply never matches.
+ */
+export function renderSentPage(
+  email: string,
+  code?: { action: string; email: string; next?: string; error?: string },
+): string {
+  const form = code
+    ? `<form method="post" action="${escapeHtml(code.action)}">
+<label for="code">Or enter the 6-digit code from the email</label>
+<input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" required>
+<input type="hidden" name="email" value="${escapeHtml(code.email)}">
+<input type="hidden" name="next" value="${escapeHtml(safeNextPath(code.next))}">
+<button type="submit">Sign in with the code</button>
+</form>`
+    : "";
   return layout(
     "Check your inbox",
     `<h1>Check your inbox</h1>
+${errorBanner(code?.error)}
 <p>If <strong>${escapeHtml(email)}</strong> has an account (or sign-ups are open), a sign-in link is on its way.</p>
-<p class="hint">No email mod installed? The link was printed to the server console.</p>`,
+${form}
+<p class="hint">No email mod installed? The ${code ? "link and code were" : "link was"} printed to the server console.</p>`,
   );
 }

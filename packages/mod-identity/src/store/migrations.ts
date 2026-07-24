@@ -112,6 +112,15 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX IF NOT EXISTS idx_invites_email ON invites(email_norm);
   `,
+
+  // v5 — short sign-in codes riding the same single-use token row (the PWA
+  // path: a typed code sets the cookie in the requesting browsing context).
+  // attempts budgets wrong guesses — the code is low-entropy by design.
+  `
+  ALTER TABLE tokens ADD COLUMN code_hash TEXT;
+  ALTER TABLE tokens ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX IF NOT EXISTS idx_tokens_email ON tokens(email_norm);
+  `,
 ];
 
 export function runMigrations(db: SqlDatabase): void {
