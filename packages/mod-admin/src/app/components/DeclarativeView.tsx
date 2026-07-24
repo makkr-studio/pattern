@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactFlow, Background, Controls, ReactFlowProvider } from "@xyflow/react";
@@ -7,7 +7,7 @@ import { api } from "../lib/api";
 import { useOps, useWorkflow } from "../lib/queries";
 import { buildFlow, type OpMap } from "../editor/graph";
 import { OpNode } from "../editor/OpNode";
-import { GlassPanel, JsonView, Modal, NeonButton, Spinner, Table, type Column } from "./ui";
+import { Badge, GlassPanel, JsonView, Modal, NeonButton, Spinner, Table, type Column } from "./ui";
 import { FormFromSchema } from "./FormFromSchema";
 
 /** A declarative data binding: a dedicated `route`. */
@@ -250,6 +250,43 @@ type RowAction = NonNullable<TableViewDef["rowActions"]>[number];
 const rowArgs = (action: RowAction, row: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(action.args ?? {}).map(([argName, rowKey]) => [argName, row[rowKey]]));
 
+/** Friendly time for `format: "date"` cells — accepts ISO strings or epoch ms. */
+function friendlyDate(v: unknown): { text: string; full: string } {
+  const ts = typeof v === "number" ? v : typeof v === "string" ? Date.parse(v) : NaN;
+  if (!Number.isFinite(ts)) return { text: v == null ? "" : String(v), full: "" };
+  const full = new Date(ts).toLocaleString();
+  const s = (Date.now() - ts) / 1000;
+  if (s < 0) return { text: full, full };
+  if (s < 90) return { text: `${Math.round(s)}s ago`, full };
+  if (s < 5400) return { text: `${Math.round(s / 60)}m ago`, full };
+  if (s < 129600) return { text: `${Math.round(s / 3600)}h ago`, full };
+  return { text: `${Math.round(s / 86400)}d ago`, full };
+}
+
+/** Render one cell honoring the column's declared `format` hint. */
+function cell(row: Record<string, unknown>, c: TableViewDef["columns"][number]): ReactNode {
+  const v = row[c.key];
+  if (v === true) return <span style={{ color: "var(--color-neon-lime)" }}>✓</span>;
+  if (v === false) return <span className="text-muted">—</span>;
+  if (c.format === "date") {
+    const { text, full } = friendlyDate(v);
+    return <span title={full}>{text}</span>;
+  }
+  if (c.format === "badge") return v == null || v === "" ? "" : <Badge>{String(v)}</Badge>;
+  if (c.format === "code") return <span className="font-mono text-xs">{String(v ?? "")}</span>;
+  return String(v ?? "");
+}
+
+/** Sort compare: numeric when both sides parse as numbers, else locale text. */
+function compareValues(a: unknown, b: unknown): number {
+  const na = typeof a === "number" ? a : Number(a);
+  const nb = typeof b === "number" ? b : Number(b);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+  return String(a ?? "").localeCompare(String(b ?? ""));
+}
+
+const PAGE_SIZE = 20;
+
 /**
  * `table` kind. Row actions call their dedicated route with args mapped from the
  * row (`args: { userId: "id" }` → `{ userId: row.id }`) and refresh the table —
@@ -258,6 +295,9 @@ const rowArgs = (action: RowAction, row: Record<string, unknown>): Record<string
  * native dialogs block automation and skip the design system), and action
  * RESULTS are shown in a Modal too: a route that returns something (a minted
  * sign-in link, the new settings value) hands it straight to the operator.
+ * Search, column sort and pagination are client-side and free for every
+ * declarative table (users, sessions, customers, events…) — the declared
+ * columns define what search matches and what a header click sorts by.
  */
 function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const queryClient = useQueryClient();
@@ -265,10 +305,26 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<{ action: RowAction; row: Record<string, unknown> } | null>(null);
   const [result, setResult] = useState<{ title: string; value: unknown } | null>(null);
-  const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
+  const [page, setPage] = useState(0);
+  const allRows = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   const rowActions = view.rowActions ?? [];
   // The table's data-query key prefix — invalidated to refresh after a mutation.
   const tableKey = dataKey(view).slice(0, -1);
+
+  // filter → sort → page, all over the DECLARED columns.
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? allRows.filter((row) => view.columns.some((c) => String(row[c.key] ?? "").toLowerCase().includes(q)))
+    : allRows;
+  const sorted = sort ? [...filtered].sort((a, b) => sort.dir * compareValues(a[sort.key], b[sort.key])) : filtered;
+  const pages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const rows = sorted.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+
+  const toggleSort = (key: string) =>
+    setSort((s) => (s?.key === key ? (s.dir === 1 ? { key, dir: -1 } : null) : { key, dir: 1 }));
 
   const execute = async (label: string, route: RouteRef, args: Record<string, unknown>, show: boolean) => {
     setBusy(`${label}:${JSON.stringify(args)}`);
@@ -288,8 +344,18 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
 
   const columns: Column<Record<string, unknown>>[] = view.columns.map((c) => ({
     key: c.key,
-    label: c.label ?? c.key,
-    render: (row) => String(row[c.key] ?? ""),
+    label: (
+      <button
+        type="button"
+        onClick={() => toggleSort(c.key)}
+        className="hover:text-[var(--fg)] flex items-center gap-1"
+        title="Sort"
+      >
+        {c.label ?? c.key}
+        {sort?.key === c.key && <span className="text-[10px]">{sort.dir === 1 ? "▲" : "▼"}</span>}
+      </button>
+    ),
+    render: (row) => cell(row, c),
   }));
   if (rowActions.length) {
     columns.push({
@@ -327,7 +393,42 @@ function TableView({ view, data }: { view: TableViewDef; data: unknown }) {
 
   return (
     <div className="space-y-3">
+      {allRows.length > 5 && (
+        <input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(0);
+          }}
+          placeholder={`Search ${allRows.length} rows…`}
+          className="glass w-full max-w-xs rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
+        />
+      )}
       <Table columns={columns} rows={rows} getKey={(r) => JSON.stringify(r)} />
+      {pages > 1 && (
+        <div className="text-muted flex items-center gap-3 text-xs">
+          <button
+            type="button"
+            disabled={current === 0}
+            onClick={() => setPage(current - 1)}
+            className="rounded-md border border-white/10 px-2 py-0.5 hover:bg-white/10 disabled:opacity-40"
+          >
+            ‹
+          </button>
+          <span>
+            {current * PAGE_SIZE + 1}–{Math.min((current + 1) * PAGE_SIZE, sorted.length)} of {sorted.length}
+            {q && ` (of ${allRows.length})`}
+          </span>
+          <button
+            type="button"
+            disabled={current >= pages - 1}
+            onClick={() => setPage(current + 1)}
+            className="rounded-md border border-white/10 px-2 py-0.5 hover:bg-white/10 disabled:opacity-40"
+          >
+            ›
+          </button>
+        </div>
+      )}
       {view.actions?.map((a) => (
         <NeonButton key={a.label} variant="ghost" disabled={busy !== null} onClick={() => void execute(a.label, a.route, {}, a.result === "show")}>
           {a.label}

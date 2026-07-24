@@ -119,7 +119,8 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 export interface Column<T> {
   key: string;
-  label: string;
+  /** Header content — a plain string, or a node (e.g. a sortable button). */
+  label: ReactNode;
   render?: (row: T) => ReactNode;
   width?: string;
 }
