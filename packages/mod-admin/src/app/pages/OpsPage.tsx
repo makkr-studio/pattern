@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { OpInfo, PortInfo } from "@pattern-js/admin-sdk";
 import { useOps } from "../lib/queries";
 import { Badge, GlassPanel, GlowCard, JsonView, PageHeader, Spinner } from "../components/ui";
@@ -95,8 +95,23 @@ export function OpsPage() {
   const navigate = useNavigate();
   const { type } = useParams();
   const { data, isLoading } = useOps();
-  const [query, setQuery] = useState("");
-  const [mod, setMod] = useState("");
+  // Search + mod filter live in the URL: navigating to an op and back (or
+  // sharing the link) keeps your place instead of resetting the list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const mod = searchParams.get("mod") ?? "";
+  const setParam = (key: string, value: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  const setQuery = (v: string) => setParam("q", v);
+  const setMod = (v: string) => setParam("mod", v);
 
   const mods = useMemo(() => [...new Set((data ?? []).map((o) => o.mod ?? "core"))].sort(), [data]);
   const filtered = useMemo(() => {
@@ -140,7 +155,9 @@ export function OpsPage() {
         data-op-type={op.type}
         onClick={() => {
           sfx.play("nav");
-          navigate(`/ops/${op.type}`);
+          // Carry the list's search/filter along — the URL is the state.
+          const qs = searchParams.toString();
+          navigate(`/ops/${op.type}${qs ? `?${qs}` : ""}`);
         }}
         className="px-3 py-2"
         style={current ? { boxShadow: `inset 0 0 0 1.5px ${accent}, 0 0 12px color-mix(in srgb, ${accent} 30%, transparent)` } : undefined}

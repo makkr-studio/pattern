@@ -4,12 +4,19 @@ import { api } from "./api";
 
 /** Server-state hooks over the admin endpoints. Pages never fetch by hand. */
 
-export const useManifest = () => useQuery({ queryKey: ["manifest"], queryFn: () => api.uiManifest() });
+// The install-shaped catalogs (ops, mods, the UI manifest) only change when
+// the mod set changes — i.e. on a server restart. A long staleTime keeps
+// navigation between catalog pages instant instead of refetching a 370-op
+// payload every visit; a reload (or deploy-driven invalidation) refreshes.
+const CATALOG_STALE_MS = 5 * 60_000;
+
+export const useManifest = () =>
+  useQuery({ queryKey: ["manifest"], queryFn: () => api.uiManifest(), staleTime: CATALOG_STALE_MS });
 export const useWorkflows = () => useQuery({ queryKey: ["workflows"], queryFn: () => api.workflows.list() });
 export const useWorkflow = (slug: string | undefined) =>
   useQuery({ queryKey: ["workflow", slug], queryFn: () => api.workflows.get(slug!), enabled: Boolean(slug) });
-export const useOps = () => useQuery({ queryKey: ["ops"], queryFn: () => api.ops.list() });
-export const useMods = () => useQuery({ queryKey: ["mods"], queryFn: () => api.mods() });
+export const useOps = () => useQuery({ queryKey: ["ops"], queryFn: () => api.ops.list(), staleTime: CATALOG_STALE_MS });
+export const useMods = () => useQuery({ queryKey: ["mods"], queryFn: () => api.mods(), staleTime: CATALOG_STALE_MS });
 export const useSystemMap = () => useQuery({ queryKey: ["system"], queryFn: () => api.systemMap() });
 export const useTemplates = () => useQuery({ queryKey: ["templates"], queryFn: () => api.templates() });
 
