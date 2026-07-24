@@ -76,7 +76,7 @@ copy; verify ports with `npx pattern ops agents.run`):
     { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/ask" } },
     { "id": "question", "op": "core.object.get", "config": { "path": "question" } },
     { "id": "tools", "op": "agents.tools.workflows" },
-    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5-mini" } },
+    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5.6-luna" } },
     { "id": "agent", "op": "agents.agent", "config": { "name": "assistant", "instructions": "Be concise. Use a tool when it helps." } },
     { "id": "run", "op": "agents.run" },
     { "id": "out", "op": "boundary.http.response" }

@@ -22,12 +22,12 @@ the agent value `agents.agent` builds. Two ops produce one.
 
 | Routing | What it is | Model id |
 |---|---|---|
-| `direct` | a native provider SDK + that provider's key | bare, e.g. `gpt-5` |
-| `gateway` | the **Vercel AI Gateway**: one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5` |
+| `direct` | a native provider SDK + that provider's key | bare, e.g. `gpt-5.6` |
+| `gateway` | the **Vercel AI Gateway**: one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5.6` |
 
 ```json
 { "id": "model", "op": "ai.model",
-  "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5" } }
+  "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5.6" } }
 ```
 
 **`ai.alias`** resolves a model configured in Settings by name:
