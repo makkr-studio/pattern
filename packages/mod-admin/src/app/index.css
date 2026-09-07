@@ -66,7 +66,10 @@
   --bg-mesh-2: rgba(167, 139, 250, 0.18);
   --bg-mesh-3: rgba(244, 114, 182, 0.1);
   --fg: #e6e9ef;
-  --fg-muted: #8b97ad;
+  /* Secondary text you read all day: lifted a notch (≈7.6:1 on the ground) so
+     labels stay legible at small sizes; the brightest treatment is reserved
+     for selection, execution, and errors. */
+  --fg-muted: #99a5bb;
   --glass-bg: rgba(255, 255, 255, 0.04);
   --glass-bg-strong: rgba(255, 255, 255, 0.07);
   --glass-border: rgba(255, 255, 255, 0.1);

@@ -143,7 +143,24 @@ export function Table<T>({ columns, rows, onRow, getKey }: { columns: Column<T>[
             <tr
               key={getKey(row)}
               onClick={() => onRow?.(row)}
-              className={`border-b hairline last:border-0 ${onRow ? "cursor-pointer hover:bg-white/5" : ""}`}
+              // A clickable row is a control: reachable by Tab, activated by
+              // Enter/Space, and visibly focused — a tool used all day must
+              // work without a mouse.
+              tabIndex={onRow ? 0 : undefined}
+              role={onRow ? "button" : undefined}
+              onKeyDown={
+                onRow
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRow(row);
+                      }
+                    }
+                  : undefined
+              }
+              className={`border-b hairline last:border-0 ${
+                onRow ? "cursor-pointer hover:bg-white/5 focus-visible:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--color-neon-cyan)]" : ""
+              }`}
             >
               {columns.map((c) => (
                 <td key={c.key} className="px-4 py-3 align-middle">
@@ -185,18 +202,42 @@ export function JsonView({ value, className = "" }: { value: unknown; className?
   );
 }
 
+/** What Tab can land on inside a dialog. */
+const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
 
-  // Escape closes; focus moves into the dialog and returns on close.
+  // Escape closes; focus moves into the dialog, is CONTAINED while it's open
+  // (Tab/Shift+Tab cycle inside — the page behind is inert), and returns on close.
   useEffect(() => {
     if (!open) return;
     sfx.play("open");
     restoreRef.current = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusables = [...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.hasAttribute("disabled") && el.tabIndex !== -1);
+      if (!focusables.length) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      const active = document.activeElement as HTMLElement | null;
+      const inside = active ? panelRef.current.contains(active) : false;
+      if (!inside || (e.shiftKey && (active === first || active === panelRef.current))) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
