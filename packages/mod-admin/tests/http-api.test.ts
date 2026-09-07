@@ -22,7 +22,8 @@ const api = (p: string) => `${BASE}/admin/api${p}`;
 
 async function startAdmin() {
   BASE = `http://localhost:${++port}`;
-  const engine = new Engine();
+  // No auth provider in this harness — the admin under test is acknowledged-open.
+  const engine = new Engine({ unenforcedAuth: "open" });
   // Omit `assets` so the built-in placeholder SPA (with index.html) is used.
   await engine.useAsync(adminMod({ storage: memoryFs(), auth: false }));
   const host = createHttpHost(engine, { defaultPort: port });

@@ -21,7 +21,8 @@ afterEach(async () => {
 let port = 4990;
 async function start() {
   const p = ++port;
-  const engine = new Engine();
+  // No auth provider in this harness — the admin under test is acknowledged-open.
+  const engine = new Engine({ unenforcedAuth: "open" });
   await engine.useAsync(adminMod({ storage: memoryFs(), auth: false }));
   await engine.useAsync(sampleMod); // ← the only extension point
   const host = createHttpHost(engine, { defaultPort: p });

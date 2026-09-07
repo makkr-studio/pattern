@@ -67,6 +67,16 @@ export interface PatternConfig {
    * (default 200).
    */
   durable?: { persist?: boolean; path?: string; keep?: number };
+  /**
+   * Authentication posture. `unenforced` says what a declared `requireAuth`
+   * does when NO auth provider is installed (nobody can authenticate, so the
+   * requirement can't be enforced): `"deny"` (default) refuses those requests
+   * with a reason naming the fix; `"open"` serves them unauthenticated — the
+   * explicit opt-in for local work with no sign-in (`create-pattern --no-auth`
+   * writes it). Irrelevant once a provider is installed: the same declarations
+   * are then enforced.
+   */
+  auth?: { unenforced?: "deny" | "open" };
 }
 
 /** Identity helper for authoring `pattern.config.ts` with type-checking. */
@@ -162,7 +172,9 @@ export async function loadProject(
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
   // The node connection registry up-front means `core.ws.*` ops (notify,
   // broadcast…) reach the same sockets the WS host accepts.
-  const engine = opts.engine ?? new Engine({ env: process.env, connections: new NodeConnectionRegistry() });
+  const engine =
+    opts.engine ??
+    new Engine({ env: process.env, connections: new NodeConnectionRegistry(), unenforcedAuth: config.auth?.unenforced });
 
   // The RunLedger (0.5 durable execution): created before the worker pool so
   // offloaded durable runs can bridge their records here. Sqlite-backed in

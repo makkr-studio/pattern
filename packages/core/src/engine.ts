@@ -137,6 +137,16 @@ export interface EngineOptions {
    * defaults). The Node adapter's `loadProject` injects `process.env`.
    */
   env?: Record<string, string | undefined>;
+  /**
+   * What a declared `requireAuth` does when NO auth provider is registered —
+   * i.e. when nobody can authenticate, so the requirement is unenforceable.
+   * `"deny"` (default) refuses the request with a reason that names the fix:
+   * a route that asked for authentication never serves open because a mod
+   * went missing. `"open"` is the explicit dev opt-in: the route serves
+   * unauthenticated and the host warns loudly at boot. Either way, adding a
+   * provider enforces the same declaration with zero workflow changes.
+   */
+  unenforcedAuth?: "deny" | "open";
 }
 
 export interface RunOptions {
@@ -178,6 +188,8 @@ export class Engine {
    *  forward traces via `ingestTrace`) can be wired after the engine exists. */
   private offloadTransport?: RunTransport;
   private readonly env: Record<string, string | undefined>;
+  /** Posture for a declared-but-unenforceable `requireAuth` (see EngineOptions). */
+  private readonly unenforcedAuth: "deny" | "open";
   /** Backstop (ms) for the streaming trace true-end; threaded into RunDeps. */
   private readonly streamDrainTtlMs?: number;
   /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
@@ -210,6 +222,7 @@ export class Engine {
     this.workflows = opts.workflows ?? new InMemoryWorkflowRegistry();
     this.connections = opts.connections ?? new InMemoryConnectionRegistry();
     this.env = opts.env ?? {};
+    this.unenforcedAuth = opts.unenforcedAuth ?? "deny";
     this.streamDrainTtlMs = opts.streamDrainTtlMs;
 
     const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal, hookDepth, opts) =>
@@ -312,6 +325,17 @@ export class Engine {
    */
   hasAuthProvider(): boolean {
     return this.auth.chain().length > 0;
+  }
+
+  /**
+   * How a declared `requireAuth` behaves right now: `"enforced"` (a provider
+   * is registered), `"denied"` (none — requests are refused, the default), or
+   * `"open"` (none, and the explicit `unenforcedAuth: "open"` opt-in serves
+   * them unauthenticated). Hosts phrase their boot warning from this.
+   */
+  authPosture(): "enforced" | "denied" | "open" {
+    if (this.hasAuthProvider()) return "enforced";
+    return this.unenforcedAuth === "open" ? "open" : "denied";
   }
 
   declareHook<P>(def: HookDefinition<P>): this {
@@ -682,15 +706,27 @@ export class Engine {
    * requirement is resolved against the engine's env map here, per call —
    * hosts never see the deferred form.
    */
-  authorize(principal: Principal, requirement: AuthRequirement | undefined) {
+  authorize(principal: Principal, requirement: AuthRequirement | undefined): { ok: true } | { ok: false; reason: string } {
     const resolved = resolveAuthRequirement(requirement, this.env);
     // A requirement is *unenforceable* with no auth provider registered: nobody
-    // can authenticate, so enforcing it would brick the route (401 with no way
-    // in). So a declared requireAuth degrades to **advisory** — the route serves
-    // open and the host warns loudly at boot. Add a provider and the *same*
-    // declaration is enforced, with zero workflow changes. (≥1 provider → normal
-    // 401/403; a present-but-failing provider still denies, fail-secure.)
-    if (resolved && !this.hasAuthProvider()) return { ok: true as const };
+    // can authenticate. The default is to DENY — a route that declared
+    // `requireAuth` must never serve open because a provider mod went missing
+    // (a boot warning is not a compensating control on a server nobody
+    // watches). The refusal names the fix. `unenforcedAuth: "open"` is the
+    // explicit opt-in for the old advisory-open behavior (local work with no
+    // sign-in at all); the host still warns loudly. Add a provider and the
+    // *same* declaration is enforced, with zero workflow changes. (≥1 provider
+    // → normal 401/403; a present-but-failing provider still denies.)
+    if (resolved && !this.hasAuthProvider()) {
+      if (this.unenforcedAuth === "open") return { ok: true };
+      return {
+        ok: false,
+        reason:
+          "this route requires authentication but no auth provider is installed — add one " +
+          "(e.g. @pattern-js/mod-identity) or, for local work without sign-in, set " +
+          '"auth": { "unenforced": "open" } in pattern.config.json',
+      };
+    }
     return meetsRequirement(principal, resolved);
   }
 

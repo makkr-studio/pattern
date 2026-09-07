@@ -87,9 +87,12 @@ SPA; the requirement is built in and stays constant across setups. Whether it's
 *enforced* depends on an auth provider:
 
 - **No provider** → the requirement can't be enforced (nobody can authenticate),
-  so the admin serves **advisory-open** and the host **warns loudly on every
-  boot**. Good for local work; the boot warning keeps it from being silently
-  exposed.
+  so by default the admin **refuses every request** (401, with a body naming
+  the fix) and the host **warns loudly on every boot**. A missing provider mod
+  never silently opens the control plane. For local work with no sign-in at
+  all, opt in explicitly — `"auth": { "unenforced": "open" }` in
+  `pattern.config.json` (what `create-pattern --no-auth` writes) — and the
+  admin serves open, still with the boot warning.
 - **Add `@pattern-js/mod-identity`** (+ a login method like
   `@pattern-js/mod-auth-magic-link`) → the *same* declaration is now enforced, the
   first boot prints a one-time bootstrap link that creates the first admin, and a

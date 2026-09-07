@@ -78,20 +78,33 @@ describe("admin secure-by-default (§9)", () => {
     expect(collectIssues(own, engine.ops).issues.some((i) => i.code === "privileged_without_auth")).toBe(false);
   });
 
-  it("the declared requireAuth is advisory-open (warned) with NO provider, enforced with ANY provider", async () => {
-    // No provider: declared but unenforceable → serves open, host warns at boot.
+  it("the declared requireAuth DENIES with NO provider (the refusal names the fix), serves open only by explicit opt-in, and is enforced with ANY provider", async () => {
+    // No provider, default posture: declared but unenforceable → REFUSED. A
+    // missing identity mod must never quietly open the control plane.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const engine = new Engine();
     await install(engine, [adminMod()]);
     const h1 = await createHttpHost(engine, { defaultPort: 4893 }).start();
-    expect((await fetch("http://localhost:4893/admin/api/workflows")).status).toBe(200); // advisory-open
-    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/no auth provider/i);
+    const refused = await fetch("http://localhost:4893/admin/api/workflows");
+    expect(refused.status).toBe(401);
+    expect(await refused.text()).toMatch(/no auth provider is installed.*mod-identity/s);
+    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/REFUSE every request/);
     await h1.close();
 
-    // A bare non-identity provider makes auth enforceable → the SAME declaration is now 401.
+    // The explicit opt-in (`auth.unenforced: "open"` — what `--no-auth` scaffolds
+    // write) serves open, and the host says so plainly at boot.
+    warn.mockClear();
+    const engineOpen = new Engine({ unenforcedAuth: "open" });
+    await install(engineOpen, [adminMod()]);
+    const h1b = await createHttpHost(engineOpen, { defaultPort: 4895 }).start();
+    expect((await fetch("http://localhost:4895/admin/api/workflows")).status).toBe(200);
+    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/serve UNAUTHENTICATED/);
+    await h1b.close();
+
+    // A bare non-identity provider makes auth enforceable → the SAME declaration is 401 — even with the opt-in.
     vi.spyOn(console, "log").mockImplementation(() => {});
     const dummyAuthMod: PatternMod = { name: "dummy-auth", authProviders: [{ name: "dummy", authenticate: async () => null }] };
-    const engine2 = new Engine();
+    const engine2 = new Engine({ unenforcedAuth: "open" });
     await install(engine2, [adminMod(), dummyAuthMod]);
     const h2 = await createHttpHost(engine2, { defaultPort: 4894 }).start();
     expect((await fetch("http://localhost:4894/admin/api/workflows")).status).toBe(401); // enforced

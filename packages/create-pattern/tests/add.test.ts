@@ -164,6 +164,16 @@ describe("create-pattern add", () => {
     expect(engine.ops.get("chat.turn.begin")).toBeDefined();
   });
 
+  it("adding auth to an open-admin project drops the explicit open opt-in", () => {
+    const dir = scaffold("relock", "--modpack", "studio", "--no-auth", "--no-docs");
+    expect(json(dir, "pattern.config.json").auth).toEqual({ unenforced: "open" });
+    const res = run(["add", "auth", "--no-examples"], dir);
+    expect(res.status, res.out).toBe(0);
+    expect(res.out).toMatch(/removed "auth"/);
+    expect(json(dir, "pattern.config.json").auth).toBeUndefined();
+    expect(json(dir, "pattern.config.json").mods).toContain("@pattern-js/mod-identity");
+  });
+
   it("never overwrites an existing workflow file", () => {
     const dir = scaffold("keeps", "--modpack", "studio", "--auth", "--docs", "--email", "console");
     writeFileSync(join(dir, "workflows", "checkout.json"), `{"id":"mine"}`);

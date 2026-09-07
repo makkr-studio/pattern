@@ -204,6 +204,25 @@ function packHasBuddy(pack: Modpack): boolean {
   return pack.mods.some((m) => m.includes("mod-buddy"));
 }
 
+function packHasAdmin(pack: Modpack): boolean {
+  return pack.mods.some((m) => m.includes("mod-admin"));
+}
+
+/**
+ * `--no-auth` on a pack that ships the admin: nothing can authenticate, so the
+ * admin's built-in `requireAuth` would refuse every request (the engine denies
+ * unenforceable requirements by default — a missing provider must never
+ * silently open a route). Record the choice EXPLICITLY — `auth.unenforced:
+ * "open"` — so the admin serves open on purpose, the host still warns at boot,
+ * and `pattern add auth` removes the line the moment a provider arrives.
+ */
+async function applyOpenAuth(targetDir: string): Promise<void> {
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as Record<string, unknown>;
+  cfg.auth = { unenforced: "open" };
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+}
+
 /**
  * Written into every mod-buddy pack: any MCP client that reads `.mcp.json`
  * (Claude Code first among them) auto-connects `pattern mcp` — the project's
@@ -2173,6 +2192,7 @@ async function scaffold(opts: Dims & {
   if (!opts.examples) await applyNoExamples(targetDir, base, opts.name);
   if (composing) await applyCompose(targetDir, layers, opts, opts.name);
   if (opts.auth) await applyAuth(targetDir, base, opts.magicLink, composing ? layers.includes("billing") : undefined);
+  else if (composing ? layers.includes("admin") : packHasAdmin(packOrThrow(opts.pack))) await applyOpenAuth(targetDir);
   // Compose: the email LAYER already owns mod-email + the driver placement.
   if (!composing && opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);
   // Resend delivery on the agent pack unlocks the inbound demo: email → agent → threaded reply.

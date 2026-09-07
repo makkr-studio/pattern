@@ -111,9 +111,11 @@ const OP_SCOPES: Record<string, AdminScope> = {
  * The in-op scope re-check (defense in depth): admin routes gate at the HTTP
  * boundary, but these ops are ALSO reachable inside tool workflows (the
  * `pattern_*` control-plane tools, `pattern mcp`), where the caller may hold a
- * granular API token instead of an admin session. Advisory-open without an
- * auth provider — EXACTLY mirroring engine.authorize's posture, so
- * zero-config dev keeps working.
+ * granular API token instead of an admin session. Skipped without an auth
+ * provider: the trigger already decided (denied by default, or the explicit
+ * `auth.unenforced: "open"` / `adminMod({ auth: false })` opt-ins), and with
+ * no provider there is no scope to check against — an in-op 403 would only
+ * brick the acknowledged-open configurations.
  */
 function requireScope(ctx: OpContext, engine: { hasAuthProvider(): boolean }, scope: AdminScope, type: string): void {
   if (!engine.hasAuthProvider()) return;

@@ -252,19 +252,31 @@ export class HttpHost {
 
   /**
    * Loud, honest signal: with NO auth provider installed, any route that
-   * *declares* `requireAuth` can't be enforced (nobody can authenticate) — the
-   * engine serves it open (advisory). Say so plainly at boot so it's never a
-   * silent surprise. Add a provider and the same declarations are enforced.
+   * *declares* `requireAuth` can't be enforced (nobody can authenticate). By
+   * default the engine DENIES those requests (the refusal names the fix); with
+   * the explicit `auth.unenforced: "open"` opt-in it serves them open. Say
+   * which at boot so neither is a silent surprise. Add a provider and the same
+   * declarations are enforced.
    */
   private warnIfUnenforceableAuth(): void {
-    if (this.engine.hasAuthProvider()) return;
+    const posture = this.engine.authPosture();
+    if (posture === "enforced") return;
     const gated = [...this.routes, ...this.apps].filter((r) => r.requireAuth).length;
     if (!gated) return;
+    if (posture === "open") {
+      console.warn(
+        `\n[pattern] ⚠ ${gated} route(s) declare requireAuth but NO auth provider is installed —\n` +
+          `[pattern]   auth.unenforced is "open", so they serve UNAUTHENTICATED (anyone who can reach\n` +
+          `[pattern]   the port has access). Add an auth provider (e.g. @pattern-js/mod-identity) to\n` +
+          `[pattern]   enforce them. Routes without requireAuth are unaffected.\n`,
+      );
+      return;
+    }
     console.warn(
       `\n[pattern] ⚠ ${gated} route(s) declare requireAuth but NO auth provider is installed —\n` +
-        `[pattern]   they are NOT enforced and serve UNAUTHENTICATED (anyone who can reach the\n` +
-        `[pattern]   port has access). Add an auth provider (e.g. @pattern-js/mod-identity) to enforce\n` +
-        `[pattern]   them. Routes without requireAuth are unaffected.\n`,
+        `[pattern]   they REFUSE every request (401) until you add one (e.g. @pattern-js/mod-identity).\n` +
+        `[pattern]   For local work without sign-in, set "auth": { "unenforced": "open" } in\n` +
+        `[pattern]   pattern.config.json. Routes without requireAuth are unaffected.\n`,
     );
   }
 

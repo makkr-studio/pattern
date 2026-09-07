@@ -147,7 +147,11 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
   const cfgPath = join(root, "pattern.config.json");
   if (!existsSync(pkgPath)) throw new Error(`no package.json next to ${cfgPath} — is this a scaffolded Pattern project?`);
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { name?: string; dependencies?: Record<string, string> };
-  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[]; workers?: { size: number; mods?: string[] } };
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as {
+    mods: string[];
+    workers?: { size: number; mods?: string[] };
+    auth?: { unenforced?: string };
+  };
   pkg.dependencies ??= {};
   cfg.mods ??= [];
 
@@ -287,6 +291,15 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
           if (magicLink) prependMod(MAGIC_LINK_MOD);
           prependMod(identityEntry); // prepend order: identity ends up first
           did = true;
+        }
+        // A provider makes every declared requireAuth enforceable — drop the
+        // scaffold's explicit "serve open" opt-in (`--no-auth` wrote it) so the
+        // admin locks the moment this boots, instead of staying open by a
+        // forgotten line.
+        if (cfg.auth?.unenforced === "open") {
+          delete cfg.auth.unenforced;
+          if (!Object.keys(cfg.auth).length) delete cfg.auth;
+          report.notes.push('removed "auth": { "unenforced": "open" } — sign-in makes the admin enforced now');
         }
         if (oidc && !cfg.mods.includes(OIDC_WRAPPER_PATH)) {
           addDep(OIDC_MOD);

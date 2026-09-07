@@ -143,6 +143,19 @@ describe("create-pattern scaffold dimensions", () => {
     expect(existsSync(join(agentic.dir, ".mcp.json"))).toBe(true);
   });
 
+  it("--no-auth on an admin pack records the open admin EXPLICITLY (the engine denies unenforceable requireAuth by default)", () => {
+    // No provider → the admin's built-in requireAuth can't be enforced → the
+    // engine refuses. The scaffold writes the opt-in so the choice is on
+    // record (and the boot warning still fires); an auth scaffold never does.
+    const open = scaffold("s-open-admin", "--modpack", "studio", "--no-auth");
+    expect(open.json("pattern.config.json").auth).toEqual({ unenforced: "open" });
+    const locked = scaffold("s-locked-admin", "--modpack", "studio", "--auth");
+    expect(locked.json("pattern.config.json").auth).toBeUndefined();
+    // Headless has no admin — nothing declares requireAuth, nothing to opt into.
+    const headless = scaffold("s-headless-open", "--modpack", "headless", "--no-auth");
+    expect(headless.json("pattern.config.json").auth).toBeUndefined();
+  });
+
   it("agentic + resend + examples writes the email→agent demo; agent-chat and --no-examples don't", () => {
     const a = scaffold("s-mail-agent", "--modpack", "agentic", "--auth", "--email", "resend");
     const wf = a.json("workflows/email-agent-reply.json") as { nodes: Array<{ op: string }> };
