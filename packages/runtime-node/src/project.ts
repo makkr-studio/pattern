@@ -178,18 +178,25 @@ export async function loadProject(
 
   // The RunLedger (0.5 durable execution): created before the worker pool so
   // offloaded durable runs can bridge their records here. Sqlite-backed in
-  // `.pattern-data/` (real values — gitignored); failure to open degrades to
-  // "durable runs aren't ledgered" with a warning, never a dead boot.
+  // `.pattern-data/` (real values — gitignored). Asked for — the default — means
+  // REQUIRED: a ledger that can't open is a dead boot that names the fix, never
+  // "durable workflows run without capture" — that would silently drop the very
+  // guarantee the author turned on. `durable.persist: false` is the explicit
+  // way to run without it.
   let runLedger: RunLedger | undefined;
   if (!opts.engine && config.durable?.persist !== false) {
+    const ledgerPath = config.durable?.path ?? resolve(baseDir, ".pattern-data/ledger.db");
     try {
-      runLedger = createRunLedger(config.durable?.path ?? resolve(baseDir, ".pattern-data/ledger.db"), {
-        keep: config.durable?.keep,
-      });
-      engine.provideService(RUN_LEDGER, runLedger);
+      runLedger = createRunLedger(ledgerPath, { keep: config.durable?.keep });
     } catch (err) {
-      console.warn(`[pattern] RunLedger unavailable (${err instanceof Error ? err.message : String(err)}) — durable workflows will run without capture`);
+      throw new Error(
+        `[pattern] the RunLedger could not open at ${ledgerPath}: ${err instanceof Error ? err.message : String(err)}. ` +
+          `Durable workflows (resume, re-run) need it — fix the path or its permissions, or set ` +
+          `"durable": { "persist": false } in pattern.config.json to run without it.`,
+        { cause: err },
+      );
     }
+    engine.provideService(RUN_LEDGER, runLedger);
   }
 
   if (!opts.engine && config.workers !== undefined) {
@@ -231,6 +238,22 @@ export async function loadProject(
     // Async: runs the resolve phase for any boundary config ports (e.g. a route
     // port fed by core.env). Plain `$env` config still works synchronously.
     await engine.registerWorkflowAsync(wf);
+  }
+
+  // Durability was asked for on a workflow but switched off at the project:
+  // say so at boot, by name. (The engine repeats it once per workflow at run
+  // time, which also covers flags toggled later from the admin.)
+  if (!opts.engine && !runLedger) {
+    const durable = engine.workflows
+      .list()
+      .filter((w) => w.durable === true)
+      .map((w) => w.id);
+    if (durable.length) {
+      console.warn(
+        `\n[pattern] ⚠ durable: true on ${durable.map((id) => `"${id}"`).join(", ")} but the RunLedger is off ` +
+          `(durable.persist: false) — these runs are NOT recorded; resume and re-run are unavailable.\n`,
+      );
+    }
   }
 
   const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host });
