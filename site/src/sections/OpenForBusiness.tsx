@@ -26,7 +26,7 @@ const BEATS: Beat[] = [
     hue: 190,
     title: "Keep promises",
     body:
-      "Mark a workflow durable and every node's exact inputs and outputs land in the RunLedger. A failed run resumes from the failing node — completed work is seeded, never re-executed — and provider calls carry idempotency seals, so even a retry can't double-charge. Kill a webhook run mid-flight, fix the bug, resume.",
+      "Mark a workflow durable and every node's exact inputs and outputs land in the RunLedger. A failed run resumes from the failing node — completed work is seeded, never re-executed — and provider calls carry idempotency seals that survive the resume, so a retried checkout replays instead of repeating. Anything whose outcome is unknown is named before you click. Kill a webhook run mid-flight, fix the bug, resume.",
     receipt: "email.send ×1 — resumed — still ×1",
   },
   {

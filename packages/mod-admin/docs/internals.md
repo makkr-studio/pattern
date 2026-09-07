@@ -95,7 +95,12 @@ in-flight runs are untouched). On top of snapshots + a live pointer: structural
 **JSON diff** between any two versions (optionally ignoring data-only
 `ui`/`title`/`comment`), promote/rollback as one-click pointer moves with an
 **audit trail**, drafts/autosave separate from published versions, and
-content-addressed dedupe.
+content-addressed dedupe. The content hash is core's `workflowBehavior` — the
+graph (nodes id/op/config/**retry**, edges) plus **`offload`** and
+**`durable`** — so anything the engine reads mints a new version, while a
+layout nudge, a title, or a comment refreshes the existing snapshot without
+one. Durable resume pins runs to the subset `workflowStructure` (flags
+excluded), from the same definition.
 
 ## 6. Extension surface (the adoption lever)
 

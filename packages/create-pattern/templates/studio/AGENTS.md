@@ -241,12 +241,15 @@ Add the identity mods to `pattern.config.json`:
   enforced (no provider)" note); installing a provider flips it on, and a
   logged-out browser now redirects to `/auth/login`. You **reconfigure
   nothing** (the admin's routes are code-derived each boot). Until a provider
-  exists, `requireAuth` routes serve open and the host warns loudly on boot.
-  Users / Invite / Sessions screens appear under "Access".
+  exists, `requireAuth` routes REFUSE requests (401 naming the fix) — unless
+  `pattern.config.json` carries `"auth": { "unenforced": "open" }`, which
+  `--no-auth` scaffolds write so the admin serves open on purpose; the host
+  warns loudly on boot either way. Users / Invite / Sessions screens appear
+  under "Access".
 - **Protect any route** with `requireAuth` on its trigger (the editor's auth
   selector, or `{ "scopes": ["admin"] }` in config). Same rule everywhere: a
-  declared requirement is enforced once a provider exists, advisory-open +
-  warned before that. The trigger's **`user` output port** carries
+  declared requirement is enforced once a provider exists, denied (or, with
+  the explicit opt-in, open + warned) before that. The trigger's **`user` output port** carries
   `{ id, email?, scopes, claims } | null`; wire it to scope data per user
   (e.g. `in.user → yourOp.owner`). In op code, `ctx.principal` has the same.
 - Signup is **invite-only** by default; customize via a wrapper mod

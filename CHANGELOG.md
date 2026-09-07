@@ -5,9 +5,10 @@ version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
 ## 0.5.0 — unreleased
 
-Open for business: durable execution (retry, resume, re-run — exactly-once
-where it counts), a payments contract with a Stripe driver, AI usage metering,
-failure alerts, and a `saas-starter` scaffold with a deploy story.
+Open for business: durable execution (retry, resume, re-run — completed work is
+never re-executed, external effects are sealed or confirmed), a payments
+contract with a Stripe driver, AI usage metering, failure alerts, and a
+`saas-starter` scaffold with a deploy story.
 
 ### Durable execution
 
@@ -30,19 +31,32 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   outputs — to `.pattern-data/ledger.db` (deliberately NOT the trace store,
   which stays sampled/capped/masked as a display surface; the ledger stores
   real values — protect `.pattern-data/` like your database). Zero per-node
-  cost when off; offloaded runs bridge records to the host ledger; boot
-  sweeps convert crashed runs into *resumable* interrupted errors (the trace
-  store's stuck `finished = 0` rows get the same treatment), with a one-minute
-  grace for a concurrent `pattern run` beside the dev server.
+  cost when off; offloaded runs bridge records to the host ledger. Crashed
+  runs become *resumable* interrupted errors — decided by process
+  **liveness**, never by run age: every writer heartbeats an owner row, and a
+  run whose owner is gone is swept at boot and on every beat, so a young run
+  of a dead process is caught while a long run of a live `pattern run` beside
+  the dev server is left alone (the trace store's stuck `finished = 0` rows
+  get the same treatment). Asked for means required: a ledger that can't open
+  is a boot error naming the fix, `durable.persist: false` is the explicit way
+  to run without one, and both boot and the engine say so — by workflow name —
+  when a durable workflow runs unrecorded.
 - **Resume & re-run.** `engine.rerun(runId)` — surfaced as **Resume** and
   **Re-run** buttons on the run detail — seeds every completed node's
   recorded outputs (the trigger-seeding move, generalized) and re-executes
   only the failed frontier: *fail after a send, fix, resume — the send count
-  stays at one.* The workflow's structure is hash-pinned to the run;
-  external-effect nodes that started but never finished are the danger zone —
-  resume refuses until a human confirms (the run page lists them). Resumed
-  runs carry `resumedFrom` lineage both ways; `from: "start"` replays the
-  recorded input as a fresh run.
+  stays at one.* The workflow's structure is hash-pinned to the run. The
+  **ambiguous zone** — external-effect nodes that started and never finished,
+  *or that failed without vouching the effect didn't happen* (a thrown error
+  never proves the provider didn't act; ops that know better stamp
+  `noEffect(err)`: setup failures, refused 4xx) — blocks an unconfirmed
+  resume. Either button first shows the **plan** (`engine.rerunPlan`,
+  `admin.run.rerun { dryRun }`): what reuses its recorded result, what
+  executes (external nodes tagged), what stays skipped, and why anything is
+  ambiguous. A resume keeps the run's idempotency lineage — `ctx.rootRunId`,
+  the first run of the chain — so sealed provider calls *replay*; `from:
+  "start"` is a new lineage and says plainly that every external node repeats.
+  Resumed runs carry `resumedFrom` both ways.
 - **A cancel is not an error.** Cancellation (admin stop, client disconnect,
   worker abort) now records `status: "canceled"` through the engine, the
   trace stores, the admin badges and filters — and Buddy's tool descriptions,
@@ -57,10 +71,16 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   ops for checkout, the customer portal, subscription state,
   `billing.entitled` (reads the local mapping, never the provider), and
   `billing.usage.record`; a `billing.event` trigger so "on payment failed →
-  email the user" is a canvas workflow. Webhook ingestion dedups on the
-  provider's stable event id and **projects subscription status into an
-  identity role only on actual entitlement transitions** — a renewal never
-  logs anyone out — so an active plan becomes a scope and
+  email the user" is a canvas workflow. Webhook ingestion claims each provider
+  event id with a delivery **state** (`processing` → `processed` | `failed`):
+  a redelivery of a processed event is a duplicate, of a failed one the retry
+  it exists for, and a twin still in flight is refused (409) rather than
+  acknowledged blind; deliveries per customer are serialized, and
+  state-bearing events are ordered by the provider's event time so a delayed
+  older `active` can never resurrect a canceled subscription. It **projects
+  subscription status into an identity role only on actual entitlement
+  transitions** — a renewal never logs anyone out — so an active plan becomes
+  a scope and
   `requireAuth: { scopes: ["pro"] }` gates paid features with no new code.
   mod-store and mod-identity are duck-typed: billing degrades gracefully
   without either. Admin → System → **Billing** manages accounts, customers,
@@ -76,10 +96,12 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   as the gate.
 
 - **Retries that can never double-charge.** Checkout, portal, and usage
-  recording pin their provider idempotency key to the run+node, so a per-node
-  `retry` (or a durable resume) replays the SAME session instead of minting a
-  second one — the ops are stamped `idempotent` by construction, and the
-  starter's payment workflows boot warning-free.
+  recording pin their provider idempotency key to the node within its run
+  *lineage* (`ctx.rootRunId`, carried across resumes), so a per-node `retry`
+  AND a durable resume replay the SAME session instead of minting a second one
+  — the ops are stamped `idempotent` by construction, their setup failures
+  carry the no-effect verdict, Stripe 4xx refusals do too (idempotency clashes
+  excepted), and the starter's payment workflows boot warning-free.
 - **Setup that guides instead of failing.** Billing that isn't configured yet
   (no account, unresolved key, no price — or the portal before a first
   subscription) answers a friendly 409 outcome the landing page renders as
@@ -237,9 +259,41 @@ failure alerts, and a `saas-starter` scaffold with a deploy story.
   regression test holds the file from a second process while the engine
   boots.
 
+- **`requireAuth` fails closed.** A declared requirement with NO auth provider
+  installed used to serve open (advisory, with a boot warning) — so a provider
+  mod going missing silently exposed every protected route, the admin
+  included. It now refuses (401, the reason names the fix); the old behavior
+  is an explicit `"auth": { "unenforced": "open" }` in pattern.config.json,
+  which `create-pattern --no-auth` writes for admin packs and `pattern add
+  auth` removes. `engine.authPosture()` tells hosts which applies.
+- **The version hash covers behavior.** `retry`, `durable`, and `offload`
+  hashed identical to their absence, so saving them reused the version id and
+  rewrote the deployed snapshot in place. Core now owns the one definition —
+  `workflowStructure` (what resume pins) and `workflowBehavior` (what
+  versioning hashes) — so a reliability change mints a new immutable version
+  while a layout nudge still doesn't; the diff reports `retry` and `durable`.
 - Inbound email (Resend) now **dedups svix redeliveries** when mod-store is
-  present (a CAS'd row per `svix-id` — ingest becomes exactly-once; without
-  mod-store, the 0.4 at-least-once behavior is unchanged).
+  present — a delivery-state row per `svix-id`, the same `processing` →
+  `processed` | `failed` machine as billing's: a failed ingest is retried on
+  redelivery, an in-flight twin is refused (409); without mod-store, the 0.4
+  at-least-once behavior is unchanged.
+- **Ops classify their failures.** Core's `noEffect(err)` stamps an error as
+  "thrown before any external effect happened"; the ledger records the
+  verdict and resume re-runs those nodes without a human call. Stamped:
+  mod-billing setup errors and Stripe 4xx (minus idempotency clashes),
+  mod-email preflight and Resend 4xx (minus 409).
+- **Admin, keyboard-complete.** Clickable table rows are real controls (Tab,
+  Enter/Space, focus ring); dialogs contain focus while open; dark-theme
+  secondary text lifts to ≈7.6:1. The frontend project joins `pnpm
+  typecheck`, so CI finally sees the SPA's types.
+- **Dependencies.** Vitest 5, Vite 8.2, React 19.2.8, Tailwind 4.3.3, motion
+  13, nodemailer 10, @clack/prompts 1.x, happy-dom 20, lucide 1.41, zod 4.5,
+  and the rest of the minors; the **Vercel AI SDK moves to v7** (`system` →
+  `instructions` at the call sites, speech/transcription out of
+  `experimental_`, `usage` accumulates across steps; every `@ai-sdk/*`
+  provider range follows its v7-era major; the retired v0 Vercel provider is
+  dropped; the usage tap reads the v4 provider spec and warns once about a
+  spec it can't). TypeScript stays 5.9 and `@types/node` on 22 on purpose.
 - `RunSummary`, the admin protocol, and the runs UI carry the `canceled`
   status; run detail exposes `ledgered` + `resumedFrom`.
 - The op count grows to **365** across the first-party mods (175 in the base
