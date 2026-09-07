@@ -6,12 +6,16 @@
  * sourced secrets (vault/env), then the driver — so secret VALUES never sit
  * in workflow values or persisted config.
  *
- * `ingestEvent` is the webhook heart: verify+parse via the driver, dedup on
- * the provider's stable event id (a CAS'd docs row — the row's version says
- * whether we created it), update the user ↔ customer mapping, project the
- * entitlement into an identity ROLE — but only on actual transitions, because
- * `setRoles` revokes sessions and a renewal must never log anyone out — then
- * emit the normalized `billing.*` events any workflow can build on.
+ * `ingestEvent` is the webhook heart: verify+parse via the driver, CLAIM the
+ * delivery (a docs row per provider event id with a processing state —
+ * `processing` → `processed` | `failed` — so a redelivery of a finished event
+ * is a duplicate, a redelivery of a FAILED one is a retry, and a concurrent
+ * one is refused rather than acknowledged), update the user ↔ customer
+ * mapping (serialized per customer, ordered by the provider's event time),
+ * project the entitlement into an identity ROLE — but only on actual
+ * transitions, because `setRoles` revokes sessions and a renewal must never
+ * log anyone out — then emit the normalized `billing.*` events any workflow
+ * can build on.
  */
 
 import { resolveSourced, type OpContext } from "@pattern-js/core";
@@ -93,12 +97,27 @@ export interface IngestResult {
   ok: true;
   /** The event type wasn't one the contract models — acknowledged, no-op. */
   ignored?: boolean;
-  /** Same provider event id seen before — acknowledged, projection skipped. */
+  /** Same provider event id already PROCESSED — acknowledged, projection skipped. */
   duplicate?: boolean;
+  /**
+   * Another delivery of this event is being processed right now. The webhook
+   * op answers non-2xx so the provider redelivers — acknowledging it would
+   * lose the event if the in-flight attempt then fails.
+   */
+  inflight?: boolean;
+  /** This delivery retried an event whose earlier attempt failed mid-projection. */
+  reprocessed?: boolean;
+  /** The event was older than the state already applied — recorded, not projected. */
+  stale?: boolean;
   kind?: BillingEvent["kind"];
   /** The role projection actually changed the user's roles this delivery. */
   roleChanged?: boolean;
 }
+
+/** How long a `processing` claim stands before another delivery may take it over (the claimer died). */
+const STALE_CLAIM_MS = 60_000;
+
+type Claim = { state: "own"; key: string; attempts: number } | { state: "duplicate" } | { state: "inflight" };
 
 export interface BillingService {
   /** Driver mods call this in their `ready()`; same-id re-registration replaces. */
@@ -135,6 +154,8 @@ export interface BillingService {
 export class DefaultBillingService implements BillingService {
   private readonly registry = new Map<string, BillingDriverSpec>();
   private ensured = false;
+  /** Per-customer projection locks: two deliveries for one customer never interleave their read-modify-write. */
+  private readonly locks = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly config: BillingConfigService,
@@ -279,30 +300,106 @@ export class DefaultBillingService implements BillingService {
     const evt = await driver.verifyAndParse(raw, headers, creds, account.options, ctx);
     if (!evt) return { ok: true, ignored: true };
 
-    // Dedup on the provider's stable event id: providers redeliver on non-2xx
-    // and timeouts. The upsert's returned version says who created the row —
-    // version 1 means this delivery owns the projection.
+    // Claim the delivery. Providers redeliver on non-2xx and timeouts, so the
+    // event id needs a durable state, not a mere "seen" mark: a row written
+    // BEFORE the projection and never updated would turn a crash mid-projection
+    // into a permanent duplicate — the customer never gets their role, and the
+    // provider is told all is well.
     const store = docsStore(ctx);
+    let claim: Claim | undefined;
     if (store) {
       await this.ensureCollections(store);
-      const row = await store.docs.put(EVENTS_COLLECTION, `${account.provider}:${evt.eventId}`, {
-        provider: account.provider,
-        account: account.name,
-        eventId: evt.eventId,
-        kind: evt.kind,
-        at: Date.now(),
-      });
-      if (row && row.version > 1) return { ok: true, duplicate: true, kind: evt.kind };
+      claim = await this.claimDelivery(store, account, evt);
+      if (claim.state === "duplicate") return { ok: true, duplicate: true, kind: evt.kind };
+      if (claim.state === "inflight") return { ok: true, inflight: true, kind: evt.kind };
+    }
+    const rowBase = { provider: account.provider, account: account.name, eventId: evt.eventId, kind: evt.kind, eventAt: evt.at };
+
+    let projection: { roleChanged?: boolean; stale?: boolean };
+    try {
+      // Serialized per customer: two deliveries for one customer (a renewal
+      // and a cancellation, say) read-modify-write the same mapping row.
+      projection = await this.withCustomerLock(this.customerKey(evt, account), () => this.project(evt, account, ctx));
+    } catch (err) {
+      // Leave a retryable record and fail the delivery: the provider's
+      // redelivery (or a manual resend) reprocesses it.
+      if (store && claim?.state === "own") {
+        await store.docs.put(EVENTS_COLLECTION, claim.key, {
+          ...rowBase,
+          status: "failed",
+          attempts: claim.attempts,
+          at: Date.now(),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      throw err;
+    }
+    if (store && claim?.state === "own") {
+      await store.docs.put(EVENTS_COLLECTION, claim.key, { ...rowBase, status: "processed", attempts: claim.attempts, at: Date.now() });
     }
 
-    const projection = await this.project(evt, account, ctx);
     ctx.services.events.emit(`billing.${evt.kind}`, {
       account: account.name,
       provider: account.provider,
       event: evt,
       ...projection,
     });
-    return { ok: true, kind: evt.kind, ...projection };
+    return {
+      ok: true,
+      kind: evt.kind,
+      ...(claim?.state === "own" && claim.attempts > 1 ? { reprocessed: true } : {}),
+      ...projection,
+    };
+  }
+
+  /**
+   * The delivery state machine, one docs row per provider event id:
+   *   (none)      → create `processing` (version 1 = ours; anything else lost a race → inflight)
+   *   processed   → duplicate (acknowledge, never re-project)
+   *   processing  → inflight while fresh; a STALE claim (its process died) is taken over
+   *   failed      → taken over (the retry the provider's redelivery exists for)
+   * Take-overs CAS on the row version so two takers can't both win. Rows
+   * written before states existed carry no status and count as processed —
+   * the pre-0.5.0 semantics they were written under.
+   */
+  private async claimDelivery(store: DocsLike, account: BillingAccount, evt: BillingEvent): Promise<Claim> {
+    const key = `${account.provider}:${evt.eventId}`;
+    const base = { provider: account.provider, account: account.name, eventId: evt.eventId, kind: evt.kind, eventAt: evt.at };
+    const now = Date.now();
+    const existing = await store.docs.get(EVENTS_COLLECTION, key);
+    if (!existing) {
+      const row = await store.docs.put(EVENTS_COLLECTION, key, { ...base, status: "processing", attempts: 1, at: now });
+      return row && row.version === 1 ? { state: "own", key, attempts: 1 } : { state: "inflight" };
+    }
+    const d = existing.data as { status?: string; attempts?: number; at?: number };
+    const status = d.status ?? "processed";
+    if (status === "processed") return { state: "duplicate" };
+    if (status === "processing" && now - (d.at ?? 0) < STALE_CLAIM_MS) return { state: "inflight" };
+    const attempts = (d.attempts ?? 1) + 1;
+    const row = await store.docs.put(EVENTS_COLLECTION, key, { ...base, status: "processing", attempts, at: now }, existing.version);
+    return row ? { state: "own", key, attempts } : { state: "inflight" };
+  }
+
+  private customerKey(evt: BillingEvent, account: BillingAccount): string | undefined {
+    const customerId = "customerId" in evt ? evt.customerId : undefined;
+    return customerId ? `${account.provider}:${customerId}` : undefined;
+  }
+
+  /** Run `fn` after every earlier holder of `key` has finished (in-process; the deployment model is one host). */
+  private async withCustomerLock<T>(key: string | undefined, fn: () => Promise<T>): Promise<T> {
+    if (!key) return fn();
+    const prev = this.locks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const mine = prev.then(() => gate);
+    this.locks.set(key, mine);
+    await prev.catch(() => {});
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === mine) this.locks.delete(key);
+    }
   }
 
   async accountSecret(accountName: string, field: string, ctx: OpContext): Promise<string | undefined> {
@@ -383,7 +480,7 @@ export class DefaultBillingService implements BillingService {
   private async ensureCollections(store: DocsLike): Promise<void> {
     if (this.ensured) return;
     this.ensured = true;
-    await store.docs.ensureCollection({ name: EVENTS_COLLECTION, indexes: ["provider", "kind"] });
+    await store.docs.ensureCollection({ name: EVENTS_COLLECTION, indexes: ["provider", "kind", "status"] });
     await store.docs.ensureCollection({ name: CUSTOMERS_COLLECTION, indexes: ["userId", "customerId", "provider"] });
   }
 
@@ -391,15 +488,22 @@ export class DefaultBillingService implements BillingService {
    * Fold one event into the customer mapping, then project entitlement into
    * the identity role. Events can arrive out of order (subscription.updated
    * may beat checkout.completed), so every mapping write MERGES and every
-   * write re-projects — whichever event lands last still converges.
+   * write re-projects. State-bearing events (subscription.*) additionally
+   * carry the provider's event time: one older than the watermark already
+   * applied is recorded but NOT projected — a delayed "active" delivered after
+   * a "deleted" would otherwise hand a canceled customer their access back.
    */
-  private async project(evt: BillingEvent, account: BillingAccount, ctx: OpContext): Promise<{ roleChanged?: boolean }> {
+  private async project(evt: BillingEvent, account: BillingAccount, ctx: OpContext): Promise<{ roleChanged?: boolean; stale?: boolean }> {
     const store = docsStore(ctx);
     const customerId = "customerId" in evt ? evt.customerId : undefined;
     if (!store || !customerId) return {};
 
     const id = `${account.provider}:${customerId}`;
     const existing = (await store.docs.get(CUSTOMERS_COLLECTION, id))?.data as unknown as BillingCustomer | undefined;
+    const stateBearing = evt.kind === "subscription.updated" || evt.kind === "subscription.deleted";
+    if (stateBearing && evt.at !== undefined && existing?.lastEventAt !== undefined && evt.at < existing.lastEventAt) {
+      return { stale: true };
+    }
     const next: BillingCustomer = {
       userId: existing?.userId,
       customerId,
@@ -411,6 +515,7 @@ export class DefaultBillingService implements BillingService {
       priceKeys: existing?.priceKeys,
       entitled: existing?.entitled ?? false,
       updatedAt: Date.now(),
+      lastEventAt: stateBearing ? (evt.at ?? existing?.lastEventAt) : existing?.lastEventAt,
     };
 
     switch (evt.kind) {

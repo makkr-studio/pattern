@@ -36,18 +36,25 @@ const addr = (v: string | { email?: string; name?: string } | undefined): string
   typeof v === "string" ? v : (v?.email ?? "");
 
 /* ── redelivery dedup (0.5) ───────────────────────────────────────────────
- * Svix redelivers on non-2xx and timeouts with the SAME `svix-id`. A CAS'd
- * docs row (the upsert's returned version says who created it — version 1
- * owns the ingest) makes ingestion exactly-once, mirroring mod-billing's
- * webhook dedup. mod-store is duck-typed, never imported: without it, dedup
- * degrades gracefully to the 0.4 at-least-once behavior. */
+ * Svix redelivers on non-2xx and timeouts with the SAME `svix-id`. One docs
+ * row per svix-id carries a delivery STATE — `processing` → `processed` |
+ * `failed` — mirroring mod-billing's webhook heart: a redelivery of a
+ * processed event is a duplicate (acknowledged, never re-ingested), a
+ * redelivery of a FAILED one is the retry svix exists for, and a concurrent
+ * one is refused (409) rather than acknowledged — a row merely marked "seen"
+ * before ingesting would turn a crash mid-ingest into a permanently lost
+ * email. mod-store is duck-typed, never imported: without it, dedup degrades
+ * gracefully to the 0.4 at-least-once behavior. */
 
 const EVENTS_COLLECTION = "email.inbound.events";
+/** How long a `processing` claim stands before a redelivery may take it over. */
+const STALE_CLAIM_MS = 60_000;
 
-/** The slice of mod-store's documents API the dedup row needs. */
+/** The slice of mod-store's documents API the delivery row needs. */
 interface DocsLike {
   docs: {
     ensureCollection(def: { name: string; indexes: string[] }): Promise<void>;
+    get(collection: string, id: string): Promise<{ data: Record<string, unknown>; version: number } | null>;
     put(
       collection: string,
       id: string,
@@ -57,17 +64,58 @@ interface DocsLike {
   };
 }
 
-/** True when this delivery is a redelivery someone else already ingested. */
-async function isRedelivery(
+type Claim = "own" | "duplicate" | "inflight" | "unavailable";
+
+/**
+ * Claim this delivery: `own` (ingest it, then `settleDelivery`), `duplicate`
+ * (already processed), `inflight` (another delivery holds a fresh claim),
+ * `unavailable` (no store / no svix-id — at-least-once, nothing to settle).
+ * Take-overs of failed or stale claims CAS on the row version.
+ */
+async function claimDelivery(services: Record<string, unknown>, svixId: string, account: string): Promise<Claim> {
+  const store = services["storeService"] as DocsLike | undefined;
+  if (!store?.docs || !svixId) return "unavailable";
+  await store.docs.ensureCollection({ name: EVENTS_COLLECTION, indexes: ["account", "status"] });
+  const key = `resend:${svixId}`;
+  const now = Date.now();
+  const existing = await store.docs.get(EVENTS_COLLECTION, key);
+  if (!existing) {
+    const row = await store.docs.put(EVENTS_COLLECTION, key, { account, status: "processing", attempts: 1, at: now });
+    return row && row.version === 1 ? "own" : "inflight";
+  }
+  const d = existing.data as { status?: string; attempts?: number; at?: number };
+  // Rows from before states existed carry no status: processed, as they were.
+  const status = d.status ?? "processed";
+  if (status === "processed") return "duplicate";
+  if (status === "processing" && now - (d.at ?? 0) < STALE_CLAIM_MS) return "inflight";
+  const row = await store.docs.put(
+    EVENTS_COLLECTION,
+    key,
+    { account, status: "processing", attempts: (d.attempts ?? 1) + 1, at: now },
+    existing.version,
+  );
+  return row ? "own" : "inflight";
+}
+
+/** Record how an owned claim ended; a `failed` row is what the next redelivery retries. */
+async function settleDelivery(
   services: Record<string, unknown>,
   svixId: string,
   account: string,
-): Promise<boolean> {
+  status: "processed" | "failed",
+  error?: unknown,
+): Promise<void> {
   const store = services["storeService"] as DocsLike | undefined;
-  if (!store?.docs || !svixId) return false;
-  await store.docs.ensureCollection({ name: EVENTS_COLLECTION, indexes: ["account"] });
-  const row = await store.docs.put(EVENTS_COLLECTION, `resend:${svixId}`, { account, at: Date.now() });
-  return Boolean(row && row.version > 1);
+  if (!store?.docs || !svixId) return;
+  const key = `resend:${svixId}`;
+  const attempts = ((await store.docs.get(EVENTS_COLLECTION, key))?.data.attempts as number | undefined) ?? 1;
+  await store.docs.put(EVENTS_COLLECTION, key, {
+    account,
+    status,
+    attempts,
+    at: Date.now(),
+    ...(error !== undefined ? { error: error instanceof Error ? error.message : String(error) } : {}),
+  });
 }
 
 const headerMap = (
@@ -142,9 +190,15 @@ export const resendWebhookOp: OpDefinition = {
     }
     // Resend sends several event families to one endpoint — ack what isn't inbound mail.
     if (payload.type && !/received/i.test(payload.type)) return { result: { ok: true, ignored: payload.type } };
-    // A redelivery (same svix-id) is acknowledged without re-ingesting.
-    if (await isRedelivery(ctx.services as unknown as Record<string, unknown>, headers["svix-id"] ?? "", account)) {
-      return { result: { ok: true, duplicate: true } };
+    // Claim the delivery (same svix-id → duplicate / in-flight / ours).
+    const services = ctx.services as unknown as Record<string, unknown>;
+    const svixId = headers["svix-id"] ?? "";
+    const claim = await claimDelivery(services, svixId, account);
+    if (claim === "duplicate") return { result: { ok: true, duplicate: true } };
+    if (claim === "inflight") {
+      // Refuse, don't acknowledge: svix redelivers on a non-2xx, and the
+      // in-flight attempt may yet fail.
+      return { result: httpOutcome("conflict", { error: "in_flight", message: "another delivery of this event is being processed — retry shortly" }) };
     }
     const data = payload.data ?? {};
     const headersIn = headerMap(data.headers);
@@ -170,7 +224,16 @@ export const resendWebhookOp: OpDefinition = {
         })),
       receivedAt: data.created_at ? Date.parse(data.created_at) || undefined : undefined,
     };
-    const message = await svc.ingestInbound(input, ctx);
+    let message: Awaited<ReturnType<EmailService["ingestInbound"]>>;
+    try {
+      message = await svc.ingestInbound(input, ctx);
+    } catch (err) {
+      // Leave a retryable record and fail the delivery — svix's redelivery
+      // (or a manual resend) ingests it then.
+      if (claim === "own") await settleDelivery(services, svixId, account, "failed", err);
+      throw err;
+    }
+    if (claim === "own") await settleDelivery(services, svixId, account, "processed");
     return { result: { ok: true, messageId: message.messageId, attachments: message.attachments.length } };
   },
 };

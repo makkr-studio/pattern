@@ -234,6 +234,7 @@ export default function BillingPage() {
           cols: [
             { key: "at", label: "At", render: (r) => ago(r.at) || "—" },
             { key: "kind", label: "Kind" },
+            { key: "status", label: "Delivery", render: (r) => h(ui.Badge, { hue: r.status === "processed" ? 150 : r.status === "failed" ? 340 : 45, title: r.error || undefined }, r.status + (r.attempts > 1 ? " ×" + r.attempts : "")) },
             { key: "eventId", label: "Event" },
             { key: "account", label: "Account" },
           ],

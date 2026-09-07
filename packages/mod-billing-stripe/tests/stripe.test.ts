@@ -297,6 +297,33 @@ describe("the seeded webhook route (raw bytes end to end)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, duplicate: true });
     expect(identity.setRolesCalls).toHaveLength(1); // unchanged
+    // The delivery row carries its state (the admin's Events table shows it).
+    expect((await store.docs.get("billing.events", "stripe:evt_sub_1"))?.data).toMatchObject({ status: "processed", attempts: 1 });
+  });
+
+  it("a delivery whose twin is still in flight is REFUSED (409) so Stripe redelivers — never acknowledged blind", async () => {
+    const inflight = JSON.stringify({ id: "evt_inflight", type: "customer.subscription.updated", created: 1_700_000_000, data: { object: { id: "sub_42", customer: "cus_42", status: "active", items: { data: [] } } } });
+    await store.docs.put("billing.events", "stripe:evt_inflight", { status: "processing", attempts: 1, at: Date.now() });
+    const res = await fetch(webhookUrl, { method: "POST", headers: { "stripe-signature": sign(inflight) }, body: inflight });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "in_flight" });
+  });
+
+  it("carries Stripe's `created` as the event time — the ordering guard's input", async () => {
+    const timed = JSON.stringify({
+      id: "evt_timed",
+      type: "customer.subscription.updated",
+      created: 1_700_000_000,
+      data: { object: { id: "sub_42", customer: "cus_42", status: "active", items: { data: [] } } },
+    });
+    const evt = await svc.driver("stripe")!.verifyAndParse(
+      new TextEncoder().encode(timed),
+      { "stripe-signature": sign(timed) },
+      { apiKey: "sk_test_x", webhookSecret: SECRET },
+      {},
+      opCtx,
+    );
+    expect(evt?.at).toBe(1_700_000_000_000);
   });
 
   it("rejects a bad signature with 401 — the signature IS the gate", async () => {

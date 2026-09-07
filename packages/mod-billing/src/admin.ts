@@ -309,9 +309,14 @@ const eventsList: OpDefinition = {
         return {
           eventId: d.eventId,
           kind: d.kind,
+          // Delivery state: processed | processing | failed (rows from before
+          // states existed count as processed — the semantics they had).
+          status: (d.status as string | undefined) ?? "processed",
+          attempts: (d.attempts as number | undefined) ?? 1,
           provider: d.provider,
           account: d.account,
           at: d.at ? new Date(d.at as number).toISOString() : "",
+          error: d.error,
         };
       }),
     };

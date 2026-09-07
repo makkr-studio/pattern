@@ -71,6 +71,17 @@ export const stripeWebhookOp: OpDefinition = {
     }
     try {
       const result = await svc.ingestEvent(raw, headers, account, ctx);
+      // Another delivery of this event is mid-projection: answer non-2xx so
+      // Stripe redelivers, instead of acknowledging an outcome we don't know.
+      if (result.inflight) {
+        return {
+          result: httpOutcome("conflict", {
+            error: "in_flight",
+            message: "another delivery of this event is being processed — retry shortly",
+            kind: result.kind,
+          }),
+        };
+      }
       return { result };
     } catch (err) {
       if (err instanceof BillingSignatureError) return { result: httpOutcome("unauthorized", { error: "bad_signature" }) };

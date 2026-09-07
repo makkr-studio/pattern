@@ -141,13 +141,16 @@ export const stripeBillingDriver: BillingDriverSpec = {
     const ok = verifyStripeSignature({ secret, header: headers["stripe-signature"] ?? "", payload: raw });
     if (!ok) throw new BillingSignatureError();
 
-    let event: { id?: string; type?: string; data?: { object?: Record<string, unknown> } };
+    let event: { id?: string; type?: string; created?: number; data?: { object?: Record<string, unknown> } };
     try {
       event = JSON.parse(Buffer.from(raw).toString("utf8")) as typeof event;
     } catch {
       throw new BillingSignatureError("signed payload is not JSON");
     }
     const eventId = event.id ?? "";
+    // Stripe does not guarantee delivery order; `created` (unix seconds) is
+    // what mod-billing orders state-bearing events by.
+    const at = typeof event.created === "number" ? event.created * 1000 : undefined;
     const obj = event.data?.object ?? {};
     const str = (k: string): string | undefined => (typeof obj[k] === "string" ? (obj[k] as string) : undefined);
 
@@ -160,6 +163,7 @@ export const stripeBillingDriver: BillingDriverSpec = {
         return {
           kind: "checkout.completed",
           eventId,
+          at,
           customerId: str("customer"),
           subscriptionId: str("subscription"),
           userRef: str("client_reference_id"),
@@ -173,6 +177,7 @@ export const stripeBillingDriver: BillingDriverSpec = {
         return {
           kind: "subscription.updated",
           eventId,
+          at,
           customerId: sub.customer,
           subscriptionId: sub.id,
           status: statusOf(sub.status),
@@ -182,14 +187,15 @@ export const stripeBillingDriver: BillingDriverSpec = {
       }
       case "customer.subscription.deleted": {
         const sub = obj as unknown as StripeSubscription;
-        return { kind: "subscription.deleted", eventId, customerId: sub.customer, subscriptionId: sub.id } satisfies BillingEvent;
+        return { kind: "subscription.deleted", eventId, at, customerId: sub.customer, subscriptionId: sub.id } satisfies BillingEvent;
       }
       case "invoice.paid":
-        return { kind: "invoice.paid", eventId, customerId: str("customer"), subscriptionId: str("subscription") } satisfies BillingEvent;
+        return { kind: "invoice.paid", eventId, at, customerId: str("customer"), subscriptionId: str("subscription") } satisfies BillingEvent;
       case "invoice.payment_failed":
         return {
           kind: "invoice.payment_failed",
           eventId,
+          at,
           customerId: str("customer"),
           subscriptionId: str("subscription"),
         } satisfies BillingEvent;

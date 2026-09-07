@@ -148,16 +148,19 @@ describe("Resend inbound webhook (ports 5065 + fake Resend 5106)", () => {
     expect(outbound).toHaveLength(0);
   });
 
-  it("dedups svix redeliveries when mod-store is present — ingest is exactly-once (0.5)", async () => {
-    // The duck-typed docs slice the dedup row needs: version 1 owns the ingest.
-    const rows = new Map<string, number>();
+  it("dedups svix redeliveries when mod-store is present — with delivery STATES, not a mere 'seen' mark (0.5)", async () => {
+    // The duck-typed docs slice the delivery row needs (get + CAS put).
+    const rows = new Map<string, { data: Record<string, unknown>; version: number }>();
     engineRef.provideService("storeService", {
       docs: {
         ensureCollection: async () => {},
-        put: async (_collection: string, id: string) => {
-          const version = (rows.get(id) ?? 0) + 1;
-          rows.set(id, version);
-          return { version };
+        get: async (_c: string, id: string) => rows.get(id) ?? null,
+        put: async (_c: string, id: string, data: Record<string, unknown>, expectedVersion?: number) => {
+          const cur = rows.get(id);
+          if (expectedVersion !== undefined && cur?.version !== expectedVersion) return null;
+          const row = { data, version: (cur?.version ?? 0) + 1 };
+          rows.set(id, row);
+          return row;
         },
       },
     });
@@ -166,6 +169,7 @@ describe("Resend inbound webhook (ports 5065 + fake Resend 5106)", () => {
     expect(first.status).toBe(200);
     await new Promise((r) => setTimeout(r, 150));
     expect(outbound).toHaveLength(1);
+    expect(rows.get("resend:msg_redelivered")?.data).toMatchObject({ status: "processed", attempts: 1 });
 
     // Svix redelivers the SAME svix-id on a timeout — acknowledged, not re-ingested.
     const second = await post(payload, svixHeaders(payload, { id: "msg_redelivered" }));
@@ -173,5 +177,18 @@ describe("Resend inbound webhook (ports 5065 + fake Resend 5106)", () => {
     expect((await second.json()) as object).toMatchObject({ ok: true, duplicate: true });
     await new Promise((r) => setTimeout(r, 120));
     expect(outbound).toHaveLength(1); // still exactly one auto-reply
+
+    // A delivery whose earlier attempt FAILED mid-ingest is retried, not swallowed.
+    rows.set("resend:msg_failed", { data: { status: "failed", attempts: 1, at: Date.now() - 5_000 }, version: 1 });
+    const retried = await post(payload, svixHeaders(payload, { id: "msg_failed" }));
+    expect(retried.status).toBe(200);
+    expect(((await retried.json()) as { duplicate?: boolean }).duplicate).toBeUndefined();
+    expect(rows.get("resend:msg_failed")?.data).toMatchObject({ status: "processed", attempts: 2 });
+
+    // A twin still in flight is refused (409) so svix redelivers — never acknowledged blind.
+    rows.set("resend:msg_live", { data: { status: "processing", attempts: 1, at: Date.now() }, version: 1 });
+    const live = await post(payload, svixHeaders(payload, { id: "msg_live" }));
+    expect(live.status).toBe(409);
+    expect((await live.json()) as object).toMatchObject({ error: "in_flight" });
   });
 });

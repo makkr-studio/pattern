@@ -62,7 +62,17 @@ export function isEntitled(status: SubscriptionStatus | undefined, gracePastDue:
 
 /* ── the normalized event union (what every driver parses INTO) ───────── */
 
-export type BillingEvent =
+export type BillingEvent = BillingEventBody & {
+  /**
+   * Provider event creation time (ms since epoch), when the provider reports
+   * one (Stripe's `event.created`). Providers don't guarantee delivery ORDER —
+   * the projection uses this to refuse a delayed older state-bearing event
+   * (a late "active" must never resurrect a canceled subscription).
+   */
+  at?: number;
+};
+
+type BillingEventBody =
   | {
       kind: "checkout.completed";
       /** Provider event id (evt_…) — stable across redeliveries; the dedup key. */
@@ -260,4 +270,6 @@ export interface BillingCustomer {
   priceKeys?: string[];
   entitled: boolean;
   updatedAt: number;
+  /** Provider time of the newest state-bearing event applied — the ordering guard's watermark. */
+  lastEventAt?: number;
 }

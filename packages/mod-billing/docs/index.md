@@ -60,11 +60,21 @@ the paths in the options, or set `pages: false` and serve them yourself.
 The driver mod seeds a signed webhook route. Every delivery is:
 
 1. **verified** against the account's signing secret (raw bytes, constant-time),
-2. **deduped** on the provider's stable event id — providers redeliver on
-   timeouts, and a double-processed `checkout.completed` is a support ticket
-   with money in it (needs `@pattern-js/mod-store`),
+2. **claimed** by the provider's stable event id (needs `@pattern-js/mod-store`).
+   Providers redeliver on timeouts, and a double-processed `checkout.completed`
+   is a support ticket with money in it — but a delivery that *failed*
+   mid-projection must not become a permanent "duplicate" either. So the row
+   carries a state: `processing` → `processed` (a redelivery is acknowledged,
+   never re-projected) or `failed` (the redelivery reprocesses it). A twin
+   still in flight is answered **409**, so the provider retries instead of
+   being told all is well. The admin's Events table shows the state and the
+   attempt count.
 3. **folded into the customer mapping** (`billing.customers`): user ↔
-   provider-customer, status, prices, entitlement — browsable in the admin,
+   provider-customer, status, prices, entitlement — browsable in the admin.
+   Deliveries for one customer are serialized, and state-bearing events
+   (`subscription.*`) are ordered by the provider's event time: a delayed
+   older `active` arriving after a `deleted` is recorded as `stale`, never
+   projected — canceled stays canceled.
 4. **projected into a role** (below), and
 5. **emitted** as a normalized `billing.*` event.
 

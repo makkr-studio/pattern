@@ -34,8 +34,10 @@ function fakeStore() {
         const row = coll(collection).get(id);
         return row ? { ...row, data: { ...row.data } } : null;
       },
-      async put(collection: string, id: string, data: Record<string, unknown>) {
+      async put(collection: string, id: string, data: Record<string, unknown>, expectedVersion?: number) {
         const existing = coll(collection).get(id);
+        // CAS semantics like the real stores: a stale expected version loses.
+        if (expectedVersion !== undefined && existing?.version !== expectedVersion) return null;
         const row = {
           id,
           data,
@@ -144,13 +146,21 @@ async function boot(
   return { engine, svc, config, driver, store, identity, ctx };
 }
 
-const subUpdated = (eventId: string, status = "active"): BillingEvent => ({
+const subUpdated = (eventId: string, status = "active", at?: number): BillingEvent => ({
   kind: "subscription.updated",
   eventId,
   customerId: "cus_1",
   subscriptionId: "sub_1",
   status: status as "active",
   priceKeys: ["price_pro"],
+  ...(at !== undefined ? { at } : {}),
+});
+const subDeleted = (eventId: string, at?: number): BillingEvent => ({
+  kind: "subscription.deleted",
+  eventId,
+  customerId: "cus_1",
+  subscriptionId: "sub_1",
+  ...(at !== undefined ? { at } : {}),
 });
 
 /* ── tests ────────────────────────────────────────────────────────────── */
@@ -180,6 +190,103 @@ describe("ingestEvent", () => {
     // The redelivery never re-projected.
     expect(identity.setRolesCalls).toHaveLength(1);
     expect(identity.setRolesCalls[0]).toEqual({ userId: "ada", roles: ["admin", "member"] });
+  });
+
+  it("a delivery that fails mid-projection is retryable, never a permanent duplicate", async () => {
+    const { svc, driver, identity, store, ctx } = await boot();
+    driver.parsed.push({ kind: "checkout.completed", eventId: "evt_0", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    // Identity hiccups exactly once, AFTER the event row exists.
+    const real = identity.setRoles.bind(identity);
+    let failOnce = true;
+    identity.setRoles = async (userId: string, roles: string[]) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error("identity down");
+      }
+      return real(userId, roles);
+    };
+    driver.parsed.push(subUpdated("evt_1"));
+    await expect(svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).rejects.toThrow("identity down");
+    // The row says FAILED (not "seen") — and the role was never granted. (The
+    // mapping row itself was written before the role step: a partial success
+    // the retry converges, visible as `failed` in the admin meanwhile.)
+    expect((await store.docs.get("billing.events", "fake:evt_1"))?.data).toMatchObject({ status: "failed", attempts: 1, error: "identity down" });
+    expect(identity.users.get("ada")!.roles).not.toContain("member");
+    // The provider redelivers → the SAME event id is reprocessed, not swallowed.
+    driver.parsed.push(subUpdated("evt_1"));
+    const retry = await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(retry).toMatchObject({ ok: true, reprocessed: true, roleChanged: true });
+    expect(retry.duplicate).toBeUndefined();
+    expect((await store.docs.get("billing.events", "fake:evt_1"))?.data).toMatchObject({ status: "processed", attempts: 2 });
+    expect((await svc.entitled({ userId: "ada" }, ctx)).entitled).toBe(true);
+    expect(identity.users.get("ada")!.roles).toContain("member");
+    // And NOW a redelivery is a duplicate.
+    driver.parsed.push(subUpdated("evt_1"));
+    expect(await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).toMatchObject({ ok: true, duplicate: true });
+  });
+
+  it("a concurrent delivery of the same event is refused (inflight), a stale claim is taken over", async () => {
+    const { svc, driver, store, ctx } = await boot();
+    // Someone else holds a FRESH claim → we must not acknowledge (the op answers 409).
+    await store.docs.put("billing.events", "fake:evt_live", { status: "processing", attempts: 1, at: Date.now() });
+    driver.parsed.push(subUpdated("evt_live"));
+    expect(await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).toMatchObject({ ok: true, inflight: true });
+    // A claim whose process died (stale) is ours to take over.
+    await store.docs.put("billing.events", "fake:evt_stale", { status: "processing", attempts: 1, at: Date.now() - 120_000 });
+    driver.parsed.push(subUpdated("evt_stale"));
+    const taken = await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(taken).toMatchObject({ ok: true, reprocessed: true });
+    expect((await store.docs.get("billing.events", "fake:evt_stale"))?.data).toMatchObject({ status: "processed", attempts: 2 });
+    // Rows from before delivery states existed count as processed.
+    await store.docs.put("billing.events", "fake:evt_legacy", { provider: "fake", eventId: "evt_legacy", at: 1 });
+    driver.parsed.push(subUpdated("evt_legacy"));
+    expect(await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).toMatchObject({ ok: true, duplicate: true });
+  });
+
+  it("a delayed OLDER subscription event never resurrects a canceled subscription", async () => {
+    const { svc, driver, identity, ctx } = await boot();
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push(subUpdated("e1", "active", 1_000));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx); // grants
+    driver.parsed.push(subDeleted("e2", 3_000));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx); // revokes
+    expect(identity.users.get("ada")!.roles).not.toContain("member");
+    // The provider delivers an "active" that was CREATED before the deletion — late.
+    driver.parsed.push(subUpdated("e3", "active", 2_000));
+    const late = await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(late).toMatchObject({ ok: true, stale: true });
+    expect(late.roleChanged).toBeUndefined();
+    expect(await svc.entitled({ userId: "ada" }, ctx)).toMatchObject({ entitled: false, status: "canceled" });
+    expect(identity.users.get("ada")!.roles).not.toContain("member");
+    // A genuinely newer event still applies (a re-subscription).
+    driver.parsed.push(subUpdated("e4", "active", 4_000));
+    expect((await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).roleChanged).toBe(true);
+    // Events without a provider time (drivers that don't report one) keep arrival order.
+    driver.parsed.push(subDeleted("e5"));
+    expect((await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).roleChanged).toBe(true);
+  });
+
+  it("deliveries for the SAME customer are serialized — no interleaved read-modify-write", async () => {
+    const { svc, driver, identity, ctx } = await boot();
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    // Make the projection slow enough to interleave without a lock.
+    const realGet = identity.getUser.bind(identity);
+    identity.getUser = async (id: string) => {
+      await new Promise((r) => setTimeout(r, 10));
+      return realGet(id);
+    };
+    driver.parsed.push(subUpdated("e1", "active", 1_000), subDeleted("e2", 2_000));
+    const [a, b] = await Promise.all([
+      svc.ingestEvent(new Uint8Array(), {}, "default", ctx),
+      svc.ingestEvent(new Uint8Array(), {}, "default", ctx),
+    ]);
+    expect(a.roleChanged).toBe(true); // granted
+    expect(b.roleChanged).toBe(true); // revoked — it saw the grant, not a stale snapshot
+    expect(identity.setRolesCalls.map((c) => c.roles)).toEqual([["admin", "member"], ["admin"]]);
+    expect(await svc.entitled({ userId: "ada" }, ctx)).toMatchObject({ entitled: false, status: "canceled" });
   });
 
   it("projects the role ONLY on transitions — renewals never touch setRoles", async () => {
