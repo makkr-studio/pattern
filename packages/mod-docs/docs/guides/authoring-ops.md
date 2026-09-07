@@ -96,6 +96,32 @@ can reach it without `requireAuth`. See *Designing your API* for the full discip
 - **Control ports are mostly invisible.** Ordinary ops don't read `in` or fire `out`; the engine does. Only control-flow ops declare `controlOut` and call `ctx.pulse`.
 - No shared mutable globals across runs. Reach the outside only through `ctx` capabilities: that's what keeps distribution open.
 
+## Replay-safety: `effects`, seals, and verdicts
+
+Durable execution (retry, resume, re-run) needs to know what happens if your
+op runs twice. Three things to get right:
+
+1. **Stamp `effects`.** `"pure"` (no external mutation), `"idempotent"`
+   (repeating converges — a CAS write, a provider call sealed with an
+   idempotency key), or `"external"` (a send, a charge, a generation — a
+   repeat duplicates it). *Absent means external*: an unstamped op reads as
+   "ask before re-running", never "silently double-charge". `effects` may be
+   a function of config (`core.http.fetch`: GET ⇒ idempotent, POST ⇒ external).
+2. **Seal provider calls with `ctx.rootRunId`.** It's the first run of the
+   resume lineage (= `ctx.runId` for a fresh run), so an idempotency key
+   pinned to `` `${ctx.rootRunId}:${ctx.nodeId}` `` stays identical when a
+   resume re-executes the node: the provider replays its stored response
+   instead of acting twice. Per-node retries share it too. A re-run from
+   start is a new lineage on purpose. (mod-billing's ops do exactly this.)
+3. **Give failures a verdict.** An `external` op that throws is *ambiguous*
+   by default — a provider can accept the charge and lose the response, so
+   "it threw" never proves "it didn't happen". When you *know* nothing left
+   the process (missing config, an unresolvable secret, invalid input) or the
+   provider refused outright (a 4xx that isn't an idempotency clash), wrap the
+   error: `throw noEffect(new Error(…))`. Resume then re-runs that node
+   without a human call; without the stamp, the run detail lists it in the
+   ambiguous zone and waits for confirmation.
+
 ## A control-flow op
 
 Declare `controlOut` ports and pulse selectively. The engine marks the ones you

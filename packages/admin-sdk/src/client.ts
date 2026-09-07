@@ -17,6 +17,7 @@ import type { NodePorts,
   OpInfo,
   PortCompatibility,
   PortRef,
+  RerunResult,
   RunDetail,
   RunInput,
   RunResult,
@@ -142,14 +143,15 @@ export class AdminClient {
     /**
      * Re-run a ledgered (durable) run. from="failure" (default) resumes from
      * the failing node, seeding completed nodes' recorded outputs; "start"
-     * replays the recorded input as a fresh run. `blocked` comes back when
-     * ambiguous external-effects nodes need `confirmExternal: true`.
+     * replays the recorded input as a fresh run. `dryRun: true` returns the
+     * `plan` (what reuses, executes, stays skipped, and which external-effect
+     * nodes are ambiguous) without starting anything — show it before the
+     * click. `blocked` comes back when ambiguous nodes need `confirmExternal: true`.
      */
     rerun: (
       runId: string,
-      opts: { from?: "failure" | "start"; confirmExternal?: boolean } = {},
-    ): Promise<{ ok: boolean; runId?: string; blocked?: Array<{ nodeId: string; op: string }>; message?: string }> =>
-      this.request("POST", `/runs/${encodeURIComponent(runId)}/rerun`, opts),
+      opts: { from?: "failure" | "start"; confirmExternal?: boolean; dryRun?: boolean } = {},
+    ): Promise<RerunResult> => this.request("POST", `/runs/${encodeURIComponent(runId)}/rerun`, opts),
   };
   metrics = (minutes?: number): Promise<MetricsSummary> => this.request("GET", `/metrics${qs({ window: minutes })}`);
 

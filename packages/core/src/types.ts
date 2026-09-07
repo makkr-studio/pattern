@@ -365,6 +365,14 @@ export interface OpContext {
 
   // — capabilities (§4) —
   readonly runId: string;
+  /**
+   * The first run of this run's resume lineage (= `runId` unless this run
+   * resumed an earlier one). Pin provider idempotency keys to it —
+   * `${ctx.rootRunId}:${ctx.nodeId}` — so a node re-executed by a resume
+   * replays the provider's stored response instead of charging/sending twice.
+   * A re-run from start starts a fresh lineage on purpose.
+   */
+  readonly rootRunId: string;
   readonly nodeId: string;
   readonly workflowId: string;
   /** Run-scoped parameters (read by `core.input`); serializable. */
@@ -674,6 +682,12 @@ export interface RunRequest {
   seed?: import("./durable/ledger.js").LedgerNodeRecord[];
   /** Lineage: the ledgered run this one resumes / re-runs (recorded, not read). */
   resumedFrom?: string;
+  /**
+   * Lineage root for provider idempotency: the first run of the resume chain.
+   * Set by `engine.rerun({ from: "failure" })`; absent ⇒ this run is its own
+   * root. Exposed to ops as `ctx.rootRunId`.
+   */
+  rootRunId?: string;
 }
 
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */

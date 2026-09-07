@@ -11,7 +11,7 @@
  * processor swap untouched.
  */
 
-import { z, secretRefSchema } from "@pattern-js/core";
+import { noEffect, z, secretRefSchema } from "@pattern-js/core";
 import type { OpContext } from "@pattern-js/core";
 
 export { secretRefSchema, type SecretRef } from "@pattern-js/core";
@@ -107,6 +107,7 @@ export class BillingSignatureError extends Error {
   constructor(message = "webhook signature verification failed") {
     super(message);
     this.name = "BillingSignatureError";
+    noEffect(this); // rejected at the door — nothing was projected
   }
 }
 
@@ -120,6 +121,7 @@ export class BillingNotConfiguredError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "BillingNotConfiguredError";
+    noEffect(this); // setup failed before any provider call — safe to re-run
   }
 }
 
@@ -132,6 +134,7 @@ export class BillingNoCustomerError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "BillingNoCustomerError";
+    noEffect(this); // nothing to act on — no provider call was made
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Engine, MemoryRunLedger, RUN_LEDGER, ResumeBlockedError, type Workflow } from "@pattern-js/core";
+import { Engine, MemoryRunLedger, RUN_LEDGER, ResumeBlockedError, hasNoEffect, noEffect, type Workflow } from "@pattern-js/core";
 
 /**
  * The durable-resume harness: in → send (external, counts) → shaky (fails
@@ -22,11 +22,16 @@ function harness() {
       return { out: `sent:${await ctx.input.value("value")}` };
     },
   });
+  const roots: string[] = [];
   engine.registerOp({
     type: "t.shaky",
+    // Stamped pure: a failed PURE node re-runs without a human call. (An
+    // unstamped/external failure is the ambiguous case — tested below.)
+    effects: "pure",
     inputs: { value: { kind: "value", required: true } },
     outputs: { out: { kind: "value" } },
     execute: async (ctx) => {
+      roots.push(ctx.rootRunId);
       // Pull the input FIRST (like a real op), then fail — so the upstream
       // node completes before the run tears down.
       const v = await ctx.input.value("value");
@@ -50,7 +55,7 @@ function harness() {
     ],
   } as Workflow;
   engine.registerWorkflow(wf);
-  return { engine, ledger, wf, sends: () => sends, heal: () => (healed = true) };
+  return { engine, ledger, wf, sends: () => sends, heal: () => (healed = true), roots };
 }
 
 describe("engine.rerun — resume from failure", () => {
@@ -88,6 +93,146 @@ describe("engine.rerun — resume from failure", () => {
     const second = await result;
     expect(second.status).toBe("ok");
     expect(h.sends()).toBe(2); // confirmed re-run really re-sent
+  });
+
+  it("an EXTERNAL node that failed is ambiguous too — a thrown error never proves the effect didn't happen", async () => {
+    // The provider accepted the charge and the response got lost: the op threw,
+    // but the money moved. Resume must ask, exactly as it does for "started".
+    const engine = new Engine();
+    const ledger = new MemoryRunLedger();
+    engine.provideService(RUN_LEDGER, ledger);
+    let calls = 0;
+    engine.registerOp({
+      type: "t.charge",
+      effects: "external",
+      inputs: { value: { kind: "value", required: true } },
+      outputs: { out: { kind: "value" } },
+      execute: async (ctx) => {
+        const v = await ctx.input.value("value");
+        calls++;
+        if (calls === 1) throw new Error("socket hang up (after the provider committed)");
+        return { out: `charged:${v}` };
+      },
+    });
+    engine.registerWorkflow({
+      id: "chg",
+      durable: true,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["v"] } },
+        { id: "charge", op: "t.charge" },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "v" }, to: { node: "charge", port: "value" } },
+        { from: { node: "charge", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    } as Workflow);
+    const first = await engine.run("chg", { input: { v: "inv-9" } });
+    expect(first.status).toBe("error");
+    // The ledger recorded the failure WITHOUT a no-effect verdict…
+    const rec = (await ledger.get(first.runId))!;
+    expect(rec.nodes.find((n) => n.nodeId === "charge")).toMatchObject({ status: "error", error: { message: expect.stringMatching(/socket hang up/) } });
+    expect(rec.nodes.find((n) => n.nodeId === "charge")?.error?.noEffect).toBeUndefined();
+    // …so the plan flags it, and an unconfirmed resume refuses.
+    const plan = await engine.rerunPlan(first.runId);
+    expect(plan.ambiguous).toEqual([{ nodeId: "charge", op: "t.charge", reason: "error" }]);
+    await expect(engine.rerun(first.runId)).rejects.toThrow(ResumeBlockedError);
+    await expect(engine.rerun(first.runId)).rejects.toThrow(/unknown outcome/);
+    const { result } = await engine.rerun(first.runId, { confirmExternal: true });
+    expect((await result).status).toBe("ok");
+    expect(calls).toBe(2);
+  });
+
+  it("an external node whose error carries the noEffect verdict resumes without asking", async () => {
+    const engine = new Engine();
+    const ledger = new MemoryRunLedger();
+    engine.provideService(RUN_LEDGER, ledger);
+    let configured = false;
+    engine.registerOp({
+      type: "t.send2",
+      effects: "external",
+      inputs: { value: { kind: "value", required: true } },
+      outputs: { out: { kind: "value" } },
+      execute: async (ctx) => {
+        const v = await ctx.input.value("value");
+        // Preflight: nothing left the process — the op says so.
+        if (!configured) throw noEffect(new Error("no API key configured"));
+        return { out: `sent:${v}` };
+      },
+    });
+    engine.registerWorkflow({
+      id: "snd",
+      durable: true,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["v"] } },
+        { id: "send", op: "t.send2" },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "v" }, to: { node: "send", port: "value" } },
+        { from: { node: "send", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    } as Workflow);
+    const first = await engine.run("snd", { input: { v: "hi" } });
+    expect(first.status).toBe("error");
+    const rec = (await ledger.get(first.runId))!;
+    expect(rec.nodes.find((n) => n.nodeId === "send")?.error).toEqual({ message: "no API key configured", noEffect: true });
+    // The verdict travels through a wrapping cause too.
+    expect(hasNoEffect(new Error("outer", { cause: noEffect(new Error("inner")) }))).toBe(true);
+    configured = true;
+    const plan = await engine.rerunPlan(first.runId);
+    expect(plan.ambiguous).toEqual([]);
+    expect(plan.execute.map((n) => n.nodeId)).toEqual(["send", "out"]);
+    const { result } = await engine.rerun(first.runId); // no confirmation needed
+    expect((await result).status).toBe("ok");
+  });
+
+  it("resume carries the lineage root (ctx.rootRunId) — re-run from start opens a new one", async () => {
+    const h = harness();
+    const first = await h.engine.run("pay", { input: { v: "seal-me" } });
+    expect(first.status).toBe("error");
+    expect(h.roots).toEqual([first.runId]); // a fresh run is its own root
+    h.heal();
+    const { runId: resumedId, result } = await h.engine.rerun(first.runId);
+    await result;
+    // The resumed run has a NEW run id but the SAME root — a provider key
+    // pinned to `${rootRunId}:${nodeId}` replays instead of repeating.
+    expect(resumedId).not.toBe(first.runId);
+    expect(h.roots).toEqual([first.runId, first.runId]);
+    expect((await h.ledger.get(resumedId))!.header.rootRunId).toBe(first.runId);
+    // A resume of the resume still points at the original root.
+    const { runId: againId, result: again } = await h.engine.rerun(resumedId, { from: "start" });
+    await again;
+    expect(h.roots[2]).toBe(againId); // from start = a new lineage, on purpose
+    expect((await h.ledger.get(againId))!.header.rootRunId).toBe(againId);
+  });
+
+  it("rerunPlan tells the truth before the click", async () => {
+    const h = harness();
+    const first = await h.engine.run("pay", { input: { v: "plan" } });
+    const plan = await h.engine.rerunPlan(first.runId);
+    expect(plan).toEqual({
+      runId: first.runId,
+      from: "failure",
+      reuse: [{ nodeId: "send", op: "t.send" }],
+      execute: [
+        { nodeId: "shaky", op: "t.shaky", effects: "pure" },
+        { nodeId: "out", op: "boundary.return", effects: "pure" },
+      ],
+      skipped: [],
+      ambiguous: [],
+    });
+    // From start: everything executes, and the external node is named.
+    const fresh = await h.engine.rerunPlan(first.runId, "start");
+    expect(fresh.reuse).toEqual([]);
+    expect(fresh.execute.map((n) => [n.nodeId, n.effects])).toEqual([
+      ["send", "external"],
+      ["shaky", "pure"],
+      ["out", "pure"],
+    ]);
+    // A forged crash-mid-send shows up as the "started" flavor of ambiguous.
+    h.ledger.nodeFinished({ runId: first.runId, nodeId: "send", status: "started" });
+    expect((await h.engine.rerunPlan(first.runId)).ambiguous).toEqual([{ nodeId: "send", op: "t.send", reason: "started" }]);
   });
 
   it("pins the workflow structure: a changed doc refuses to resume", async () => {
@@ -137,6 +282,7 @@ describe("engine.rerun — resume from failure", () => {
     });
     engine.registerOp({
       type: "t.shaky2",
+      effects: "pure",
       inputs: { value: { kind: "value", required: true } },
       outputs: { out: { kind: "value" } },
       execute: async (ctx) => {

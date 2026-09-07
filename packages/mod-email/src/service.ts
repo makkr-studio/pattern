@@ -9,7 +9,7 @@
  * driver. Secret VALUES never sit in workflow values or persisted config.
  */
 
-import { resolveSourced, type OpContext } from "@pattern-js/core";
+import { noEffect, resolveSourced, type OpContext } from "@pattern-js/core";
 import { renderEmailMarkdown } from "./markdown.js";
 import { DEFAULT_ACCOUNT, type EmailConfigService } from "./config.js";
 import { blobStore, STORE_SERVICE_KEY, type BlobStoreLike } from "./well-known.js";
@@ -79,7 +79,9 @@ export class DefaultEmailService implements EmailService {
     const name = typeof input.account === "string" ? input.account : (input.account?.account ?? DEFAULT_ACCOUNT);
     const account = this.config.account(name);
     if (!account) {
-      throw new Error(`mod-email: no account "${name}" is configured — add it in admin → System → Email.`);
+      // Preflight failures never reach a provider — stamp them so durable
+      // resume re-runs the node without asking (see core's `noEffect`).
+      throw noEffect(new Error(`mod-email: no account "${name}" is configured — add it in admin → System → Email.`));
     }
     return this.sendVia(account, input, ctx);
   }
@@ -163,13 +165,25 @@ export class DefaultEmailService implements EmailService {
   private async sendVia(account: EmailAccount, input: SendInput, ctx: OpContext): Promise<SendResult> {
     const driver = this.registry.get(account.provider);
     if (!driver) {
-      throw new Error(
-        `mod-email: account "${account.name}" uses provider "${account.provider}" but no such driver is registered — ` +
-          `install its mod (e.g. @pattern-js/mod-email-${account.provider}) and list it in pattern.config.json.`,
+      throw noEffect(
+        new Error(
+          `mod-email: account "${account.name}" uses provider "${account.provider}" but no such driver is registered — ` +
+            `install its mod (e.g. @pattern-js/mod-email-${account.provider}) and list it in pattern.config.json.`,
+        ),
       );
     }
-    const creds = await this.resolveSecrets(driver, account, ctx);
-    const message = await this.normalize(input, account, ctx);
+    // Everything up to `driver.send` is preflight: a missing secret, an empty
+    // recipient list, a missing body, an unknown blob — nothing left the
+    // process, so those errors carry the no-effect verdict. The driver call
+    // itself is the ambiguous zone (drivers classify what they can).
+    let message: EmailMessage;
+    let creds: Record<string, string>;
+    try {
+      creds = await this.resolveSecrets(driver, account, ctx);
+      message = await this.normalize(input, account, ctx);
+    } catch (err) {
+      throw err instanceof Error ? noEffect(err) : err;
+    }
     const { messageId } = await driver.send(message, creds, account.options, ctx);
     return { messageId, provider: account.provider, account: account.name };
   }

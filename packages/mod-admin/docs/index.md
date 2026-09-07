@@ -28,12 +28,17 @@ is served through the app boundary alongside the rest of your app.
 - **Resume & re-run** (0.5): runs of `durable: true` workflows carry two extra
   buttons on the run detail — **Resume** (failed runs: completed nodes are
   seeded from the RunLedger, only the failed frontier re-executes) and
-  **Re-run** (any run: a fresh run with the recorded trigger input). When
-  resume would cross an external-effect node that started but never finished,
-  a confirm panel lists the ambiguous nodes and waits for a human call.
-  Resumed runs link their lineage both ways (“↻ resumed from …”). The gear
-  modal's **Durable runs** toggle opts a workflow in; the Inspector's
-  **Reliability** group sets a node's retry policy.
+  **Re-run** (any run: a fresh run with the recorded trigger input). Either
+  click first shows the **plan** — which nodes reuse their recorded result,
+  which execute (external-effect ones tagged), which skips hold — and names
+  the **ambiguous zone**: external-effect nodes that started and never
+  finished, *or failed without saying the effect didn't happen*; their send or
+  charge may already exist, so resuming through them is a human call. A
+  re-run from start says plainly that every external node repeats (it opens a
+  new idempotency lineage; a resume keeps the original run's). Resumed runs
+  link their lineage both ways (“↻ resumed from …”). The gear modal's
+  **Durable runs** toggle opts a workflow in; the Inspector's **Reliability**
+  group sets a node's retry policy.
 - **Versions + diff**: one live version per slug over an immutable history;
   structural JSON diff between any two versions; promote / rollback are
   one-click pointer moves with an audit trail.

@@ -83,15 +83,22 @@ function unavailableOutcome(err: unknown): Record<string, unknown> | null {
   return null;
 }
 
-/** The provider retry seal, pinned to this run+node — a retried attempt replays, never repeats. */
-const retrySeal = (ctx: OpContext): string => `${ctx.runId}:${ctx.nodeId}`;
+/**
+ * The provider retry seal, pinned to this node in its run LINEAGE — a retried
+ * attempt replays, and so does a resumed one: `rootRunId` is the first run of
+ * the resume chain, so the key survives `Resume` (a re-run from start is a new
+ * lineage, and a new key, on purpose). Falls back to `runId` for hand-built
+ * contexts that predate the field.
+ */
+const retrySeal = (ctx: OpContext): string => `${ctx.rootRunId ?? ctx.runId}:${ctx.nodeId}`;
 
 export const checkoutCreateOp: OpDefinition = {
   type: "billing.checkout.create",
   // Idempotent by construction: the provider idempotency key is pinned to the
-  // run+node, so repeating with the same inputs replays the SAME session
-  // (Stripe stores idempotent POSTs ≥24h). A per-node retry converges; resume
-  // never re-runs a completed node; a FRESH run means a fresh key on purpose.
+  // node within its run LINEAGE (rootRunId), so repeating with the same inputs
+  // replays the SAME session (Stripe stores idempotent POSTs ≥24h). A per-node
+  // retry converges; resume never re-runs a completed node and keeps the key
+  // for one that failed; a re-run from START means a fresh key on purpose.
   effects: "idempotent",
   title: "billing.checkout.create",
   description:

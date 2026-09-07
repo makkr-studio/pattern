@@ -37,6 +37,14 @@ export interface LedgerRunHeader {
   parentRunId?: string;
   /** Set on runs started by `resume`/`re-run` — the run they replay. */
   resumedFrom?: string;
+  /**
+   * The first run of this run's resume lineage (= `runId` for a fresh run).
+   * Resume carries it forward, so provider idempotency keys pinned to
+   * `ctx.rootRunId` stay identical across resumes — a resumed node REPLAYS
+   * its provider call instead of repeating it. A re-run from start is a new
+   * lineage on purpose.
+   */
+  rootRunId?: string;
   status: LedgerRunStatus;
   error?: { message: string; nodeId?: string };
   startedAt: number;
@@ -56,6 +64,12 @@ export interface LedgerNodeRecord {
   streaming?: boolean;
   /** Some output value refused serialization — not seedable, run untouched. */
   unserializable?: boolean;
+  /**
+   * For `status: "error"`: what the op threw, and whether it vouched that no
+   * external effect happened (`noEffect(err)`). Without that verdict an
+   * `external` node's failure is an unknown outcome — resume asks first.
+   */
+  error?: { message: string; noEffect?: boolean };
   startedAt?: number;
   endedAt?: number;
 }

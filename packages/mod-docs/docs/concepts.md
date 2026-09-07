@@ -138,11 +138,25 @@ The ledger is what **resume** and **re-run** replay from. Resume seeds every
 completed node's recorded outputs back into the slots (the same move that seeds
 a trigger) and re-executes only the failed frontier — an `email.send` that
 already happened is *seeded, not re-sent*. The workflow's structure is
-hash-pinned to the run (roll back first if it changed); external-effect nodes
-that *started but never finished* are the danger zone — resume refuses to cross
-them until a human confirms. Streaming nodes re-run whole (streams keep no
-history). A cancel, meanwhile, is its own terminal status — `canceled`, not
-`error` — through the result, the trace stores, and the admin.
+hash-pinned to the run (roll back first if it changed). Two more things keep
+"resume" from meaning "repeat":
+
+- **Lineage seals.** A resumed run keeps the original run's `rootRunId`, and
+  ops pin provider idempotency keys to `${ctx.rootRunId}:${ctx.nodeId}` — so
+  a node that failed and re-executes *replays* the provider's stored response
+  (one checkout session, one charge). A re-run from start is a new lineage,
+  on purpose.
+- **The ambiguous zone.** External-effect nodes whose outcome is unknown —
+  they *started and never finished* (the process died mid-call), or they
+  *failed without a verdict* (a thrown error never proves the provider didn't
+  act) — block an unconfirmed resume. Ops that know better stamp their errors
+  `noEffect(err)` (nothing left the process; the provider refused outright),
+  and those re-run without asking. The admin shows the whole plan — reused,
+  executing, skipped, ambiguous — before the click.
+
+Streaming nodes re-run whole (streams keep no history). A cancel, meanwhile,
+is its own terminal status — `canceled`, not `error` — through the result, the
+trace stores, and the admin.
 
 ## Distribution (an invariant)
 

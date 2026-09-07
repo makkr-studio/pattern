@@ -418,12 +418,24 @@ const runResume = adminOp("admin.run.resume", "Resume a paused run.", { in: { ru
 }));
 const runRerun = adminOp(
   "admin.run.rerun",
-  "Re-run a ledgered (durable) run: from=start replays the recorded input as a fresh run; from=failure seeds every completed node's recorded outputs and re-executes the failed frontier onward. Returns { ok, runId } or { ok: false, blocked } when ambiguous external-effects nodes need confirmExternal.",
-  { in: { runId: P(), from: Bd(z.enum(["failure", "start"]).optional()), confirmExternal: Bd(z.boolean().optional()) }, out: "result" },
+  "Re-run a ledgered (durable) run: from=start replays the recorded input as a fresh run; from=failure seeds every completed node's recorded outputs and re-executes the failed frontier onward. dryRun=true returns { ok, plan } — what would reuse, execute, stay skipped, and which external-effect nodes are ambiguous — without starting anything. Otherwise returns { ok, runId }, or { ok: false, blocked } when ambiguous nodes need confirmExternal.",
+  {
+    in: {
+      runId: P(),
+      from: Bd(z.enum(["failure", "start"]).optional()),
+      confirmExternal: Bd(z.boolean().optional()),
+      dryRun: Bd(z.boolean().optional()),
+    },
+    out: "result",
+  },
   async (args, { engine }) => {
+    const from = (args.from as "failure" | "start" | undefined) ?? "failure";
     try {
+      // The plan is the conversation BEFORE the click: the UI shows what a
+      // resume reuses, what it re-executes, and where the outcome is unknown.
+      if (args.dryRun) return { ok: true, plan: await engine.rerunPlan(str(args.runId, "runId"), from) };
       const h = await engine.rerun(str(args.runId, "runId"), {
-        from: (args.from as "failure" | "start" | undefined) ?? "failure",
+        from,
         confirmExternal: Boolean(args.confirmExternal),
       });
       // Fire-and-return: the caller navigates to the new run and watches it live.

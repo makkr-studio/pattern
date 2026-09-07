@@ -344,6 +344,40 @@ export type RunResult =
   | { ok: false; issues: ValidationIssue[] }
   | { ok: true; runId: string; status: "ok" | "error" | "canceled"; outputs: Record<string, Record<string, unknown>>; error?: string };
 
+/** An external-effect node whose outcome a resume can't vouch for (mirrors core's `AmbiguousNode`). */
+export interface AmbiguousNode {
+  nodeId: string;
+  op: string;
+  /** `started`: the process died mid-call. `error`: the op threw without a no-effect verdict. */
+  reason: "started" | "error";
+}
+
+/** What a re-run/resume would do — `admin.run.rerun` with `dryRun: true` (mirrors core's `RerunPlan`). */
+export interface RerunPlan {
+  runId: string;
+  from: "failure" | "start";
+  /** Seeded from recorded outputs — never re-executed. */
+  reuse: Array<{ nodeId: string; op: string }>;
+  /** Executes (again, or for the first time), with its replay-safety stamp. */
+  execute: Array<{ nodeId: string; op: string; effects: "pure" | "idempotent" | "external" }>;
+  /** Recorded skips that stay skipped. */
+  skipped: string[];
+  /** Blocks an unconfirmed resume. */
+  ambiguous: AmbiguousNode[];
+}
+
+/** `admin.run.rerun`'s answer: a started run, a plan (dryRun), or a blocked resume awaiting confirmation. */
+export interface RerunResult {
+  ok: boolean;
+  /** The new run (navigate to it). */
+  runId?: string;
+  /** dryRun: what would happen. */
+  plan?: RerunPlan;
+  /** Ambiguous external-effect nodes — resend with `confirmExternal: true` to proceed. */
+  blocked?: AmbiguousNode[];
+  message?: string;
+}
+
 export interface RunInput {
   slug?: string;
   doc?: WorkflowDoc;

@@ -9,6 +9,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import { noEffect } from "@pattern-js/core";
 import type { EmailDriverSpec, EmailMessage } from "@pattern-js/mod-email";
 
 const DEFAULT_BASE_URL = "https://api.resend.com";
@@ -62,7 +63,12 @@ export const resendDriver: EmailDriverSpec = {
         .json()
         .then((b) => (b as { message?: string })?.message)
         .catch(() => undefined);
-      throw new Error(`resend: ${res.status} ${detail ?? res.statusText}`);
+      const err = new Error(`resend: ${res.status} ${detail ?? res.statusText}`);
+      // A 4xx is Resend REFUSING the send (auth, validation, rate limit) — the
+      // email does not exist, so durable resume may re-run this node without
+      // asking. 409 is the exception (an idempotency clash: the first send
+      // may stand), and any 5xx/timeout stays an unknown outcome.
+      throw res.status < 500 && res.status !== 409 ? noEffect(err) : err;
     }
     const body = (await res.json().catch(() => ({}))) as { id?: string };
     return { messageId: body.id };

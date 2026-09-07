@@ -150,6 +150,7 @@ class WorkerWrapper {
         parent: req.parent,
         seed: req.seed,
         resumedFrom: req.resumedFrom,
+        rootRunId: req.rootRunId,
       });
     });
   }

@@ -137,19 +137,61 @@ export class WorkflowError extends Error {
  * (A node that recorded its own `error` re-runs without confirmation — the op
  * reported its failure, that's what makes "fix creds → resume" work.)
  */
-export class ResumeBlockedError extends Error {
-  readonly nodes: Array<{ nodeId: string; op: string }>;
+/**
+ * One node whose external effect is in doubt on resume: it `started` and the
+ * process died before a verdict, or it reported an `error` without saying the
+ * effect never happened (see `noEffect`). Either way the send/charge may
+ * already exist on the provider — a human has to say "run it again".
+ */
+export interface AmbiguousNode {
+  nodeId: string;
+  op: string;
+  reason: "started" | "error";
+}
 
-  constructor(nodes: Array<{ nodeId: string; op: string }>) {
-    const list = nodes.map((n) => `"${n.nodeId}" (${n.op})`).join(", ");
+export class ResumeBlockedError extends Error {
+  readonly nodes: AmbiguousNode[];
+
+  constructor(nodes: AmbiguousNode[]) {
+    const list = nodes.map((n) => `"${n.nodeId}" (${n.op}, ${n.reason === "started" ? "never finished" : "failed with an unknown outcome"})`).join(", ");
     super(
-      `resume blocked: ${list} ${nodes.length === 1 ? "is" : "are"} external-effect node${
+      `resume blocked: ${list} ${nodes.length === 1 ? "is an" : "are"} external-effect node${
         nodes.length === 1 ? "" : "s"
-      } that started but never finished — the effect may already have happened. Confirm to re-run them anyway.`,
+      } whose effect may already have happened. Confirm to re-run ${nodes.length === 1 ? "it" : "them"} anyway.`,
     );
     this.name = "ResumeBlockedError";
     this.nodes = nodes;
   }
+}
+
+// ── Effect verdicts on errors (0.5 durable execution) ──────────────────────
+// An `external` op that throws is AMBIGUOUS by default: a provider can accept
+// the charge and lose the response, so "it threw" never proves "it didn't
+// happen". Ops that know better — the request never left (missing config,
+// unresolvable secret, invalid input) or the provider refused it outright (a
+// 4xx) — mark the error, and resume/retry treat that node as safe to re-run.
+
+const NO_EFFECT = Symbol.for("pattern.noEffect");
+
+/**
+ * Stamp an error as "thrown before any external effect happened". Returns the
+ * same error, so it reads inline: `throw noEffect(new Error("no account"))`.
+ * Durable resume then re-runs the node without asking; without the stamp an
+ * `external` op's failure is treated as an unknown outcome (a human confirms).
+ */
+export function noEffect<T extends object>(err: T): T {
+  (err as unknown as Record<symbol, unknown>)[NO_EFFECT] = true;
+  return err;
+}
+
+/** Does this error (or the cause it wraps) carry the `noEffect` verdict? */
+export function hasNoEffect(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let depth = 0; cur && typeof cur === "object" && depth < 8; depth++) {
+    if ((cur as Record<symbol, unknown>)[NO_EFFECT] === true) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /** Raised when a hook chain exceeds its recursion guard (§8). */

@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS ledger_runs (
   principal     TEXT NOT NULL,
   parent_run_id TEXT,
   resumed_from  TEXT,
+  root_run_id   TEXT,
   status        TEXT NOT NULL,
   error         TEXT,
   started_at    REAL NOT NULL,
@@ -54,11 +55,29 @@ CREATE TABLE IF NOT EXISTS ledger_nodes (
   pulsed     TEXT,
   streaming  INTEGER NOT NULL DEFAULT 0,
   unserializable INTEGER NOT NULL DEFAULT 0,
+  error      TEXT,
   started_at REAL,
   ended_at   REAL,
   PRIMARY KEY (run_id, node_id)
 );
 `;
+
+/**
+ * Additive schema evolution: columns that joined after 0.5.0's first cut. A
+ * fresh file gets them from SCHEMA; an existing one grows them here. Pre-1.0
+ * the ledger only ever ADDS columns, so a bare "is it there yet" suffices.
+ */
+const COLUMNS: Array<[table: string, column: string, ddl: string]> = [
+  ["ledger_runs", "root_run_id", "TEXT"],
+  ["ledger_nodes", "error", "TEXT"],
+];
+
+function ensureColumns(db: SqlDatabase): void {
+  for (const [table, column, ddl] of COLUMNS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
 
 export interface SqliteRunLedgerOptions {
   /** Terminal runs kept after pruning (oldest dropped first). Default 200. */
@@ -86,8 +105,8 @@ export class SqliteRunLedger implements RunLedger {
       .prepare(
         `INSERT OR REPLACE INTO ledger_runs
          (run_id, workflow_id, workflow_hash, trigger_node, input, params, principal,
-          parent_run_id, resumed_from, status, error, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
+          parent_run_id, resumed_from, root_run_id, status, error, started_at, ended_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
       )
       .run(
         h.runId,
@@ -99,6 +118,7 @@ export class SqliteRunLedger implements RunLedger {
         JSON.stringify(h.principal),
         h.parentRunId ?? null,
         h.resumedFrom ?? null,
+        h.rootRunId ?? null,
         h.status,
         h.startedAt,
       );
@@ -115,12 +135,12 @@ export class SqliteRunLedger implements RunLedger {
   nodeFinished(r: LedgerNodeRecord): void {
     this.db
       .prepare(
-        `INSERT INTO ledger_nodes (run_id, node_id, status, outputs, pulsed, streaming, unserializable, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO ledger_nodes (run_id, node_id, status, outputs, pulsed, streaming, unserializable, error, started_at, ended_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (run_id, node_id) DO UPDATE SET
            status = excluded.status, outputs = excluded.outputs, pulsed = excluded.pulsed,
            streaming = excluded.streaming, unserializable = excluded.unserializable,
-           ended_at = excluded.ended_at`,
+           error = excluded.error, ended_at = excluded.ended_at`,
       )
       .run(
         r.runId,
@@ -130,6 +150,7 @@ export class SqliteRunLedger implements RunLedger {
         r.pulsed ? JSON.stringify(r.pulsed) : null,
         r.streaming ? 1 : 0,
         r.unserializable ? 1 : 0,
+        r.error ? JSON.stringify(r.error) : null,
         r.startedAt ?? null,
         r.endedAt ?? null,
       );
@@ -154,6 +175,7 @@ export class SqliteRunLedger implements RunLedger {
         pulsed: n.pulsed ? (JSON.parse(String(n.pulsed)) as string[]) : undefined,
         streaming: Number(n.streaming) === 1 ? true : undefined,
         unserializable: Number(n.unserializable) === 1 ? true : undefined,
+        error: n.error ? (JSON.parse(String(n.error)) as LedgerNodeRecord["error"]) : undefined,
         startedAt: n.started_at == null ? undefined : Number(n.started_at),
         endedAt: n.ended_at == null ? undefined : Number(n.ended_at),
       }),
@@ -169,6 +191,7 @@ export class SqliteRunLedger implements RunLedger {
         principal: JSON.parse(String(row.principal)) as LedgerRunHeader["principal"],
         parentRunId: row.parent_run_id == null ? undefined : String(row.parent_run_id),
         resumedFrom: row.resumed_from == null ? undefined : String(row.resumed_from),
+        rootRunId: row.root_run_id == null ? undefined : String(row.root_run_id),
         status: String(row.status) as LedgerRunStatus,
         error: row.error ? (JSON.parse(String(row.error)) as LedgerRunHeader["error"]) : undefined,
         startedAt: Number(row.started_at),
@@ -217,5 +240,6 @@ export function createRunLedger(path: string, opts: SqliteRunLedgerOptions = {})
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA journal_mode = WAL");
   db.exec(SCHEMA);
+  ensureColumns(db);
   return new SqliteRunLedger(db, opts);
 }

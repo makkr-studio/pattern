@@ -9,6 +9,8 @@
  * create a second session or charge.
  */
 
+import { noEffect } from "@pattern-js/core";
+
 const STRIPE_VERSION = "2026-06-24.dahlia";
 const DEFAULT_API_BASE = "https://api.stripe.com";
 
@@ -76,7 +78,14 @@ export async function stripeRequest<T = Record<string, unknown>>(
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     const err = (json.error ?? {}) as { type?: string; code?: string; message?: string };
-    throw new StripeApiError(res.status, err.type, err.code, err.message);
+    const apiErr = new StripeApiError(res.status, err.type, err.code, err.message);
+    // A 4xx is Stripe REFUSING the request — nothing was created or charged,
+    // so durable resume may re-run the node without asking. Two exceptions
+    // keep the ambiguity: an idempotency clash (`idempotency_error`, or the
+    // 409 `lock_timeout` while the first request is still in flight) means
+    // the ORIGINAL call may well have succeeded. 5xx and timeouts stay unknown.
+    const refused = res.status < 500 && res.status !== 409 && err.type !== "idempotency_error";
+    throw refused ? noEffect(apiErr) : apiErr;
   }
   return json as T;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { RunSummary, SpanData, SpanIoSample } from "@pattern-js/admin-sdk";
+import type { AmbiguousNode, RerunPlan, RunSummary, SpanData, SpanIoSample } from "@pattern-js/admin-sdk";
 import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
 import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
@@ -278,12 +278,80 @@ function whoOf(principal: unknown): string | null {
   return typeof p.claims?.email === "string" ? p.claims.email : (p.id ?? null);
 }
 
+const describeAmbiguous = (a: AmbiguousNode): string =>
+  `${a.nodeId} (${a.op}, ${a.reason === "started" ? "started, never finished" : "failed with an unknown outcome"})`;
+
+/**
+ * The re-run conversation: what a resume/re-run WILL do, before the click.
+ * Reused results, nodes that execute (external ones tagged), skips that hold,
+ * and the ambiguous zone — external-effect nodes whose send/charge may already
+ * exist. A fresh re-run says plainly that every external node repeats.
+ */
+function RerunPlanPanel({ plan, busy, onGo, onClose }: { plan: RerunPlan; busy: boolean; onGo: () => void; onClose: () => void }) {
+  const fromStart = plan.from === "start";
+  const external = plan.execute.filter((n) => n.effects === "external");
+  const risky = fromStart ? external.length > 0 : plan.ambiguous.length > 0;
+  const tone = risky ? "border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10" : "border-[var(--color-neon-cyan)]/30 bg-[var(--color-neon-cyan)]/5";
+  const Line = ({ label, nodes }: { label: string; nodes: string[] }) =>
+    nodes.length ? (
+      <div className="text-muted">
+        <span className="text-[var(--fg)]">{label}</span>{" "}
+        <span className="font-mono">
+          {nodes.map((id, i) => (
+            <span key={id}>
+              {i > 0 && ", "}
+              {id}
+              {external.some((e) => e.nodeId === id) && (
+                <span className="ml-1 align-middle">
+                  <Badge hue={45}>external</Badge>
+                </span>
+              )}
+            </span>
+          ))}
+        </span>
+      </div>
+    ) : null;
+  return (
+    <div className={`mb-3 rounded-lg border p-3 text-xs ${tone}`} role="region" aria-label="Re-run plan">
+      <div className="mb-1.5 font-semibold">{fromStart ? "Re-run from start" : "Resume from failure"} — what happens</div>
+      <div className="space-y-1">
+        {!fromStart && (
+          <Line label={`${plan.reuse.length} recorded result${plan.reuse.length === 1 ? "" : "s"} reused, never re-executed:`} nodes={plan.reuse.map((n) => n.nodeId)} />
+        )}
+        <Line label={`${plan.execute.length} node${plan.execute.length === 1 ? "" : "s"} execute:`} nodes={plan.execute.map((n) => n.nodeId)} />
+        <Line label={`${plan.skipped.length} stay skipped:`} nodes={plan.skipped} />
+      </div>
+      {fromStart && external.length > 0 && (
+        <p className="mt-2 text-[var(--color-neon-amber)]">
+          A fresh run is a new idempotency lineage: {external.map((n) => `${n.nodeId} (${n.op})`).join(", ")} will send / charge again.
+        </p>
+      )}
+      {plan.ambiguous.length > 0 && (
+        <p className="mt-2 text-[var(--color-neon-amber)]">
+          Outcome unknown for <span className="font-mono">{plan.ambiguous.map(describeAmbiguous).join(", ")}</span> — the effect may already have
+          happened. Resuming runs {plan.ambiguous.length === 1 ? "it" : "them"} again.
+        </p>
+      )}
+      <div className="mt-2.5 flex gap-2">
+        <NeonButton variant={risky ? "danger" : "solid"} className="!px-2 !py-1 text-xs" disabled={busy} onClick={onGo}>
+          {fromStart ? "Re-run" : plan.ambiguous.length ? "Resume anyway" : "Resume"}
+        </NeonButton>
+        <NeonButton variant="ghost" className="!px-2 !py-1 text-xs" disabled={busy} onClick={onClose}>
+          Cancel
+        </NeonButton>
+      </div>
+    </div>
+  );
+}
+
 function RunDetail({ runId }: { runId: string }) {
   const { data, isLoading } = useRun(runId);
   const control = useRunControl(runId);
   const navigate = useNavigate();
-  // Durable re-run/resume: the danger-zone node list awaiting a human call.
-  const [blocked, setBlocked] = useState<Array<{ nodeId: string; op: string }> | null>(null);
+  // Durable re-run/resume: the plan shown before the click, and the
+  // danger-zone node list when the server blocks anyway (state moved).
+  const [plan, setPlan] = useState<RerunPlan | null>(null);
+  const [blocked, setBlocked] = useState<AmbiguousNode[] | null>(null);
   const [rerunNotice, setRerunNotice] = useState<string | null>(null);
   const [rerunning, setRerunning] = useState(false);
   if (isLoading) return <Spinner />;
@@ -295,6 +363,23 @@ function RunDetail({ runId }: { runId: string }) {
     sfx.play(action === "cancel" ? "error" : "toggle");
     control.mutate(action);
   };
+  // Step one: ask what would happen (dryRun) and show it. Nothing starts.
+  const openPlan = async (from: "failure" | "start") => {
+    setRerunning(true);
+    setRerunNotice(null);
+    setBlocked(null);
+    try {
+      const res = await api.runs.rerun(runId, { from, dryRun: true });
+      if (res.ok && res.plan) setPlan(res.plan);
+      else setRerunNotice(res.message ?? "couldn't plan the re-run");
+    } catch (err) {
+      sfx.play("error");
+      setRerunNotice(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRerunning(false);
+    }
+  };
+  // Step two: go — confirming the ambiguous zone the plan already showed.
   const doRerun = async (from: "failure" | "start", confirmExternal = false) => {
     setRerunning(true);
     setRerunNotice(null);
@@ -302,9 +387,11 @@ function RunDetail({ runId }: { runId: string }) {
       const res = await api.runs.rerun(runId, { from, confirmExternal });
       if (res.ok && res.runId) {
         setBlocked(null);
+        setPlan(null);
         sfx.play("click");
         navigate(`/runs/${res.runId}`);
       } else if (res.blocked) {
+        setPlan(null);
         setBlocked(res.blocked);
       } else {
         setRerunNotice(res.message ?? "re-run refused");
@@ -340,9 +427,9 @@ function RunDetail({ runId }: { runId: string }) {
               <NeonButton
                 variant="ghost"
                 className="!px-2 !py-1"
-                title="Resume from failure — completed nodes are seeded from the ledger; only the failed frontier re-executes"
+                title="Resume from failure — completed nodes are seeded from the ledger; only the failed frontier re-executes. Shows the plan first."
                 disabled={rerunning}
-                onClick={() => void doRerun("failure")}
+                onClick={() => void openPlan("failure")}
               >
                 <StepForward size={12} /> <span className="ml-1 text-xs">Resume</span>
               </NeonButton>
@@ -350,9 +437,9 @@ function RunDetail({ runId }: { runId: string }) {
             <NeonButton
               variant="ghost"
               className="!px-2 !py-1"
-              title="Re-run from start — a fresh run with this run's recorded trigger input"
+              title="Re-run from start — a fresh run with this run's recorded trigger input; every node executes again. Shows the plan first."
               disabled={rerunning}
-              onClick={() => void doRerun("start")}
+              onClick={() => void openPlan("start")}
             >
               <RotateCcw size={12} /> <span className="ml-1 text-xs">Re-run</span>
             </NeonButton>
@@ -385,13 +472,20 @@ function RunDetail({ runId }: { runId: string }) {
         )}
         <span className={`text-muted font-mono text-xs ${inflight || ledgered ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
       </div>
+      {plan && (
+        <RerunPlanPanel
+          plan={plan}
+          busy={rerunning}
+          onGo={() => void doRerun(plan.from, plan.ambiguous.length > 0)}
+          onClose={() => setPlan(null)}
+        />
+      )}
       {blocked && (
         <div className="mb-3 rounded-lg border border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 p-3 text-xs">
           <div className="mb-1 font-semibold text-[var(--color-neon-amber)]">Resume needs a human call</div>
           <p className="text-muted mb-2">
-            These external-effect nodes started but never finished — the effect (a send, a charge) may already have
-            happened: <span className="font-mono">{blocked.map((b) => `${b.nodeId} (${b.op})`).join(", ")}</span>.
-            Resuming re-runs them.
+            The outcome of these external-effect nodes is unknown — the effect (a send, a charge) may already have
+            happened: <span className="font-mono">{blocked.map(describeAmbiguous).join(", ")}</span>. Resuming re-runs them.
           </p>
           <div className="flex gap-2">
             <NeonButton variant="danger" className="!px-2 !py-1 text-xs" disabled={rerunning} onClick={() => void doRerun("failure", true)}>

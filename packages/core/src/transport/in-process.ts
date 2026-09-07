@@ -36,6 +36,7 @@ export class InProcessTransport implements RunTransport {
         parent: req.parent,
         seed: req.seed,
         resumedFrom: req.resumedFrom,
+        rootRunId: req.rootRunId,
         runId,
         control,
       },

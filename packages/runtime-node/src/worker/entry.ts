@@ -85,6 +85,7 @@ interface RunMessage {
   parent?: { runId: string; workflowId: string; nodeId: string };
   seed?: import("@pattern-js/core").LedgerNodeRecord[];
   resumedFrom?: string;
+  rootRunId?: string;
 }
 
 port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
@@ -96,7 +97,7 @@ port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
 });
 
 async function handleRun(msg: RunMessage): Promise<void> {
-  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent, seed, resumedFrom } = msg;
+  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent, seed, resumedFrom, rootRunId } = msg;
   const ac = new AbortController();
   aborts.set(id, ac);
 
@@ -115,6 +116,7 @@ async function handleRun(msg: RunMessage): Promise<void> {
     result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, id, parent, {
       seed,
       resumedFrom,
+      rootRunId,
     });
   } catch (err) {
     port.postMessage({ type: "result", id, status: "error", outputs: {}, error: serializeError(err) });

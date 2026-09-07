@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { Engine, type OpContext, type Workflow } from "@pattern-js/core";
+import { checkoutCreateOp } from "../src/ops.js";
 import {
   BILLING_SERVICE,
   BillingConfigService,
@@ -367,6 +368,27 @@ describe("setup-shaped failures are outcomes, not failed runs", () => {
     expect(v.body.url).toBe("https://pay.example/session_1");
     // The provider retry seal is pinned to run+node — stable, not random.
     expect(String(driver.checkouts[0]!.idempotencyKey)).toContain(res.runId);
+  });
+
+  it("the retry seal follows the run LINEAGE: a resumed run keeps the original run's key", async () => {
+    // Resume hands ops `ctx.rootRunId` = the first run of the chain. Pinning
+    // the provider idempotency key to it means a node re-executed by a resume
+    // REPLAYS the provider's stored response — no second checkout session, no
+    // second charge — while a re-run from start (its own root) gets a new key.
+    const { driver, ctx } = await boot();
+    const opCtx = (runId: string, rootRunId: string) =>
+      ({
+        ...ctx,
+        config: { account: "default", mode: "subscription" },
+        runId,
+        rootRunId,
+        nodeId: "checkout",
+        input: { has: () => false, value: async () => undefined, stream: () => new ReadableStream() },
+      }) as unknown as OpContext;
+    await checkoutCreateOp.execute(opCtx("run-1", "run-1"));
+    await checkoutCreateOp.execute(opCtx("run-2-resumed", "run-1"));
+    await checkoutCreateOp.execute(opCtx("run-3-fresh", "run-3-fresh"));
+    expect(driver.checkouts.map((c) => c.idempotencyKey)).toEqual(["run-1:checkout", "run-1:checkout", "run-3-fresh:checkout"]);
   });
 });
 
