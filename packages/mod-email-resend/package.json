@@ -32,7 +32,7 @@
     "@pattern-js/core": "workspace:*",
     "@pattern-js/mod-email": "workspace:*",
     "@pattern-js/runtime-node": "workspace:*",
-    "zod": "^4.0.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

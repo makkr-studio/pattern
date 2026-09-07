@@ -30,8 +30,8 @@
   },
   "dependencies": {
     "@pattern-js/core": "workspace:*",
-    "zod": "^4.0.0",
-    "@pattern-js/runtime-node": "workspace:*"
+    "@pattern-js/runtime-node": "workspace:*",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

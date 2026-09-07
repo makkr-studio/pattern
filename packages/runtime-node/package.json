@@ -37,16 +37,16 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@pattern-js/core": "workspace:*",
     "@flystorage/file-storage": "^1.2.2",
-    "@flystorage/local-fs": "^1.2.0",
     "@flystorage/in-memory": "^1.1.0",
-    "zod": "^4.0.0",
-    "ws": "^8.18.0"
+    "@flystorage/local-fs": "^1.2.0",
+    "@pattern-js/core": "workspace:*",
+    "ws": "^8.21.3",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.12",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
     "typescript": "^5.6.0"
   },
   "repository": {

@@ -36,7 +36,7 @@
     "@pattern-js/mod-ai": "workspace:*",
     "@pattern-js/mod-docs": "workspace:*",
     "@pattern-js/runtime-node": "workspace:*",
-    "zod": "^4.0.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@pattern-js/mod-admin": "workspace:*",
