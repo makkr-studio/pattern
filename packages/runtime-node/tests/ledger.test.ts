@@ -89,9 +89,8 @@ describe("sqlite RunLedger", () => {
     ledger.close();
   });
 
-  it("boot sweep converts stale running runs to resumable interrupted errors", async () => {
+  it("the crash sweep goes by OWNER liveness, not run age — a dead process's young run is swept, a live sibling's long run is not", async () => {
     const path = tmpDb();
-    const first = createRunLedger(path);
     const base = {
       workflowId: "wf",
       workflowHash: "h",
@@ -100,18 +99,51 @@ describe("sqlite RunLedger", () => {
       principal: { kind: "anonymous" } as const,
       status: "running" as const,
     };
-    first.begin({ ...base, runId: "stale", startedAt: Date.now() - 120_000 });
-    first.begin({ ...base, runId: "fresh", startedAt: Date.now() });
-    first.close();
+    const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    const second = createRunLedger(path); // reopen = boot
-    const stale = (await second.get("stale"))!;
-    const fresh = (await second.get("fresh"))!;
-    expect(stale.header.status).toBe("error");
-    expect(stale.header.error?.message).toContain("interrupted");
-    // The one-minute grace protects a concurrent process's live run.
-    expect(fresh.header.status).toBe("running");
-    second.close();
+    // A process that DIES: it beats once at open and never again (a huge
+    // heartbeat period stands in for the crash), so its heartbeat goes stale
+    // even though its run is seconds old.
+    const dead = createRunLedger(path, { heartbeatMs: 3_600_000, staleMs: 40 });
+    dead.begin({ ...base, runId: "young-but-orphaned", startedAt: Date.now() });
+    // A process that LIVES beside us: heartbeats fast, and its run has been going for ten minutes.
+    const alive = createRunLedger(path, { heartbeatMs: 5, staleMs: 40 });
+    alive.begin({ ...base, runId: "long-but-alive", startedAt: Date.now() - 600_000 });
+    // A row from before ownership existed (owner NULL): the age rule still applies.
+    const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
+    const raw = new DatabaseSync(path);
+    raw.exec("PRAGMA busy_timeout = 5000");
+    for (const [id, started] of [
+      ["legacy-old", Date.now() - 120_000],
+      ["legacy-fresh", Date.now()],
+    ] as const) {
+      raw
+        .prepare(
+          "INSERT INTO ledger_runs (run_id, workflow_id, workflow_hash, trigger_node, input, principal, status, started_at) VALUES (?, 'wf', 'h', 'in', '{}', '{\"kind\":\"anonymous\"}', 'running', ?)",
+        )
+        .run(id, started);
+    }
+    raw.close();
+    await tick(60); // the dead owner's beat is now stale; the live one keeps beating
+
+    const booting = createRunLedger(path, { heartbeatMs: 5, staleMs: 40 }); // reopen = boot sweep
+    expect((await booting.get("young-but-orphaned"))!.header).toMatchObject({ status: "error", error: { message: expect.stringContaining("interrupted") } });
+    expect((await booting.get("long-but-alive"))!.header.status).toBe("running"); // its owner is alive — age is irrelevant
+    expect((await booting.get("legacy-old"))!.header.status).toBe("error"); // owner-less → the one-minute rule
+    expect((await booting.get("legacy-fresh"))!.header.status).toBe("running");
+
+    // The sibling exits cleanly (its owner row goes) while its run is still
+    // "running" — the periodic sweep, not a restart, catches it.
+    alive.close();
+    await tick(30);
+    expect((await booting.get("long-but-alive"))!.header.status).toBe("error");
+
+    // Our own runs are never our orphans, however long they take.
+    booting.begin({ ...base, runId: "mine", startedAt: Date.now() - 3_600_000 });
+    booting.sweep();
+    expect((await booting.get("mine"))!.header.status).toBe("running");
+    dead.close();
+    booting.close();
   });
 
   it("prunes oldest terminal runs beyond keep, never live ones", async () => {

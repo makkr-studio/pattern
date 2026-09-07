@@ -80,6 +80,27 @@ describe("trace store", () => {
     }
   });
 
+  it("closes out runs of a DEAD owner as interrupted — by liveness, not age", async () => {
+    const path = join(tmp(), "traces.db");
+    const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    // Beats once at open, then "crashes" (never beats again).
+    const dead = await openSqliteTraceStore(path, { heartbeatMs: 3_600_000, staleMs: 40 });
+    dead.onRunStart!({ runId: "orphan", traceId: "t-o", workflowId: "demo", trigger: "in", principal: { kind: "anonymous" } });
+    // Beats fast — a live sibling with a long run.
+    const alive = await openSqliteTraceStore(path, { heartbeatMs: 5, staleMs: 40 });
+    alive.onRunStart!({ runId: "long", traceId: "t-l", workflowId: "demo", trigger: "in", principal: { kind: "anonymous" } });
+    await tick(60);
+
+    const booting = await openSqliteTraceStore(path, { heartbeatMs: 5, staleMs: 40 });
+    cleanup.push(() => void booting.close(), () => void dead.close());
+    expect((await booting.get("orphan"))!.summary.status).toBe("error");
+    expect((await booting.get("orphan"))!.summary.error?.message).toContain("interrupted");
+    expect((await booting.get("long"))!.summary.status).toBe("running"); // owner alive
+    await alive.close(); // owner row gone → the periodic sweep catches its run
+    await tick(30);
+    expect((await booting.get("long"))!.summary.status).toBe("error");
+  });
+
   it("survives a restart — reopen the same file and the run is still there", async () => {
     const path = join(tmp(), "traces.db");
     const first = await openSqliteTraceStore(path, { now: () => clock.t });

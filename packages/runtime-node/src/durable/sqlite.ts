@@ -8,13 +8,16 @@
  * `.pattern-data/ledger.db` (gitignored beside the identity + document stores)
  * because, unlike the masked trace store, it records REAL values.
  *
- * On open, a boot sweep converts rows stuck `running` (a crash mid-run) into
- * `error: "interrupted"` — a resumable record instead of a stuck one.
+ * Rows stuck `running` after a crash become `error: "interrupted"` — a
+ * resumable record instead of a stuck one. Which rows are stuck is decided by
+ * process LIVENESS (owner heartbeats, see ./liveness.ts), never by run age: a
+ * young run of a dead process is swept, a long run of a live sibling is not.
  */
 
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { LedgerNodeRecord, LedgerRunHeader, LedgerRunStatus, RunLedger } from "@pattern-js/core";
+import { Liveness, type LivenessOptions } from "./liveness.js";
 
 /** Minimal slice of node:sqlite's DatabaseSync this module needs. */
 interface SqlDatabase {
@@ -41,6 +44,7 @@ CREATE TABLE IF NOT EXISTS ledger_runs (
   parent_run_id TEXT,
   resumed_from  TEXT,
   root_run_id   TEXT,
+  owner         TEXT,
   status        TEXT NOT NULL,
   error         TEXT,
   started_at    REAL NOT NULL,
@@ -69,35 +73,45 @@ CREATE TABLE IF NOT EXISTS ledger_nodes (
  */
 const COLUMNS: Array<[table: string, column: string, ddl: string]> = [
   ["ledger_runs", "root_run_id", "TEXT"],
+  ["ledger_runs", "owner", "TEXT"],
   ["ledger_nodes", "error", "TEXT"],
 ];
 
 function ensureColumns(db: SqlDatabase): void {
-  for (const [table, column, ddl] of COLUMNS) {
-    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
-  }
+  ensureColumnsFor(db, COLUMNS);
 }
 
-export interface SqliteRunLedgerOptions {
+export interface SqliteRunLedgerOptions extends LivenessOptions {
   /** Terminal runs kept after pruning (oldest dropped first). Default 200. */
   keep?: number;
 }
 
 export class SqliteRunLedger implements RunLedger {
+  private readonly liveness: Liveness;
+
   constructor(
     private readonly db: SqlDatabase,
     private readonly opts: SqliteRunLedgerOptions = {},
   ) {
-    // Boot sweep: a crash leaves runs stuck `running` — convert them to a
-    // terminal, RESUMABLE record. The one-minute grace protects a live run of
-    // ANOTHER process sharing the file (`pattern run` next to the dev server).
-    this.db
-      .prepare(
-        "UPDATE ledger_runs SET status = 'error', error = ?, ended_at = ? WHERE status = 'running' AND started_at < ?",
-      )
-      .run(JSON.stringify({ message: "interrupted (process exited mid-run)" }), Date.now(), Date.now() - 60_000);
+    // Register as an owner and heartbeat; every beat also sweeps, so a crash
+    // shortly before this boot is caught within one stale window.
+    this.liveness = new Liveness(db, opts, () => this.sweep()).start();
+    this.sweep();
     this.prune();
+  }
+
+  /**
+   * Convert runs stuck `running` under a DEAD owner into terminal, RESUMABLE
+   * records. Ownership, not age: a live sibling's long run is untouched; a
+   * young run whose process died is swept. Legacy owner-less rows use the
+   * one-minute age rule they were written under.
+   */
+  sweep(): number {
+    const { sql, params } = this.liveness.orphaned("owner", "started_at");
+    const res = this.db
+      .prepare(`UPDATE ledger_runs SET status = 'error', error = ?, ended_at = ? WHERE status = 'running' AND ${sql}`)
+      .run(JSON.stringify({ message: "interrupted (process exited mid-run)" }), Date.now(), ...params);
+    return Number(res.changes);
   }
 
   begin(h: LedgerRunHeader): void {
@@ -105,8 +119,8 @@ export class SqliteRunLedger implements RunLedger {
       .prepare(
         `INSERT OR REPLACE INTO ledger_runs
          (run_id, workflow_id, workflow_hash, trigger_node, input, params, principal,
-          parent_run_id, resumed_from, root_run_id, status, error, started_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
+          parent_run_id, resumed_from, root_run_id, owner, status, error, started_at, ended_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
       )
       .run(
         h.runId,
@@ -119,6 +133,7 @@ export class SqliteRunLedger implements RunLedger {
         h.parentRunId ?? null,
         h.resumedFrom ?? null,
         h.rootRunId ?? null,
+        this.liveness.ownerId,
         h.status,
         h.startedAt,
       );
@@ -217,6 +232,7 @@ export class SqliteRunLedger implements RunLedger {
   }
 
   close(): void {
+    this.liveness.close();
     this.db.close();
   }
 }
@@ -242,4 +258,14 @@ export function createRunLedger(path: string, opts: SqliteRunLedgerOptions = {})
   db.exec(SCHEMA);
   ensureColumns(db);
   return new SqliteRunLedger(db, opts);
+}
+
+export { ensureColumnsFor };
+
+/** Shared additive-migration helper (the trace store grows its `owner` column the same way). */
+function ensureColumnsFor(db: SqlDatabase, columns: Array<[table: string, column: string, ddl: string]>): void {
+  for (const [table, column, ddl] of columns) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
 }

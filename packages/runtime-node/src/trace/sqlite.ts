@@ -24,6 +24,8 @@ import {
   type TraceStore,
   type TraceStoreConfig,
 } from "@pattern-js/core";
+import { Liveness, type LivenessOptions } from "../durable/liveness.js";
+import { ensureColumnsFor } from "../durable/sqlite.js";
 
 /** Minimal slice of node:sqlite's DatabaseSync this module needs. */
 interface SqlDatabase {
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS trace_runs (
   error         TEXT,
   parent        TEXT,
   parent_run_id TEXT,
+  owner         TEXT,
   finished      INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_trace_runs_trace    ON trace_runs(trace_id);
@@ -129,7 +132,7 @@ const percentile = (sorted: number[], p: number): number => {
   return sorted[Math.max(0, idx)] ?? 0;
 };
 
-export interface SqliteTraceStoreOptions {
+export interface SqliteTraceStoreOptions extends Omit<LivenessOptions, "now"> {
   capacity?: number;
   now?: () => number;
 }
@@ -138,6 +141,7 @@ export class SqliteTraceStore implements TraceStore {
   private capacity: number;
   private readonly now: () => number;
   private readonly bootTime: number;
+  private readonly liveness: Liveness;
   private exclude: RegExp | null = null;
   private excludeSource: string | null = null;
   private readonly excludedTraces = new Set<string>();
@@ -150,14 +154,25 @@ export class SqliteTraceStore implements TraceStore {
     this.capacity = opts.capacity ?? 500;
     this.now = opts.now ?? hiResNow;
     this.bootTime = this.now();
-    // Boot sweep: a crash leaves runs stuck `running`/`finished = 0` forever —
-    // close them out as errors. The one-minute grace protects the live runs of
-    // ANOTHER process sharing the file (`pattern run` beside the dev server).
-    this.db
-      .prepare(
-        "UPDATE trace_runs SET status = 'error', finished = 1, error = ? WHERE finished = 0 AND start_time < ?",
-      )
-      .run(JSON.stringify({ message: "interrupted (process exited mid-run)" }), Date.now() - 60_000);
+    // Register as an owner and heartbeat; every beat sweeps, so a crash
+    // shortly before this boot is caught within one stale window. (Wall-clock
+    // for liveness: heartbeats compare only with heartbeats.)
+    this.liveness = new Liveness(db, { heartbeatMs: opts.heartbeatMs, staleMs: opts.staleMs, legacyGraceMs: opts.legacyGraceMs, ownerId: opts.ownerId }, () => this.sweep()).start();
+    this.sweep();
+  }
+
+  /**
+   * Close out runs stuck `running`/`finished = 0` under a DEAD owner as
+   * interrupted errors. Ownership, not age (see ../durable/liveness.ts): a live
+   * sibling's long run is untouched, a young run whose process died is swept;
+   * owner-less legacy rows keep the one-minute age rule.
+   */
+  sweep(): number {
+    const { sql, params } = this.liveness.orphaned("owner", "start_time");
+    const res = this.db
+      .prepare(`UPDATE trace_runs SET status = 'error', finished = 1, error = ? WHERE finished = 0 AND ${sql}`)
+      .run(JSON.stringify({ message: "interrupted (process exited mid-run)" }), ...params);
+    return Number(res.changes);
   }
 
   config(): TraceStoreConfig {
@@ -197,8 +212,8 @@ export class SqliteTraceStore implements TraceStore {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO trace_runs
-         (run_id, trace_id, workflow_id, trigger, principal, status, start_time, span_count, executor, parent, parent_run_id, finished)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,0)`,
+         (run_id, trace_id, workflow_id, trigger, principal, status, start_time, span_count, executor, parent, parent_run_id, owner, finished)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`,
       )
       .run(
         run.runId,
@@ -212,6 +227,7 @@ export class SqliteTraceStore implements TraceStore {
         run.executor ?? null,
         run.parent ? JSON.stringify(run.parent) : null,
         run.parent?.runId ?? null,
+        this.liveness.ownerId,
       );
   }
 
@@ -410,6 +426,7 @@ export class SqliteTraceStore implements TraceStore {
   async close(): Promise<void> {
     for (const sub of this.subscribers) sub.close();
     this.subscribers.clear();
+    this.liveness.close();
     this.db.close();
   }
 }
@@ -437,5 +454,7 @@ export async function openSqliteTraceStore(path: string, opts: SqliteTraceStoreO
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA journal_mode = WAL");
   db.exec(SCHEMA);
+  // Additive schema growth for files from before run ownership existed.
+  ensureColumnsFor(db, [["trace_runs", "owner", "TEXT"]]);
   return new SqliteTraceStore(db, opts);
 }
