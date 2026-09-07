@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { OpContext } from "@pattern-js/core";
 import { withUsageTap, type AiUsageEvent } from "../src/usage.js";
 
@@ -10,9 +10,9 @@ import { withUsageTap, type AiUsageEvent } from "../src/usage.js";
 
 const V3_USAGE = { inputTokens: { total: 120 }, outputTokens: { total: 30 } };
 
-function fakeV3Model() {
+function fakeV3Model(spec: "v3" | "v4" = "v3") {
   return {
-    specificationVersion: "v3",
+    specificationVersion: spec,
     provider: "fake",
     modelId: "fake-mini",
     supportedUrls: {},
@@ -56,6 +56,26 @@ function fakeCtx(opts: { user?: string; throwOnEmit?: boolean } = {}) {
 }
 
 describe("withUsageTap", () => {
+  it("taps v4-spec models (ai@7's own providers) exactly like v3 — and warns once for a spec it can't read", async () => {
+    const { ctx, events } = fakeCtx({ user: "ada" });
+    const v4 = withUsageTap(fakeV3Model("v4") as never, ctx) as { doGenerate: (p: unknown) => Promise<unknown> };
+    await v4.doGenerate({ prompt: [] });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.payload).toMatchObject({ modelId: "fake-mini", inputTokens: 120, outputTokens: 30, totalTokens: 150, userId: "ada" });
+
+    // An unknown spec passes through untapped — no throw, no event, one warning.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const future = { ...fakeV3Model(), specificationVersion: "v9" };
+      const untapped = withUsageTap(future as never, ctx) as { doGenerate: (p: unknown) => Promise<unknown> };
+      expect(untapped).toBe(future); // returned as-is
+      withUsageTap({ ...fakeV3Model(), specificationVersion: "v9" } as never, ctx);
+      expect(warn.mock.calls.filter((c) => /NOT metered/.test(String(c[0])))).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("taps doGenerate: span attributes + an attributed ai.usage event", async () => {
     const { ctx, events, attrs } = fakeCtx({ user: "ada" });
     const model = withUsageTap(fakeV3Model() as never, ctx) as { doGenerate: (p: unknown) => Promise<unknown> };

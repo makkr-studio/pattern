@@ -59,7 +59,11 @@ export async function toModelMessages(messages: NeutralMessage[], ctx: OpContext
         const parts: any[] = [];
         for (const p of m.content) {
           if (p.type === "text") parts.push({ type: "text", text: p.text });
-          else parts.push({ type: "image", image: await blobBytes(p.blobId, ctx) });
+          else parts.push({
+            type: 'file',
+            data: await blobBytes(p.blobId, ctx),
+            mediaType: 'image'
+          });
         }
         out.push({ role: "user", content: parts });
       }

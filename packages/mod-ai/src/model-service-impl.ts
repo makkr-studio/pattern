@@ -17,7 +17,7 @@ import type {
   Usage,
 } from "@pattern-js/mod-agents";
 import type { OpContext } from "@pattern-js/core";
-import { generateText, jsonSchema, stepCountIs, streamText, tool, type ToolSet } from "./sdk.js";
+import { generateText, isStepCount, jsonSchema, streamText, tool, type ToolSet } from "./sdk.js";
 import type { AiProviderService } from "./provider.js";
 import { toModelMessages } from "./messages.js";
 import { mapUsage } from "./ops/shared.js";
@@ -57,10 +57,10 @@ export class ModelServiceImpl implements AiModelService {
     const messages = await toModelMessages(input.messages, input.ctx);
     const result = streamText({
       model,
-      system: input.system,
+      instructions: input.system, // our contract says `system`; the SDK's option is `instructions` (v7)
       messages,
       tools: buildTools(input.tools),
-      stopWhen: stepCountIs(1),
+      stopWhen: isStepCount(1),
       abortSignal: input.signal,
     });
 
@@ -76,7 +76,7 @@ export class ModelServiceImpl implements AiModelService {
     yield {
       type: "finish",
       finishReason: await result.finishReason,
-      usage: mapUsage(await result.totalUsage),
+      usage: mapUsage(await result.usage), // v7: accumulated across steps (the old totalUsage)
       message: { role: "assistant", content: text, toolCalls: calls.length ? calls : undefined },
     };
   }
@@ -84,7 +84,7 @@ export class ModelServiceImpl implements AiModelService {
   async generateText(input: GenerateTextInput): Promise<{ text: string; usage?: Usage }> {
     const model = await this.languageModel(input.modelRef, input.ctx);
     const messages = await toModelMessages(input.messages, input.ctx);
-    const r = await generateText({ model, system: input.system, messages });
+    const r = await generateText({ model, instructions: input.system, messages });
     return { text: r.text, usage: mapUsage(r.usage) };
   }
 }

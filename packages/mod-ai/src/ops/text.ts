@@ -23,7 +23,8 @@ export const textGenerate: OpDefinition = {
   execute: async (ctx) => {
     const { model, system, messages } = await textInput(ctx);
     const cfg = ctx.config as { maxOutputTokens?: number };
-    const r = await generateText({ model, system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
+    // Our port stays `system`; the SDK's option is `instructions` since v7.
+    const r = await generateText({ model, instructions: system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
     return { text: r.text, usage: mapUsage(r.usage), finishReason: r.finishReason };
   },
 };
@@ -43,11 +44,12 @@ export const textStream: OpDefinition = {
   execute: async (ctx) => {
     const { model, system, messages } = await textInput(ctx);
     const cfg = ctx.config as { maxOutputTokens?: number };
-    const result = streamText({ model, system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
+    const result = streamText({ model, instructions: system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
     return {
       textStream: iterableToStream(result.textStream),
       text: result.text,
-      usage: result.totalUsage.then(mapUsage),
+      // v7: `usage` accumulates across steps (the old `totalUsage`).
+      usage: result.usage.then(mapUsage),
       finishReason: result.finishReason,
     };
   },

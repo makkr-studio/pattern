@@ -58,7 +58,7 @@ describe("provider registry", () => {
     expect(byId["amazon-bedrock"].secrets.map((s) => s.name)).toContain("accessKeyId");
     expect(byId["openai-compatible"].options.map((o) => o.name)).toContain("baseURL");
     // The full first-party catalog is offered.
-    expect(listProviders().length).toBeGreaterThan(40);
+    expect(listProviders().length).toBeGreaterThanOrEqual(40); // gateway + 39 direct providers (vercel's v0 API retired with ai@7)
   });
 });
 

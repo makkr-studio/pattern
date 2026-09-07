@@ -13,8 +13,9 @@
  * factory name + option-field shape below was verified against the published
  * packages — getting them wrong fails silently at run time.
  *
- * Package majors differ (they share the `@ai-sdk/provider@3` spec, so all are
- * ai@6-compatible); `create-pattern` carries the matching ranges.
+ * Package majors differ (they share the `@ai-sdk/provider@4` spec, so all are
+ * ai@7-compatible); `create-pattern` carries the matching ranges. The v0 Vercel
+ * provider retired with ai@7 (its model API is gone) — the gateway stays.
  */
 
 import type { Modality } from "./types.js";
@@ -110,46 +111,45 @@ export const SPECS: ProviderSpec[] = [
   },
 
   // ── Single-key direct providers ──
-  single("xai", "xAI Grok", "@ai-sdk/xai", "^3", "createXai", "XAI_API_KEY", ["language", "image", "video"]),
-  single("vercel", "Vercel", "@ai-sdk/vercel", "^2", "createVercel", "VERCEL_API_KEY", ["language", "image"]),
-  single("openai", "OpenAI", "@ai-sdk/openai", "^3", "createOpenAI", "OPENAI_API_KEY", ["language", "embedding", "image", "speech", "transcription"]),
-  single("anthropic", "Anthropic", "@ai-sdk/anthropic", "^3", "createAnthropic", "ANTHROPIC_API_KEY", ["language"]),
-  single("groq", "Groq", "@ai-sdk/groq", "^3", "createGroq", "GROQ_API_KEY", ["language", "transcription"]),
-  single("fal", "Fal", "@ai-sdk/fal", "^2", "createFal", "FAL_API_KEY", ["image", "speech", "transcription", "video"]),
-  single("deepinfra", "DeepInfra", "@ai-sdk/deepinfra", "^2", "createDeepInfra", "DEEPINFRA_API_KEY", ["language", "embedding", "image"]),
-  single("black-forest-labs", "Black Forest Labs", "@ai-sdk/black-forest-labs", "^1", "createBlackForestLabs", "BFL_API_KEY", ["image"]),
-  single("google", "Google Generative AI", "@ai-sdk/google", "^3", "createGoogleGenerativeAI", "GOOGLE_GENERATIVE_AI_API_KEY", ["language", "embedding", "image", "video"]),
-  single("mistral", "Mistral AI", "@ai-sdk/mistral", "^3", "createMistral", "MISTRAL_API_KEY", ["language", "embedding"]),
-  single("togetherai", "Together.ai", "@ai-sdk/togetherai", "^2", "createTogetherAI", "TOGETHER_AI_API_KEY", ["language", "embedding", "image"]),
-  single("cohere", "Cohere", "@ai-sdk/cohere", "^3", "createCohere", "COHERE_API_KEY", ["language", "embedding"]),
-  single("fireworks", "Fireworks", "@ai-sdk/fireworks", "^2", "createFireworks", "FIREWORKS_API_KEY", ["language", "embedding", "image"]),
-  single("voyage", "Voyage AI", "@ai-sdk/voyage", "^1", "createVoyage", "VOYAGE_API_KEY", ["embedding"]),
-  single("deepseek", "DeepSeek", "@ai-sdk/deepseek", "^2", "createDeepSeek", "DEEPSEEK_API_KEY", ["language"]),
-  single("moonshotai", "Moonshot AI", "@ai-sdk/moonshotai", "^2", "createMoonshotAI", "MOONSHOT_API_KEY", ["language"]),
-  single("alibaba", "Alibaba", "@ai-sdk/alibaba", "^1", "createAlibaba", "DASHSCOPE_API_KEY", ["language", "embedding", "video"]),
-  single("cerebras", "Cerebras", "@ai-sdk/cerebras", "^2", "createCerebras", "CEREBRAS_API_KEY", ["language"]),
-  single("replicate", "Replicate", "@ai-sdk/replicate", "^2", "createReplicate", "REPLICATE_API_TOKEN", ["image", "video"]),
-  single("prodia", "Prodia", "@ai-sdk/prodia", "^1", "createProdia", "PRODIA_API_KEY", ["image", "video"]),
-  single("perplexity", "Perplexity", "@ai-sdk/perplexity", "^3", "createPerplexity", "PERPLEXITY_API_KEY", ["language"]),
-  single("luma", "Luma", "@ai-sdk/luma", "^2", "createLuma", "LUMA_API_KEY", ["image", "video"]),
-  single("bytedance", "ByteDance", "@ai-sdk/bytedance", "^1", "createByteDance", "BYTEDANCE_API_KEY", ["language", "image", "video"]),
-  single("elevenlabs", "ElevenLabs", "@ai-sdk/elevenlabs", "^2", "createElevenLabs", "ELEVENLABS_API_KEY", ["speech", "transcription"]),
-  single("assemblyai", "AssemblyAI", "@ai-sdk/assemblyai", "^2", "createAssemblyAI", "ASSEMBLYAI_API_KEY", ["transcription"]),
-  single("deepgram", "Deepgram", "@ai-sdk/deepgram", "^2", "createDeepgram", "DEEPGRAM_API_KEY", ["speech", "transcription"]),
-  single("gladia", "Gladia", "@ai-sdk/gladia", "^2", "createGladia", "GLADIA_API_KEY", ["transcription"]),
-  single("lmnt", "LMNT", "@ai-sdk/lmnt", "^2", "createLMNT", "LMNT_API_KEY", ["speech"]),
-  single("hume", "Hume", "@ai-sdk/hume", "^2", "createHume", "HUME_API_KEY", ["speech"]),
-  single("revai", "Rev.ai", "@ai-sdk/revai", "^2", "createRevai", "REVAI_API_KEY", ["transcription"]),
-  single("baseten", "Baseten", "@ai-sdk/baseten", "^1", "createBaseten", "BASETEN_API_KEY", ["language", "embedding"]),
-  single("huggingface", "Hugging Face", "@ai-sdk/huggingface", "^1", "createHuggingFace", "HF_TOKEN", ["language", "embedding", "image"]),
-  single("quiverai", "QuiverAI", "@ai-sdk/quiverai", "^1", "createQuiverAI", "QUIVER_API_KEY", ["language", "image"]),
+  single("xai", "xAI Grok", "@ai-sdk/xai", "^4", "createXai", "XAI_API_KEY", ["language", "image", "video"]),
+  single("openai", "OpenAI", "@ai-sdk/openai", "^4", "createOpenAI", "OPENAI_API_KEY", ["language", "embedding", "image", "speech", "transcription"]),
+  single("anthropic", "Anthropic", "@ai-sdk/anthropic", "^4", "createAnthropic", "ANTHROPIC_API_KEY", ["language"]),
+  single("groq", "Groq", "@ai-sdk/groq", "^4", "createGroq", "GROQ_API_KEY", ["language", "transcription"]),
+  single("fal", "Fal", "@ai-sdk/fal", "^3", "createFal", "FAL_API_KEY", ["image", "speech", "transcription", "video"]),
+  single("deepinfra", "DeepInfra", "@ai-sdk/deepinfra", "^3", "createDeepInfra", "DEEPINFRA_API_KEY", ["language", "embedding", "image"]),
+  single("black-forest-labs", "Black Forest Labs", "@ai-sdk/black-forest-labs", "^2", "createBlackForestLabs", "BFL_API_KEY", ["image"]),
+  single("google", "Google Generative AI", "@ai-sdk/google", "^4", "createGoogleGenerativeAI", "GOOGLE_GENERATIVE_AI_API_KEY", ["language", "embedding", "image", "video"]),
+  single("mistral", "Mistral AI", "@ai-sdk/mistral", "^4", "createMistral", "MISTRAL_API_KEY", ["language", "embedding"]),
+  single("togetherai", "Together.ai", "@ai-sdk/togetherai", "^3", "createTogetherAI", "TOGETHER_AI_API_KEY", ["language", "embedding", "image"]),
+  single("cohere", "Cohere", "@ai-sdk/cohere", "^4", "createCohere", "COHERE_API_KEY", ["language", "embedding"]),
+  single("fireworks", "Fireworks", "@ai-sdk/fireworks", "^3", "createFireworks", "FIREWORKS_API_KEY", ["language", "embedding", "image"]),
+  single("voyage", "Voyage AI", "@ai-sdk/voyage", "^2", "createVoyage", "VOYAGE_API_KEY", ["embedding"]),
+  single("deepseek", "DeepSeek", "@ai-sdk/deepseek", "^3", "createDeepSeek", "DEEPSEEK_API_KEY", ["language"]),
+  single("moonshotai", "Moonshot AI", "@ai-sdk/moonshotai", "^3", "createMoonshotAI", "MOONSHOT_API_KEY", ["language"]),
+  single("alibaba", "Alibaba", "@ai-sdk/alibaba", "^2", "createAlibaba", "DASHSCOPE_API_KEY", ["language", "embedding", "video"]),
+  single("cerebras", "Cerebras", "@ai-sdk/cerebras", "^3", "createCerebras", "CEREBRAS_API_KEY", ["language"]),
+  single("replicate", "Replicate", "@ai-sdk/replicate", "^3", "createReplicate", "REPLICATE_API_TOKEN", ["image", "video"]),
+  single("prodia", "Prodia", "@ai-sdk/prodia", "^2", "createProdia", "PRODIA_API_KEY", ["image", "video"]),
+  single("perplexity", "Perplexity", "@ai-sdk/perplexity", "^4", "createPerplexity", "PERPLEXITY_API_KEY", ["language"]),
+  single("luma", "Luma", "@ai-sdk/luma", "^3", "createLuma", "LUMA_API_KEY", ["image", "video"]),
+  single("bytedance", "ByteDance", "@ai-sdk/bytedance", "^2", "createByteDance", "BYTEDANCE_API_KEY", ["language", "image", "video"]),
+  single("elevenlabs", "ElevenLabs", "@ai-sdk/elevenlabs", "^3", "createElevenLabs", "ELEVENLABS_API_KEY", ["speech", "transcription"]),
+  single("assemblyai", "AssemblyAI", "@ai-sdk/assemblyai", "^3", "createAssemblyAI", "ASSEMBLYAI_API_KEY", ["transcription"]),
+  single("deepgram", "Deepgram", "@ai-sdk/deepgram", "^3", "createDeepgram", "DEEPGRAM_API_KEY", ["speech", "transcription"]),
+  single("gladia", "Gladia", "@ai-sdk/gladia", "^3", "createGladia", "GLADIA_API_KEY", ["transcription"]),
+  single("lmnt", "LMNT", "@ai-sdk/lmnt", "^3", "createLMNT", "LMNT_API_KEY", ["speech"]),
+  single("hume", "Hume", "@ai-sdk/hume", "^3", "createHume", "HUME_API_KEY", ["speech"]),
+  single("revai", "Rev.ai", "@ai-sdk/revai", "^3", "createRevai", "REVAI_API_KEY", ["transcription"]),
+  single("baseten", "Baseten", "@ai-sdk/baseten", "^2", "createBaseten", "BASETEN_API_KEY", ["language", "embedding"]),
+  single("huggingface", "Hugging Face", "@ai-sdk/huggingface", "^2", "createHuggingFace", "HF_TOKEN", ["language", "embedding", "image"]),
+  single("quiverai", "QuiverAI", "@ai-sdk/quiverai", "^2", "createQuiverAI", "QUIVER_API_KEY", ["language", "image"]),
 
   // ── Structured-credential providers (multiple secrets / required options ⇒ alias-only) ──
   {
     id: "azure",
     label: "Azure OpenAI",
     pkg: "@ai-sdk/azure",
-    range: "^3",
+    range: "^4",
     modalities: ["language", "embedding", "image", "speech", "transcription"],
     secrets: [KEY],
     options: [
@@ -163,7 +163,7 @@ export const SPECS: ProviderSpec[] = [
     id: "amazon-bedrock",
     label: "Amazon Bedrock",
     pkg: "@ai-sdk/amazon-bedrock",
-    range: "^4",
+    range: "^5",
     modalities: ["language", "embedding", "image"],
     secrets: [
       { name: "apiKey", label: "Bedrock API key (or use the AWS keys below)" },
@@ -179,7 +179,7 @@ export const SPECS: ProviderSpec[] = [
     id: "anthropic-aws",
     label: "Claude on AWS",
     pkg: "@ai-sdk/anthropic-aws",
-    range: "^1",
+    range: "^2",
     modalities: ["language"],
     secrets: [
       { name: "apiKey", label: "Bedrock API key (or use the AWS keys below)" },
@@ -198,7 +198,7 @@ export const SPECS: ProviderSpec[] = [
     id: "google-vertex",
     label: "Google Vertex AI",
     pkg: "@ai-sdk/google-vertex",
-    range: "^4",
+    range: "^5",
     modalities: ["language", "embedding", "image", "transcription", "video"],
     secrets: [{ name: "credentials", label: "Service-account JSON" }],
     options: [
@@ -212,7 +212,7 @@ export const SPECS: ProviderSpec[] = [
     id: "open-responses",
     label: "Open Responses",
     pkg: "@ai-sdk/open-responses",
-    range: "^1",
+    range: "^2",
     modalities: ["language", "image"],
     secrets: [{ name: "apiKey" }],
     options: [
@@ -225,7 +225,7 @@ export const SPECS: ProviderSpec[] = [
     id: "openai-compatible",
     label: "OpenAI Compatible",
     pkg: "@ai-sdk/openai-compatible",
-    range: "^2",
+    range: "^3",
     modalities: ["language", "embedding", "image"],
     secrets: [{ name: "apiKey" }],
     options: [
@@ -238,7 +238,7 @@ export const SPECS: ProviderSpec[] = [
     id: "klingai",
     label: "Kling AI",
     pkg: "@ai-sdk/klingai",
-    range: "^3",
+    range: "^4",
     modalities: ["image", "video"],
     secrets: [
       { name: "accessKey", required: true },

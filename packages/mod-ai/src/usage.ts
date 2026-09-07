@@ -47,14 +47,22 @@ function flatten(u: V3Usage | undefined): { inputTokens?: number; outputTokens?:
   return { inputTokens, outputTokens, totalTokens };
 }
 
+/** Provider specs the tap knows how to read (`usage.inputTokens.total` shape; `finish` part carries usage). */
+const TAPPABLE_SPECS = new Set(["v3", "v4"]);
+
 /**
  * Wrap a language model so every generate/stream call reports its usage.
- * Models below middleware spec v3 pass through untapped (their usage still
- * flows on op outputs; only the bus/span tap is skipped).
+ * Models on a spec the tap doesn't know pass through untapped (their usage
+ * still flows on op outputs; only the bus/span tap is skipped) — and say so
+ * once, because a silently untapped model means silently unmetered tokens.
  */
 export function withUsageTap(model: LanguageModel, ctx: OpContext): LanguageModel {
   if (typeof model === "string") return model; // a bare gateway model id — nothing to wrap
-  if ((model as { specificationVersion?: string }).specificationVersion !== "v3") return model;
+  const spec = (model as { specificationVersion?: string }).specificationVersion;
+  if (!spec || !TAPPABLE_SPECS.has(spec)) {
+    warnUntapped(spec, (model as { modelId?: string }).modelId);
+    return model;
+  }
 
   const record = (usage: V3Usage | undefined): void => {
     // Fail-open by contract: usage capture must never break generation.
@@ -82,7 +90,9 @@ export function withUsageTap(model: LanguageModel, ctx: OpContext): LanguageMode
   };
 
   const middleware: LanguageModelMiddleware = {
-    specificationVersion: "v3",
+    // The middleware speaks the model's own spec version (v3 models still
+    // exist behind older providers; ai@7's own are v4).
+    specificationVersion: spec as LanguageModelMiddleware["specificationVersion"],
     wrapGenerate: async ({ doGenerate }) => {
       const result = await doGenerate();
       record(result.usage as V3Usage);
@@ -106,4 +116,15 @@ export function withUsageTap(model: LanguageModel, ctx: OpContext): LanguageMode
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return wrapLanguageModel({ model: model as any, middleware }) as LanguageModel;
+}
+
+const warnedSpecs = new Set<string>();
+function warnUntapped(spec: string | undefined, modelId: string | undefined): void {
+  const key = spec ?? "(none)";
+  if (warnedSpecs.has(key)) return;
+  warnedSpecs.add(key);
+  console.warn(
+    `[pattern/mod-ai] model "${modelId ?? "unknown"}" speaks provider spec ${key}, which the usage tap doesn't read — ` +
+      `its tokens are NOT metered (no ai.usage events). Update @pattern-js/mod-ai, or pin the provider to a spec it knows.`,
+  );
 }
