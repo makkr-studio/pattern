@@ -12,10 +12,10 @@ scheme, feeding the contract's normalized event pipeline.
 
 ## Setup
 
-1. In **admin → System → Billing**, add an account with provider `stripe`:
+1. In **admin → Administration → Billing**, add an account with provider `stripe`:
    the secret key and webhook secret as **refs** —
    `{"apiKey":{"source":"env","key":"STRIPE_API_KEY"},"webhookSecret":{"source":"env","key":"STRIPE_WEBHOOK_SECRET"}}` —
-   and options like `{"defaultPriceKey":"price_…"}`.
+   and options like `{"defaultPriceKey":"pro"}` (a lookup key, or a `price_…` id).
 2. Point a Stripe webhook endpoint at the seeded route
    **POST `/billing/webhook/stripe`**, sending at least:
    `checkout.session.completed`, `customer.subscription.created`,
@@ -28,8 +28,18 @@ scheme, feeding the contract's normalized event pipeline.
 ## What the driver does
 
 - **Checkout** (`POST /v1/checkout/sessions`): subscription mode by default,
-  your `userId` as `client_reference_id`, redirect URLs anchored on
+  `mode: "payment"` for a one-time sale (the session then asks Stripe to
+  create a **customer**, so the purchase lands on the customer ↔ user mapping
+  and the buyer can reach the portal for receipts). Your `userId` rides as
+  `client_reference_id`, the price key and quantity as session `metadata` —
+  the completed-session webhook carries no line items, so that is how a
+  purchase reads back what was bought. Redirect URLs anchor on
   `PATTERN_PUBLIC_URL`. Server-side only — no publishable key anywhere.
+- **Lookup keys**: a `priceKey` that isn't a `price_…` id is treated as the
+  price's **lookup key** (set it in the dashboard: Product catalog → the price
+  → lookup key) and resolved through `GET /v1/prices?lookup_keys[]=` once per
+  key. Name prices `pro` / `lifetime` in test and live and the workflows never
+  change. An unknown key fails with the no-effect verdict (nothing was created).
 - **Portal** (`/v1/billing_portal/sessions`): a portal *configuration* must
   exist; the driver looks one up (or creates a minimal
   cancel/invoices/payment-methods one) on first use.

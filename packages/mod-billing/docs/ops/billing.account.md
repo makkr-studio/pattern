@@ -1,4 +1,4 @@
-Resolve a named billing account (admin → System → Billing) to the edge-safe
+Resolve a named billing account (admin → Administration → Billing) to the edge-safe
 reference other ops consume — the NAME travels, secrets re-resolve at call
 time, so re-pointing the account in admin re-targets every workflow using it.
 Defaults to "default". With `required: false` it probes instead of throwing:

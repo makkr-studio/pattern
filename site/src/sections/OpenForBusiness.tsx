@@ -18,7 +18,7 @@ const BEATS: Beat[] = [
     hue: 120,
     title: "Take money",
     body:
-      "Checkout and the customer portal are one node each — Stripe hosts the cards and 3DS. The completion webhook is verified, deduped, and projected into a role, so an active plan becomes a scope and the paid feature is one requireAuth away. The return page even absorbs the webhook race: pay, watch it unlock, land on the feature.",
+      "Checkout and the customer portal are one node each — Stripe hosts the cards and 3DS — and the same node sells a subscription or a one-time purchase. The completion webhook is verified, deduped, and projected into a role, so an active plan or a lifetime deal becomes a scope and the paid feature is one requireAuth away. The return page even absorbs the webhook race: pay, watch it unlock, land on the feature.",
     receipt: '"requireAuth": { "scopes": ["pro"] }',
   },
   {

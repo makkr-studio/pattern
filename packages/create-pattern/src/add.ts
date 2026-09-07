@@ -445,7 +445,7 @@ function printReport(r: AddReport, dryRun: boolean): void {
   }
   if (Object.keys(r.depsAdded).length) console.log(`\n  ${pc.bold("next:")} npm install ${pc.dim("(then npm run dev)")}`);
   if (r.added.includes("billing")) {
-    console.log(`  ${arrow} connect Stripe: keys in .env, the account in admin → System → Billing,`);
+    console.log(`  ${arrow} connect Stripe: keys in .env, the account in admin → Administration → Billing,`);
     console.log(`    ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe`);
   }
   console.log("");

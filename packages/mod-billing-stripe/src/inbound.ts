@@ -65,7 +65,7 @@ export const stripeWebhookOp: OpDefinition = {
       return {
         result: httpOutcome("invalid", {
           error: "not_configured",
-          message: `account "${account}" has no webhookSecret — add the whsec_… value in admin → System → Billing`,
+          message: `account "${account}" has no webhookSecret — add the whsec_… value in admin → Administration → Billing`,
         }),
       };
     }

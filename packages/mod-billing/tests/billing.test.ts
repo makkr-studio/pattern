@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { Engine, type OpContext, type Workflow } from "@pattern-js/core";
-import { checkoutCreateOp } from "../src/ops.js";
+import { checkoutCreateOp, ownsOp } from "../src/ops.js";
 import {
   BILLING_SERVICE,
   BillingConfigService,
@@ -115,11 +115,16 @@ function fakeDriver() {
 /* ── harness ──────────────────────────────────────────────────────────── */
 
 async function boot(
-  opts: { entitlement?: { role: string; gracePastDue?: boolean } | false; identity?: ReturnType<typeof fakeIdentity>; account?: false } = {},
+  opts: {
+    entitlement?: { role: string; gracePastDue?: boolean } | false;
+    grants?: Record<string, string>;
+    identity?: ReturnType<typeof fakeIdentity>;
+    account?: false;
+  } = {},
 ) {
   const engine = new Engine({ env: { PATTERN_PUBLIC_URL: "https://app.example", FAKE_KEY: "sk_fake", FAKE_WHSEC: "whsec_fake" } });
   const configPath = `/tmp/pattern-billing-test-${Math.random().toString(36).slice(2)}.json`;
-  const mod = billingMod({ configPath, entitlement: opts.entitlement ?? { role: "member" } });
+  const mod = billingMod({ configPath, entitlement: opts.entitlement ?? { role: "member" }, ...(opts.grants ? { grants: opts.grants } : {}) });
   await engine.useAsync(mod, { deferReady: true });
   await mod.ready?.(engine);
   const store = fakeStore();
@@ -631,7 +636,7 @@ describe("the return pages absorb the webhook race", () => {
     expect(Object.keys(status.inputs)).toHaveLength(0);
 
     const anon = (await status.execute(pageCtx(ctx.services, { kind: "anonymous" }))) as { state: Record<string, unknown> };
-    expect(anon.state).toEqual({ signedIn: false, entitled: false });
+    expect(anon.state).toEqual({ signedIn: false, entitled: false, purchased: [] });
 
     driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" });
     await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
@@ -640,7 +645,7 @@ describe("the return pages absorb the webhook race", () => {
     const mine = (await status.execute(pageCtx(ctx.services, { kind: "user", id: "ada", provider: "test" }))) as {
       state: Record<string, unknown>;
     };
-    expect(mine.state).toEqual({ signedIn: true, entitled: true, status: "active" });
+    expect(mine.state).toEqual({ signedIn: true, entitled: true, status: "active", purchased: [] });
   });
 
   it("cancel page reassures and points back", async () => {
@@ -704,5 +709,124 @@ describe("billing.admin.checklist — server-owned steps for page + dashboard", 
     cl = await read();
     expect(cl.done).toBe(true);
     expect(cl.steps[5]!).toMatchObject({ ok: true });
+  });
+});
+
+/* ── one-time purchases + grants ──────────────────────────────────────── */
+
+const purchaseCompleted = (eventId: string, price = "lifetime", extra: Partial<Extract<BillingEvent, { kind: "checkout.completed" }>> = {}): BillingEvent => ({
+  kind: "checkout.completed",
+  eventId,
+  customerId: "cus_1",
+  userRef: "ada",
+  email: "ada@example.com",
+  mode: "payment",
+  priceKeys: [price],
+  quantity: 1,
+  amount: 4900,
+  currency: "usd",
+  sessionId: `cs_${eventId}`,
+  ...extra,
+});
+
+describe("one-time purchases", () => {
+  it("records the purchase, marks the price OWNED, grants its role for good, and emits purchase.completed", async () => {
+    const { engine, svc, driver, identity, store, ctx } = await boot({ grants: { lifetime: "member" } });
+    const emitted: unknown[] = [];
+    engine.events.subscribe("billing.purchase.completed", (p) => emitted.push(p));
+
+    driver.parsed.push(purchaseCompleted("evt_buy"));
+    const res = await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(res).toMatchObject({ ok: true, kind: "checkout.completed", roleChanged: true, purchase: { priceKeys: ["lifetime"], quantity: 1, amount: 4900, currency: "usd" } });
+
+    // The purchase row (keyed by the session), the mapping's ownership, and the derived event.
+    expect((await store.docs.get("billing.purchases", "fake:cs_evt_buy"))?.data).toMatchObject({ userId: "ada", customerId: "cus_1", priceKeys: ["lifetime"], amount: 4900, currency: "usd", eventId: "evt_buy" });
+    expect(await svc.owns({ userId: "ada", priceKey: "lifetime" }, ctx)).toEqual({ owns: true, purchased: ["lifetime"] });
+    expect(await svc.entitled({ userId: "ada" }, ctx)).toMatchObject({ entitled: false, purchased: ["lifetime"] }); // no subscription — ownership is separate
+    expect(identity.users.get("ada")!.roles).toEqual(["admin", "member"]);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ account: "default", event: { kind: "purchase.completed", userRef: "ada", priceKeys: ["lifetime"], amount: 4900, sessionId: "cs_evt_buy" } });
+
+    // A redelivery is a duplicate: one purchase, one setRoles.
+    driver.parsed.push(purchaseCompleted("evt_buy"));
+    expect(await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).toMatchObject({ ok: true, duplicate: true });
+    expect(await svc.purchases({ userId: "ada" }, ctx)).toHaveLength(1);
+    expect(identity.setRolesCalls).toHaveLength(1);
+    expect(emitted).toHaveLength(1);
+
+    // A subscription ending later never takes a bought role away.
+    driver.parsed.push(subDeleted("evt_end"));
+    const ended = await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(ended.roleChanged).toBe(false);
+    expect(identity.users.get("ada")!.roles).toContain("member");
+  });
+
+  it("a second purchase adds to what's owned; the ops answer from the mapping", async () => {
+    const { svc, driver, ctx } = await boot({ grants: { lifetime: "member", "extra-seat": "member" } });
+    driver.parsed.push(purchaseCompleted("e1", "lifetime"), purchaseCompleted("e2", "extra-seat", { sessionId: "cs_e2", quantity: 3, amount: 2700 }));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect((await svc.owns({ userId: "ada", priceKey: "extra-seat" }, ctx)).purchased).toEqual(["lifetime", "extra-seat"]);
+    expect((await svc.purchases({}, ctx)).map((p) => p.quantity).sort()).toEqual([1, 3]); // (the fake store doesn't order)
+    // billing.owns, the canvas op: config names the price, the trigger's user id flows in.
+    const out = (await ownsOp.execute({
+      ...ctx,
+      config: { priceKey: "lifetime" },
+      input: { has: (p: string) => p === "userId", value: async (p: string) => (p === "userId" ? "ada" : undefined) },
+    } as unknown as OpContext)) as { owns: boolean; purchased: string[] };
+    expect(out).toEqual({ owns: true, purchased: ["lifetime", "extra-seat"] });
+    const stranger = (await ownsOp.execute({
+      ...ctx,
+      config: { priceKey: "lifetime" },
+      input: { has: (p: string) => p === "userId", value: async () => "nobody" },
+    } as unknown as OpContext)) as { owns: boolean };
+    expect(stranger.owns).toBe(false);
+  });
+
+  it("a payment checkout's success URL names the item, so the return page can wait for OWNERSHIP", async () => {
+    const { svc, driver, ctx } = await boot();
+    await svc.checkout({ userId: "ada", mode: "payment", priceKey: "lifetime", next: "/pro" }, ctx);
+    expect(driver.checkouts[0]).toMatchObject({ mode: "payment", priceKey: "lifetime", successUrl: "https://app.example/billing/success?next=%2Fpro&item=lifetime" });
+    // A subscription checkout carries no item: the page waits for `entitled`.
+    await svc.checkout({ userId: "ada", next: "/pro" }, ctx);
+    expect(driver.checkouts[1]!.successUrl).toBe("https://app.example/billing/success?next=%2Fpro");
+  });
+
+  it("without grants, a purchase is recorded and owned but no role moves", async () => {
+    const { svc, driver, identity, ctx } = await boot();
+    driver.parsed.push(purchaseCompleted("e1"));
+    const res = await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(res.purchase).toBeDefined();
+    expect(res.roleChanged).toBe(false);
+    expect(identity.setRolesCalls).toHaveLength(0);
+    expect((await svc.owns({ userId: "ada", priceKey: "lifetime" }, ctx)).owns).toBe(true);
+  });
+});
+
+describe("grants on subscriptions", () => {
+  it("a subscribed price grants its role while entitled, alongside the entitlement role; both leave with the subscription — other roles untouched", async () => {
+    const identity = fakeIdentity({ ada: ["admin", "editor"] });
+    const { svc, driver, ctx } = await boot({ entitlement: { role: "member" }, grants: { price_pro: "pro-tier" }, identity });
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada", mode: "subscription" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push(subUpdated("e1")); // priceKeys: ["price_pro"]
+    expect((await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).roleChanged).toBe(true);
+    expect(identity.users.get("ada")!.roles).toEqual(["admin", "editor", "member", "pro-tier"]);
+    // A renewal changes nothing.
+    driver.parsed.push(subUpdated("e2"));
+    expect((await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).roleChanged).toBe(false);
+    expect(identity.setRolesCalls).toHaveLength(1);
+    // Cancel: the managed roles go, the unmanaged ones stay.
+    driver.parsed.push(subDeleted("e3"));
+    expect((await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).roleChanged).toBe(true);
+    expect(identity.users.get("ada")!.roles).toEqual(["admin", "editor"]);
+  });
+
+  it("grants work with entitlement: false — per-price roles only", async () => {
+    const { svc, driver, identity, ctx } = await boot({ entitlement: false, grants: { price_pro: "pro-tier" } });
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" }, subUpdated("e1"));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(identity.users.get("ada")!.roles).toEqual(["admin", "pro-tier"]);
   });
 });

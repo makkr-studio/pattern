@@ -217,27 +217,34 @@ read scores. Needs an \`embeddings\` model alias.`,
   {
     id: "billing",
     label: "Billing",
-    hint: "Stripe checkout, portal & signed webhooks; subscriptions become roles → scopes",
+    hint: "Stripe checkout (recurring or one-time), portal & signed webhooks; payments become roles → scopes",
     requires: ["auth", "email", "store", "vault"],
     deps: ["@pattern-js/mod-billing", "@pattern-js/mod-billing-stripe"],
     configMods: ["./mods/billing.mjs", "@pattern-js/mod-billing-stripe"],
     workerMods: [],
     env: [],
     vaultSecrets: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
-    // checkout/portal/pro are the billing SURFACE (kept even with --no-examples);
-    // the landing page is the demo.
-    platformWorkflows: { template: "saas-starter", workflows: ["checkout.json", "portal.json", "pro.json"] },
+    // checkout (recurring) / buy (one-time) / portal / pro are the billing
+    // SURFACE (kept even with --no-examples); the landing page is the demo.
+    platformWorkflows: { template: "saas-starter", workflows: ["checkout.json", "buy.json", "portal.json", "pro.json"] },
     examples: { template: "saas-starter", workflows: ["landing.json"] },
-    serves: (ex) => [...(ex ? ["/"] : []), "/pro", "/billing/checkout", "/billing/portal"],
+    serves: (ex) => [...(ex ? ["/"] : []), "/pro", "/billing/checkout", "/billing/buy", "/billing/portal"],
     envHint: STRIPE_ENV_HINT,
     agentsMd: `### Billing (mod-billing + the Stripe driver)
-The entitlement bridge: an active/trialing subscription grants the "member"
-role (mods/billing.mjs) → identity's roles→scopes map turns it into the "pro"
-scope (mods/identity.mjs) → a paid feature is just
-\`"requireAuth": { "scopes": ["pro"] }\` on a route. Checkout/portal ship as
-durable workflows; the signed Stripe webhook route is seeded by the driver.
-Dev loop: keys in admin → Resources → Secrets (the encrypted vault — applies on
-the next call, no restart), the account in admin → System → Billing, then
+Two ways to get paid, one gate — the entitlement bridge. RECURRING: \`workflows/checkout.json\`
+(\`billing.checkout.create\`, mode \`subscription\`, priceKey \`pro\`) — an
+active/trialing subscription grants the "member" role while it stays paid.
+ONE-TIME: \`workflows/buy.json\` (mode \`payment\`, priceKey \`lifetime\`) —
+the purchase is recorded and \`grants: { lifetime: "member" }\` gives the role
+for good. Both are configured in mods/billing.mjs; identity's roles→scopes map
+(mods/identity.mjs) turns "member" into the "pro" scope, so a paid feature is
+just \`"requireAuth": { "scopes": ["pro"] }\` on a route. Price keys are Stripe
+LOOKUP KEYS, never price_… ids. Mid-graph: \`billing.entitled\` (subscription)
+and \`billing.owns\` (purchase); events: \`billing.event\` with kind
+\`purchase.completed\` / \`subscription.updated\` / \`invoice.payment_failed\`.
+The signed Stripe webhook route is seeded by the driver. Dev loop: keys in
+admin → Resources → Secrets (the encrypted vault — applies on the next call, no
+restart), the account in admin → Administration → Billing, then
 \`stripe listen --forward-to localhost:3000/billing/webhook/stripe\` and pay
 with 4242 4242 4242 4242.`,
   },

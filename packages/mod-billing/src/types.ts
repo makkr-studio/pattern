@@ -83,6 +83,40 @@ type BillingEventBody =
       userRef?: string;
       email?: string;
       metadata?: Record<string, string>;
+      /**
+       * What was bought: a recurring `subscription` (the subscription.* events
+       * carry its state from here on) or a one-time `payment`. A payment-mode
+       * checkout is the whole story of a purchase, so drivers report the rest
+       * below; mod-billing records it and emits `purchase.completed`.
+       */
+      mode?: "subscription" | "payment";
+      /** The price keys bought (lookup keys when the checkout named them, else ids). */
+      priceKeys?: string[];
+      quantity?: number;
+      /** Total charged, in the currency's minor unit (4900 = $49.00). */
+      amount?: number;
+      currency?: string;
+      /** The provider's checkout session id (the purchase's natural key). */
+      sessionId?: string;
+      paymentIntentId?: string;
+    }
+  | {
+      /**
+       * A one-time purchase landed — DERIVED by mod-billing from a payment-mode
+       * `checkout.completed` after it is recorded (drivers never return this
+       * kind). "On purchase → provision / email a receipt" is this trigger.
+       */
+      kind: "purchase.completed";
+      eventId: string;
+      customerId?: string;
+      userRef?: string;
+      email?: string;
+      priceKeys: string[];
+      quantity?: number;
+      amount?: number;
+      currency?: string;
+      sessionId?: string;
+      paymentIntentId?: string;
     }
   | {
       kind: "subscription.updated";
@@ -102,6 +136,7 @@ export type BillingEventKind = BillingEvent["kind"];
 
 export const BILLING_EVENT_KINDS: BillingEventKind[] = [
   "checkout.completed",
+  "purchase.completed",
   "subscription.updated",
   "subscription.deleted",
   "invoice.paid",
@@ -124,7 +159,7 @@ export class BillingSignatureError extends Error {
 /**
  * Thrown when billing simply isn't SET UP yet — no account, no driver, a
  * missing required secret, no price to sell. The checkout/portal ops turn it
- * into a friendly 409 outcome (with a pointer at admin → System → Billing)
+ * into a friendly 409 outcome (with a pointer at admin → Administration → Billing)
  * instead of a failed run: an unconfigured demo is a to-do, not an error.
  */
 export class BillingNotConfiguredError extends Error {
@@ -272,4 +307,31 @@ export interface BillingCustomer {
   updatedAt: number;
   /** Provider time of the newest state-bearing event applied — the ordering guard's watermark. */
   lastEventAt?: number;
+  /**
+   * Price keys bought OUTRIGHT (one-time, payment-mode checkouts) — the union
+   * of every purchase, never removed: what `billing.owns` answers from, and
+   * what `grants` turns into roles the customer keeps.
+   */
+  purchased?: string[];
+}
+
+/* ── one-time purchases (billing.purchases docs collection) ───────────── */
+
+/** One completed payment-mode checkout: what was bought, by whom, for how much. */
+export interface BillingPurchase {
+  userId?: string;
+  customerId?: string;
+  provider: string;
+  account: string;
+  priceKeys: string[];
+  quantity: number;
+  /** Minor units (4900 = $49.00), when the provider reports a total. */
+  amount?: number;
+  currency?: string;
+  sessionId?: string;
+  paymentIntentId?: string;
+  /** The provider event that recorded it (dedup lineage). */
+  eventId: string;
+  /** Provider event time (ms), else the time recorded. */
+  at: number;
 }

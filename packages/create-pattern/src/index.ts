@@ -471,9 +471,9 @@ const MODPACKS: Modpack[] = [
   {
     id: "saas-starter",
     label: "SaaS starter",
-    hint: "a subscription SaaS — sign-in, Stripe billing, and a members area gated by a scope",
-    rung: "+ billing — checkout, webhooks, subscriptions → roles",
-    tagline: "Studio + identity + billing — sign in, subscribe via Stripe, and a /pro area only an active subscription opens",
+    hint: "a paid product — sign-in, Stripe subscriptions and one-time purchases, and a members area gated by a scope",
+    rung: "+ billing — checkout (recurring or one-time), webhooks, payments → roles",
+    tagline: "Studio + identity + billing — sign in, subscribe or buy once via Stripe, and a /pro area only a paying customer opens",
     mods: [
       "@pattern-js/mod-billing",
       "@pattern-js/mod-billing-stripe",
@@ -506,7 +506,7 @@ const MODPACKS: Modpack[] = [
         "",
         `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} — open it, you're the owner`,
         `${pc.cyan("→")} landing at ${pc.bold("http://localhost:3000/")} — Subscribe 401s until Stripe is connected`,
-        `${pc.cyan("→")} connect Stripe (test mode): keys in admin → System → ${pc.bold("Secrets")} (the encrypted vault), the account in admin → System → Billing,`,
+        `${pc.cyan("→")} connect Stripe (test mode): keys in admin → System → ${pc.bold("Secrets")} (the encrypted vault), the account in admin → Administration → Billing,`,
         `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("(the walkthrough lives in AGENTS.md)")}`,
         `${pc.cyan("→")} pay with ${pc.bold("4242 4242 4242 4242")} — the webhook grants the member role and ${pc.bold("/pro")} unlocks`,
       ].filter((l) => l !== ""),
@@ -1669,7 +1669,7 @@ async function applyCompose(targetDir: string, layers: string[], dims: Dims, nam
     const idxPath = join(targetDir, "src", "index.ts");
     const idx = await readFile(idxPath, "utf8");
     const studioTry = "console.log(`  Try     curl ${base}/hello/world`);\nconsole.log(`          curl ${base}/quote`);";
-    const saasTry = "console.log(`  Landing ${base}/   (Subscribe → Stripe test checkout)`);\nconsole.log(`  Members ${base}/pro   (unlocks with an active subscription)`);";
+    const saasTry = "console.log(`  Landing ${base}/   (Subscribe or Buy → Stripe test checkout)`);\nconsole.log(`  Members ${base}/pro   (unlocks with a subscription or a lifetime purchase)`);";
     const headlessAnchor = 'console.log("  GET  /hello/:name       (default port)");';
     const headlessLead =
       'console.log("  GET  /                  landing — Subscribe → Stripe test checkout");\n' +
@@ -1735,8 +1735,8 @@ function composeNext(ctx: NextCtx, layers: string[], dims: Dims): string[] {
       : []),
     ...(layers.includes("billing")
       ? [
-          `${pc.cyan("→")} your landing page: ${pc.bold("http://localhost:3000/")} — Subscribe walks the Stripe test checkout`,
-          `${pc.cyan("→")} admin → ${pc.bold("System → Billing")} has the setup checklist (test key, price, webhook) — it ticks itself as you go,`,
+          `${pc.cyan("→")} your landing page: ${pc.bold("http://localhost:3000/")} — Subscribe (recurring) or Buy (one-time) walk the Stripe test checkout`,
+          `${pc.cyan("→")} admin → ${pc.bold("Administration → Billing")} has the setup checklist (test key, prices, webhook) — it ticks itself as you go,`,
           `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("— pay with 4242 4242 4242 4242 and /pro unlocks")}`,
         ]
       : []),
@@ -2129,7 +2129,7 @@ async function runHeadlessCompose(flags: Flags): Promise<void> {
   if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${dims.vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → Resources → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
   if (layers.includes("buddy")) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\`.`);
   if (dims.auth) console.log(`First boot prints a one-time admin link in the console.`);
-  if (layers.includes("billing")) console.log(`Stripe: keys in admin → Resources → Secrets (the encrypted vault), the account in admin → System → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
+  if (layers.includes("billing")) console.log(`Stripe: keys in admin → Resources → Secrets (the encrypted vault), the account in admin → Administration → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
   for (const ep of composeServes(layers, dims)) console.log(`  serves http://localhost:3000${ep}`);
   console.log(`Reproduce: ${composeCommand(name, layers, dims)}`);
 }

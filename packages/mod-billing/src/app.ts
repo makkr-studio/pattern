@@ -12,7 +12,8 @@
  *    from vault or env, options incl. the default price) and the accounts it
  *    edits — click one to prefill.
  *  - LIVE STATE (right): customers (the user ↔ provider mapping the webhooks
- *    maintain — status badges, entitlement at a glance) and recent events
+ *    maintain — subscription status, entitlement, what they own outright),
+ *    one-time purchases (who bought what, for how much), and recent events
  *    (what the provider actually delivered).
  */
 
@@ -51,7 +52,7 @@ function Checklist({ data }) {
   var next = steps.find(function (s) { return !s.ok; });
   return h(GlassPanel, { className: "p-6 space-y-3" },
     h("div", { className: "flex items-center justify-between" },
-      h("h3", { className: "font-semibold" }, "From zero to your first subscription"),
+      h("h3", { className: "font-semibold" }, "From zero to your first payment"),
       h(Badge, { hue: done === steps.length ? 140 : 45 }, done + "/" + steps.length)),
     done === steps.length
       ? h("p", { className: "text-sm", style: { color: "var(--color-neon-lime)" } },
@@ -164,9 +165,17 @@ function DataTable({ title, empty, cols, rows }) {
 }
 
 var STATUS_HUE = { active: 140, trialing: 140, past_due: 45, canceled: 340, unpaid: 340, incomplete: 45 };
-function statusBadge(s) { return s ? h(Badge, { hue: STATUS_HUE[s] == null ? 200 : STATUS_HUE[s] }, s) : "—"; }
+function statusBadge(s) { return s && s !== "—" ? h(Badge, { hue: STATUS_HUE[s] == null ? 200 : STATUS_HUE[s] }, s) : h("span", { className: "text-muted" }, "no subscription"); }
 function check(v) {
   return h("span", { style: { color: v ? "var(--color-neon-lime)" : "var(--color-muted)" } }, v ? "✓" : "—");
+}
+// Minor units → "49.00 USD" (zero-decimal currencies stay whole).
+var ZERO_DECIMAL = { jpy: 1, krw: 1, vnd: 1, clp: 1, xaf: 1, xof: 1, bif: 1, djf: 1, gnf: 1, kmf: 1, mga: 1, pyg: 1, rwf: 1, ugx: 1, xpf: 1 };
+function money(amount, currency) {
+  if (typeof amount !== "number") return "—";
+  var cur = String(currency || "").toLowerCase();
+  var value = ZERO_DECIMAL[cur] ? String(amount) : (amount / 100).toFixed(2);
+  return value + (cur ? " " + cur.toUpperCase() : "");
 }
 
 export default function BillingPage() {
@@ -176,6 +185,7 @@ export default function BillingPage() {
   const [secrets, setSecrets] = React.useState([]);
   const [accounts, setAccounts] = React.useState([]);
   const [customers, setCustomers] = React.useState([]);
+  const [purchases, setPurchases] = React.useState([]);
   const [events, setEvents] = React.useState([]);
   const [form, setForm] = React.useState(blank);
 
@@ -184,6 +194,7 @@ export default function BillingPage() {
     pollChecklist(),
     api.call("GET", "/billing/api/accounts").then((r) => setAccounts(arr(r, "accounts"))),
     api.call("GET", "/billing/api/customers").then((r) => setCustomers(arr(r, "customers"))),
+    api.call("GET", "/billing/api/purchases").then((r) => setPurchases(arr(r, "purchases"))).catch(() => {}),
     api.call("GET", "/billing/api/events").then((r) => setEvents(arr(r, "events"))),
   ]).catch(() => {});
 
@@ -222,12 +233,25 @@ export default function BillingPage() {
           cols: [
             { key: "userId", label: "User" },
             { key: "customerId", label: "Customer" },
-            { key: "status", label: "Status", render: (r) => statusBadge(r.status) },
-            { key: "priceKeys", label: "Prices", render: (r) => (Array.isArray(r.priceKeys) ? r.priceKeys.join(", ") : r.priceKeys) || "—" },
+            { key: "status", label: "Subscription", render: (r) => statusBadge(r.status) },
+            { key: "priceKeys", label: "Plan", render: (r) => (Array.isArray(r.priceKeys) ? r.priceKeys.join(", ") : r.priceKeys) || "—" },
             { key: "entitled", label: "Entitled", render: (r) => check(r.entitled === true || r.entitled === "yes") },
+            { key: "purchased", label: "Owns", render: (r) => (Array.isArray(r.purchased) ? r.purchased.join(", ") : r.purchased) || "—" },
             { key: "updatedAt", label: "Updated", render: (r) => ago(r.updatedAt) || "—" },
           ],
           rows: customers,
+        }),
+        h(DataTable, {
+          title: "Purchases", empty: "No one-time purchases yet — a payment-mode checkout (billing.checkout.create with mode: \\"payment\\") lands here.",
+          cols: [
+            { key: "at", label: "When", render: (r) => ago(r.at) || "—" },
+            { key: "userId", label: "User" },
+            { key: "priceKeys", label: "Item" },
+            { key: "quantity", label: "Qty" },
+            { key: "amount", label: "Paid", render: (r) => money(r.amount, r.currency) },
+            { key: "sessionId", label: "Session" },
+          ],
+          rows: purchases,
         }),
         h(DataTable, {
           title: "Recent events", empty: "Nothing delivered yet — this fills the moment stripe listen forwards the first webhook.",

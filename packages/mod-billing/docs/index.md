@@ -1,12 +1,26 @@
 # Billing
 
-`@pattern-js/mod-billing` makes your app **take money**: hosted checkout and
-the customer portal as ordinary ops, a normalized webhook event stream you can
-build workflows on, and a subscription → role bridge that turns "paid feature"
-into a plain `requireAuth` scope. It is the CONTRACT mod — provider mods plug
-in underneath (`@pattern-js/mod-billing-stripe` first; the union is
+`@pattern-js/mod-billing` makes your app **take money** — recurring
+subscriptions and one-time purchases alike: hosted checkout and the customer
+portal as ordinary ops, a normalized webhook event stream you can build
+workflows on, and a payments → roles bridge that turns "paid feature" into a
+plain `requireAuth` scope. It is the CONTRACT mod — provider mods plug in
+underneath (`@pattern-js/mod-billing-stripe` first; the union is
 provider-neutral so a `mod-billing-revolut` slots in without touching your
 workflows).
+
+## The two-minute version
+
+| You want | Checkout node | The gate | Mid-graph check |
+|---|---|---|---|
+| A subscription (recurring) | `billing.checkout.create` with `mode: "subscription"`, `priceKey: "pro"` | `entitlement: { role: "member" }` → role while paid → `requireAuth: { scopes: ["pro"] }` | `billing.entitled` |
+| A one-time purchase | `billing.checkout.create` with `mode: "payment"`, `priceKey: "lifetime"` | `grants: { lifetime: "member" }` → role for good → the same `requireAuth` | `billing.owns` |
+| Something on payment | — | — | a `billing.event` trigger: `purchase.completed`, `subscription.updated`, `invoice.payment_failed` |
+
+Price keys are the provider's **lookup keys** (`pro`, `lifetime`) — names you
+give prices in the dashboard — so config never carries a `price_…` id and
+test → live is a no-op. The saas-starter ships both flows
+(`workflows/checkout.json`, `workflows/buy.json`) behind one gated page.
 
 ```jsonc
 { "mods": ["@pattern-js/mod-billing", "@pattern-js/mod-billing-stripe"] }
@@ -35,6 +49,22 @@ customer back to *your* user. Redirect URLs anchor on `PATTERN_PUBLIC_URL`
 (set it behind a proxy) with `/billing/success` and `/billing/cancel` paths
 you can change in the mod options.
 
+## Recurring or one-time: `mode` on the checkout
+
+The same node sells both. `mode: "subscription"` (the default) starts a
+recurring plan whose state arrives on `subscription.*` events for as long as
+it lives. `mode: "payment"` sells something **once**: the completed checkout
+is recorded as a **purchase** (`billing.purchases` — who, what, how much, the
+session id as its key so a redelivery never double-records), the price key is
+marked as *owned* on the customer mapping, and a `purchase.completed` event is
+emitted with the details. `billing.owns` answers "does this user own X?" from
+the mapping; the Billing page lists every sale.
+
+Name prices by **lookup key** (`priceKey: "lifetime"` on the node, or the
+account's `defaultPriceKey`). One-time buyers become provider customers too, so
+they can reach the portal for receipts, and both kinds of payment land in the
+same customer row.
+
 ## The return pages absorb the webhook race
 
 The provider redirects the buyer to `/billing/success` the moment payment
@@ -43,13 +73,15 @@ mod serves both return paths itself, so that moment is honest instead of a
 404:
 
 - **success** greets the buyer and polls `/billing/status` until the webhook
-  flips `entitled`, then forwards to `next` — the gated page checkout was
-  started from. Already entitled → an immediate redirect; not signed in → a
-  static thank-you.
+  flips `entitled` (a subscription) or records the bought `item` (a one-time
+  purchase — its price key rides the return URL), then forwards to `next` —
+  the gated page checkout was started from. Already unlocked → an immediate
+  redirect; not signed in → a static thank-you.
 - **cancel** reassures that no charge was made and points back.
-- **`/billing/status`** answers `{ signedIn, entitled, status }` for the
-  *calling* user (principal-derived — it can't probe anyone else), which any
-  frontend can also use to pick between "Upgrade" and "Manage subscription".
+- **`/billing/status`** answers `{ signedIn, entitled, status, purchased }`
+  for the *calling* user (principal-derived — it can't probe anyone else),
+  which any frontend can also use to pick between "Upgrade", "Manage
+  subscription", and "You own this".
 
 Give `billing.checkout.create` a `next` (config or input, relative-path
 guarded) and it rides the return URLs as `?next=`. Want your own pages? Move
@@ -70,24 +102,36 @@ The driver mod seeds a signed webhook route. Every delivery is:
    being told all is well. The admin's Events table shows the state and the
    attempt count.
 3. **folded into the customer mapping** (`billing.customers`): user ↔
-   provider-customer, status, prices, entitlement — browsable in the admin.
-   Deliveries for one customer are serialized, and state-bearing events
-   (`subscription.*`) are ordered by the provider's event time: a delayed
-   older `active` arriving after a `deleted` is recorded as `stale`, never
-   projected — canceled stays canceled.
-4. **projected into a role** (below), and
-5. **emitted** as a normalized `billing.*` event.
+   provider-customer, subscription status and prices, entitlement, and the
+   prices bought outright — browsable in the admin. A payment-mode checkout
+   also writes its **purchase** row. Deliveries for one customer are
+   serialized, and state-bearing events (`subscription.*`) are ordered by the
+   provider's event time: a delayed older `active` arriving after a `deleted`
+   is recorded as `stale`, never projected — canceled stays canceled.
+4. **projected into roles** (below), and
+5. **emitted** as a normalized `billing.*` event — plus `purchase.completed`
+   for a one-time sale.
 
 The `billing.event` trigger subscribes to those events, so *"on payment
-failed → email the user"* is an ordinary three-node workflow — filter with
-`config.kind` or take all five kinds.
+failed → email the user"* or *"on purchase → provision"* is an ordinary
+three-node workflow — filter with `config.kind` or take all six kinds.
 
-## Entitlement: a subscription becomes a role
+## Payments become roles: `entitlement` and `grants`
 
-With `@pattern-js/mod-identity` installed, an entitled subscription
-(`active`/`trialing`, plus `past_due` under `gracePastDue`) grants the
-configured role (default `member`); losing it removes the role. Identity
-compiles roles → scopes per request, so gating a route behind a paid plan is:
+With `@pattern-js/mod-identity` installed, billing manages roles from the
+mapping — and only the roles it is told about, leaving every other role alone:
+
+- **`entitlement: { role }`** — any entitled subscription (`active`/`trialing`,
+  plus `past_due` under `gracePastDue`) grants the role (default `member`);
+  losing it removes the role.
+- **`grants: { priceKey: role }`** — per price. A price **bought outright**
+  grants its role for good; a price on an **entitled subscription** grants its
+  role while the subscription is entitled. This is how tiers work
+  (`{ pro: "member", team: "team" }`) and how a one-time purchase unlocks a
+  feature (`{ lifetime: "member" }`).
+
+Identity compiles roles → scopes per request, so gating a route behind a paid
+plan — subscribed or bought — is:
 
 ```jsonc
 // identity options            // the trigger
@@ -96,8 +140,9 @@ compiles roles → scopes per request, so gating a route behind a paid plan is:
 
 Projection happens **only on actual transitions** — `setRoles` revokes the
 user's sessions (it's a privilege change), so a renewal webhook must never log
-your customers out. Mid-graph, `billing.entitled` gives you `{ entitled }`
-from the local mapping — no provider round-trip, safe on every request.
+your customers out. Mid-graph, `billing.entitled` gives you `{ entitled,
+status, purchased }` and `billing.owns` gives you `{ owns }` for one price —
+both from the local mapping, no provider round-trip, safe on every request.
 
 ## Usage metering
 
@@ -115,7 +160,8 @@ per-model meters, or bucket guests.
 
 ```ts
 billingMod({
-  entitlement: { role: "member", gracePastDue: false },  // or false to disable
+  entitlement: { role: "member", gracePastDue: false },  // any paid subscription → role; false to disable
+  grants: { lifetime: "member", team: "team" },          // price key → role: bought = for good, subscribed = while paid
   successPath: "/billing/success",
   cancelPath: "/billing/cancel",
   statusPath: "/billing/status",  // the success page's entitlement poller
@@ -137,5 +183,10 @@ engine.service<BillingService>(BILLING_SERVICE)?.registerDriver(myDriver);
 
 `verifyAndParse` receives the RAW webhook bytes; throw `BillingSignatureError`
 on a bad signature (→ 401), return `null` for event types the contract doesn't
-model (→ acknowledged), or a normalized `BillingEvent`. The secret/option
-field lists you declare drive the admin account form automatically.
+model (→ acknowledged), or a normalized `BillingEvent`. For a payment-mode
+checkout, report `mode`, `priceKeys`, `amount`, `currency` and `sessionId` on
+the `checkout.completed` event — mod-billing records the purchase and emits
+`purchase.completed` itself (drivers never return that kind) — and make sure a
+one-time buyer becomes a provider **customer**, since purchases hang off the
+customer ↔ user mapping. The secret/option field lists you declare drive the
+admin account form automatically.

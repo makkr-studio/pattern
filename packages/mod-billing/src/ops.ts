@@ -2,8 +2,10 @@
  * @pattern-js/mod-billing — the canvas ops + the billing.event trigger.
  *
  * Checkout and the portal return URLS — wiring one into
- * `boundary.http.response`'s redirect is the whole payment UI. Entitlement is
- * a fast mapping read (`billing.entitled`), never a provider round-trip;
+ * `boundary.http.response`'s redirect is the whole payment UI; `mode` on the
+ * checkout picks recurring (subscription) or one-time (payment). Entitlement
+ * is a fast mapping read (`billing.entitled` for the subscription,
+ * `billing.owns` for a purchase), never a provider round-trip;
  * `billing.subscription.get` is the provider-fresh sibling. The trigger rides
  * core's generic trigger seam, so "on payment failed → email the user" is an
  * ordinary workflow.
@@ -38,7 +40,7 @@ export const accountOp: OpDefinition = {
   effects: "pure",
   title: "billing.account",
   description:
-    "Resolve a named billing account (configured in admin → System → Billing) to an account reference. " +
+    "Resolve a named billing account (configured in admin → Administration → Billing) to an account reference. " +
     'Defaults to "default". With required=false it probes instead of throwing: `configured` reports ' +
     "whether the account exists.",
   config: z.object({
@@ -56,7 +58,7 @@ export const accountOp: OpDefinition = {
     const name = (await maybe<string>(ctx, "account")) ?? cfg.account;
     const ref = billingConfig(ctx).resolveAccount(name);
     if (!ref && cfg.required) {
-      throw new Error(`billing.account: no account "${name}" is configured — add it in admin → System → Billing.`);
+      throw new Error(`billing.account: no account "${name}" is configured — add it in admin → Administration → Billing.`);
     }
     return { account: ref ?? null, configured: Boolean(ref) };
   },
@@ -103,16 +105,22 @@ export const checkoutCreateOp: OpDefinition = {
   title: "billing.checkout.create",
   description:
     "Create a hosted checkout session — redirect the browser to `url` and the provider handles cards, taxes, " +
-    "and 3DS. `userId` becomes the checkout's reference, so the completion webhook maps the new customer back " +
-    "to your user. `origin` (wire the trigger's request URL or leave it — PATTERN_PUBLIC_URL wins) anchors the " +
-    "success/cancel redirects; priceKey falls back to the account's defaultPriceKey. Retries are provider-side " +
-    "idempotent (the key is pinned to the run+node). `result` carries { url, sessionId } — or, when billing " +
-    "isn't set up yet, a friendly conflict outcome for boundary.http.status; `url` stays for happy-path wiring. " +
-    "`next` (config or input; relative path) tells the packaged return pages where to forward the buyer after " +
-    "the unlock — usually the gated page this checkout was started from.",
+    "and 3DS. `mode` picks what is sold: \"subscription\" (recurring — the subscription becomes the entitlement " +
+    "role while it stays paid) or \"payment\" (one-time — the purchase is recorded, `billing.owns` answers for " +
+    "it, and a `grants` entry turns it into a role the buyer keeps). `userId` becomes the checkout's reference, " +
+    "so the completion webhook maps the new customer back to your user — always wire the trigger's user.id. " +
+    "`priceKey` names the price (a lookup key like \"pro\" or \"lifetime\", or a price_… id) and falls back to " +
+    "the account's defaultPriceKey. `origin` (wire the trigger's request URL or leave it — PATTERN_PUBLIC_URL " +
+    "wins) anchors the success/cancel redirects. Retries are provider-side idempotent (the key is pinned to the " +
+    "run+node). `result` carries { url, sessionId } — or, when billing isn't set up yet, a friendly conflict " +
+    "outcome for boundary.http.status; `url` stays for happy-path wiring. `next` (config or input; relative " +
+    "path) tells the packaged return pages where to forward the buyer after the unlock — usually the gated page " +
+    "this checkout was started from.",
   config: z.object({
     account: z.string().default(DEFAULT_ACCOUNT),
     mode: z.enum(["subscription", "payment"]).default("subscription"),
+    /** The price this node sells (input overrides; empty = the account's defaultPriceKey). */
+    priceKey: z.string().optional(),
     next: z.string().optional(),
   }),
   inputs: {
@@ -126,7 +134,7 @@ export const checkoutCreateOp: OpDefinition = {
   },
   outputs: { result: value(), url: value(z.string().optional()), sessionId: value(z.string().optional()) },
   execute: async (ctx) => {
-    const cfg = ctx.config as { account: string; mode: "subscription" | "payment"; next?: string };
+    const cfg = ctx.config as { account: string; mode: "subscription" | "payment"; priceKey?: string; next?: string };
     try {
       const res = await billingService(ctx).checkout(
         {
@@ -134,7 +142,7 @@ export const checkoutCreateOp: OpDefinition = {
           mode: cfg.mode,
           userId: await maybe<string>(ctx, "userId"),
           email: await maybe<string>(ctx, "email"),
-          priceKey: await maybe<string>(ctx, "priceKey"),
+          priceKey: (await maybe<string>(ctx, "priceKey")) ?? cfg.priceKey,
           quantity: await maybe<number>(ctx, "quantity"),
           origin: originOf(await maybe<string>(ctx, "origin")),
           next: (await maybe<string>(ctx, "next")) ?? cfg.next,
@@ -228,16 +236,39 @@ export const entitledOp: OpDefinition = {
   effects: "pure",
   title: "billing.entitled",
   description:
-    "Fast entitlement check: { entitled, status } straight from the local customer mapping (updated by every " +
-    "webhook) — no provider round-trip, safe on every request. Wire `entitled` into core.flow.branch to gate " +
-    "a paid path mid-graph; route-level gating stays requireAuth + the projected role.",
+    "Fast SUBSCRIPTION check: { entitled, status, purchased } straight from the local customer mapping (updated " +
+    "by every webhook) — no provider round-trip, safe on every request. Wire `entitled` into core.flow.branch to " +
+    "gate a paid path mid-graph; `purchased` lists the price keys bought outright (billing.owns asks about one). " +
+    "Route-level gating stays requireAuth + the projected role.",
   inputs: { userId: value(z.string()) },
-  outputs: { entitled: value(z.boolean()), status: value(z.string().optional()) },
+  outputs: { entitled: value(z.boolean()), status: value(z.string().optional()), purchased: value(z.array(z.string())) },
   execute: async (ctx) => {
     const userId = (await ctx.input.value<string>("userId")) ?? "";
-    if (!userId) return { entitled: false, status: undefined };
+    if (!userId) return { entitled: false, status: undefined, purchased: [] };
     const res = await billingService(ctx).entitled({ userId }, ctx);
-    return { entitled: res.entitled, status: res.status };
+    return { entitled: res.entitled, status: res.status, purchased: res.purchased };
+  },
+};
+
+export const ownsOp: OpDefinition = {
+  type: "billing.owns",
+  effects: "pure",
+  title: "billing.owns",
+  description:
+    "ONE-TIME purchase check: does `userId` own `priceKey` (config or input — a lookup key like \"lifetime\" or a " +
+    "price_… id)? { owns, purchased } from the local mapping the completion webhook maintains — no provider " +
+    "round-trip, safe on every request. Wire `owns` into core.flow.branch to gate a bought feature mid-graph; " +
+    "for route-level gating, give the price a `grants` role and use requireAuth on the scope instead.",
+  config: z.object({ priceKey: z.string().optional() }),
+  inputs: { userId: value(z.string()), priceKey: value(z.string().optional()) },
+  outputs: { owns: value(z.boolean()), purchased: value(z.array(z.string())) },
+  execute: async (ctx) => {
+    const cfg = ctx.config as { priceKey?: string };
+    const userId = (await ctx.input.value<string>("userId")) ?? "";
+    const priceKey = (await maybe<string>(ctx, "priceKey")) ?? cfg.priceKey;
+    if (!priceKey) throw new Error("billing.owns: name the `priceKey` to check (config or input).");
+    if (!userId) return { owns: false, purchased: [] };
+    return billingService(ctx).owns({ userId, priceKey }, ctx);
   },
 };
 
@@ -291,10 +322,11 @@ export const billingEventTrigger: OpDefinition = {
   type: "billing.event",
   title: "billing.event",
   description:
-    "Billing event trigger: fires once per normalized provider event (checkout completed, subscription " +
-    "updated/deleted, invoice paid/failed) after verification, dedup and role projection. config.kind narrows " +
-    "to one kind (empty = all five). Outputs { event, kind, account, userId? } — build \"payment failed → " +
-    "email the user\" as an ordinary workflow.",
+    "Billing event trigger: fires once per normalized provider event (checkout completed, ONE-TIME purchase " +
+    "completed, subscription updated/deleted, invoice paid/failed) after verification, dedup, purchase " +
+    "recording and role projection. config.kind narrows to one kind (empty = all six). Outputs { event, kind, " +
+    "account, userId? } — build \"payment failed → email the user\" or \"purchase → provision\" as an ordinary " +
+    "workflow.",
   boundary: "trigger",
   pair: "boundary.return",
   // The provider's webhook delivery never reads this run's result.
@@ -332,6 +364,7 @@ export const billingOps: OpDefinition[] = [
   portalCreateOp,
   subscriptionGetOp,
   entitledOp,
+  ownsOp,
   usageRecordOp,
   billingEventTrigger,
 ];

@@ -5,9 +5,10 @@
  * payment settles — usually BEFORE the completion webhook has landed and the
  * entitlement role exists. These pages absorb that race instead of lying about
  * it: the success page greets the buyer, polls `billing.status.mine` until the
- * webhook flips `entitled`, then forwards to `next` (the gated page checkout
- * was started from). No provider round-trip, no auth requirement — an
- * anonymous return still gets a truthful thank-you.
+ * webhook flips `entitled` (a subscription) or records the `item` (a one-time
+ * purchase — its price key rides the return URL), then forwards to `next`
+ * (the gated page checkout was started from). No provider round-trip, no auth
+ * requirement — an anonymous return still gets a truthful thank-you.
  *
  * Apps that want their own pages: move ours (`successPath`/`cancelPath`
  * options) or turn them off (`pages: false`) and serve the paths yourself.
@@ -87,22 +88,27 @@ export const statusMineOp: OpDefinition = {
   effects: "pure",
   title: "billing.status.mine",
   description:
-    "The CALLING user's entitlement, from the local mapping: { signedIn, entitled, status }. Principal-derived " +
-    "(never a userId input), so it's safe on a public route — the success page polls it while the completion " +
-    "webhook lands, and any frontend can ask it to decide between 'Upgrade' and 'Manage subscription'.",
+    "The CALLING user's billing state, from the local mapping: { signedIn, entitled, status, purchased }. " +
+    "Principal-derived (never a userId input), so it's safe on a public route — the success page polls it while " +
+    "the completion webhook lands, and any frontend can ask it to decide between 'Upgrade', 'Manage " +
+    "subscription', and 'You own this'.",
   reusable: false,
   config: z.object({}),
   inputs: {},
   outputs: { state: value() },
   execute: async (ctx) => {
     const p = ctx.principal;
-    if (p.kind !== "user") return { state: { signedIn: false, entitled: false } };
+    if (p.kind !== "user") return { state: { signedIn: false, entitled: false, purchased: [] } };
     const res = await billingService(ctx).entitled({ userId: p.id }, ctx);
-    return { state: { signedIn: true, entitled: res.entitled, status: res.status } };
+    return { state: { signedIn: true, entitled: res.entitled, status: res.status, purchased: res.purchased } };
   },
 };
 
-/** Success page states: already entitled → 302 to `next`; signed-in → poll until
+/** Only a plain price key survives as the awaited item (it is echoed into the page). */
+const safeItem = (item: unknown): string | undefined =>
+  typeof item === "string" && /^[A-Za-z0-9_.\-]{1,200}$/.test(item) ? item : undefined;
+
+/** Success page states: already unlocked → 302 to `next`; signed-in → poll until
  *  the webhook flips the mapping; anonymous → a truthful static thank-you. */
 export const successPageOp: OpDefinition = {
   type: "billing.success.page",
@@ -110,14 +116,16 @@ export const successPageOp: OpDefinition = {
   title: "billing.success.page",
   description:
     "The checkout landing page. Payment settled, but the completion webhook may still be in flight — so this " +
-    "page thanks the buyer and polls billing.status.mine until `entitled` flips, then forwards to `next` " +
-    "(guarded to a relative path). Already entitled → an immediate redirect; not signed in → a static thank-you.",
+    "page thanks the buyer and polls billing.status.mine until the unlock lands (`entitled` for a subscription; " +
+    "`purchased` includes `item` for a one-time purchase — checkout puts the price key on the return URL), then " +
+    "forwards to `next` (guarded to a relative path). Already unlocked → an immediate redirect; not signed in → " +
+    "a static thank-you.",
   reusable: false,
   config: z.object({
     /** Where the page's poller asks for entitlement (the status route's path). */
     statusPath: z.string().default("/billing/status"),
   }),
-  inputs: { next: value(z.string().optional()) },
+  inputs: { next: value(z.string().optional()), item: value(z.string().optional()) },
   outputs: {
     body: value(z.string().optional()),
     redirect: value(z.string().optional()),
@@ -127,27 +135,30 @@ export const successPageOp: OpDefinition = {
     const cfg = ctx.config as { statusPath: string };
     const rawNext = ctx.input.has("next") ? await ctx.input.value<string>("next") : undefined;
     const next = safeNextPath(rawNext);
+    const item = safeItem(ctx.input.has("item") ? await ctx.input.value<string>("item") : undefined);
     const p = ctx.principal;
 
     if (p.kind === "user") {
-      const { entitled } = await billingService(ctx).entitled({ userId: p.id }, ctx);
-      if (entitled) return { body: undefined, redirect: next, status: undefined };
+      const { entitled, purchased } = await billingService(ctx).entitled({ userId: p.id }, ctx);
+      const unlocked = item ? purchased.includes(item) : entitled;
+      if (unlocked) return { body: undefined, redirect: next, status: undefined };
       return {
         body: layout(
           "Payment received",
           `<div class="spin" id="spin"></div>
 <h1>Payment received</h1>
-<p id="msg">Unlocking your account… this takes a few seconds.</p>
+<p id="msg">${item ? "Recording your purchase" : "Unlocking your account"}… this takes a few seconds.</p>
 <a class="btn" id="go" href="${escapeHtml(next)}" hidden>Continue</a>
 <p class="hint" id="slow" hidden>Taking longer than expected — the payment provider is still
 confirming. Your access appears the moment it does; you can also continue and refresh there.</p>
 <script>
-  const next = ${JSON.stringify(next)}, status = ${JSON.stringify(cfg.statusPath)};
+  const next = ${JSON.stringify(next)}, status = ${JSON.stringify(cfg.statusPath)}, item = ${JSON.stringify(item ?? null)};
   let tries = 0;
+  const unlocked = (s) => item ? Array.isArray(s.purchased) && s.purchased.indexOf(item) >= 0 : Boolean(s.entitled);
   const tick = async () => {
     try {
       const s = await (await fetch(status, { headers: { accept: "application/json" } })).json();
-      if (s && s.entitled) { location.replace(next); return; }
+      if (s && unlocked(s)) { location.replace(next); return; }
     } catch {}
     if (++tries >= 40) {
       document.getElementById("spin").hidden = true;
@@ -172,7 +183,7 @@ confirming. Your access appears the moment it does; you can also continue and re
         "Payment received",
         `<div class="mark">✓</div>
 <h1>Payment received</h1>
-<p>Thank you! Your subscription is being set up. Sign in to pick it up.</p>
+<p>Thank you! Your ${item ? "purchase" : "subscription"} is being set up. Sign in to pick it up.</p>
 <a class="btn" href="${escapeHtml(next)}">Continue</a>`,
       ),
       redirect: undefined,
@@ -215,7 +226,7 @@ export const pageOps: OpDefinition[] = [statusMineOp, successPageOp, cancelPageO
 function htmlPage(spec: { id: string; path: string; op: string; config?: Record<string, unknown> }): Workflow {
   const nodes: Workflow["nodes"] = [
     { id: "in", op: "boundary.http.request", config: { method: "GET", path: spec.path } },
-    { id: "ex_query", op: "core.object.extract", config: { keys: ["next"] } },
+    { id: "ex_query", op: "core.object.extract", config: { keys: spec.op === "billing.success.page" ? ["next", "item"] : ["next"] } },
     { id: "call", op: spec.op, ...(spec.config ? { config: spec.config } : {}) },
     { id: "ct", op: "core.const.object", config: { value: { "content-type": "text/html; charset=utf-8" } } },
     { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
@@ -228,6 +239,8 @@ function htmlPage(spec: { id: string; path: string; op: string; config?: Record<
     { from: { node: "ct", port: "out" }, to: { node: "out", port: "headers" } },
   ];
   if (spec.op === "billing.success.page") {
+    // A one-time purchase names its price on the return URL — the page waits for THAT.
+    edges.push({ from: { node: "ex_query", port: "item" }, to: { node: "call", port: "item" } });
     edges.push({ from: { node: "call", port: "redirect" }, to: { node: "out", port: "redirect" } });
   }
   return { id: spec.id, name: `Billing · GET ${spec.path}`, source: "code", nodes, edges };

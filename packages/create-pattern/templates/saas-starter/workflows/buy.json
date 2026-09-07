@@ -1,8 +1,8 @@
 {
   "$schema": "pattern/workflow/v1",
-  "id": "billing-checkout",
-  "name": "POST /billing/checkout",
-  "description": "Subscribe (recurring): the signed-in user’s id becomes the checkout reference (the completion webhook maps the new customer back to them), and the subscription grants the member role while it stays paid. Durable: exact inputs and outputs land in the RunLedger, so a failure resumes instead of re-charging.",
+  "id": "billing-buy",
+  "name": "POST /billing/buy",
+  "description": "Buy lifetime access ONCE: a payment-mode checkout for the “lifetime” price (a Stripe lookup key). The completion webhook records the purchase; `grants` in mods/billing.mjs turns it into the member role — for good, no renewal to lose. Durable + retry like everything that touches money.",
   "durable": true,
   "nodes": [
     {
@@ -10,7 +10,7 @@
       "op": "boundary.http.request",
       "config": {
         "method": "POST",
-        "path": "/billing/checkout",
+        "path": "/billing/buy",
         "requireAuth": true
       },
       "ui": {
@@ -38,11 +38,11 @@
       "op": "billing.checkout.create",
       "config": {
         "account": "default",
-        "mode": "subscription",
-        "priceKey": "pro",
+        "mode": "payment",
+        "priceKey": "lifetime",
         "next": "/pro"
       },
-      "comment": "mode: subscription = recurring. priceKey is the Stripe LOOKUP KEY of the recurring price (“pro”); next rides the return URLs: after payment the packaged success page unlocks and forwards to /pro.",
+      "comment": "mode: payment = one-time. priceKey names the price by its Stripe LOOKUP KEY (never a price_… id); the return page waits until the purchase is recorded, then forwards to /pro.",
       "retry": {
         "attempts": 3,
         "backoffMs": 400

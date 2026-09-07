@@ -64,6 +64,39 @@ contract with a Stripe driver, AI usage metering, failure alerts, and a
 
 ### Billing
 
+- **One-time purchases are first-class.** `billing.checkout.create` sells
+  either way — `mode: "subscription"` (recurring) or `mode: "payment"`
+  (one-time) — and a payment-mode checkout is now the whole story of a sale:
+  the driver reports what was bought (`mode`, `priceKeys`, `amount`,
+  `currency`, `sessionId`), mod-billing records a **purchase**
+  (`billing.purchases`, keyed by the session so a redelivery never
+  double-records), marks the price as *owned* on the customer mapping, and
+  emits **`purchase.completed`** with the details. New `billing.owns` asks
+  "does this user own X?" from the mapping (no provider round-trip);
+  `billing.entitled` and `/billing/status` report `purchased` too, and the
+  packaged success page waits for the bought `item` instead of a
+  subscription entitlement. `priceKey` is now also a config field on the
+  checkout node — a node that sells one thing says so.
+- **Payments become roles with `grants`.** `billingMod({ grants: { lifetime:
+  "member", team: "team" } })` maps price keys to identity roles: a price
+  bought outright grants its role for good; a price on an entitled
+  subscription grants its role while it stays paid. Grants compose with
+  `entitlement` (any paid subscription → one role) — billing recomputes only
+  the roles it manages and leaves every other role alone, still writing only
+  on actual transitions. Tiers, add-ons and lifetime deals are one config
+  line, and the gate stays `requireAuth: { scopes: [...] }`.
+- **Prices by lookup key.** The Stripe driver treats a `priceKey` that isn't a
+  `price_…` id as the price's **lookup key** (resolved once per key through
+  `/v1/prices`), so config says `pro` / `lifetime` and test → live is a
+  no-op; one-time checkouts ask Stripe to create a customer, so purchases hang
+  off the same customer ↔ user mapping and buyers reach the portal for
+  receipts. The saas-starter ships both flows — `checkout.json` (recurring,
+  `pro`) and the new `buy.json` (one-time, `lifetime`) — behind one gated
+  page, with `grants: { lifetime: "member" }` in `mods/billing.mjs`; the
+  Billing page gains a Purchases table and an *Owns* column, the identity
+  user page shows what a user owns, and AGENTS.md carries the recipes: add a
+  subscription paywall, add a one-time purchase, do something on payment.
+
 - **`@pattern-js/mod-billing` — the payments contract.** Provider-neutral
   driver SPI and a normalized event union (`checkout.completed`,
   `subscription.updated/deleted`, `invoice.paid/payment_failed`); accounts

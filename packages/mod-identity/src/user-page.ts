@@ -134,7 +134,8 @@ function BillingPanel({ userId }) {
       ? h("div", { className: "space-y-2" },
           h(Row, { label: "Status" }, h(Badge, null, String(state.row.status || "—"))),
           h(Row, { label: "Entitled" }, state.row.entitled === true || state.row.entitled === "yes" ? "yes" : "no"),
-          h(Row, { label: "Prices" }, String(state.row.priceKeys || "—")),
+          h(Row, { label: "Plan" }, String(state.row.priceKeys || "—")),
+          h(Row, { label: "Owns" }, String(state.row.purchased || "—")),
           h(Row, { label: "Customer" }, String(state.row.customerId || "—")),
           h(Row, { label: "Updated" }, ago(state.row.updatedAt) || "—"))
       : h("p", { className: "text-sm text-muted" }, "No subscription — this user has never completed a checkout."));

@@ -1,12 +1,13 @@
 /**
  * @pattern-js/mod-billing — the admin surface (Tier-1 declarative, zero build).
  *
- * One Billing page under System, three sections: the accounts form (driver
- * select + sourced secrets — same contract as the Email page: refs only,
- * never values), the customers table (the user ↔ provider mapping the
- * webhooks maintain, entitlement at a glance), and recent events (what the
- * provider actually delivered — the first place to look when a subscription
- * "didn't stick").
+ * One Billing page under Administration: the setup checklist, the accounts
+ * form (driver select + sourced secrets — same contract as the Email page:
+ * refs only, never values), the customers table (the user ↔ provider mapping
+ * the webhooks maintain — subscription state, entitlement, and what was
+ * bought outright), one-time purchases, and recent events (what the provider
+ * actually delivered — the first place to look when a subscription "didn't
+ * stick").
  */
 
 import { fromBody, fromParams, httpEndpoint, required, value, z, type ChecklistStep, type FrontendContribution, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
@@ -24,6 +25,7 @@ const ACCOUNTS_PATH = "/billing/api/accounts";
 const PROVIDERS_PATH = "/billing/api/providers";
 const CUSTOMERS_PATH = "/billing/api/customers";
 const EVENTS_PATH = "/billing/api/events";
+const PURCHASES_PATH = "/billing/api/purchases";
 
 /* ── ops behind the page (privileged; the routes carry the admin gate) ── */
 
@@ -218,7 +220,7 @@ const adminChecklist: OpDefinition = {
       {
         ok: Boolean(a),
         label: "An account exists",
-        how: 'Save the account form (admin → System → Billing) as "default" — the ops and the starter workflows fall back to it.',
+        how: 'Save the account form (admin → Administration → Billing) as "default" — the ops and the starter workflows fall back to it.',
       },
       {
         ok: Boolean(a) && a!.missingSecrets.length === 0,
@@ -228,7 +230,7 @@ const adminChecklist: OpDefinition = {
       {
         ok: Boolean(a?.defaultPriceKey),
         label: "A price to sell",
-        how: "Create a product with a recurring price (test mode) and paste its price_… id into the account's Default price field.",
+        how: "Stripe dashboard (TEST mode) → Product catalog: create a product with a price — recurring for a subscription, one-time for a purchase — and give it a lookup key (e.g. pro, lifetime). Put that key (or the price_… id) in the account's Default price field; a checkout node can name any other price with priceKey.",
       },
       {
         ok: Boolean(a?.hasWebhookSecret),
@@ -238,7 +240,7 @@ const adminChecklist: OpDefinition = {
       {
         ok: Boolean(st.lastEvent),
         label: "First event received",
-        how: "Subscribe on your landing page with the test card 4242 4242 4242 4242 (any future date/CVC) — or fire one with: stripe trigger checkout.session.completed.",
+        how: "Subscribe (or buy) on your landing page with the test card 4242 4242 4242 4242 (any future date/CVC) — or fire one with: stripe trigger checkout.session.completed.",
         detail: st.lastEvent ? `${String(st.lastEvent.kind)} · ${agoOf(st.lastEvent.at)}` : undefined,
       },
     ];
@@ -280,9 +282,40 @@ const customersList: OpDefinition = {
           status: d.status ?? "—",
           priceKeys: Array.isArray(d.priceKeys) ? (d.priceKeys as string[]).join(", ") : "—",
           entitled: d.entitled ? "yes" : "no",
+          // Prices bought outright (one-time) — kept for good.
+          purchased: Array.isArray(d.purchased) && (d.purchased as string[]).length ? (d.purchased as string[]).join(", ") : "—",
           updatedAt: d.updatedAt ? new Date(d.updatedAt as number).toISOString() : "",
         };
       }),
+    };
+  },
+};
+
+const purchasesList: OpDefinition = {
+  type: "billing.purchases.list",
+  effects: "pure",
+  title: "billing.purchases.list",
+  description: "Recorded one-time purchases (payment-mode checkouts), newest first: who bought what, for how much (admin).",
+  reusable: false,
+  sensitivity: "privileged",
+  config: z.object({}),
+  inputs: {},
+  outputs: { purchases: value() },
+  execute: async (ctx) => {
+    const rows = await billingService(ctx).purchases({ limit: 200 }, ctx);
+    return {
+      purchases: rows.map((p) => ({
+        userId: p.userId ?? "—",
+        customerId: p.customerId ?? "—",
+        priceKeys: p.priceKeys.join(", ") || "—",
+        quantity: p.quantity,
+        amount: p.amount,
+        currency: p.currency,
+        sessionId: p.sessionId ?? p.eventId,
+        provider: p.provider,
+        account: p.account,
+        at: new Date(p.at).toISOString(),
+      })),
     };
   },
 };
@@ -323,7 +356,7 @@ const eventsList: OpDefinition = {
   },
 };
 
-export const adminOps: OpDefinition[] = [providersList, adminStatus, adminChecklist, accountsRead, accountsWrite, accountsDelete, customersList, eventsList];
+export const adminOps: OpDefinition[] = [providersList, adminStatus, adminChecklist, accountsRead, accountsWrite, accountsDelete, customersList, purchasesList, eventsList];
 
 export function billingAdminRoutes(): Workflow[] {
   const auth = { scopes: ["admin"] };
@@ -336,6 +369,7 @@ export function billingAdminRoutes(): Workflow[] {
     httpEndpoint({ id: "billing.route.accounts.write", name: `Billing · POST ${API}${ACCOUNTS_PATH}`, method: "POST", path: `${API}${ACCOUNTS_PATH}`, op: "billing.accounts.write", io: { in: accountIn, out: "result" }, auth }),
     httpEndpoint({ id: "billing.route.accounts.delete", name: `Billing · DELETE ${API}${ACCOUNTS_PATH}/:name`, method: "DELETE", path: `${API}${ACCOUNTS_PATH}/:name`, op: "billing.accounts.delete", io: { in: { name: fromParams() }, out: "result" }, auth }),
     httpEndpoint({ id: "billing.route.customers", name: `Billing · GET ${API}${CUSTOMERS_PATH}`, method: "GET", path: `${API}${CUSTOMERS_PATH}`, op: "billing.customers.list", io: { out: "customers" }, auth }),
+    httpEndpoint({ id: "billing.route.purchases", name: `Billing · GET ${API}${PURCHASES_PATH}`, method: "GET", path: `${API}${PURCHASES_PATH}`, op: "billing.purchases.list", io: { out: "purchases" }, auth }),
     httpEndpoint({ id: "billing.route.events", name: `Billing · GET ${API}${EVENTS_PATH}`, method: "GET", path: `${API}${EVENTS_PATH}`, op: "billing.events.list", io: { out: "events" }, auth }),
   ];
 }
@@ -348,6 +382,6 @@ export function billingFrontend(): FrontendContribution {
     // secret refs), and the customers/events tables.
     pages: [{ path: "/x/billing", title: "Billing", module: REMOTE }],
     // The dashboard aggregates this into the "open for business" board.
-    checklists: [{ id: "billing", title: "From zero to your first subscription", route: { path: CHECKLIST_PATH } }],
+    checklists: [{ id: "billing", title: "From zero to your first payment", route: { path: CHECKLIST_PATH } }],
   };
 }

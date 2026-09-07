@@ -5,7 +5,7 @@
  * zero-dependency fetch client; this mod registers it on mod-billing's
  * service in `ready` (after every setup ran — two-phase install, so listing
  * order in pattern.config.json doesn't matter) and seeds the signed webhook
- * route. Accounts are configured in admin → System → Billing; the secret key
+ * route. Accounts are configured in admin → Administration → Billing; the secret key
  * comes from the vault or an env var.
  */
 

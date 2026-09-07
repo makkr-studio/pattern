@@ -125,6 +125,10 @@ function fakeStripe(): { server: Server; requests: Captured[]; configs: string[]
         return json({ id: configs.at(-1) });
       }
       if (path.startsWith("/v1/billing_portal/sessions")) return json({ url: "https://billing.stripe.example/p/1" });
+      // Lookup-key resolution: only "lifetime" exists.
+      if (path.startsWith("/v1/prices")) {
+        return json({ data: decodeURIComponent(path).includes("lookup_keys[0]=lifetime") ? [{ id: "price_life_1", lookup_key: "lifetime" }] : [] });
+      }
       if (path.startsWith("/v1/billing/meter_events")) return json({ identifier: "ok" });
       if (path.startsWith("/v1/subscriptions/")) {
         return json({
@@ -433,6 +437,74 @@ describe("the packaged return pages, over real HTTP", () => {
 
     const status = await fetch(`http://localhost:${APP_PORT}/billing/status`);
     expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ signedIn: false, entitled: false });
+    expect(await status.json()).toEqual({ signedIn: false, entitled: false, purchased: [] });
+  });
+});
+
+describe("one-time payments", () => {
+  it("a lookup key resolves to the price id (once), payment mode asks Stripe for a customer and stashes the key in metadata", async () => {
+    const before = stripe.requests.length;
+    const res = await svc.checkout({ userId: "grace", email: "grace@example.com", mode: "payment", priceKey: "lifetime", next: "/pro" }, opCtx);
+    expect(res.url).toBe("https://checkout.stripe.example/cs_test_1");
+    const mine = stripe.requests.slice(before);
+    const lookups = mine.filter((r) => r.method === "GET" && r.path.startsWith("/v1/prices"));
+    expect(lookups).toHaveLength(1);
+    expect(decodeURIComponent(lookups[0]!.path)).toContain("lookup_keys[0]=lifetime");
+    const session = mine.find((r) => r.path.startsWith("/v1/checkout/sessions"))!;
+    expect(session.body).toContain("mode=payment");
+    expect(session.body).toContain("line_items%5B0%5D%5Bprice%5D=price_life_1");
+    expect(session.body).toContain("metadata%5BpriceKey%5D=lifetime");
+    expect(session.body).toContain("metadata%5Bquantity%5D=1");
+    expect(session.body).toContain("customer_creation=always"); // grace has no customer yet
+    expect(session.body).toContain(encodeURIComponent("/billing/success?next=%2Fpro&item=lifetime"));
+
+    // Cached: a second checkout of the same key makes no second lookup.
+    await svc.checkout({ userId: "grace", mode: "payment", priceKey: "lifetime" }, opCtx);
+    expect(stripe.requests.slice(before).filter((r) => r.method === "GET" && r.path.startsWith("/v1/prices"))).toHaveLength(1);
+    // An unknown lookup key is a setup mistake — refused with the no-effect verdict.
+    await expect(svc.checkout({ userId: "grace", mode: "payment", priceKey: "nope" }, opCtx)).rejects.toThrow(/no active price has the lookup key "nope"/);
+  });
+
+  it("a paid payment-mode session parses into a purchase-bearing checkout.completed", async () => {
+    const paid = JSON.stringify({
+      id: "evt_pay_1",
+      type: "checkout.session.completed",
+      created: 1_700_000_100,
+      data: {
+        object: {
+          id: "cs_pay_1",
+          mode: "payment",
+          customer: "cus_42",
+          payment_intent: "pi_1",
+          payment_status: "paid",
+          amount_total: 4900,
+          currency: "usd",
+          client_reference_id: "ada",
+          customer_details: { email: "ada@example.com" },
+          metadata: { priceKey: "lifetime", quantity: "1", userRef: "ada" },
+        },
+      },
+    });
+    const evt = await svc.driver("stripe")!.verifyAndParse(new TextEncoder().encode(paid), { "stripe-signature": sign(paid) }, { apiKey: "sk_test_x", webhookSecret: SECRET }, {}, opCtx);
+    expect(evt).toMatchObject({
+      kind: "checkout.completed",
+      mode: "payment",
+      priceKeys: ["lifetime"],
+      quantity: 1,
+      amount: 4900,
+      currency: "usd",
+      sessionId: "cs_pay_1",
+      paymentIntentId: "pi_1",
+      userRef: "ada",
+      at: 1_700_000_100_000,
+    });
+
+    // End to end over the seeded route: recorded as a purchase, owned by the user.
+    const r = await fetch(webhookUrl, { method: "POST", headers: { "stripe-signature": sign(paid) }, body: paid });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, kind: "checkout.completed", purchase: { priceKeys: ["lifetime"], amount: 4900 } });
+    expect((await store.docs.get("billing.purchases", "stripe:cs_pay_1"))?.data).toMatchObject({ userId: "ada", customerId: "cus_42", priceKeys: ["lifetime"], amount: 4900, currency: "usd" });
+    expect((await store.docs.get("billing.customers", "stripe:cus_42"))?.data).toMatchObject({ purchased: ["lifetime"] });
+    expect((await svc.entitled({ userId: "ada" }, opCtx)).purchased).toEqual(["lifetime"]);
   });
 });

@@ -12,10 +12,10 @@
  * is a duplicate, a redelivery of a FAILED one is a retry, and a concurrent
  * one is refused rather than acknowledged), update the user ↔ customer
  * mapping (serialized per customer, ordered by the provider's event time),
- * project the entitlement into an identity ROLE — but only on actual
- * transitions, because `setRoles` revokes sessions and a renewal must never
- * log anyone out — then emit the normalized `billing.*` events any workflow
- * can build on.
+ * record one-time PURCHASES, project entitlement and grants into identity
+ * ROLES — but only on actual transitions, because `setRoles` revokes sessions
+ * and a renewal must never log anyone out — then emit the normalized
+ * `billing.*` events any workflow can build on.
  */
 
 import { resolveSourced, type OpContext } from "@pattern-js/core";
@@ -31,6 +31,7 @@ import {
   type BillingDriverInfo,
   type BillingDriverSpec,
   type BillingEvent,
+  type BillingPurchase,
   type DriverUsageEvent,
   type ProviderSubscription,
   type SubscriptionStatus,
@@ -38,6 +39,7 @@ import {
 
 export const EVENTS_COLLECTION = "billing.events";
 export const CUSTOMERS_COLLECTION = "billing.customers";
+export const PURCHASES_COLLECTION = "billing.purchases";
 
 export interface BillingModOptions {
   /** Where accounts persist. Default ".pattern-data/billing-config.json". */
@@ -50,6 +52,16 @@ export interface BillingModOptions {
    * failing renewal.
    */
   entitlement?: { role: string; gracePastDue?: boolean } | false;
+  /**
+   * Per-price grants: price key → identity role. A price bought OUTRIGHT
+   * (a payment-mode checkout) grants its role for good; a price on an
+   * entitled SUBSCRIPTION grants its role while the subscription is
+   * entitled. Use the provider's lookup keys as price keys (`"pro"`,
+   * `"lifetime"`) so this config never names a `price_…` id. Grants compose
+   * with `entitlement` — both end in roles → scopes → `requireAuth`, so a
+   * paid feature is the same gate whether it was subscribed to or bought.
+   */
+  grants?: Record<string, string>;
   /** Where checkout lands (appended to the public origin). */
   successPath?: string;
   cancelPath?: string;
@@ -112,6 +124,8 @@ export interface IngestResult {
   kind?: BillingEvent["kind"];
   /** The role projection actually changed the user's roles this delivery. */
   roleChanged?: boolean;
+  /** A payment-mode checkout: the purchase recorded (and `purchase.completed` emitted). */
+  purchase?: { priceKeys: string[]; quantity: number; amount?: number; currency?: string };
 }
 
 /** How long a `processing` claim stands before another delivery may take it over (the claimer died). */
@@ -135,9 +149,13 @@ export interface BillingService {
   subscription(
     input: { account?: string; userId: string },
     ctx: OpContext,
-  ): Promise<{ status?: SubscriptionStatus; entitled: boolean; priceKeys: string[]; customerId?: string }>;
+  ): Promise<{ status?: SubscriptionStatus; entitled: boolean; priceKeys: string[]; customerId?: string; purchased: string[] }>;
   /** The fast, offline entitlement check — reads the mapping, never the provider. */
-  entitled(input: { userId: string }, ctx: OpContext): Promise<{ entitled: boolean; status?: SubscriptionStatus }>;
+  entitled(input: { userId: string }, ctx: OpContext): Promise<{ entitled: boolean; status?: SubscriptionStatus; purchased: string[] }>;
+  /** Does the user own this price outright (a completed one-time purchase)? Mapping read, never the provider. */
+  owns(input: { userId: string; priceKey: string }, ctx: OpContext): Promise<{ owns: boolean; purchased: string[] }>;
+  /** Recorded one-time purchases, newest first (all, or one user's). */
+  purchases(input: { userId?: string; limit?: number }, ctx: OpContext): Promise<BillingPurchase[]>;
   /** Record a metered-usage event against the user's (or an explicit) customer. */
   recordUsage(
     input: { account?: string; userId?: string; customerId?: string; meter: string; value: number; identifier?: string },
@@ -183,17 +201,23 @@ export class DefaultBillingService implements BillingService {
     const priceKey = input.priceKey?.trim() || account.options.defaultPriceKey;
     if (!priceKey) {
       throw new BillingNotConfiguredError(
-        `no price to check out — set the "${account.name}" account's defaultPriceKey (admin → System → Billing) or pass \`priceKey\`.`,
+        `no price to check out — set the "${account.name}" account's defaultPriceKey (admin → Administration → Billing) or pass \`priceKey\`.`,
       );
     }
     const origin = this.origin(ctx, input.origin);
     const mapping = input.userId ? await this.customerForUser(input.userId, ctx) : undefined;
+    const mode = input.mode ?? "subscription";
     // `next` rides the return URLs so the packaged pages forward the buyer
-    // back to the gated page checkout started from (relative-path guarded).
-    const returnSuffix = input.next ? `?next=${encodeURIComponent(safeNextPath(input.next))}` : "";
+    // back to the gated page checkout started from (relative-path guarded);
+    // a one-time purchase also names its `item`, so the success page can wait
+    // for OWNERSHIP of that price rather than a subscription entitlement.
+    const q = new URLSearchParams();
+    if (input.next) q.set("next", safeNextPath(input.next));
+    if (mode === "payment") q.set("item", priceKey);
+    const returnSuffix = q.size ? `?${q.toString()}` : "";
     return driver.createCheckout(
       {
-        mode: input.mode ?? "subscription",
+        mode,
         priceKey,
         quantity: input.quantity ?? 1,
         successUrl: `${origin}${this.options.successPath ?? "/billing/success"}${returnSuffix}`,
@@ -236,9 +260,10 @@ export class DefaultBillingService implements BillingService {
   async subscription(
     input: { account?: string; userId: string },
     ctx: OpContext,
-  ): Promise<{ status?: SubscriptionStatus; entitled: boolean; priceKeys: string[]; customerId?: string }> {
+  ): Promise<{ status?: SubscriptionStatus; entitled: boolean; priceKeys: string[]; customerId?: string; purchased: string[] }> {
     const mapping = await this.customerForUser(input.userId, ctx);
-    if (!mapping) return { entitled: false, priceKeys: [] };
+    if (!mapping) return { entitled: false, priceKeys: [], purchased: [] };
+    const purchased = mapping.purchased ?? [];
     if (mapping.subscriptionId) {
       try {
         const { account, driver, creds } = await this.resolve(input.account ?? mapping.account, ctx);
@@ -248,6 +273,7 @@ export class DefaultBillingService implements BillingService {
           entitled: isEntitled(fresh.status, this.grace()),
           priceKeys: fresh.priceKeys,
           customerId: fresh.customerId,
+          purchased,
         };
       } catch {
         /* provider unreachable — the mapping is the best truth we have */
@@ -258,12 +284,32 @@ export class DefaultBillingService implements BillingService {
       entitled: mapping.entitled,
       priceKeys: mapping.priceKeys ?? [],
       customerId: mapping.customerId,
+      purchased,
     };
   }
 
-  async entitled(input: { userId: string }, ctx: OpContext): Promise<{ entitled: boolean; status?: SubscriptionStatus }> {
+  async entitled(input: { userId: string }, ctx: OpContext): Promise<{ entitled: boolean; status?: SubscriptionStatus; purchased: string[] }> {
     const mapping = await this.customerForUser(input.userId, ctx);
-    return { entitled: mapping?.entitled ?? false, status: mapping?.status };
+    return { entitled: mapping?.entitled ?? false, status: mapping?.status, purchased: mapping?.purchased ?? [] };
+  }
+
+  async owns(input: { userId: string; priceKey: string }, ctx: OpContext): Promise<{ owns: boolean; purchased: string[] }> {
+    const purchased = (await this.customerForUser(input.userId, ctx))?.purchased ?? [];
+    return { owns: purchased.includes(input.priceKey), purchased };
+  }
+
+  async purchases(input: { userId?: string; limit?: number }, ctx: OpContext): Promise<BillingPurchase[]> {
+    const store = docsStore(ctx);
+    if (!store) return [];
+    await this.ensureCollections(store);
+    const rows = await store.docs.query({
+      collection: PURCHASES_COLLECTION,
+      ...(input.userId ? { where: { userId: input.userId } } : {}),
+      orderBy: "at",
+      orderDir: "desc",
+      limit: input.limit ?? 200,
+    });
+    return rows.map((r) => r.data as unknown as BillingPurchase);
   }
 
   async recordUsage(
@@ -315,7 +361,7 @@ export class DefaultBillingService implements BillingService {
     }
     const rowBase = { provider: account.provider, account: account.name, eventId: evt.eventId, kind: evt.kind, eventAt: evt.at };
 
-    let projection: { roleChanged?: boolean; stale?: boolean };
+    let projection: Projection;
     try {
       // Serialized per customer: two deliveries for one customer (a renewal
       // and a cancellation, say) read-modify-write the same mapping row.
@@ -344,6 +390,26 @@ export class DefaultBillingService implements BillingService {
       event: evt,
       ...projection,
     });
+    // A one-time purchase is its own headline: "on purchase → provision" is
+    // a `billing.event` trigger on `purchase.completed`, not a filter over
+    // checkout.completed's mode.
+    if (evt.kind === "checkout.completed" && projection.purchase) {
+      const purchase: BillingEvent = {
+        kind: "purchase.completed",
+        eventId: evt.eventId,
+        at: evt.at,
+        customerId: evt.customerId,
+        userRef: evt.userRef,
+        email: evt.email,
+        priceKeys: projection.purchase.priceKeys,
+        quantity: projection.purchase.quantity,
+        amount: projection.purchase.amount,
+        currency: projection.purchase.currency,
+        sessionId: evt.sessionId,
+        paymentIntentId: evt.paymentIntentId,
+      };
+      ctx.services.events.emit("billing.purchase.completed", { account: account.name, provider: account.provider, event: purchase, roleChanged: projection.roleChanged });
+    }
     return {
       ok: true,
       kind: evt.kind,
@@ -447,7 +513,7 @@ export class DefaultBillingService implements BillingService {
     const accountName = name?.trim() || DEFAULT_ACCOUNT;
     const account = this.config.account(accountName);
     if (!account) {
-      throw new BillingNotConfiguredError(`no account "${accountName}" is configured — add it in admin → System → Billing.`);
+      throw new BillingNotConfiguredError(`no account "${accountName}" is configured — add it in admin → Administration → Billing.`);
     }
     const driver = this.registry.get(account.provider);
     if (!driver) {
@@ -459,7 +525,7 @@ export class DefaultBillingService implements BillingService {
     for (const field of driver.secrets.filter((s) => s.required !== false)) {
       if (!account.secrets[field.field]) {
         throw new BillingNotConfiguredError(
-          `account "${account.name}" is missing the "${field.field}" secret its ${driver.label} driver requires (admin → System → Billing).`,
+          `account "${account.name}" is missing the "${field.field}" secret its ${driver.label} driver requires (admin → Administration → Billing).`,
         );
       }
     }
@@ -482,6 +548,8 @@ export class DefaultBillingService implements BillingService {
     this.ensured = true;
     await store.docs.ensureCollection({ name: EVENTS_COLLECTION, indexes: ["provider", "kind", "status"] });
     await store.docs.ensureCollection({ name: CUSTOMERS_COLLECTION, indexes: ["userId", "customerId", "provider"] });
+    // `at` is indexed: the admin lists purchases newest-first by purchase time.
+    await store.docs.ensureCollection({ name: PURCHASES_COLLECTION, indexes: ["userId", "customerId", "provider", "at"] });
   }
 
   /**
@@ -493,10 +561,17 @@ export class DefaultBillingService implements BillingService {
    * applied is recorded but NOT projected — a delayed "active" delivered after
    * a "deleted" would otherwise hand a canceled customer their access back.
    */
-  private async project(evt: BillingEvent, account: BillingAccount, ctx: OpContext): Promise<{ roleChanged?: boolean; stale?: boolean }> {
+  private async project(evt: BillingEvent, account: BillingAccount, ctx: OpContext): Promise<Projection> {
     const store = docsStore(ctx);
     const customerId = "customerId" in evt ? evt.customerId : undefined;
-    if (!store || !customerId) return {};
+    if (!store || !customerId) {
+      if (store && evt.kind === "checkout.completed" && evt.mode === "payment") {
+        console.warn(
+          `[pattern/mod-billing] payment-mode checkout ${evt.sessionId ?? evt.eventId} arrived without a customer id — the purchase can't be recorded against a user. The driver must create a customer for one-time checkouts.`,
+        );
+      }
+      return {};
+    }
 
     const id = `${account.provider}:${customerId}`;
     const existing = (await store.docs.get(CUSTOMERS_COLLECTION, id))?.data as unknown as BillingCustomer | undefined;
@@ -516,14 +591,42 @@ export class DefaultBillingService implements BillingService {
       entitled: existing?.entitled ?? false,
       updatedAt: Date.now(),
       lastEventAt: stateBearing ? (evt.at ?? existing?.lastEventAt) : existing?.lastEventAt,
+      ...(existing?.purchased ? { purchased: existing.purchased } : {}),
     };
+    let purchase: Projection["purchase"];
 
     switch (evt.kind) {
       case "checkout.completed":
         next.userId = evt.userRef ?? next.userId;
         next.email = evt.email ?? next.email;
         next.subscriptionId = evt.subscriptionId ?? next.subscriptionId;
+        if (evt.mode === "payment") {
+          // A one-time purchase: record it (keyed by the session, so a
+          // redelivered event can't double-record) and mark the prices OWNED.
+          const priceKeys = evt.priceKeys ?? [];
+          const quantity = evt.quantity ?? 1;
+          const row: BillingPurchase = {
+            userId: next.userId,
+            customerId,
+            provider: account.provider,
+            account: account.name,
+            priceKeys,
+            quantity,
+            amount: evt.amount,
+            currency: evt.currency,
+            sessionId: evt.sessionId,
+            paymentIntentId: evt.paymentIntentId,
+            eventId: evt.eventId,
+            at: evt.at ?? Date.now(),
+          };
+          await store.docs.put(PURCHASES_COLLECTION, `${account.provider}:${evt.sessionId ?? evt.eventId}`, row as unknown as Record<string, unknown>);
+          next.purchased = [...new Set([...(next.purchased ?? []), ...priceKeys])];
+          purchase = { priceKeys, quantity, amount: evt.amount, currency: evt.currency };
+        }
         break;
+      case "purchase.completed":
+        // Derived by this service, never ingested — nothing to fold.
+        return {};
       case "subscription.updated":
         next.subscriptionId = evt.subscriptionId;
         next.status = evt.status;
@@ -543,30 +646,47 @@ export class DefaultBillingService implements BillingService {
     }
 
     await store.docs.put(CUSTOMERS_COLLECTION, id, next as unknown as Record<string, unknown>);
-    return this.projectRole(next, ctx);
+    return { ...(await this.projectRoles(next, ctx)), ...(purchase ? { purchase } : {}) };
   }
 
   /**
-   * The entitlement bridge: grant/remove the configured role — ONLY on an
-   * actual transition. `setRoles` revokes the user's sessions (privilege
-   * change), so a no-op write would log people out on every renewal webhook.
+   * The entitlement bridge: the roles billing MANAGES (the entitlement role +
+   * every role a grant names) are recomputed from the mapping — the
+   * entitlement role and the grants of subscribed prices while entitled, the
+   * grants of purchased prices for good — and written ONLY on an actual
+   * transition, leaving every other role alone. `setRoles` revokes the user's
+   * sessions (privilege change), so a no-op write would log people out on
+   * every renewal webhook.
    */
-  private async projectRole(mapping: BillingCustomer, ctx: OpContext): Promise<{ roleChanged?: boolean }> {
+  private async projectRoles(mapping: BillingCustomer, ctx: OpContext): Promise<{ roleChanged?: boolean }> {
     const rule = this.options.entitlement === false ? undefined : (this.options.entitlement ?? { role: "member" });
-    if (!rule?.role || !mapping.userId) return {};
+    const grants = this.options.grants ?? {};
+    const managed = new Set<string>([...(rule?.role ? [rule.role] : []), ...Object.values(grants)]);
+    if (managed.size === 0 || !mapping.userId) return {};
     const identity = identityLike(ctx);
     if (!identity) return {};
     const user = await identity.getUser(mapping.userId);
     if (!user) return {};
-    const has = user.roles.includes(rule.role);
-    if (mapping.entitled && !has) {
-      await identity.setRoles(user.id, [...user.roles, rule.role]);
-      return { roleChanged: true };
+
+    const desired = new Set<string>();
+    if (mapping.entitled) {
+      if (rule?.role) desired.add(rule.role);
+      for (const p of mapping.priceKeys ?? []) if (grants[p]) desired.add(grants[p]!);
     }
-    if (!mapping.entitled && has) {
-      await identity.setRoles(user.id, user.roles.filter((r) => r !== rule.role));
-      return { roleChanged: true };
-    }
-    return { roleChanged: false };
+    for (const p of mapping.purchased ?? []) if (grants[p]) desired.add(grants[p]!);
+
+    const current = user.roles;
+    const next = [...current.filter((r) => !managed.has(r) || desired.has(r)), ...[...desired].filter((r) => !current.includes(r))];
+    const same = next.length === current.length && next.every((r) => current.includes(r));
+    if (same) return { roleChanged: false };
+    await identity.setRoles(user.id, next);
+    return { roleChanged: true };
   }
+}
+
+/** What folding one event changed: roles, the ordering verdict, a recorded purchase. */
+interface Projection {
+  roleChanged?: boolean;
+  stale?: boolean;
+  purchase?: { priceKeys: string[]; quantity: number; amount?: number; currency?: string };
 }
