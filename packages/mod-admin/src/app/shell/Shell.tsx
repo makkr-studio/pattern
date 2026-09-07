@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
-import { buildNav, type MenuEntry } from "@pattern-js/admin-sdk";
+import { buildAdminNav, type MenuEntry } from "@pattern-js/admin-sdk";
 import { useManifest } from "../lib/queries";
 import { useTheme } from "../lib/theme";
 import { sfx } from "../lib/sfx";
@@ -12,18 +12,17 @@ import { CommandPalette, useCommandHotkey } from "./CommandPalette";
 import { WhoamiChip } from "./Whoami";
 import { TooltipHost, tip } from "../components/Tooltip";
 
-/** A sensible default nav if the manifest hasn't loaded yet (the admin's own). */
+/** A sensible default nav if the manifest hasn't loaded yet (the admin's own — mirrors backend/frontend.ts). */
 const FALLBACK_MENU: MenuEntry[] = [
-  { category: "Overview", label: "Dashboard", icon: "layout-dashboard", path: "/", order: 1 },
-  { category: "Author", label: "Workflows", icon: "workflow", path: "/workflows", order: 10 },
-  { category: "Author", label: "Editor", icon: "git-branch", path: "/editor", order: 20 },
-  { category: "Observe", label: "Runs", icon: "activity", path: "/runs", order: 10 },
-  { category: "Observe", label: "Metrics", icon: "bar-chart", path: "/metrics", order: 20 },
-  { category: "Observe", label: "Process", icon: "cpu", path: "/process", order: 30 },
-  { category: "Catalog", label: "Ops", icon: "boxes", path: "/ops", order: 10 },
-  { category: "Catalog", label: "Mods", icon: "package", path: "/mods", order: 20 },
-  { category: "System", label: "System map", icon: "network", path: "/system", order: 10 },
-  { category: "System", label: "Settings", icon: "settings", path: "/settings", order: 20 },
+  { category: "Home", label: "Home", icon: "home", path: "/", order: 1 },
+  { category: "Workflows", label: "Workflows", icon: "workflow", path: "/workflows", order: 1 },
+  { category: "Activity", label: "Runs", icon: "activity", path: "/runs", order: 10 },
+  { category: "Activity", label: "Metrics", icon: "bar-chart", path: "/metrics", order: 20 },
+  { category: "Activity", label: "Process", icon: "cpu", path: "/process", order: 30 },
+  { category: "Administration", label: "Settings", icon: "settings", path: "/settings", order: 90 },
+  { category: "Reference", label: "Ops", icon: "boxes", path: "/ops", order: 10 },
+  { category: "Reference", label: "Mods", icon: "package", path: "/mods", order: 20 },
+  { category: "Reference", label: "System map", icon: "network", path: "/system", order: 30 },
 ];
 
 const SIDEBAR_KEY = "pattern.admin.sidebar";
@@ -48,7 +47,7 @@ export function Shell() {
     sfx.play("open");
     setPaletteOpen(true);
   });
-  const sections = buildNav(manifest?.menu?.length ? manifest.menu : FALLBACK_MENU);
+  const sections = buildAdminNav(manifest?.menu?.length ? manifest.menu : FALLBACK_MENU);
 
   const toggleSidebar = () => {
     setCollapsed((c) => {
@@ -99,10 +98,11 @@ export function Shell() {
           )}
         </button>
 
-        <nav className={`flex-1 overflow-y-auto ${collapsed ? "space-y-1" : "space-y-5"}`}>
+        <nav className={`flex-1 overflow-y-auto ${collapsed ? "space-y-1" : "space-y-4"}`}>
           {sections.map((section) => (
             <div key={section.category}>
-              {!collapsed && (
+              {/* A one-item section named after its item (Home, Workflows) is the item. */}
+              {!collapsed && !(section.items.length === 1 && section.items[0]!.label === section.category) && (
                 <div className="text-muted mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider opacity-70">
                   {section.category}
                 </div>

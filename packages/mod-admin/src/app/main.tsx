@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider, useParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
 import "./index.css";
@@ -18,6 +18,8 @@ import { ProcessPage } from "./pages/ProcessPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { VersionsPage } from "./pages/VersionsPage";
 import { ManifestPage } from "./pages/ManifestPage";
+import { WorkflowLayout } from "./pages/workflow/WorkflowLayout";
+import { WorkflowSettingsPage } from "./pages/workflow/WorkflowSettingsPage";
 import { api } from "./lib/api";
 import * as React from "react";
 import {
@@ -42,6 +44,12 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 2000, retry: 1 } },
 });
 
+/** Pre-0.5 URLs (`/editor/:slug`, `/versions/:slug`) land on the workflow's workspace. */
+function LegacySlugRedirect({ tab }: { tab: "editor" | "versions" }) {
+  const { slug } = useParams();
+  return <Navigate to={slug ? `/workflows/${encodeURIComponent(slug)}/${tab}` : "/workflows"} replace />;
+}
+
 const router = createBrowserRouter(
   [
     {
@@ -49,8 +57,23 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <DashboardPage /> },
         { path: "workflows", element: <CatalogPage /> },
-        { path: "editor", element: <EditorPage /> },
-        { path: "editor/:slug", element: <EditorPage /> },
+        // A workflow is a workspace: Editor · Runs · Versions · Settings share one chrome.
+        { path: "workflows/new", element: <WorkflowLayout />, children: [{ index: true, element: <EditorPage /> }] },
+        {
+          path: "workflows/:slug",
+          element: <WorkflowLayout />,
+          children: [
+            { index: true, element: <Navigate to="editor" replace /> },
+            { path: "editor", element: <EditorPage /> },
+            { path: "runs", element: <RunsPage /> },
+            { path: "runs/:runId", element: <RunsPage /> },
+            { path: "versions", element: <VersionsPage /> },
+            { path: "settings", element: <WorkflowSettingsPage /> },
+          ],
+        },
+        { path: "editor", element: <Navigate to="/workflows" replace /> },
+        { path: "editor/:slug", element: <LegacySlugRedirect tab="editor" /> },
+        { path: "versions/:slug", element: <LegacySlugRedirect tab="versions" /> },
         { path: "runs", element: <RunsPage /> },
         { path: "runs/:runId", element: <RunsPage /> },
         { path: "runs/:runId/replay", element: <ReplayPage /> },
@@ -61,7 +84,6 @@ const router = createBrowserRouter(
         { path: "metrics", element: <MetricsPage /> },
         { path: "process", element: <ProcessPage /> },
         { path: "settings", element: <SettingsPage /> },
-        { path: "versions/:slug", element: <VersionsPage /> },
         { path: "*", element: <ManifestPage /> },
       ],
     },

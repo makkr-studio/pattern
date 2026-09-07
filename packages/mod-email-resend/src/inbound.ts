@@ -169,7 +169,7 @@ export const resendWebhookOp: OpDefinition = {
       return {
         result: httpOutcome("invalid", {
           error: "not_configured",
-          message: `account "${account}" has no webhookSecret — add the whsec_… value in admin → System → Email`,
+          message: `account "${account}" has no webhookSecret — add the whsec_… value in admin → Resources → Email`,
         }),
       };
     }

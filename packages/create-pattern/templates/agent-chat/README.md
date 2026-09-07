@@ -15,7 +15,7 @@ npm run dev
 
 ## The API key
 
-Give the chat a model: set a `default` alias in admin → **Settings → AI
+Give the chat a model: set a `default` alias in admin → **Resources → AI
 Providers** (pick a provider, a model id, and where its key comes from, the vault
 or an env var). For an env-sourced key, define it in `.env` (copied from
 `.env.example`, gitignored, loaded on boot, real env wins); for OpenAI the

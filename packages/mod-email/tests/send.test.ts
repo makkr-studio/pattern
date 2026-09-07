@@ -198,7 +198,7 @@ describe("email.send", () => {
     const err = await engine.run("strict", { input: {} });
     expect(err.status).toBe("error");
     expect(String(err.error)).toContain('no account "missing"');
-    expect(String(err.error)).toContain("admin → System → Email");
+    expect(String(err.error)).toContain("admin → Resources → Email");
   });
 
   it("normalizes all three attachment shapes (literal text, media bytes, blob ref)", async () => {

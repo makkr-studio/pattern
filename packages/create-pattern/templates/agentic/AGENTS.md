@@ -17,7 +17,7 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
    and `npx pattern graph <file>` to see the graph in the terminal.
 3. The agent needs a **model** and a **key**. Pick the model with an `ai.model`
    node wired into `agents.agent.model` (config `{ routing, provider, modelId }`),
-   or set a default in admin → Settings → AI Providers and skip the node. The
+   or set a default in admin → Resources → AI Providers and skip the node. The
    provider key resolves by name: `OPENAI_API_KEY` in the environment (`.env` is
    loaded on boot, real env wins) → a vault secret of that name (admin → System →
    Secrets, masked out of run samples). Gateway routing uses one
@@ -39,7 +39,7 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
   provider, modelId }`; output `model` is a *value*. Wire it into
   `agents.agent.model`. Direct uses the provider's key from the vault/env; gateway
   uses one `AI_GATEWAY_API_KEY`. Skip it to fall back to the default model set in
-  admin → Settings → AI Providers.
+  admin → Resources → AI Providers.
 - **`agents.agent`**: config `{ name, instructions }`; inputs `model` (a ModelRef
   from `ai.model`), `tools` (a toolset), `guardrails`, `handoffs`. Output `agent`
   is a *value* you wire onward; it doesn't run anything by itself.

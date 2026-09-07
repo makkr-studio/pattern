@@ -8,7 +8,7 @@
  * provider) and mod-admin (the editor + run traces at /admin). Plain AI
  * workflows: text in, text/image/audio out, no agent loop required.
  *
- * Models come from a named ALIAS you configure in admin → Settings → AI
+ * Models come from a named ALIAS you configure in admin → Resources → AI
  * Providers (an `ai.alias` node resolves it). The provider key resolves from a
  * vault secret or an env var you pick per alias — e.g. OPENAI_API_KEY in `.env`
  * (loaded on boot, real env wins) or stored in the vault (admin → Secrets).

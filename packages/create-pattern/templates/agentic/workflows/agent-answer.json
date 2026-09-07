@@ -28,7 +28,7 @@
       "id": "model",
       "op": "ai.model",
       "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5.6-luna" },
-      "comment": "the model (any provider). Direct uses OPENAI_API_KEY from the vault/env; switch routing to \"gateway\" for the Vercel AI Gateway. Or set a default in admin → Settings → AI Providers and drop this node.",
+      "comment": "the model (any provider). Direct uses OPENAI_API_KEY from the vault/env; switch routing to \"gateway\" for the Vercel AI Gateway. Or set a default in admin → Resources → AI Providers and drop this node.",
       "ui": { "x": 300, "y": 300 }
     },
     {

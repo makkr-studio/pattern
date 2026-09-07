@@ -126,7 +126,7 @@ rooms:
 Magic links, invites, and the bootstrap link all print to the **server
 console** until delivery is wired. The packaged way: install
 `@pattern-js/mod-email` + a driver (Resend or SMTP) and create the `default`
-account in admin → System → Email — links then send by email automatically.
+account in admin → Resources → Email — links then send by email automatically.
 Any other channel works through the `identity.deliverToken` hook
 (`payload: { email, url, purpose, delivered, subject, message, code? }`): send
 the link by email/SMS/chat and return `delivered: true`. No subscriber (or

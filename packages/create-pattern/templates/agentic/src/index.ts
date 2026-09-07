@@ -9,8 +9,8 @@
  * runner — no chat UI required; you build and run them in the editor.
  *
  * The agent runs on a model from an `ai.model` node, or the "default" alias you
- * set in admin → Settings → AI Providers. Each alias carries its own provider
- * key, sourced from the vault (admin → System → Secrets) or an env var you name.
+ * set in admin → Resources → AI Providers. Each alias carries its own provider
+ * key, sourced from the vault (admin → Resources → Secrets) or an env var you name.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 

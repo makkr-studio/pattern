@@ -189,7 +189,7 @@ export function vectorsAdminRoutes(): Workflow[] {
 
 export function vectorsFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "Data", label: "Vectors", icon: "network", path: "/x/vectors/collections", order: 30 }],
+    menu: [{ category: "Resources", label: "Vectors", icon: "network", path: "/x/vectors/collections", order: 30 }],
     pages: [
       {
         // The whole RAG loop on one page: what's indexed, paste to ingest, search to verify.
@@ -219,7 +219,7 @@ export function vectorsFrontend(): FrontendContribution {
                 properties: {
                   collection: { type: "string", default: "kb", description: "Target collection (created if new)" },
                   text: { type: "string", format: "multiline", description: "Paste anything — it's chunked, embedded and indexed" },
-                  alias: { type: "string", default: "embeddings", description: "Embedding alias for a NEW collection (Settings → AI Providers)" },
+                  alias: { type: "string", default: "embeddings", description: "Embedding alias for a NEW collection (Resources → AI Providers)" },
                   docId: { type: "string", description: "Stable id for re-ingesting updates (empty = derived from the text)" },
                   meta: { type: "string", description: 'JSON object stamped on every chunk, e.g. {"topic":"billing"} — filterable if declared' },
                 },

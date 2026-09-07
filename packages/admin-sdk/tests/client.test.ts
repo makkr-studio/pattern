@@ -7,7 +7,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Engine, type Workflow } from "@pattern-js/core";
 import { createHttpHost, memoryFs } from "@pattern-js/runtime-node";
 import { adminMod } from "@pattern-js/mod-admin";
-import { createAdminClient, buildNav, CommandRegistry, type MenuEntry } from "@pattern-js/admin-sdk";
+import { createAdminClient, buildNav, buildAdminNav, canonicalSection, CommandRegistry, type MenuEntry } from "@pattern-js/admin-sdk";
 
 let closer: (() => Promise<void>) | undefined;
 afterEach(async () => {
@@ -160,6 +160,28 @@ describe("extension helpers", () => {
     const nav = buildNav(menu);
     expect(nav.map((s) => s.category)).toEqual(["A", "B"]);
     expect(nav[0]!.items.map((i) => i.label)).toEqual(["Alpha", "Beta"]);
+  });
+
+  it("buildAdminNav canonicalizes legacy categories and fixes the section order", () => {
+    const menu: MenuEntry[] = [
+      { category: "Chat", label: "Conversations", path: "/x/chat", order: 10 },
+      { category: "Access", label: "Users", path: "/x/identity/users", order: 10 }, // legacy → Administration
+      { category: "Reference", label: "Ops", path: "/ops", order: 10 },
+      { category: "Data", label: "Collections", path: "/x/store", order: 10 }, // legacy → Resources
+      { category: "System", label: "Secrets", path: "/x/vault", order: 40 }, // legacy → Resources
+      { category: "Administration", label: "Settings", path: "/settings", order: 90 },
+      { category: "Activity", label: "Runs", path: "/runs", order: 10 },
+      { category: "Workflows", label: "Workflows", path: "/workflows", order: 1 },
+      { category: "Home", label: "Home", path: "/", order: 1 },
+      { category: "Acme", label: "Widgets", path: "/x/acme", order: 5 },
+    ];
+    const nav = buildAdminNav(menu);
+    // Built-ins in their fixed order regardless of item `order`; unknown sections after, alphabetically.
+    expect(nav.map((s) => s.category)).toEqual(["Home", "Workflows", "Activity", "Resources", "Administration", "Reference", "Acme", "Chat"]);
+    expect(nav.find((s) => s.category === "Resources")!.items.map((i) => i.label)).toEqual(["Collections", "Secrets"]);
+    expect(nav.find((s) => s.category === "Administration")!.items.map((i) => i.label)).toEqual(["Users", "Settings"]);
+    expect(canonicalSection("Observe")).toBe("Activity");
+    expect(canonicalSection("Examples")).toBe("Examples");
   });
 
   it("CommandRegistry searches with recency boost", () => {

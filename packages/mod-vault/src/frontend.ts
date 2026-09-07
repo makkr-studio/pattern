@@ -13,11 +13,11 @@ import { REMOTE } from "./app.js";
 export function vaultFrontend(): FrontendContribution {
   return {
     menu: [
-      { category: "System", label: "Secrets", icon: "key", path: "/x/vault/secrets", order: 40 },
+      { category: "Resources", label: "Secrets", icon: "key", path: "/x/vault/secrets", order: 40 },
     ],
     pages: [{ path: "/x/vault/secrets", title: "Secrets", module: REMOTE }],
     commands: [
-      { id: "vault.secrets", label: "Secrets…", group: "System", icon: "key", path: "/x/vault/secrets" },
+      { id: "vault.secrets", label: "Secrets…", group: "Resources", icon: "key", path: "/x/vault/secrets" },
     ],
   };
 }

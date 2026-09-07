@@ -10,7 +10,9 @@ import sampleMod from "@pattern-js/mod-sample";
 import { fileURLToPath } from "node:url";
 
 const distApp = fileURLToPath(new URL("../dist-app", import.meta.url));
-const engine = new Engine({ env: process.env });
+// No auth provider here, and the admin's `requireAuth` fails closed by default —
+// the dev server opts in to serving unauthenticated (what `create-pattern --no-auth` writes).
+const engine = new Engine({ env: process.env, unenforcedAuth: "open" });
 
 // In-memory store so the dev server is stateless between restarts.
 await engine.useAsync(adminMod({ storage: memoryFs(), assets: distApp }));

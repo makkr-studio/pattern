@@ -56,10 +56,14 @@ import {
   Eye,
   FileArchive,
   FolderOpen,
+  Home,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 
 const MAP: Record<string, LucideIcon> = {
+  home: Home,
+  "book-open": BookOpen,
   workflow: Workflow,
   "git-branch": GitBranch,
   activity: Activity,

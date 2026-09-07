@@ -149,11 +149,14 @@ export function BuddyDock({
   getDoc,
   onApply,
   onClose,
+  chrome = true,
 }: {
   slug: string | undefined;
   getDoc: () => WorkflowDoc;
   onApply: (doc: WorkflowDoc) => void;
   onClose: () => void;
+  /** Render the "Buddy" title row. Off inside the editor's shared dock, whose tab bar already names it. */
+  chrome?: boolean;
 }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<DockItem[]>([]);
@@ -293,12 +296,15 @@ export function BuddyDock({
     sfx.play("close");
   }, [slug]);
 
+  const Wrapper = chrome ? GlassPanel : "div";
   return (
-    <GlassPanel className="flex min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b hairline px-3 py-2">
-        <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
-          <Sparkles size={13} className="text-[var(--color-neon-cyan)]" /> Buddy
-        </span>
+    <Wrapper className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className={`flex items-center border-b hairline px-3 py-1.5 ${chrome ? "justify-between" : "justify-end"}`}>
+        {chrome && (
+          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+            <Sparkles size={13} className="text-[var(--color-neon-cyan)]" /> Buddy
+          </span>
+        )}
         <span className="flex items-center gap-1">
           {status && (
             <span className="text-muted mr-1 text-[10px]" title={`model: ${status.model} · knowledge: ${status.knowledge}${status.threads ? "" : " · threads don't persist (no mod-store)"}`}>
@@ -308,9 +314,11 @@ export function BuddyDock({
           <button type="button" aria-label="New conversation" title="New conversation" className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)]" onClick={clear}>
             <RotateCcw size={13} />
           </button>
-          <button type="button" aria-label="Close Buddy" title="Close" className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)]" onClick={onClose}>
-            <X size={13} />
-          </button>
+          {chrome && (
+            <button type="button" aria-label="Close Buddy" title="Close" className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)]" onClick={onClose}>
+              <X size={13} />
+            </button>
+          )}
         </span>
       </div>
 
@@ -445,6 +453,6 @@ export function BuddyDock({
           </NeonButton>
         )}
       </div>
-    </GlassPanel>
+    </Wrapper>
   );
 }

@@ -10,7 +10,7 @@ export const accountOp: OpDefinition = {
   effects: "pure",
   title: "email.account",
   description:
-    "Resolve a named email account (configured in admin → System → Email) to an account reference. " +
+    "Resolve a named email account (configured in admin → Resources → Email) to an account reference. " +
     "Re-pointing the account in admin instantly re-targets every workflow using it. Defaults to " +
     '"default". With required=false it probes instead of throwing: `configured` reports whether the ' +
     "account exists — the packaged delivery workflow branches on it.",
@@ -29,7 +29,7 @@ export const accountOp: OpDefinition = {
     const name = (await maybe<string>(ctx, "account")) ?? cfg.account;
     const ref = emailConfig(ctx).resolveAccount(name);
     if (!ref && cfg.required) {
-      throw new Error(`email.account: no account "${name}" is configured — add it in admin → System → Email.`);
+      throw new Error(`email.account: no account "${name}" is configured — add it in admin → Resources → Email.`);
     }
     return { account: ref ?? null, configured: Boolean(ref) };
   },

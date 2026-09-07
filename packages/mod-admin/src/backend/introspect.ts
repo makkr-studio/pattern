@@ -56,6 +56,8 @@ export interface OpInfo {
   reusable: boolean;
   /** Does meaningful synchronous compute — the editor nudges toward Offload. */
   cpuHeavy?: boolean;
+  /** Declared replay-safety; "dynamic" when it depends on config. Absent = undeclared (external). */
+  effects?: "pure" | "idempotent" | "external" | "dynamic";
 }
 
 export interface ModInfo {
@@ -123,6 +125,7 @@ export function opInfo(engine: Engine, op: OpDefinition): OpInfo {
     usedByWorkflows: usedByWorkflows(engine, op.type),
     reusable: op.reusable !== false,
     ...(op.cpuHeavy ? { cpuHeavy: true } : {}),
+    ...(op.effects ? { effects: typeof op.effects === "function" ? "dynamic" : op.effects } : {}),
   };
 }
 

@@ -45,7 +45,7 @@ locks again. **No billing checks in app code** — entitlement is an auth scope.
    product with a recurring price, note the **price id** (`price_…`) and your
    **secret key** (`sk_test_…`).
 2. `npm run dev`, open the one-time admin link from the console. In
-   admin → **System → Secrets**, add `STRIPE_API_KEY` = your `sk_test_…`
+   admin → **Resources → Secrets**, add `STRIPE_API_KEY` = your `sk_test_…`
    (encrypted at rest; applies on the next call, no restart). Then
    admin → **System → Billing** → create the account `default`: provider
    `stripe`, apiKey `vault / STRIPE_API_KEY`, webhookSecret
@@ -54,7 +54,7 @@ locks again. **No billing checks in app code** — entitlement is an auth scope.
    `.env`, and pick `env` refs instead — that path needs a restart per change.)
 3. Tunnel the webhook:
    `stripe listen --forward-to localhost:3000/billing/webhook/stripe`
-   — paste the printed `whsec_…` into admin → **System → Secrets** as
+   — paste the printed `whsec_…` into admin → **Resources → Secrets** as
    `STRIPE_WEBHOOK_SECRET`. No restart needed.
 4. On the landing page: sign in (magic link prints to the console), hit
    **Subscribe**, pay with the test card `4242 4242 4242 4242` (any future
@@ -102,7 +102,7 @@ mod-ai): every model call's tokens flow to a Stripe meter via an editable
 workflow. Attach a metered price to the meter and invoices bill themselves.
 
 **Failure alerts** — set `PATTERN_ALERTS_TO` in `.env` and create the `default`
-email account (admin → System → Email): any failed run emails you a deep link.
+email account (admin → Resources → Email): any failed run emails you a deep link.
 
 ## Deploy
 

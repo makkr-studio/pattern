@@ -1,3 +1,20 @@
+/**
+ * The graph editor — one workflow's canvas inside its workspace (the layout
+ * above provides the open-workflows strip, the title, the deployment state,
+ * and the Editor · Runs · Versions · Settings tabs).
+ *
+ * Layout: palette (collapsible to a rail) | canvas | right dock. The dock is
+ * shared by the Inspector and Buddy: selecting a node brings the Inspector
+ * forward; with nothing selected it shows the WORKFLOW's own settings (name,
+ * description, durable/offload); Buddy is one tab over and keeps its thread
+ * while hidden. Deploy previews what changes before it saves and moves the
+ * live pointer.
+ *
+ * Persistence lives in ../lib/workspace (drafts, viewports, open tabs); the
+ * pieces of this page live in ../editor (Palette, Inspector, WorkflowPanel,
+ * DeployPreview, BuddyDock, RunPanel, graph helpers).
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -11,7 +28,6 @@ import {
   useEdgesState,
   useReactFlow,
   SelectionMode,
-  type Viewport,
   type Connection,
   type Edge as RFEdge,
   type Node as RFNode,
@@ -20,13 +36,29 @@ import {
 import type { OpInfo, ValidationIssue, WorkflowDoc } from "@pattern-js/admin-sdk";
 import { hasErrors, isWarning, issueSummary } from "../lib/issues";
 import { api } from "../lib/api";
-import { useDeploy, useManifest, useOps, useSaveWorkflow, useWorkflow, useWorkflows } from "../lib/queries";
+import { useDeploy, useManifest, useOps, useSaveWorkflow, useWorkflow } from "../lib/queries";
+import {
+  NEW_KEY,
+  readDraft,
+  readTabs,
+  readViewport,
+  removeDraft,
+  renameTab,
+  writeDraft,
+  writeViewport,
+  type EditorDraft,
+} from "../lib/workspace";
+import { deployPreview, type DeployPreview } from "../lib/deploy-preview";
 import { BuddyDock } from "../editor/BuddyDock";
 import { OpNode } from "../editor/OpNode";
 import { FrameNode } from "../editor/FrameNode";
 import { PortalEdge } from "../editor/PortalEdge";
 import { FlowEdge } from "../editor/FlowEdge";
 import { RunPanel } from "../editor/RunPanel";
+import { Palette, DND_TYPE, PALETTE_RAIL_PX } from "../editor/Palette";
+import { Inspector } from "../editor/Inspector";
+import { WorkflowPanel, type WorkflowMetaPatch } from "../editor/WorkflowPanel";
+import { DeployPreviewModal } from "../editor/DeployPreview";
 import {
   buildFlow,
   FRAME_TYPE,
@@ -42,17 +74,12 @@ import {
   type OpMap,
   type OpNodeData,
 } from "../editor/graph";
-import { Badge, GlassPanel, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
-import { FormFromSchema, RawJson, type FieldOverride } from "../components/FormFromSchema";
-import { SchemaBuilder } from "../components/SchemaBuilder";
-import { RequireAuthField } from "../editor/RequireAuthField";
-import { Markdown } from "../components/Markdown";
+import { GlassPanel, JsonView, Modal, NeonButton, Spinner } from "../components/ui";
 import { tip } from "../components/Tooltip";
-import { Rocket, Play, Redo2, Undo2, Download, Upload, Search, Wand2, History, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
-import { Braces, Lock, Settings, Cpu, Database, Sparkles } from "lucide-react";
-import { categoryOfType, categoryStyle, humanizeOp, paletteLabel } from "../lib/categories";
+import { Rocket, Play, Redo2, Undo2, Download, Upload, Wand2, GitFork, Maximize2, Minimize2, Frame } from "../components/icon";
+import { Braces, Sparkles, SlidersHorizontal } from "lucide-react";
+import { categoryOfType, categoryStyle } from "../lib/categories";
 import { schemaTypeOf } from "../lib/format";
-import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
 
 const nodeTypes = { op: OpNode, frame: FrameNode };
@@ -60,17 +87,9 @@ const nodeTypes = { op: OpNode, frame: FrameNode };
 // port-hover (FlowEdge); portaled edges keep their glyph renderer.
 const edgeTypes = { portal: PortalEdge, default: FlowEdge };
 
-/** MIME type carrying an op across the palette→canvas drag. */
-const DND_TYPE = "application/x-pattern-op";
-
-// ── Editor persistence (localStorage) — TABS: one draft per open workflow. ──
+// ── Editor chrome persistence (localStorage): pane widths, palette state. ──
 const PANES_KEY = "pattern.admin.editor.panes";
-const TABS_KEY = "pattern.admin.editor.tabs";
-const DRAFT_PREFIX = "pattern.admin.editor.draft.";
-/** The tab key of an unsaved brand-new workflow (at most one at a time). */
-const NEW_KEY = "__new__";
-/** Pre-tabs single-draft key — migrated on first load. */
-const LEGACY_DRAFT_KEY = "pattern.admin.editor.draft";
+const PALETTE_KEY = "pattern.admin.editor.palette";
 
 // ── Node clipboard (⌘C/⌘X/⌘V). Lives in localStorage so it crosses editor
 // tabs and even browser windows: copy in one workflow, paste into another. ──
@@ -91,111 +110,19 @@ interface ClipboardPayload {
   edges: Array<{ source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }>;
 }
 
-/** One tab's canvas, continuously persisted so closing/switching never loses
- *  work. `slug` is null for a brand-new workflow; `dirty` = differs from the
- *  last saved version (drives the dot + discard guard). */
-interface EditorDraft {
-  slug: string | null;
-  newSlug?: string;
-  doc: WorkflowDoc;
-  dirty: boolean;
-  at: number;
+/** The document-level fields the Workflow panel edits (mirrored from baseDoc for rendering). */
+interface DocMeta {
+  name?: string;
+  description?: string;
+  tags?: string[];
+  offload: boolean;
+  durable: boolean;
 }
-
-interface EditorTabs {
-  open: string[];
-  /** Where the editor was last — plain /editor reopens here. */
-  last?: string;
-}
-
-const draftKeyOf = (slug: string | null): string => slug ?? NEW_KEY;
-
-function readDraft(key: string): EditorDraft | null {
-  try {
-    const raw = localStorage.getItem(DRAFT_PREFIX + key);
-    const d = raw ? (JSON.parse(raw) as EditorDraft) : null;
-    return d && Array.isArray(d.doc?.nodes) ? d : null;
-  } catch {
-    return null;
-  }
-}
-function writeDraft(key: string, d: EditorDraft | null): void {
-  try {
-    if (d) localStorage.setItem(DRAFT_PREFIX + key, JSON.stringify(d));
-    else localStorage.removeItem(DRAFT_PREFIX + key);
-  } catch {
-    /* storage full/blocked — drafts are best-effort */
-  }
-}
-const removeDraft = (key: string): void => writeDraft(key, null);
-
-// ── Per-tab viewport (zoom + pan). Persisted so switching back to a tab — or
-// reloading — restores exactly where you left off, instead of snapping to the
-// default. Absent (first open of a workflow) ⇒ the editor fits the graph. ──
-const VIEWPORT_PREFIX = "pattern.admin.editor.viewport.";
-function readViewport(key: string): Viewport | null {
-  try {
-    const raw = localStorage.getItem(VIEWPORT_PREFIX + key);
-    const v = raw ? (JSON.parse(raw) as Viewport) : null;
-    return v && Number.isFinite(v.zoom) ? v : null;
-  } catch {
-    return null;
-  }
-}
-function writeViewport(key: string, v: Viewport): void {
-  try {
-    localStorage.setItem(VIEWPORT_PREFIX + key, JSON.stringify(v));
-  } catch {
-    /* best-effort */
-  }
-}
-const removeViewport = (key: string): void => {
-  try {
-    localStorage.removeItem(VIEWPORT_PREFIX + key);
-  } catch {
-    /* best-effort */
-  }
-};
-
-function readTabs(): EditorTabs {
-  migrateLegacyDraft();
-  try {
-    const t = JSON.parse(localStorage.getItem(TABS_KEY) ?? "") as EditorTabs;
-    if (Array.isArray(t.open)) return { open: t.open.filter((k) => typeof k === "string"), last: t.last };
-  } catch {
-    /* default below */
-  }
-  return { open: [] };
-}
-function writeTabs(t: EditorTabs): void {
-  try {
-    localStorage.setItem(TABS_KEY, JSON.stringify(t));
-  } catch {
-    /* best-effort */
-  }
-}
-
-/** One-time migration of the pre-tabs single draft into its own tab. */
-function migrateLegacyDraft(): void {
-  try {
-    const raw = localStorage.getItem(LEGACY_DRAFT_KEY);
-    if (!raw) return;
-    const d = JSON.parse(raw) as EditorDraft;
-    if (d && Array.isArray(d.doc?.nodes)) {
-      const key = draftKeyOf(d.slug);
-      localStorage.setItem(DRAFT_PREFIX + key, raw);
-      const t = JSON.parse(localStorage.getItem(TABS_KEY) ?? '{"open":[]}') as EditorTabs;
-      if (!t.open.includes(key)) t.open.push(key);
-      t.last = key;
-      localStorage.setItem(TABS_KEY, JSON.stringify(t));
-    }
-    localStorage.removeItem(LEGACY_DRAFT_KEY);
-  } catch {
-    /* best-effort */
-  }
-}
+const metaOf = (doc: WorkflowDoc): DocMeta => ({ name: doc.name, description: doc.description, tags: doc.tags, offload: doc.offload === true, durable: doc.durable === true });
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+const editorUrl = (slug: string | null): string => (slug ? `/workflows/${encodeURIComponent(slug)}/editor` : "/workflows/new");
 
 function EditorInner() {
   const { slug } = useParams();
@@ -225,18 +152,17 @@ function EditorInner() {
   const [newSlug, setNewSlug] = useState("");
   const [runOpen, setRunOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  /** Workflow-level Offload flag (mirrors baseDoc.current.offload for the UI). */
-  const [offload, setOffload] = useState(false);
-  /** Workflow-level Durable flag (mirrors baseDoc.current.durable for the UI). */
-  const [durable, setDurable] = useState(false);
+  /** Document-level fields (name, description, tags, flags) as the Workflow panel shows them. */
+  const [meta, setMeta] = useState<DocMeta>({ offload: false, durable: false });
   const [forkOpen, setForkOpen] = useState(false);
   const [forkSlug, setForkSlug] = useState("");
-  /** Inspector stretched over the whole editor (focus mode for big configs). */
+  /** Right dock stretched over the whole editor (focus mode for big configs). */
   const [inspectorWide, setInspectorWide] = useState(false);
   /** An explicit doc (template / "edit vN") over a dirty draft asks first. */
   const [pendingDraft, setPendingDraft] = useState<EditorDraft | null>(null);
   const [initTick, setInitTick] = useState(0);
+  /** The deploy conversation: what the click changes, shown before it saves + deploys. */
+  const [deployPlan, setDeployPlan] = useState<DeployPreview | null>(null);
 
   /** Canvas nodes whose op is `cpuHeavy` — the Offload nudge counts these. */
   const cpuHeavyCount = useMemo(
@@ -244,32 +170,8 @@ function EditorInner() {
     [nodes, opMap],
   );
 
-  // ── Tabs: every workflow you open stays open (per-tab drafts). ──
   const tabKey = slug ?? NEW_KEY;
-  const [tabs, setTabs] = useState<string[]>(() => readTabs().open);
-  const [dirtyMap, setDirtyMap] = useState<Record<string, { dirty: boolean; newSlug?: string }>>({});
-  const [closingTab, setClosingTab] = useState<string | null>(null);
-
-  /** Re-read every tab's draft state (dots + new-tab label). */
-  const refreshDirty = useCallback((keys: string[]) => {
-    const m: Record<string, { dirty: boolean; newSlug?: string }> = {};
-    for (const k of keys) {
-      const d = readDraft(k);
-      m[k] = { dirty: Boolean(d?.dirty), newSlug: d?.newSlug };
-    }
-    setDirtyMap(m);
-  }, []);
-
-  // The tab being viewed is always an open tab; remember it as `last`.
-  useEffect(() => {
-    setTabs((prev) => {
-      const next = prev.includes(tabKey) ? prev : [...prev, tabKey];
-      writeTabs({ open: next, last: tabKey });
-      refreshDirty(next);
-      return next;
-    });
-    setNotice(null); // a stale notice from another tab would mislead
-  }, [tabKey, refreshDirty]);
+  useEffect(() => setNotice(null), [tabKey]); // a stale notice from another workflow would mislead
   const baseDoc = useRef<WorkflowDoc>({ id: slug ?? "untitled", nodes: [], edges: [] });
   /** Normal-form snapshot of the last *saved* doc (dirty = current ≠ this). */
   const savedRef = useRef<string>("__unsaved__");
@@ -278,7 +180,7 @@ function EditorInner() {
   const viewportFor = useRef<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
 
-  // ── Resizable panels: palette | canvas | inspector, widths persisted. ──
+  // ── Resizable panels: palette | canvas | dock, widths persisted. ──
   const [panes, setPanes] = useState<{ l: number; r: number }>(() => {
     try {
       const p = JSON.parse(localStorage.getItem(PANES_KEY) ?? "");
@@ -288,6 +190,21 @@ function EditorInner() {
     }
     return { l: 240, r: 300 };
   });
+  const [paletteOpen, setPaletteOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(PALETTE_KEY) !== "collapsed";
+    } catch {
+      return true;
+    }
+  });
+  const togglePalette = (open: boolean) => {
+    setPaletteOpen(open);
+    try {
+      localStorage.setItem(PALETTE_KEY, open ? "open" : "collapsed");
+    } catch {
+      /* best-effort */
+    }
+  };
   const dragPane = (side: "l" | "r") => (e: ReactPointerEvent) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -368,10 +285,15 @@ function EditorInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  // ── Buddy dock: shown when mod-buddy is installed (manifest carries its command). ──
+  // ── The right dock: Inspector (a node, or the workflow) and Buddy share it.
+  // Buddy is present when mod-buddy is installed (manifest carries its command). ──
   const { data: uiManifest } = useManifest();
   const buddyAvailable = Boolean(uiManifest?.commands?.some((c) => c.id === "buddy.open"));
-  const [buddyOpen, setBuddyOpen] = useState(false);
+  const [dock, setDock] = useState<"inspector" | "buddy">("inspector");
+  const showDock = (d: "inspector" | "buddy") => {
+    setDock(d);
+    sfx.play(d === "buddy" ? "open" : "close");
+  };
   /** Apply a Buddy proposal to the OPEN canvas: undoable (⌘Z), marks dirty — Save/Deploy stay manual. */
   const applyBuddyDoc = useCallback(
     (doc: WorkflowDoc) => {
@@ -380,16 +302,30 @@ function EditorInner() {
       setNodes(flow.nodes);
       setEdges(flow.edges);
       baseDoc.current = { ...baseDoc.current, name: doc.name ?? baseDoc.current.name, description: doc.description ?? baseDoc.current.description };
+      setMeta(metaOf(baseDoc.current));
     },
     [opMap, pushHistory, setNodes, setEdges],
   );
+
+  /** The Workflow panel edits document-level fields: baseDoc is the truth for
+   *  currentDoc()/toDoc; `meta` mirrors it for rendering + the dirty recompute.
+   *  Off flags serialize as `undefined` so an off workflow equals one never flagged. */
+  const applyMeta = useCallback((patch: WorkflowMetaPatch) => {
+    const next: WorkflowDoc = { ...baseDoc.current, ...patch };
+    if (patch.offload !== undefined) next.offload = patch.offload ? true : undefined;
+    if (patch.durable !== undefined) next.durable = patch.durable ? true : undefined;
+    if ("name" in patch && !patch.name) delete next.name;
+    if ("description" in patch && !patch.description) delete next.description;
+    if ("tags" in patch && !patch.tags) delete next.tags;
+    baseDoc.current = next;
+    setMeta(metaOf(next));
+  }, []);
 
   /** Load a doc onto the canvas + reset history; `saved` sets the dirty baseline. */
   const mountDoc = useCallback(
     (doc: WorkflowDoc, opts: { saved: WorkflowDoc | null }) => {
       baseDoc.current = doc;
-      setOffload(doc.offload === true);
-      setDurable(doc.durable === true);
+      setMeta(metaOf(doc));
       history.current = { past: [], future: [] };
       const flow = buildFlow(doc, opMap);
       setNodes(flow.nodes);
@@ -409,10 +345,11 @@ function EditorInner() {
     [opMap, setNodes, setEdges],
   );
 
-  // ── Initialize the canvas (once per tab, after ops + workflow load).
+  // ── Initialize the canvas (once per workflow, after ops + workflow load).
   // Priority: an explicit doc (template / "edit from version") asks first if
-  // it would clobber this tab's dirty draft; then the tab's own draft — every
-  // tab reopens exactly where you left it; then the server doc.
+  // it would clobber this tab's dirty draft; then the tab's own DIRTY draft —
+  // every tab reopens exactly where you left it; then the server doc (a clean
+  // draft follows the server, so a version saved elsewhere shows up here).
   useEffect(() => {
     if (!opMap.size) return;
     if (!isNew && !wfData) return;
@@ -421,18 +358,6 @@ function EditorInner() {
     const serverDoc = wfData?.latestDoc ?? wfData?.liveDoc ?? null;
     const draft = readDraft(tabKey);
     const explicit = template ?? loadDoc;
-    const wantsNewTab = Boolean((locState as { newTab?: boolean } | null)?.newTab);
-
-    // Plain /editor visit → reopen where you were (the last active tab). The
-    // "+" tab button passes state.newTab to genuinely open the new-workflow tab.
-    if (!slug && !explicit && !wantsNewTab && !draft?.doc.nodes.length) {
-      const last = readTabs().last;
-      if (last && last !== NEW_KEY) {
-        loadedFor.current = null;
-        navigate(`/editor/${last}`, { replace: true });
-        return;
-      }
-    }
 
     // An explicit doc over THIS tab's dirty draft would destroy work → ask.
     if (explicit && draft?.dirty && !pendingDraft) {
@@ -448,7 +373,7 @@ function EditorInner() {
       if (loadDoc) setNotice(`Editing ${locState?.note ?? "an older version"} — Save to make it the newest version.`);
       return;
     }
-    if (draft) {
+    if (draft && (draft.dirty || !serverDoc)) {
       mountDoc(draft.doc, { saved: serverDoc });
       if (!slug && draft.newSlug) setNewSlug(draft.newSlug);
       if (draft.dirty) setNotice("Restored your unsaved draft.");
@@ -500,12 +425,11 @@ function EditorInner() {
       const ser = JSON.stringify(doc);
       const dirty = ser !== savedRef.current && (Boolean(slug) || doc.nodes.length > 0);
       writeDraft(tabKey, { slug: slug ?? null, newSlug: newSlug || undefined, doc, dirty, at: Date.now() });
-      setDirtyMap((m) => (m[tabKey]?.dirty === dirty && m[tabKey]?.newSlug === (newSlug || undefined) ? m : { ...m, [tabKey]: { dirty, newSlug: newSlug || undefined } }));
     }, 400);
     return () => clearTimeout(t);
-    // `offload`/`durable` are metadata on baseDoc (a ref), so list them explicitly
-    // to recompute dirty when the Workflow-settings toggles flip them.
-  }, [nodes, edges, newSlug, slug, tabKey, offload, durable]);
+    // `meta` mirrors document-level fields on baseDoc (a ref) — listed so a
+    // Workflow-panel edit recomputes dirty.
+  }, [nodes, edges, newSlug, slug, tabKey, meta]);
 
   // ── Dynamic ports (§12): some ops derive ports from node config
   // (core.object.build keys, boundary.manual outputs, flow.sequence count…).
@@ -556,67 +480,23 @@ function EditorInner() {
     return () => clearTimeout(t);
   }, [portsSig, tabKey, setNodes]);
 
-  /** Write the current canvas to its draft NOW (used before switching tabs,
-   *  so the last ≤400ms of edits aren't lost to the debounce). */
+  /** Write the current canvas to its draft NOW (before leaving, so the last
+   *  ≤400ms of edits aren't lost to the debounce). */
   const flushDraft = useCallback(() => {
     if (loadedFor.current !== tabKey) return;
     const doc = toDoc(baseDoc.current, rf.getNodes(), rf.getEdges());
     const dirty = JSON.stringify(doc) !== savedRef.current && (Boolean(slug) || doc.nodes.length > 0);
     writeDraft(tabKey, { slug: slug ?? null, newSlug: newSlug || undefined, doc, dirty, at: Date.now() });
   }, [tabKey, slug, newSlug, rf]);
-
-  /** Switch tabs: flush this canvas, then navigate (init loads the target's draft). */
-  const switchTab = useCallback(
-    (key: string) => {
-      if (key === tabKey) return;
-      flushDraft();
-      sfx.play("nav");
-      navigate(key === NEW_KEY ? "/editor" : `/editor/${key}`, key === NEW_KEY ? { state: { newTab: true } } : undefined);
+  // Leaving the editor (another tab, another page) flushes — unless the tab was
+  // just closed, in which case its draft is gone on purpose.
+  const flushRef = useRef(flushDraft);
+  flushRef.current = flushDraft;
+  useEffect(
+    () => () => {
+      if (readTabs().open.includes(tabKey)) flushRef.current();
     },
-    [tabKey, flushDraft, navigate],
-  );
-
-  /** Close a tab (dirty ones confirm via modal first). */
-  const doCloseTab = useCallback(
-    (key: string) => {
-      removeDraft(key);
-      removeViewport(key);
-      setClosingTab(null);
-      setTabs((prev) => {
-        const idx = prev.indexOf(key);
-        const next = prev.filter((k) => k !== key);
-        if (key === tabKey) {
-          const neighbor = next[idx - 1] ?? next[idx] ?? null;
-          loadedFor.current = null;
-          if (neighbor) {
-            writeTabs({ open: next, last: neighbor });
-            navigate(neighbor === NEW_KEY ? "/editor" : `/editor/${neighbor}`, neighbor === NEW_KEY ? { state: { newTab: true } } : undefined);
-          } else {
-            // Last tab closed → a fresh new-workflow tab.
-            const fresh = [NEW_KEY];
-            writeTabs({ open: fresh, last: NEW_KEY });
-            setNewSlug("");
-            navigate("/editor", { state: { newTab: true } });
-            setInitTick((t) => t + 1);
-            return fresh;
-          }
-        } else {
-          writeTabs({ open: next, last: tabKey });
-        }
-        return next;
-      });
-      sfx.play("delete");
-    },
-    [tabKey, navigate],
-  );
-  const requestCloseTab = useCallback(
-    (key: string) => {
-      if (key === tabKey) flushDraft();
-      const d = readDraft(key);
-      if (d?.dirty) setClosingTab(key);
-      else doCloseTab(key);
-    },
-    [tabKey, flushDraft, doCloseTab],
+    [tabKey],
   );
 
   // ── Connection rules: ports must agree on kind AND data type (T2). Checked
@@ -941,6 +821,7 @@ function EditorInner() {
       }
       setNodes((ns) => [...ns, ...added]);
       setSelected(node.id);
+      setDock("inspector");
       sfx.play("add");
     },
     [rf, opMap, makeNode, setNodes, pushHistory],
@@ -972,7 +853,7 @@ function EditorInner() {
     setPendingDraft(null);
     if (!d) return;
     loadedFor.current = null;
-    navigate(d.slug ? `/editor/${d.slug}` : "/editor", { replace: true, state: null });
+    navigate(editorUrl(d.slug), { replace: true, state: null });
   }, [pendingDraft, navigate]);
 
   /** Auto-tidy: layered layout, undo-able, then settle the viewport. */
@@ -1035,22 +916,17 @@ function EditorInner() {
 
   /** After a successful save the canvas doc IS the base — keep the ref in sync
    *  so later `currentDoc()` calls carry the saved identity/metadata, and move
-   *  a brand-new workflow onto its real URL. */
+   *  a brand-new workflow onto its real URL (its tab becomes the slug's tab). */
   const adoptSaved = (doc: WorkflowDoc) => {
     baseDoc.current = doc;
+    setMeta(metaOf(doc));
     savedRef.current = JSON.stringify(doc);
     writeDraft(doc.id, { slug: doc.id, doc, dirty: false, at: Date.now() });
-    setDirtyMap((m) => ({ ...m, [doc.id]: { dirty: false } }));
     if (isNew) {
-      // The new-workflow tab becomes the saved slug's tab.
       removeDraft(NEW_KEY);
-      setTabs((prev) => {
-        const next = prev.map((k) => (k === NEW_KEY ? doc.id : k)).filter((k, i, a) => a.indexOf(k) === i);
-        writeTabs({ open: next, last: doc.id });
-        return next;
-      });
+      renameTab(NEW_KEY, doc.id);
       loadedFor.current = doc.id; // canvas already shows this doc — don't reload
-      navigate(`/editor/${doc.id}`, { replace: true });
+      navigate(editorUrl(doc.id), { replace: true });
     }
   };
 
@@ -1069,12 +945,18 @@ function EditorInner() {
     sfx.play(blocked ? "invalid" : "save");
   };
 
-  const onDeploy = async () => {
-    const doc = currentDoc();
+  /** Step one of Deploy: say what changes (live doc → this canvas). Nothing moves. */
+  const onDeploy = () => {
     if (isNew && !newSlug) {
       setNotice("Enter a slug to save the new workflow.");
       return;
     }
+    setDeployPlan(deployPreview(wfData?.liveDoc ?? null, currentDoc(), opMap));
+  };
+  /** Step two: save the canvas as a version, then make that version live. */
+  const doDeploy = async () => {
+    const doc = currentDoc();
+    setDeployPlan(null);
     const saved = await save.mutateAsync({ slug: doc.id, doc, note: "deploy" });
     setIssues(saved.issues);
     if (hasErrors(saved.issues)) {
@@ -1105,7 +987,7 @@ function EditorInner() {
     flushDraft(); // the source tab keeps its state
     writeDraft(id, { slug: id, doc, dirty: false, at: Date.now() });
     loadedFor.current = null;
-    navigate(`/editor/${id}`); // opens as its own tab
+    navigate(editorUrl(id)); // opens as its own tab
     setNotice(`Forked to ${id}.`);
     sfx.play("save");
   };
@@ -1131,6 +1013,7 @@ function EditorInner() {
       setNodes(flow.nodes);
       setEdges(flow.edges);
       baseDoc.current = { ...doc, id: slug ?? doc.id };
+      setMeta(metaOf(baseDoc.current));
       if (isNew && !newSlug && doc.id) setNewSlug(doc.id.replace(/[^a-z0-9.\-_]/gi, ""));
       setSelected(null);
       // Flag ops this project doesn't have. The import still lands (the graph is
@@ -1155,37 +1038,26 @@ function EditorInner() {
 
   const selectedNode = nodes.find((n) => n.id === selected);
   const isCode = wfData?.meta?.source === "code";
+  const newestVersion = wfData?.meta?.versions[wfData.meta.versions.length - 1]?.id;
 
   if (isLoading && !isNew) return <Spinner />;
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col">
-      <div className="mb-3 flex items-center gap-3">
-        <h1 className="text-xl font-semibold">{isNew ? "New workflow" : slug}</h1>
-        {wfData?.meta && <Badge hue={wfData.meta.source === "code" ? 200 : 150}>{wfData.meta.source}</Badge>}
-        {isCode && (
-          <span
-            className="flex items-center gap-1 rounded-full bg-[var(--color-neon-amber)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--color-neon-amber)]"
-            title="Shipped by a mod — it can't be saved or deployed from here. Fork it to make it yours."
-          >
-            <Lock size={11} /> read-only
-          </span>
-        )}
-        {wfData?.meta?.live && wfData.meta.live !== "code" && (
-          <Badge hue={150} title={`Deployed version: ${wfData.meta.live}`}>
-            live {wfData.meta.live}
-          </Badge>
-        )}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Toolbar — the title, badges, and deployment state live in the workspace header above. */}
+      <div className="mb-3 flex items-center gap-2">
         {isNew && (
           <input
             value={newSlug}
             onChange={(e) => setNewSlug(e.target.value.replace(/[^a-z0-9.\-_]/gi, ""))}
             placeholder="workflow-slug"
-            className="glass rounded-lg px-3 py-1.5 text-sm outline-none"
+            aria-label="Slug for the new workflow"
+            title="The workflow's id — lowercase, dots, dashes. Required to save."
+            className="glass rounded-lg px-3 py-1.5 font-mono text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
           />
         )}
+        {notice && <span className="text-muted min-w-0 max-w-xl truncate text-xs">{notice}</span>}
         <div className="ml-auto flex items-center gap-2">
-          {notice && <span className="text-muted max-w-md truncate text-xs">{notice}</span>}
           <NeonButton
             variant="ghost"
             className="!px-2"
@@ -1219,17 +1091,6 @@ function EditorInner() {
           >
             <Frame size={14} />
           </NeonButton>
-          {slug && !isCode && (
-            <NeonButton
-              variant="ghost"
-              className="!px-2"
-              aria-label="Versions & history"
-              title={`Versions & history${wfData?.meta ? ` (${wfData.meta.versions.length})` : ""}`}
-              onClick={() => navigate(`/versions/${slug}`)}
-            >
-              <History size={14} />
-            </NeonButton>
-          )}
           {/* For a read-only code workflow, Fork IS the primary action. */}
           <NeonButton
             variant={isCode ? "solid" : "ghost"}
@@ -1274,21 +1135,6 @@ function EditorInner() {
           >
             <Braces size={14} />
           </NeonButton>
-          <NeonButton
-            variant="ghost"
-            className="!px-2"
-            aria-label="Workflow settings"
-            title={`Workflow settings${offload ? " — Offload on" : cpuHeavyCount > 0 ? " — Offload recommended" : ""}`}
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings size={14} />
-            {(offload || cpuHeavyCount > 0) && (
-              <span
-                aria-hidden
-                className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${offload ? "bg-[var(--color-neon-cyan)]" : "bg-[var(--color-neon-amber)]"}`}
-              />
-            )}
-          </NeonButton>
           <input
             ref={importInput}
             type="file"
@@ -1300,18 +1146,33 @@ function EditorInner() {
               e.target.value = ""; // allow re-importing the same file
             }}
           />
+          <NeonButton
+            variant="ghost"
+            className="!px-2"
+            aria-label="Workflow settings"
+            title={`Workflow settings (name, durable, offload)${meta.offload ? " — Offload on" : cpuHeavyCount > 0 ? " — Offload recommended" : ""}${meta.durable ? " — Durable on" : ""}`}
+            onClick={() => {
+              setSelected(null);
+              showDock("inspector");
+            }}
+          >
+            <SlidersHorizontal size={14} />
+            {(meta.offload || meta.durable || cpuHeavyCount > 0) && (
+              <span
+                aria-hidden
+                className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${meta.offload || meta.durable ? "bg-[var(--color-neon-cyan)]" : "bg-[var(--color-neon-amber)]"}`}
+              />
+            )}
+          </NeonButton>
           {buddyAvailable && (
             <NeonButton
               variant="ghost"
               className="!px-2"
-              aria-label={buddyOpen ? "Close Buddy" : "Open Buddy"}
-              title={buddyOpen ? "Close Buddy" : "Buddy — describe a workflow, get it drafted on your canvas"}
-              onClick={() => {
-                setBuddyOpen((o) => !o);
-                sfx.play(buddyOpen ? "close" : "open");
-              }}
+              aria-label={dock === "buddy" ? "Show the inspector" : "Open Buddy"}
+              title={dock === "buddy" ? "Back to the inspector" : "Buddy — describe a workflow, get it drafted on your canvas"}
+              onClick={() => showDock(dock === "buddy" ? "inspector" : "buddy")}
             >
-              <Sparkles size={14} className={buddyOpen ? "text-[var(--color-neon-cyan)]" : undefined} />
+              <Sparkles size={14} className={dock === "buddy" ? "text-[var(--color-neon-cyan)]" : undefined} />
             </NeonButton>
           )}
           <NeonButton variant="ghost" onClick={() => setRunOpen(true)} disabled={nodes.length === 0}>
@@ -1320,10 +1181,10 @@ function EditorInner() {
           {/* Save/Deploy don't exist for read-only code workflows — fork instead. */}
           {!isCode && (
             <>
-              <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending}>
+              <NeonButton variant="ghost" onClick={onSave} disabled={save.isPending} title="Save the canvas as a new version (not live until deployed)">
                 Save
               </NeonButton>
-              <NeonButton onClick={onDeploy} disabled={deploy.isPending}>
+              <NeonButton onClick={onDeploy} disabled={deploy.isPending || save.isPending} title="Save the canvas as a new version and make it live — shows what changes first">
                 <Rocket size={14} /> Deploy
               </NeonButton>
             </>
@@ -1331,63 +1192,14 @@ function EditorInner() {
         </div>
       </div>
 
-      {/* Tabs — every open workflow keeps its own draft; dot = unsaved. */}
-      <div className="mb-2 flex items-center gap-1 overflow-x-auto">
-        {tabs.map((k) => {
-          const active = k === tabKey;
-          const d = dirtyMap[k];
-          const label = k === NEW_KEY ? `✦ ${(active ? newSlug : d?.newSlug) || "new"}` : k;
-          return (
-            <div
-              key={k}
-              role="tab"
-              aria-selected={active}
-              onClick={() => switchTab(k)}
-              title={k === NEW_KEY ? "New workflow (unsaved)" : k}
-              className={`group flex max-w-56 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-                active
-                  ? "border-[var(--color-neon-cyan)]/40 bg-white/10 text-[var(--fg)]"
-                  : "hairline text-muted bg-transparent hover:bg-white/5 hover:text-[var(--fg)]"
-              }`}
-            >
-              <span className="truncate font-mono">{label}</span>
-              {(active ? undefined : d?.dirty) || (active && d?.dirty) ? (
-                <span aria-label="unsaved changes" title="Unsaved changes" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-neon-amber)]" />
-              ) : null}
-              <button
-                type="button"
-                aria-label={`Close ${label}`}
-                title="Close tab"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  requestCloseTab(k);
-                }}
-                className="text-muted -mr-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/10 hover:text-[var(--fg)]"
-              >
-                ✕
-              </button>
-            </div>
-          );
-        })}
-        <button
-          type="button"
-          aria-label="New workflow tab"
-          title="New workflow tab"
-          onClick={() => switchTab(NEW_KEY)}
-          className="text-muted shrink-0 rounded-lg border hairline px-2.5 py-1.5 text-xs hover:bg-white/5 hover:text-[var(--fg)]"
-        >
-          +
-        </button>
-      </div>
-
       <div
         className="relative grid min-h-0 flex-1 gap-0"
-        style={{ gridTemplateColumns: `${panes.l}px 10px 1fr 10px ${panes.r}px${buddyOpen ? " 10px 400px" : ""}` }}
+        style={{ gridTemplateColumns: `${paletteOpen ? panes.l : PALETTE_RAIL_PX}px 10px 1fr 10px ${panes.r}px` }}
       >
-        {/* Palette — searchable, drag onto the canvas */}
-        <Palette ops={opsData ?? []} />
+        {/* Palette — searchable, drag onto the canvas; collapses to a rail */}
+        <Palette ops={opsData ?? []} open={paletteOpen} onToggle={togglePalette} />
 
-        <PaneGrip onPointerDown={dragPane("l")} label="Resize palette" />
+        {paletteOpen ? <PaneGrip onPointerDown={dragPane("l")} label="Resize palette" /> : <div aria-hidden />}
 
         {/* Canvas */}
         <GlassPanel className="overflow-hidden" onDragOver={onDragOver} onDrop={onDrop}>
@@ -1439,7 +1251,11 @@ function EditorInner() {
             onNodeDragStop={() => {
               frameDrag.current = null;
             }}
-            onNodeClick={(_e, n) => setSelected(n.id)}
+            // Selecting a node brings the Inspector forward in the shared dock.
+            onNodeClick={(_e, n) => {
+              setSelected(n.id);
+              setDock("inspector");
+            }}
             onEdgeDoubleClick={onEdgeDoubleClick}
             edgeTypes={edgeTypes}
             onPaneClick={() => setSelected(null)}
@@ -1472,17 +1288,36 @@ function EditorInner() {
           </ReactFlow>
         </GlassPanel>
 
-        <PaneGrip onPointerDown={dragPane("r")} label="Resize inspector" />
+        <PaneGrip onPointerDown={dragPane("r")} label="Resize the side panel" />
 
-        {/* Inspector — stretches over the whole editor in focus mode */}
-        <GlassPanel className={`overflow-y-auto p-4 ${inspectorWide ? "absolute inset-0 z-20" : ""}`}>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-muted text-xs font-semibold uppercase tracking-wider">Inspector</span>
+        {/* The dock — Inspector | Buddy. Stretches over the whole editor in focus mode. */}
+        <GlassPanel className={`flex min-h-0 flex-col overflow-hidden ${inspectorWide ? "absolute inset-0 z-20" : ""}`}>
+          <div className="flex items-center gap-1 border-b hairline px-2 py-1.5" role="tablist" aria-label="Side panel">
             <button
               type="button"
-              aria-label={inspectorWide ? "Shrink inspector" : "Stretch inspector over the canvas"}
-              title={inspectorWide ? "Back to the canvas" : "Stretch — more room for configs"}
-              className="text-muted rounded p-1 hover:bg-white/10 hover:text-[var(--fg)]"
+              role="tab"
+              aria-selected={dock === "inspector"}
+              onClick={() => showDock("inspector")}
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold uppercase tracking-wider ${dock === "inspector" ? "bg-white/10 text-[var(--fg)]" : "text-muted hover:text-[var(--fg)]"}`}
+            >
+              {selectedNode ? "Inspector" : "Workflow"}
+            </button>
+            {buddyAvailable && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dock === "buddy"}
+                onClick={() => showDock("buddy")}
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold uppercase tracking-wider ${dock === "buddy" ? "bg-white/10 text-[var(--fg)]" : "text-muted hover:text-[var(--fg)]"}`}
+              >
+                <Sparkles size={11} className={dock === "buddy" ? "text-[var(--color-neon-cyan)]" : undefined} /> Buddy
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label={inspectorWide ? "Shrink the side panel" : "Stretch the side panel over the canvas"}
+              {...tip(inspectorWide ? "Back to the canvas" : "Stretch — more room for configs")}
+              className="text-muted ml-auto rounded p-1 hover:bg-white/10 hover:text-[var(--fg)]"
               onClick={() => {
                 setInspectorWide((w) => !w);
                 sfx.play(inspectorWide ? "close" : "open");
@@ -1491,57 +1326,84 @@ function EditorInner() {
               {inspectorWide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
             </button>
           </div>
-          <div className={inspectorWide ? "mx-auto max-w-3xl" : undefined}>
-            {inspectorWide && selectedNode && (
-              <div className="text-muted mb-3 text-xs">
-                Editing <span className="font-mono">{selectedNode.id}</span> in focus mode — the canvas is right behind this panel.
-              </div>
-            )}
-            {selectedNode ? (
-              <Inspector
-                key={selectedNode.id}
-                node={selectedNode}
-                op={opMap.get(selectedNode.data.op)}
-                onChange={(config) => {
-                  pushHistoryBurst();
-                  setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)));
-                }}
-                onMeta={(meta) => {
-                  pushHistoryBurst();
-                  setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...meta } } : n)));
-                }}
-              />
-            ) : (
-              <p className="text-muted text-sm">Select a node to edit its config. Drag an op from the palette onto the canvas to add it; drag between ports to connect (ports refuse incompatible types).</p>
-            )}
-            {issues.length > 0 && (
-              <div className="mt-5">
-                <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">
-                  {hasErrors(issues) ? "Problems" : "Warnings"}
-                </div>
-                {issues.map((iss, i) => (
-                  <div key={i} className="mb-1.5 text-xs">
-                    <span className={`mr-1 ${isWarning(iss) ? "text-[var(--color-neon-amber)]" : "text-[var(--color-neon-pink)]"}`}>
-                      {isWarning(iss) ? "⚠" : "✗"}
-                    </span>
-                    <span className="font-mono text-muted">{iss.nodeId ?? ""}</span> {iss.message}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </GlassPanel>
 
-        {/* Buddy — the assistant dock (4th pane; present only with mod-buddy installed) */}
-        {buddyOpen && (
-          <>
-            <div aria-hidden />
-            <BuddyDock slug={slug} getDoc={currentDoc} onApply={applyBuddyDoc} onClose={() => setBuddyOpen(false)} />
-          </>
-        )}
+          {/* Inspector: the selected node, or the workflow itself. */}
+          <div hidden={dock !== "inspector"} className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className={inspectorWide ? "mx-auto max-w-3xl" : undefined}>
+              {inspectorWide && selectedNode && (
+                <div className="text-muted mb-3 text-xs">
+                  Editing <span className="font-mono">{selectedNode.id}</span> in focus mode — the canvas is right behind this panel.
+                </div>
+              )}
+              {selectedNode ? (
+                <Inspector
+                  key={selectedNode.id}
+                  node={selectedNode}
+                  op={opMap.get(selectedNode.data.op)}
+                  onChange={(config) => {
+                    pushHistoryBurst();
+                    setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, config } } : n)));
+                  }}
+                  onMeta={(m) => {
+                    pushHistoryBurst();
+                    setNodes((ns) => ns.map((n) => (n.id === selectedNode.id ? { ...n, data: { ...n.data, ...m } } : n)));
+                  }}
+                />
+              ) : (
+                <WorkflowPanel
+                  doc={{ id: slug ?? newSlug ?? "untitled", name: meta.name, description: meta.description, tags: meta.tags, offload: meta.offload, durable: meta.durable }}
+                  isNew={isNew}
+                  readOnly={Boolean(isCode)}
+                  cpuHeavyCount={cpuHeavyCount}
+                  onChange={applyMeta}
+                />
+              )}
+              {nodes.length === 0 && !selectedNode && (
+                <p className="text-muted mt-5 text-xs">
+                  Drag an op from the palette onto the canvas to add it; drag between ports to connect (ports refuse incompatible types).
+                  {buddyAvailable ? " Or describe the workflow to Buddy." : ""}
+                </p>
+              )}
+              {issues.length > 0 && (
+                <div className="mt-5">
+                  <div className="text-muted mb-2 text-xs font-semibold uppercase tracking-wider">
+                    {hasErrors(issues) ? "Problems" : "Warnings"}
+                  </div>
+                  {issues.map((iss, i) => (
+                    <div key={i} className="mb-1.5 text-xs">
+                      <span className={`mr-1 ${isWarning(iss) ? "text-[var(--color-neon-amber)]" : "text-[var(--color-neon-pink)]"}`}>
+                        {isWarning(iss) ? "⚠" : "✗"}
+                      </span>
+                      <span className="font-mono text-muted">{iss.nodeId ?? ""}</span> {iss.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Buddy stays mounted while hidden so a running turn keeps streaming. */}
+          {buddyAvailable && (
+            <div hidden={dock !== "buddy"} className="flex min-h-0 flex-1 flex-col">
+              <BuddyDock slug={slug} getDoc={currentDoc} onApply={applyBuddyDoc} onClose={() => showDock("inspector")} chrome={false} />
+            </div>
+          )}
+        </GlassPanel>
       </div>
 
       {runOpen && <RunPanel open={runOpen} onClose={() => setRunOpen(false)} doc={currentDoc()} opMap={opMap} />}
+
+      {/* Deploy: what changes, then save + move the pointer. */}
+      <DeployPreviewModal
+        open={deployPlan !== null}
+        onClose={() => setDeployPlan(null)}
+        onDeploy={() => void doDeploy()}
+        preview={deployPlan}
+        slug={slug ?? newSlug}
+        version="a new version"
+        busy={deploy.isPending || save.isPending}
+        note={`Deploy saves the canvas as ${newestVersion ? "the version after " + newestVersion : "the first version"}, then makes it live.`}
+      />
 
       {/* The canvas AS JSON — exactly what Save would persist, dirty state included. */}
       {jsonOpen && (
@@ -1565,86 +1427,6 @@ function EditorInner() {
           </div>
         </Modal>
       )}
-
-      {/* Workflow settings — execution-model knobs that aren't per-node. */}
-      <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Workflow settings">
-        <div className="space-y-4">
-          <label className="flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={offload}
-              className="mt-0.5 accent-[var(--color-neon-cyan)]"
-              onChange={(e) => {
-                const next = e.target.checked;
-                // baseDoc is the source of truth for currentDoc()/toDoc; mirror it
-                // into state for the toggle + dirty recompute. `undefined` when off
-                // so an off workflow serializes identically to one never flagged.
-                baseDoc.current = { ...baseDoc.current, offload: next ? true : undefined };
-                setOffload(next);
-              }}
-            />
-            <span>
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <Cpu size={13} /> Offload to the worker pool
-              </span>
-              <span className="text-muted mt-0.5 block text-xs leading-relaxed">
-                Run this whole workflow off the host event loop, on the worker pool, so its
-                compute can&rsquo;t stall the loop (and the admin). Default is inline — only flag
-                CPU-heavy workflows. Needs a pool configured (<span className="font-mono">workers</span> in
-                <span className="font-mono"> pattern.config.json</span>); with none it runs inline. Offloaded
-                runs use the worker&rsquo;s own services, can&rsquo;t reach live WebSocket sockets, and aren&rsquo;t
-                pausable from the editor.
-              </span>
-            </span>
-          </label>
-
-          <label className="flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              checked={durable}
-              className="mt-0.5 accent-[var(--color-neon-cyan)]"
-              onChange={(e) => {
-                const next = e.target.checked;
-                baseDoc.current = { ...baseDoc.current, durable: next ? true : undefined };
-                setDurable(next);
-              }}
-            />
-            <span>
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                <Database size={13} /> Durable runs (resume &amp; re-run)
-              </span>
-              <span className="text-muted mt-0.5 block text-xs leading-relaxed">
-                Record each run&rsquo;s exact input and every node&rsquo;s exact outputs in the RunLedger, so a
-                failed run can resume from the failing node and any run can re-run with the same input.
-                Costs one ledger write per node, and the ledger stores REAL values (under
-                <span className="font-mono"> .pattern-data/</span> — gitignored; protect it like your
-                database). Best for workflows where correctness beats latency: payments, webhooks,
-                provisioning.
-              </span>
-            </span>
-          </label>
-
-          <div
-            className={`rounded-lg border px-2.5 py-1.5 text-[11px] leading-relaxed ${
-              cpuHeavyCount > 0 && !offload
-                ? "border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 text-[var(--color-neon-amber)]"
-                : "glass text-muted"
-            }`}
-          >
-            {cpuHeavyCount > 0
-              ? offload
-                ? `${cpuHeavyCount} cpu-heavy node${cpuHeavyCount > 1 ? "s" : ""} on the canvas — they run on the pool.`
-                : `⚠ ${cpuHeavyCount} cpu-heavy node${cpuHeavyCount > 1 ? "s" : ""} on the canvas — Offload recommended.`
-              : "No cpu-heavy nodes on the canvas. Leave Offload off unless this workflow does heavy compute."}
-          </div>
-
-          <div className="flex justify-end">
-            <NeonButton variant="ghost" onClick={() => setSettingsOpen(false)}>
-              Done
-            </NeonButton>
-          </div>
-        </div>
-      </Modal>
 
       {/* Fork dialog */}
       <Modal open={forkOpen} onClose={() => setForkOpen(false)} title="Fork workflow">
@@ -1679,7 +1461,7 @@ function EditorInner() {
         {pendingDraft && (
           <div className="space-y-4">
             <p className="text-sm">
-              This tab has unsaved changes in{" "}
+              This workflow has unsaved changes in{" "}
               <span className="font-mono">{pendingDraft.slug ?? pendingDraft.newSlug ?? pendingDraft.doc.id ?? "a new workflow"}</span>. Loading{" "}
               {locState?.note ? <span className="font-mono">{locState.note}</span> : "this document"} over it will discard them.
             </p>
@@ -1703,26 +1485,6 @@ function EditorInner() {
           </div>
         )}
       </Modal>
-
-      {/* Closing a dirty tab — make losing work an explicit choice. */}
-      <Modal open={closingTab !== null} onClose={() => setClosingTab(null)} title="Close tab">
-        {closingTab && (
-          <div className="space-y-4">
-            <p className="text-sm">
-              <span className="font-mono">{closingTab === NEW_KEY ? dirtyMap[NEW_KEY]?.newSlug || "new workflow" : closingTab}</span> has
-              unsaved changes. Close anyway?
-            </p>
-            <div className="flex justify-end gap-2">
-              <NeonButton variant="ghost" onClick={() => setClosingTab(null)}>
-                Keep it open
-              </NeonButton>
-              <NeonButton variant="danger" onClick={() => doCloseTab(closingTab)}>
-                Discard & close
-              </NeonButton>
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
@@ -1738,354 +1500,6 @@ function PaneGrip({ onPointerDown, label }: { onPointerDown: (e: ReactPointerEve
     >
       <div className="h-10 w-1 rounded-full bg-white/10 transition-colors group-hover:bg-[var(--color-neon-cyan)]/60" />
     </div>
-  );
-}
-
-/**
- * Widget for SubworkflowRef config fields ({ workflowId } | { workflow }) on
- * higher-order ops (core.array.map, core.flow.try, …): pick a registered
- * workflow from a select instead of hand-writing JSON. An inline `workflow`
- * doc (advanced) still round-trips through the raw-JSON toggle.
- */
-function WorkflowRefField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
-  const { data: workflows } = useWorkflows();
-  const current = (value as { workflowId?: string; workflow?: unknown } | undefined) ?? {};
-  if (current.workflow) {
-    return <div className="text-muted text-xs">Inline workflow doc — edit via <span className="font-mono">raw JSON</span>.</div>;
-  }
-  return (
-    <select
-      value={current.workflowId ?? ""}
-      onChange={(e) => onChange(e.target.value ? { workflowId: e.target.value } : undefined)}
-      className="glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
-    >
-      <option value="">— pick a workflow —</option>
-      {(workflows ?? []).map((w) => (
-        <option key={w.slug} value={w.slug}>
-          {w.slug}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-/**
- * Config fields that hold a JSON Schema get the visual builder instead of a
- * raw JSON box. Keyed by op type — mods with schema-valued fields can be added
- * here (or we promote this to op metadata later).
- */
-const SCHEMA_FIELDS: Record<string, string[]> = {
-  "core.schema.define": ["schema"],
-  "core.schema.validate": ["schema"],
-  "boundary.http.request": ["body", "query", "params"],
-  "boundary.ws.message": ["message"],
-  "boundary.tool": ["params"],
-};
-
-function Inspector({
-  node,
-  op,
-  onChange,
-  onMeta,
-}: {
-  node: RFNode<OpNodeData>;
-  op?: OpInfo;
-  onChange: (config: Record<string, unknown>) => void;
-  onMeta: (meta: { title?: string; comment?: string; retry?: OpNodeData["retry"] }) => void;
-}) {
-  const [raw, setRaw] = useState(false);
-  const cat = categoryStyle(categoryOfType(node.data.op));
-  const config = (node.data.config ?? {}) as Record<string, unknown>;
-  const { Icon } = cat;
-  const hasSchema = op?.configSchema != null && (op.configSchema as { type?: string }).type === "object";
-  const inputCls = "glass w-full rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]";
-  const schemaOverrides = useMemo(() => {
-    const o: Record<string, FieldOverride> = {};
-    for (const f of SCHEMA_FIELDS[node.data.op] ?? []) {
-      o[f] = ({ value, onChange: set }) => (
-        <SchemaBuilder value={value as Record<string, unknown> | undefined} onChange={set} />
-      );
-    }
-    // Higher-order ops: a `workflow` config property is a SubworkflowRef —
-    // render the picker (detected from the schema, so mod ops get it too).
-    const props = (op?.configSchema as { properties?: Record<string, unknown> } | undefined)?.properties;
-    if (props && "workflow" in props && !o.workflow) {
-      o.workflow = ({ value, onChange: set }) => <WorkflowRefField value={value} onChange={set} />;
-    }
-    // Boundary triggers: `requireAuth` gets the auth/scope selector (the union
-    // renders poorly as a plain form field, and auth deserves a real control).
-    if (props && "requireAuth" in props && !o.requireAuth) {
-      o.requireAuth = ({ value, onChange: set }) => <RequireAuthField value={value} onChange={set} />;
-    }
-    return Object.keys(o).length ? o : undefined;
-  }, [node.data.op, op?.configSchema]);
-
-  return (
-    <div>
-      <div className="flex items-center gap-2">
-        <Icon size={15} style={{ color: cat.color }} className="shrink-0" />
-        <span className="font-mono text-[11px]" style={{ color: cat.color }}>
-          {node.data.op}
-        </span>
-      </div>
-      {op?.description && <div className="text-muted mt-2 text-xs"><Markdown text={op.description} /></div>}
-      {node.data.pairId && (
-        <div className="text-muted mt-2 text-xs">
-          ⛓ Paired with <span className="font-mono">{node.data.pairId}</span> — boundary pairs are created and deleted together.
-        </div>
-      )}
-
-      {/* Author-set node identity */}
-      <div className="mt-4 space-y-2">
-        <div>
-          <div className="text-muted mb-1 text-xs">Name</div>
-          <input
-            className={inputCls}
-            value={node.data.title ?? ""}
-            placeholder={humanizeOp(node.data.op)}
-            onChange={(e) => onMeta({ title: e.target.value || undefined })}
-          />
-        </div>
-        <div>
-          <div className="text-muted mb-1 text-xs">Comment (markdown)</div>
-          <textarea
-            className="glass h-16 w-full rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-[var(--color-neon-cyan)]"
-            value={node.data.comment ?? ""}
-            placeholder="What does this step do?"
-            onChange={(e) => onMeta({ comment: e.target.value || undefined })}
-          />
-        </div>
-      </div>
-
-      {/* Reliability: the per-node retry policy (engine-read; validator warns
-          on external-effects ops and stream inputs — surfaced under Issues). */}
-      <div className="mt-4">
-        <div className="flex items-center justify-between">
-          <span className="text-muted text-xs font-semibold uppercase tracking-wider">Reliability</span>
-          {node.data.retry ? (
-            <button type="button" className="text-muted text-[10px] underline" onClick={() => onMeta({ retry: undefined })}>
-              remove retry
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="text-muted text-[10px] underline"
-              onClick={() => onMeta({ retry: { attempts: 3, backoffMs: 500 } })}
-            >
-              + retry on failure
-            </button>
-          )}
-        </div>
-        {node.data.retry && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {(
-              [
-                ["attempts", "Attempts (total)", 1, 10, "3"],
-                ["backoffMs", "Backoff (ms)", 0, undefined, "500"],
-                ["factor", "Backoff factor", 1, undefined, "2"],
-                ["maxBackoffMs", "Max backoff (ms)", 0, undefined, "30000"],
-              ] as const
-            ).map(([key, label, min, max, placeholder]) => (
-              <div key={key}>
-                <div className="text-muted mb-1 text-xs">{label}</div>
-                <input
-                  type="number"
-                  className={inputCls}
-                  min={min}
-                  max={max}
-                  placeholder={placeholder}
-                  value={node.data.retry?.[key] ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value === "" ? undefined : Number(e.target.value);
-                    const next = { ...node.data.retry!, [key]: v };
-                    if (v === undefined) delete (next as Record<string, unknown>)[key];
-                    onMeta({ retry: { ...next, attempts: next.attempts ?? 3 } });
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 mb-2 flex items-center justify-between">
-        <span className="text-muted text-xs font-semibold uppercase tracking-wider">Config</span>
-        {hasSchema && (
-          <button type="button" className="text-muted text-[10px] underline" onClick={() => setRaw((r) => !r)}>
-            {raw ? "form" : "raw JSON"}
-          </button>
-        )}
-      </div>
-
-      {raw || !hasSchema ? (
-        <RawJson value={config} onChange={onChange} />
-      ) : (
-        <FormFromSchema schema={op!.configSchema as Record<string, unknown>} value={config} onChange={onChange} overrides={schemaOverrides} />
-      )}
-    </div>
-  );
-}
-
-function groupByCategory(ops: OpInfo[]): [string, OpInfo[]][] {
-  const m = new Map<string, OpInfo[]>();
-  for (const op of ops) {
-    const c = categoryOfType(op.type);
-    const list = m.get(c) ?? [];
-    list.push(op);
-    m.set(c, list);
-  }
-  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-}
-
-/** One palette op: draggable onto the canvas (grab it!), tooltip with docs. */
-function OpItem({ op }: { op: OpInfo }) {
-  const category = categoryOfType(op.type);
-  const cat = categoryStyle(category);
-  const { Icon } = cat;
-  return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData(DND_TYPE, op.type);
-        e.dataTransfer.effectAllowed = "copy";
-        sfx.play("drag");
-      }}
-      {...tip(
-        <div className="space-y-1">
-          <div className="font-mono text-[11px] opacity-70">{op.type}</div>
-          {op.description && <Markdown text={op.description} />}
-          <div className="text-muted">Drag onto the canvas to add{op.boundary && op.pair ? ` (brings its ${op.boundary === "trigger" ? "out-gate" : "trigger"} partner)` : ""}.</div>
-        </div>,
-      )}
-      className="flex w-full cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] select-none hover:bg-white/5 active:cursor-grabbing"
-    >
-      <Icon size={15} style={{ color: cat.color }} className="shrink-0" />
-      <span className="truncate">{paletteLabel(op.type, category)}</span>
-    </div>
-  );
-}
-
-/** A collapsible category section with colored header + op items. */
-function CategorySection({ category, ops, open, onToggle }: { category: string; ops: OpInfo[]; open: boolean; onToggle: () => void }) {
-  const cat = categoryStyle(category);
-  const { Icon } = cat;
-  return (
-    <div className="mb-0.5">
-      <button onClick={onToggle} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
-        <Icon size={15} style={{ color: cat.color }} />
-        <span className="text-[13px] font-semibold capitalize">{category}</span>
-        <span className="text-muted ml-auto text-[10px]">{ops.length}</span>
-      </button>
-      {open && (
-        <div className="ml-1 border-l pl-2" style={{ borderColor: cat.border }}>
-          {ops.map((op) => (
-            <OpItem key={op.type} op={op} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The op palette: fuzzy-searchable, filterable by mod, grouped by category
- *  (color + icon coded), drag-to-add. Non-reusable ops live in a collapsed
- *  "Advanced" section. Scrolls independently of the canvas. */
-function Palette({ ops }: { ops: OpInfo[] }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [mod, setMod] = useState<string>("");
-  const toggle = (k: string) => setCollapsed((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
-
-  const mods = useMemo(() => [...new Set(ops.map((o) => o.mod ?? "core"))].sort(), [ops]);
-  const filtered = useMemo(() => {
-    let list = ops;
-    if (mod) list = list.filter((o) => (o.mod ?? "core") === mod);
-    return fuzzyFilter(list, query, (o) => `${o.type} ${o.title ?? ""} ${humanizeOp(o.type)}`);
-  }, [ops, mod, query]);
-  const searching = query.trim().length > 0;
-
-  const reusable = useMemo(() => groupByCategory(filtered.filter((o) => o.reusable !== false)), [filtered]);
-  const advanced = useMemo(() => filtered.filter((o) => o.reusable === false), [filtered]);
-  const advancedGroups = useMemo(() => groupByCategory(advanced), [advanced]);
-
-  return (
-    <GlassPanel className="flex min-h-0 flex-col p-2">
-      {/* Filter bar */}
-      <div className="mb-2 space-y-1.5 px-0.5">
-        <div className="glass flex items-center gap-1.5 rounded-lg px-2 py-1.5">
-          <Search size={12} className="text-muted shrink-0" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search ops…"
-            aria-label="Search ops"
-            className="w-full bg-transparent text-xs outline-none"
-          />
-          {query && (
-            <button type="button" aria-label="Clear search" className="text-muted text-[10px]" onClick={() => setQuery("")}>
-              ✕
-            </button>
-          )}
-        </div>
-        <select
-          value={mod}
-          onChange={(e) => setMod(e.target.value)}
-          aria-label="Filter by mod"
-          className="glass w-full rounded-lg px-2 py-1 text-xs outline-none [&>option]:bg-[var(--bg)]"
-        >
-          <option value="">All mods</option>
-          {mods.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Op list — its own scroll context */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {searching ? (
-          // Flat ranked list while searching (best match first).
-          <div>
-            {filtered.length === 0 && <div className="text-muted px-2 py-4 text-center text-xs">No ops match.</div>}
-            {filtered.map((op) => (
-              <OpItem key={op.type} op={op} />
-            ))}
-          </div>
-        ) : (
-          <>
-            {reusable.map(([category, list]) => (
-              <CategorySection key={category} category={category} ops={list} open={!collapsed.has(category)} onToggle={() => toggle(category)} />
-            ))}
-
-            {advanced.length > 0 && (
-              <div className="mt-2 border-t hairline pt-2">
-                <button onClick={() => setAdvancedOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5">
-                  <span className="text-muted text-[10px]">{advancedOpen ? "▾" : "▸"}</span>
-                  <span className="text-muted text-xs font-semibold uppercase tracking-wider">Advanced</span>
-                  <span className="text-muted ml-auto text-[10px]">{advanced.length}</span>
-                </button>
-                {advancedOpen && (
-                  <div className="mt-1 opacity-80">
-                    {advancedGroups.map(([category, list]) => (
-                      <div key={category} className="mb-1">
-                        <div className="text-muted px-2 py-1 text-[10px] font-semibold capitalize">{category}</div>
-                        <div className="ml-1 border-l hairline pl-2">
-                          {list.map((op) => (
-                            <OpItem key={op.type} op={op} />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </GlassPanel>
   );
 }
 

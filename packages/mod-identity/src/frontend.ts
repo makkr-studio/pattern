@@ -1,7 +1,7 @@
 /**
  * @pattern-js/mod-identity — admin screens.
  *
- * Users / Invite / Sessions under an "Access" category — Tier-1 declarative
+ * Users / Invite / Sessions under the "Administration" section — Tier-1 declarative
  * (zero build) except the user DETAILS page, which is Tier-2: a roles editor
  * needs interactivity the declarative kinds can't express. Every view and
  * action names its own dedicated route (see `./admin-routes.ts`) — there is no
@@ -16,10 +16,10 @@ import { USER_PAGE_REMOTE } from "./user-page.js";
 export function identityFrontend(): FrontendContribution {
   return {
     menu: [
-      { category: "Access", label: "Users", icon: "users", path: "/x/identity/users", order: 10 },
-      { category: "Access", label: "Invites", icon: "user-plus", path: "/x/identity/invite", order: 20 },
-      { category: "Access", label: "Sessions", icon: "key-round", path: "/x/identity/sessions", order: 30 },
-      { category: "Access", label: "API tokens", icon: "key-square", path: "/x/identity/api-tokens", order: 40 },
+      { category: "Administration", label: "Users", icon: "users", path: "/x/identity/users", order: 10 },
+      { category: "Administration", label: "Invites", icon: "user-plus", path: "/x/identity/invite", order: 20 },
+      { category: "Administration", label: "Sessions", icon: "key-round", path: "/x/identity/sessions", order: 30 },
+      { category: "Administration", label: "API tokens", icon: "key-square", path: "/x/identity/api-tokens", order: 40 },
     ],
     pages: [
       {
@@ -159,10 +159,10 @@ export function identityFrontend(): FrontendContribution {
       },
     ],
     commands: [
-      { id: "identity.invite", label: "Invite user…", group: "Access", icon: "user-plus", path: "/x/identity/invite" },
+      { id: "identity.invite", label: "Invite user…", group: "Administration", icon: "user-plus", path: "/x/identity/invite" },
       { id: "identity.whoami", label: "Who am I?", group: "Access", icon: "user", route: { method: "GET", path: PATHS.whoami } },
     ],
-    // Lives on the admin's Settings page (System → Settings), with the other knobs.
+    // Lives on the admin's Settings page (Administration → Settings), with the other knobs.
     settings: [
       {
         id: "identity",

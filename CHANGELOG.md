@@ -206,6 +206,40 @@ contract with a Stripe driver, AI usage metering, failure alerts, and a
 
 ### Admin
 
+- **The sidebar has six rooms, and a workflow is a workspace.** The nav is
+  now **Home · Workflows · Activity** (Runs, Metrics, Process) **· Resources**
+  (collections, blobs, vectors, secrets, email, AI providers) **·
+  Administration** (users, invites, sessions, API tokens, billing, settings)
+  **· Reference** (ops, mods, system map). The top-level *Editor* destination
+  is gone: a workflow opens from the list as its own workspace at
+  `/workflows/:slug` with four tabs — **Editor**, **Runs** (its runs only),
+  **Versions**, and a new **Settings** tab (name, description, tags,
+  durable/offload — saved as a version — plus deploy/undeploy, fork, export,
+  delete). Every workflow you open stays open in the strip above the
+  workspace with its unsaved draft until you close it, and the Workflows list
+  shows an *Open* row to jump back. Old `/editor/:slug` and `/versions/:slug`
+  links redirect. The section vocabulary is `ADMIN_SECTIONS` in admin-sdk
+  (`buildAdminNav` canonicalizes the pre-0.5 names — Access, Data, System,
+  Catalog… — so third-party mods land somewhere sensible), and ⌘K now lists
+  every sidebar destination, mod pages included.
+- **The deployment state is one honest strip.** The workspace header says
+  *Unsaved changes · Saved v8 · Live v7*, with **Deploy v8** right there for
+  a saved-but-not-live version. **Deploy — from the editor or the strip —
+  previews what changes first**: routes that start or stop serving, auth
+  gates that change (a route going public is called out), external-effect
+  nodes joining the graph (`OpInfo.effects` is now exposed), durable/offload
+  flips, and node/edge counts. Nothing moves until you confirm.
+- **The editor gets its room back.** The op palette collapses to an icon
+  rail (the category icons are a table of contents — click one to reopen at
+  that category); the right dock is shared by the **Inspector** and
+  **Buddy** as two tabs — selecting a node brings the Inspector forward,
+  Buddy keeps its thread while hidden — and with nothing selected the dock
+  shows the **workflow's own settings** (name, description, tags, durable,
+  offload), which replaced the gear modal. The 2,100-line editor page split
+  along those seams: `editor/Palette`, `editor/Inspector`,
+  `editor/WorkflowPanel`, `editor/WorkflowFlags`, `editor/DeployPreview`,
+  and `lib/workspace` (open tabs + drafts, one store both the strip and the
+  editor read) and `lib/deploy-preview` (the pure diff the preview renders).
 - **The dashboard opens the door.** `/admin` stops blind-redirecting to the
   workflow list: the front page shows runs and errors in the window, recent
   failures one click from their run page, and users + paying customers when

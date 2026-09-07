@@ -21,9 +21,9 @@ SMTP at the "Sign-in link delivery?" question.
 
 ## 2. Create the `default` account
 
-Admin → **System → Email** → new account named `default`:
+Admin → **Resources → Email** → new account named `default`:
 
-- **Resend**: the API key, from the vault (System → Secrets) or an env var
+- **Resend**: the API key, from the vault (Resources → Secrets) or an env var
   such as `RESEND_API_KEY`. The From address must be on a domain you verified
   with Resend.
 - **SMTP**: host (+ port/TLS/username as options) and the password as the one

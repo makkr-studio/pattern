@@ -27,14 +27,21 @@ appears in its catalog and is editable inside itself.
 
 ## The rooms
 
-| Where | What |
+The sidebar has six sections, top to bottom. Mods add their pages to the same
+sections (a mod with a product surface of its own, like chat, gets its own room).
+
+| Section | What |
 |-------|------|
-| **Workflows / Editor** | The canvas: drag ops from the palette, wire ports (value cyan, stream violet, control dashed), fork code workflows, deploy with route-conflict checks. |
-| **Runs** | Every run with a per-node timeline: when each node ran (sub-millisecond), what flowed through it (sampled I/O, secrets masked), linked sub-runs for tool calls. A streaming run reads honestly as **"ready in X · streamed Y"** (time-to-first-byte vs. time-to-last-token); an offloaded run carries a **worker:N** badge. |
-| **Replay** | Step a finished run on the graph as an ordered **event log**: each node's start, every value output, and (with I/O sampling on) **every stream chunk** are discrete steps on a real-time track ticked at each event. Stepping is symmetric (forward-N then back-N returns home); **hover any edge** to see the value (or the current token) that crossed it. |
-| **Catalog (Ops / Mods)** | Everything registered, with ports, config schemas, and which workflows use what. |
-| **Metrics / Process** | Throughput, error rates, host process vitals, the run transport (inline + any worker pool). |
-| **System** | Settings, secrets (the vault), observability knobs (I/O sampling, retention). |
+| **Home** | The setup board — every installed mod's checklist ("from zero to your first subscription") ticking itself live — then the morning glance: runs and errors in the window, recent failures one click from their run, users and paying customers when those mods are present. |
+| **Workflows** | The catalog. A workflow opens as a **workspace** with four tabs: **Editor** (the canvas), **Runs** (its runs only), **Versions** (snapshots, diffs, restore), **Settings** (name, tags, durable/offload, deploy/undeploy, fork, export, delete). The header states the deployment truth in one strip — *Unsaved changes · Saved v8 · Live v7* — and **Deploy** previews what changes (routes, auth gates, external-effect nodes, flags) before anything moves. Every workflow you open stays open in the strip above, with its unsaved draft, until you close it. |
+| **Activity** | **Runs** across all workflows with a per-node timeline: when each node ran (sub-millisecond), what flowed through it (sampled I/O, secrets masked), linked sub-runs for tool calls. A streaming run reads honestly as **"ready in X · streamed Y"**; an offloaded run carries a **worker:N** badge. **Replay** steps a finished run on the graph as an ordered event log (hover any edge to see what crossed it). **Metrics** and **Process** show throughput, error rates, host vitals, and the run transport. |
+| **Resources** | What your workflows use: data collections and blobs (mod-store), vectors, secrets (the vault), email accounts, AI providers. |
+| **Administration** | People and money: users, invites, sessions, API tokens (mod-identity), billing (mod-billing), and the runtime **Settings** (observability knobs, mod settings sections). |
+| **Reference** | What's installed: every **op** with ports and config schema and which workflows use it, every **mod** and what it contributes, and the **System map** (derived routes and conflicts, schedules, hook chains, events, WebSocket rooms). |
+
+Inside the editor: the op **palette** collapses to an icon rail when you want the
+canvas; the right dock is shared by the **Inspector** (the selected node — or,
+with nothing selected, the workflow's own settings) and **Buddy**, one tab over.
 
 The trace separates a run's **result-ready** moment (its outputs are available: the
 `RunResult` resolves and the HTTP response starts) from its **true end** (all

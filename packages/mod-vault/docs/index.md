@@ -53,7 +53,7 @@ ciphertext is unrecoverable, so back it up where you keep other root secrets.
 
 ## Import a .env
 
-Arriving with a filled `.env`? The **System → Secrets** page has an **Import
+Arriving with a filled `.env`? The **Resources → Secrets** page has an **Import
 .env** panel: paste the file (or pick it) and every `KEY=VALUE` line becomes
 an encrypted secret in one click (`vault.admin.import`). Comments, blanks,
 empty placeholders and `PATTERN_VAULT_KEY` are skipped — the master key can't
@@ -64,7 +64,7 @@ live inside the vault it unlocks — and only names ever ride the response.
 There are two distinct things people mean by "rotation":
 
 - **Rotate a secret's value** (the common case, a leaked or expired API key):
-  re-write the same secret name on the **System → Secrets** page (`vault.admin.write`).
+  re-write the same secret name on the **Resources → Secrets** page (`vault.admin.write`).
   It's write-only and re-encrypts in place; `vault.read` returns the new value
   on the next run. Nothing else changes.
 - **Rotate the master key** is heavier: a new `PATTERN_VAULT_KEY` can't decrypt
@@ -73,7 +73,7 @@ There are two distinct things people mean by "rotation":
 
 ## Using secrets
 
-- **Write** them on the admin's **System → Secrets** page (write-only: values
+- **Write** them on the admin's **Resources → Secrets** page (write-only: values
   are never displayed back; sampled values everywhere show as `•••`).
 - **Read** them in a workflow with `vault.read` (config `{ key }` → a
   secret-typed `value` output you wire where the secret is needed, such as an
@@ -88,7 +88,7 @@ The headline pairing is **mod-ai** (the model provider). Store your provider key
 in the vault under the provider's conventional name (`OPENAI_API_KEY` for OpenAI,
 `ANTHROPIC_API_KEY` for Anthropic), and a model wired inline (`ai.model`) finds it
 with nothing wired: mod-ai checks the environment first, then the unlocked vault.
-A model **alias** (admin → **Settings → AI Providers**) can also point a key field
+A model **alias** (admin → **Resources → AI Providers**) can also point a key field
 straight at a named vault secret. Either way the key is masked in traces and never
 has to live in a `.env`.
 

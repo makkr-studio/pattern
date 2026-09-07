@@ -46,7 +46,7 @@ export class ModelServiceImpl implements AiModelService {
     const ref = modelRef ?? this.defaultModel();
     if (!ref) {
       throw new Error(
-        "mod-ai: no model specified and no default configured — wire an ai.model node, or set a default in admin → Settings → AI Providers.",
+        "mod-ai: no model specified and no default configured — wire an ai.model node, or set a default in admin → Resources → AI Providers.",
       );
     }
     return this.provider.languageModel(ref, ctx);

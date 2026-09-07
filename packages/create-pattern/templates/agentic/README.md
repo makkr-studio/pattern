@@ -21,7 +21,7 @@ npm run dev
 ## The API key
 
 Pick a provider when you wire the model (`ai.model` config `{ provider, modelId }`),
-or set a `default` alias in admin → **Settings → AI Providers**. A model wired
+or set a `default` alias in admin → **Resources → AI Providers**. A model wired
 inline resolves that provider's conventional key by name (for OpenAI that's
 `OPENAI_API_KEY`) from `.env` (copied from `.env.example`, gitignored, loaded on
 boot, real env wins) or a vault secret of that name (admin → **Secrets**, masked

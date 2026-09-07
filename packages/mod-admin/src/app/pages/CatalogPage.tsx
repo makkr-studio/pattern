@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Template, WorkflowMeta } from "@pattern-js/admin-sdk";
 import { useDeleteWorkflow, useMods, useSetEnabled, useTemplates, useWorkflows } from "../lib/queries";
+import { NEW_KEY, useWorkspace } from "../lib/workspace";
+import { workflowUrl } from "./workflow/WorkflowLayout";
 import { Badge, Dot, EmptyState, Modal, NeonButton, PageHeader, Spinner, Table, type Column } from "../components/ui";
-import { History, Icon, Plus, Search, Trash2 } from "../components/icon";
+import { History, Icon, Plus, Search, Settings, Trash2 } from "../components/icon";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { sfx } from "../lib/sfx";
 
@@ -41,7 +43,7 @@ function TemplatePicker({ open, onClose }: { open: boolean; onClose: () => void 
   const { data: templates } = useTemplates();
   const start = (template?: Template) => {
     onClose();
-    navigate("/editor", template ? { state: { template: template.doc } } : undefined);
+    navigate("/workflows/new", template ? { state: { template: template.doc } } : undefined);
   };
   return (
     <Modal open={open} onClose={onClose} title="New workflow">
@@ -67,6 +69,37 @@ function TemplatePicker({ open, onClose }: { open: boolean; onClose: () => void 
         ))}
       </div>
     </Modal>
+  );
+}
+
+/** The workflows you have open — one click back to where you were. */
+function OpenWorkflows() {
+  const ws = useWorkspace();
+  const navigate = useNavigate();
+  if (ws.open.length === 0) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      <span className="text-muted mr-1 text-xs font-semibold uppercase tracking-wider">Open</span>
+      {ws.open.map((k) => {
+        const d = ws.drafts[k];
+        const label = k === NEW_KEY ? `✦ ${d?.newSlug || "new"}` : k;
+        return (
+          <button
+            key={k}
+            type="button"
+            onClick={() => {
+              sfx.play("nav");
+              navigate(workflowUrl(k));
+            }}
+            title={d?.dirty ? `${label} — unsaved changes` : label}
+            className={`glass flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-xs hover:bg-white/10 ${k === ws.last ? "ring-1 ring-[var(--color-neon-cyan)]/40" : ""}`}
+          >
+            {label}
+            {d?.dirty && <span aria-label="unsaved changes" className="h-1.5 w-1.5 rounded-full bg-[var(--color-neon-amber)]" />}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -123,7 +156,7 @@ export function CatalogPage() {
       <>
         <PageHeader title="Workflows" subtitle="Author, deploy, and inspect workflows." />
         <EmptyState
-          title="Couldn't load the catalog"
+          title="Couldn't load the workflows"
           hint={error instanceof Error ? error.message : "The admin API did not respond."}
           action={<NeonButton onClick={() => void refetch()}>Retry</NeonButton>}
         />
@@ -215,13 +248,26 @@ export function CatalogPage() {
               onClick={(e) => {
                 e.stopPropagation();
                 sfx.play("nav");
-                navigate(`/versions/${w.slug}`);
+                navigate(workflowUrl(w.slug, "versions"));
               }}
               className="text-muted rounded p-1 hover:text-[var(--color-neon-cyan)]"
             >
               <History size={14} />
             </button>
           )}
+          <button
+            type="button"
+            aria-label={`Settings of ${w.slug}`}
+            title="Settings — identity, execution, deployment"
+            onClick={(e) => {
+              e.stopPropagation();
+              sfx.play("nav");
+              navigate(workflowUrl(w.slug, "settings"));
+            }}
+            className="text-muted rounded p-1 hover:text-[var(--color-neon-cyan)]"
+          >
+            <Settings size={14} />
+          </button>
           {w.source !== "code" && (
             <button
               type="button"
@@ -245,9 +291,11 @@ export function CatalogPage() {
     <>
       <PageHeader
         title="Workflows"
-        subtitle={`${rows.length}${rows.length !== (data ?? []).length ? ` of ${(data ?? []).length}` : ""} workflows — the catalog is rendered entirely from the self-reflecting API.`}
+        subtitle={`${rows.length}${rows.length !== (data ?? []).length ? ` of ${(data ?? []).length}` : ""} workflows. Open one for its editor, runs, versions, and settings.`}
         actions={newButton}
       />
+
+      <OpenWorkflows />
 
       {/* Filter bar: fuzzy search + by mod */}
       <div className="mb-4 flex gap-2">
@@ -328,7 +376,7 @@ export function CatalogPage() {
           getKey={(w) => w.slug}
           onRow={(w) => {
             sfx.play("nav");
-            navigate(`/editor/${w.slug}`);
+            navigate(workflowUrl(w.slug));
           }}
         />
       )}

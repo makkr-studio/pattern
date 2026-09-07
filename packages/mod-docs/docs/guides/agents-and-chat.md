@@ -369,7 +369,7 @@ terminal event.
 
 The agent's model comes from an `ai.model` node (routing `direct` or `gateway`,
 a provider, a model id) or an `ai.alias` node (a model configured in admin →
-Settings → **AI Providers**), wired into `agents.agent.model`. Wire nothing and
+Resources → **AI Providers**), wired into `agents.agent.model`. Wire nothing and
 the agent falls back to the **default** alias.
 
 `mod-ai` resolves provider keys inside the layer; they never wire into the agent

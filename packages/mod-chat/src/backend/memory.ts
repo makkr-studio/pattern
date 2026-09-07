@@ -315,7 +315,7 @@ export function memoryOps(opts: ResolvedChatOptions): OpDefinition[] {
       // words the agent can relay — never a stack trace in the chat.
       const aiConfig = ctx.services["aiConfig"] as AiConfigLike | undefined;
       if (aiConfig && !aiConfig.alias(cfg.alias)) {
-        return { result: { ok: false, error: `memory needs an "${cfg.alias}" embedding alias — add it in admin → Settings → AI Providers` } };
+        return { result: { ok: false, error: `memory needs an "${cfg.alias}" embedding alias — add it in admin → Resources → AI Providers` } };
       }
       try {
         await ensureCollection(vec);

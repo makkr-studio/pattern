@@ -4,7 +4,7 @@
  * All the sending logic lives in driver.ts; this mod just registers it on
  * mod-email's service in `ready` (after every setup ran — two-phase install,
  * so listing order in pattern.config.json doesn't matter). Host/port/user are
- * account options in admin → System → Email; the password comes from the
+ * account options in admin → Resources → Email; the password comes from the
  * vault or an env var.
  */
 

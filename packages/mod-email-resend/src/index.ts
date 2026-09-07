@@ -4,7 +4,7 @@
  * All the sending logic lives in driver.ts; this mod just registers it on
  * mod-email's service in `ready` (after every setup ran — two-phase install,
  * so listing order in pattern.config.json doesn't matter). Accounts are
- * configured in admin → System → Email; the API key comes from the vault or
+ * configured in admin → Resources → Email; the API key comes from the vault or
  * an env var.
  */
 

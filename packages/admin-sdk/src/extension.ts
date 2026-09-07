@@ -40,6 +40,56 @@ export function buildNav(menu: readonly MenuEntry[]): NavSection[] {
   return sections;
 }
 
+/**
+ * The admin's section vocabulary — where a `MenuEntry.category` lands in the
+ * sidebar, top to bottom:
+ *
+ *  - **Home** — the dashboard.
+ *  - **Workflows** — the catalog; every workflow opens as Editor · Runs · Versions · Settings.
+ *  - **Activity** — what the system is doing: runs, metrics, the process.
+ *  - **Resources** — what workflows use: data, vectors, secrets, email, AI providers.
+ *  - **Administration** — people and money: users, sessions, tokens, billing, runtime settings.
+ *  - **Reference** — what's installed: ops, mods, the system map.
+ *
+ * A mod contributes with one of these names. The pre-0.5 names (Overview,
+ * Author, Observe, Catalog, Access, Data, System) map onto them so older mods
+ * still land somewhere sensible; any other string becomes a section of its own
+ * after the built-ins — a product mod (chat) keeps its own room.
+ */
+export const ADMIN_SECTIONS = ["Home", "Workflows", "Activity", "Resources", "Administration", "Reference"] as const;
+export type AdminSection = (typeof ADMIN_SECTIONS)[number];
+
+const LEGACY_SECTIONS: Record<string, AdminSection> = {
+  Overview: "Home",
+  Author: "Workflows",
+  Observe: "Activity",
+  Catalog: "Reference",
+  Access: "Administration",
+  Data: "Resources",
+  System: "Resources",
+};
+
+/** Map a menu category onto the admin's section vocabulary (unknown names pass through). */
+export function canonicalSection(category: string): string {
+  if ((ADMIN_SECTIONS as readonly string[]).includes(category)) return category;
+  return LEGACY_SECTIONS[category] ?? category;
+}
+
+/**
+ * `buildNav` for the admin shell: categories are canonicalized first, then the
+ * built-in sections come in their fixed order and everything else follows,
+ * alphabetically. Within a section, `order` then label — as `buildNav`.
+ */
+export function buildAdminNav(menu: readonly MenuEntry[]): NavSection[] {
+  const rank = (c: string): number => {
+    const i = (ADMIN_SECTIONS as readonly string[]).indexOf(c);
+    return i === -1 ? ADMIN_SECTIONS.length : i;
+  };
+  return buildNav(menu.map((m) => ({ ...m, category: canonicalSection(m.category) }))).sort(
+    (a, b) => rank(a.category) - rank(b.category) || (rank(a.category) === ADMIN_SECTIONS.length ? a.category.localeCompare(b.category) : 0),
+  );
+}
+
 /** Identity helper for authoring a declarative page with type-checking (Tier 1). */
 export function defineDeclarativePage(path: string, view: DeclarativeView): PageDef {
   return { path, view };

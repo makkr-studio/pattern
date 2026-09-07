@@ -14,10 +14,10 @@ tune the agent, add a guardrail, or rewire the pipeline. Recipes below.
    - `npx pattern ops <type>`: full ports + config detail for any op
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`.
 3. The chat agent needs a **model** and a **key**. The model is the default set
-   in admin → Settings → AI Providers (or wire an `ai.model` node into the
+   in admin → Resources → AI Providers (or wire an `ai.model` node into the
    pipeline's `agents.agent.model`). The provider key resolves by name:
    `OPENAI_API_KEY` in `.env` (copied from `.env.example`; loaded automatically,
-   real env wins) → a vault secret of that name (admin → System → Secrets,
+   real env wins) → a vault secret of that name (admin → Resources → Secrets,
    masked out of run samples). Gateway routing uses one `AI_GATEWAY_API_KEY`
    instead. `PATTERN_VAULT_KEY` (the vault's master key) belongs in `.env`.
 4. Don't edit `./.pattern` by hand; `./.pattern-data` is runtime data
@@ -95,10 +95,11 @@ lucide: a tested starting point if you have no preference.
 ### Tune the agent (instructions, model)
 
 Open `/admin` → Workflows → `chat.turn.pipeline` → the `agents.agent` node:
-its config carries `instructions` (the model comes from Settings → AI Providers,
+its config carries `instructions` (the model comes from Resources → AI Providers,
 or wire an `ai.model` node into the agent's `model` input). The built-in pipeline
-is a code workflow; **fork it** (Editor → Fork), edit your copy, then disable the
-built-in from the catalog (Status toggle). Your fork's route takes over.
+is a code workflow; **fork it** (the editor's Fork button, or Settings → Fork), edit
+your copy, then undeploy the built-in (its Settings tab, or the Status toggle in
+the Workflows list). Your fork's route takes over.
 
 ### Add a guardrail
 
@@ -127,7 +128,7 @@ mods in `pattern.config.json`, then set `CHAT_REQUIRE_AUTH=true` in `.env`
 visitors now get the chat's sign-in card (email → magic link, printed to the
 console until delivery is wired — install `@pattern-js/mod-email` plus a driver
 (`mod-email-resend` / `mod-email-smtp`) and create a `default` account in
-admin → System → Email; links then send automatically). Unset the var to reopen.
+admin → Resources → Email; links then send automatically). Unset the var to reopen.
 Admin → Chat → Conversations shows every conversation either way, guests
 included.
 

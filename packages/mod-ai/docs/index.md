@@ -43,7 +43,7 @@ Either way, wire `model.model` → any `ai.*` op's `model` input or
 ## Aliases
 
 An **alias** is one self-contained, named model handle (managed in admin →
-Settings → **AI Providers**): a provider, a model id, the secret(s) it
+Resources → **AI Providers**): a provider, a model id, the secret(s) it
 authenticates with, and any structured options. Each secret is sourced
 explicitly, from the **vault** or an **env var**, so nothing relies on guessing a
 provider's magic env-var name. A single-key provider needs only `apiKey`; Azure
@@ -154,7 +154,7 @@ the ones you pick. The gateway needs no package.
 
 ## Settings
 
-Admin → Settings → **AI Providers** manages your **aliases**: pick a provider
+Admin → Resources → **AI Providers** manages your **aliases**: pick a provider
 (which surfaces exactly the secret + option fields it needs), source each secret
 from the vault or an env var, set the model id, and run a **Test** check. It also
 browses the model catalog (curated suggestions plus the live gateway listing when

@@ -69,7 +69,7 @@ platform resolves by name: `default` (language) and, when the provider has one,
 `embeddings` (embedding) land in `.pattern-data/ai-config.json`, each reading
 its key from `.env` via an env-sourced secret *reference* (no value is ever
 written). Set the key and agents, `/rag/*`, and Buddy all answer — re-point the
-aliases anytime in admin → Settings → AI Providers. The Buddy packs (`agentic`,
+aliases anytime in admin → Resources → AI Providers. The Buddy packs (`agentic`,
 `agent-chat`) also scaffold **`.mcp.json`** wiring `npx pattern mcp`, so opening
 the project in Claude Code connects the `pattern_*` control-plane tools (ops,
 docs, validate, drafts, runs) with zero setup. And `agentic` with Resend email

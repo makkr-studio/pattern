@@ -70,7 +70,7 @@ export class ProviderService implements AiProviderService {
   private async resolveByName(ctx: OpContext, name: string): Promise<string> {
     const v = await this.tryName(ctx, name);
     if (v) return v;
-    throw new Error(`mod-ai: no secret "${name}" — add it in admin → System → Secrets, or set the ${name} env var.`);
+    throw new Error(`mod-ai: no secret "${name}" — add it in admin → Resources → Secrets, or set the ${name} env var.`);
   }
 
   private async tryName(ctx: OpContext, name: string): Promise<string | undefined> {
@@ -112,7 +112,7 @@ export class ProviderService implements AiProviderService {
     if (ref.alias) {
       const alias = this.lookup(ref.alias);
       if (!alias) {
-        throw new Error(`mod-ai: alias "${ref.alias}" is not configured — set it in admin → Settings → AI Providers.`);
+        throw new Error(`mod-ai: alias "${ref.alias}" is not configured — set it in admin → Resources → AI Providers.`);
       }
       return this.providerForAlias(alias, ctx);
     }
@@ -125,7 +125,7 @@ export class ProviderService implements AiProviderService {
     if (!spec) throw this.unknownProvider(ref.provider);
     if (!spec.inlineSecret) {
       throw new Error(
-        `mod-ai: provider "${ref.provider}" needs structured credentials — configure an alias for it in admin → Settings → AI Providers.`,
+        `mod-ai: provider "${ref.provider}" needs structured credentials — configure an alias for it in admin → Resources → AI Providers.`,
       );
     }
     const creds: Creds = { [spec.secrets[0]!.name]: await this.resolveByName(ctx, ref.credential ?? spec.inlineSecret) };
@@ -148,7 +148,7 @@ export class ProviderService implements AiProviderService {
       throw new Error(
         `mod-ai: the model reference carries no model id` +
           (ref.alias ? ` and alias "${ref.alias}" resolves none` : "") +
-          ` — configure it in admin → Settings → AI Providers.`,
+          ` — configure it in admin → Resources → AI Providers.`,
       );
     }
     const fn = prov[method];

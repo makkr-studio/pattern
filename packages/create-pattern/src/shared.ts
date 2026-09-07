@@ -100,8 +100,8 @@ export function emailEnvHint(delivery: EmailDelivery): string | null {
   if (delivery === "console") return null;
   const hint =
     delivery === "resend"
-      ? "# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
-      : "# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
+      ? "# Email (Resend): the API key lives here or in the vault (admin → Resources → Secrets)\n# RESEND_API_KEY=\n"
+      : "# Email (SMTP): host/port/user are account options in admin → Resources → Email;\n# the password lives here or in the vault (admin → Resources → Secrets)\n# SMTP_PASSWORD=\n";
   return (
     hint +
     "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +

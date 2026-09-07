@@ -305,7 +305,7 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
           addDep(OIDC_MOD);
           if (await writeIfAbsent("mods/oidc.mjs", OIDC_WRAPPER)) report.wrappers.push("mods/oidc.mjs");
           insertAfter(cfg.mods.includes(MAGIC_LINK_MOD) ? MAGIC_LINK_MOD : cfg.mods.includes(IDENTITY_WRAPPER_PATH) ? IDENTITY_WRAPPER_PATH : IDENTITY_MOD, OIDC_WRAPPER_PATH);
-          await envHintIfMissing(["GOOGLE_CLIENT_SECRET"], "# OIDC (mods/oidc.mjs): the client secret lives here or in the vault (admin → System → Secrets)\n# GOOGLE_CLIENT_SECRET=\n");
+          await envHintIfMissing(["GOOGLE_CLIENT_SECRET"], "# OIDC (mods/oidc.mjs): the client secret lives here or in the vault (admin → Resources → Secrets)\n# GOOGLE_CLIENT_SECRET=\n");
           did = true;
         }
         break;
@@ -380,7 +380,7 @@ export async function applyAdd(root: string, flags: AddFlags): Promise<AddReport
     }
   }
   if (report.added.includes("ai")) {
-    report.notes.push("create model aliases in admin → Settings → AI Providers (each key is an env/vault reference — never a value in config)");
+    report.notes.push("create model aliases in admin → Resources → AI Providers (each key is an env/vault reference — never a value in config)");
   }
   if (report.added.includes("vault") && !existsSync(join(root, ".env"))) {
     report.notes.push("the vault needs PATTERN_VAULT_KEY in .env (generate one: openssl rand -base64 32)");

@@ -115,7 +115,7 @@ seeded). Authenticated connections auto-join two rooms:
 
 The packaged answer is `@pattern-js/mod-email` plus a driver
 (`mod-email-resend` or `mod-email-smtp`): install them, create the `default`
-account in admin → System → Email, and sign-in links send themselves — no code
+account in admin → Resources → Email, and sign-in links send themselves — no code
 (see the Email chapter).
 
 Underneath sits a hook chain open to any channel. Subscribe a workflow to

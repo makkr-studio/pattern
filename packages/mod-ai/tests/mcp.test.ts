@@ -45,10 +45,10 @@ describe("MCP round-trip (Pattern server ↔ mod-ai client)", () => {
     await engine.useAsync(aiMod(), { deferReady: true });
     engine.registerWorkflow(weatherTool);
 
-    const host = createHttpHost(engine, { defaultPort: 4977 });
+    const host = createHttpHost(engine, { defaultPort: 4978 });
     const started = await host.start();
     closer = started.close;
-    const url = `http://localhost:${started.port ?? 4977}/mcp`;
+    const url = `http://localhost:${started.port ?? 4978}/mcp`;
 
     const mcp = new McpService();
     const ref = { origin: "mcp", transport: "http", url } as const;

@@ -165,6 +165,13 @@ export interface OpInfo {
   reusable: boolean;
   /** Does meaningful synchronous compute — the editor nudges toward Offload. */
   cpuHeavy?: boolean;
+  /**
+   * The op's declared replay-safety (`OpDefinition.effects`): "pure" /
+   * "idempotent" / "external", or "dynamic" when it depends on the node's
+   * config. Absent = undeclared, which the engine treats as external. The
+   * deploy preview uses it to name the nodes that will send or charge.
+   */
+  effects?: "pure" | "idempotent" | "external" | "dynamic";
 }
 
 export interface ModInfo {

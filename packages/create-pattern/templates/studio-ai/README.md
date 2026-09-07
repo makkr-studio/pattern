@@ -10,7 +10,7 @@ npm run dev
 ```
 
 - **Admin** → http://localhost:3000/admin: editor, run traces, versioned
-  workflow store, data browser, secrets, and **Settings → AI Providers**.
+  workflow store, data browser, secrets, and **Resources → AI Providers**.
 - **Example** → `POST /summarize` runs `ai.text.generate` on your default model:
 
   ```sh
@@ -20,7 +20,7 @@ npm run dev
 
 ## Configure a model (alias)
 
-Models come from a named **alias**. Open admin → **Settings → AI Providers**,
+Models come from a named **alias**. Open admin → **Resources → AI Providers**,
 create a `default` alias (pick a provider, a model id, and the key it uses,
 from the vault or an env var), and the example works. For an env-sourced key,
 define it in `.env` (copied from `.env.example`, gitignored, loaded on boot, real

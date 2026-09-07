@@ -81,7 +81,7 @@ export class DefaultEmailService implements EmailService {
     if (!account) {
       // Preflight failures never reach a provider — stamp them so durable
       // resume re-runs the node without asking (see core's `noEffect`).
-      throw noEffect(new Error(`mod-email: no account "${name}" is configured — add it in admin → System → Email.`));
+      throw noEffect(new Error(`mod-email: no account "${name}" is configured — add it in admin → Resources → Email.`));
     }
     return this.sendVia(account, input, ctx);
   }

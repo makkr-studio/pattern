@@ -21,6 +21,10 @@ export {
 } from "./client.js";
 export {
   buildNav,
+  buildAdminNav,
+  canonicalSection,
+  ADMIN_SECTIONS,
+  type AdminSection,
   defineDeclarativePage,
   MenuRegistry,
   CommandRegistry,

@@ -17,7 +17,7 @@ The one persisted concept is the **account** — a memorable name bound to a
 driver, a From address, sourced secrets and driver options. Two accounts of
 the same driver with different credentials are just two records (prod + a
 staging relay, a marketing sender + an alerts sender). Manage them in admin →
-**System → Email**; the form generates itself from whatever fields the
+**Resources → Email**; the form generates itself from whatever fields the
 registered drivers declare, and the **Test** button sends a real email so you
 verify end-to-end delivery, not a wiring check.
 

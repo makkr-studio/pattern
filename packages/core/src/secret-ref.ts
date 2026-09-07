@@ -2,7 +2,7 @@
  * Sourced secret references — the ONE way mods point at credentials.
  *
  * Auth VALUES are never stored in config or on ports: a `SecretRef` names
- * either a vault secret (managed in admin → System → Secrets) or an env var,
+ * either a vault secret (managed in admin → Resources → Secrets) or an env var,
  * resolved at run time. The source is chosen explicitly per field, so nothing
  * relies on guessing a provider's magic env-var convention.
  *
@@ -48,6 +48,6 @@ export async function resolveSourced(ctx: OpContext, ref: SecretRef, label = "pa
   const vault = vaultLike(ctx);
   if (vault?.unlocked() && (await vault.has(ref.key).catch(() => false))) return vault.read(ref.key);
   throw new Error(
-    `${label}: no vault secret "${ref.key}" — add it in admin → System → Secrets (vault must be unlocked).`,
+    `${label}: no vault secret "${ref.key}" — add it in admin → Resources → Secrets (vault must be unlocked).`,
   );
 }

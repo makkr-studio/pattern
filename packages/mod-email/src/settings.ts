@@ -144,7 +144,7 @@ export function emailAdminRoutes(): Workflow[] {
 
 export function emailFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "System", label: "Email", icon: "mail", path: "/x/email/accounts", order: 21 }],
+    menu: [{ category: "Resources", label: "Email", icon: "mail", path: "/x/email/accounts", order: 50 }],
     // The Tier-2 page is just its source; the admin serves + imports it (no workflow).
     pages: [{ path: "/x/email/accounts", title: "Email", module: REMOTE }],
   };

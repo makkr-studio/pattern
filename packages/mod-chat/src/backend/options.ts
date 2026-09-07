@@ -10,7 +10,7 @@ export interface ChatBrand {
  * Pin a specific model for the chat agent (or guardrail), mirroring the
  * `ai.model` op config — the chat backend wires an `ai.model` node into the
  * agent's `model` input from it. Requires `@pattern-js/mod-ai` installed. When
- * omitted, the agent runs on the app's DEFAULT model (admin → Settings → AI
+ * omitted, the agent runs on the app's DEFAULT model (admin → Resources → AI
  * Providers), which is the usual path.
  */
 export interface ChatModel {

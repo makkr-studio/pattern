@@ -106,7 +106,7 @@ link. Manage users/invites in admin → Access.`,
     agentsMd: `### Email (mod-email)
 Transactional email as a workflow op: wire \`email.account\` → \`email.send\`
 (markdown body; attachments as blob refs). Create the "default" account in
-admin → System → Email — until then sends fall back to the console. With auth
+admin → Resources → Email — until then sends fall back to the console. With auth
 on, sign-in links deliver through it automatically. Failed-run alert emails
 (set \`PATTERN_ALERTS_TO\`) use the same account.`,
   },
@@ -139,7 +139,7 @@ mutual exclusion. Data lives in \`.pattern-data/store.db\` (gitignored).`,
     serves: () => [],
     envHint: VAULT_ENV_HINT,
     agentsMd: `### Vault (mod-vault)
-Encrypted secrets at rest (admin → System → Secrets). Anything that needs a
+Encrypted secrets at rest (admin → Resources → Secrets). Anything that needs a
 credential takes a REFERENCE — \`{ "source": "vault", "key": "..." }\` or
 \`{ "source": "env", "key": "..." }\` — never a plaintext value in config.`,
   },
@@ -157,7 +157,7 @@ credential takes a REFERENCE — \`{ "source": "vault", "key": "..." }\` or
     agentsMd: `### AI (mod-ai)
 Model calls as ops: \`ai.alias\` (or \`ai.model\`) → \`ai.text.generate\` /
 \`ai.object.generate\` / \`ai.embed\` / \`ai.image.generate\` / speech + STT.
-Models resolve from ALIASES (admin → Settings → AI Providers); each alias
+Models resolve from ALIASES (admin → Resources → AI Providers); each alias
 carries its own key as a vault/env reference. \`default\` is the fallback
 alias agents and chat use; \`embeddings\` powers vectors/RAG.`,
   },
@@ -236,7 +236,7 @@ role (mods/billing.mjs) → identity's roles→scopes map turns it into the "pro
 scope (mods/identity.mjs) → a paid feature is just
 \`"requireAuth": { "scopes": ["pro"] }\` on a route. Checkout/portal ship as
 durable workflows; the signed Stripe webhook route is seeded by the driver.
-Dev loop: keys in admin → System → Secrets (the encrypted vault — applies on
+Dev loop: keys in admin → Resources → Secrets (the encrypted vault — applies on
 the next call, no restart), the account in admin → System → Billing, then
 \`stripe listen --forward-to localhost:3000/billing/webhook/stripe\` and pay
 with 4242 4242 4242 4242.`,

@@ -223,7 +223,7 @@ const adminChecklist: OpDefinition = {
       {
         ok: Boolean(a) && a!.missingSecrets.length === 0,
         label: "API key connected",
-        how: "Stripe dashboard (TEST mode) → Developers → API keys: paste sk_test_… into admin → System → Secrets as STRIPE_API_KEY (encrypted, no restart), then set the account's apiKey to vault / STRIPE_API_KEY.",
+        how: "Stripe dashboard (TEST mode) → Developers → API keys: paste sk_test_… into admin → Resources → Secrets as STRIPE_API_KEY (encrypted, no restart), then set the account's apiKey to vault / STRIPE_API_KEY.",
       },
       {
         ok: Boolean(a?.defaultPriceKey),
@@ -233,7 +233,7 @@ const adminChecklist: OpDefinition = {
       {
         ok: Boolean(a?.hasWebhookSecret),
         label: "Webhook secret set",
-        how: `Run: stripe listen --forward-to ${st.webhookUrl}  — paste the printed whsec_… into admin → System → Secrets as STRIPE_WEBHOOK_SECRET and set the account's webhookSecret to vault / STRIPE_WEBHOOK_SECRET.`,
+        how: `Run: stripe listen --forward-to ${st.webhookUrl}  — paste the printed whsec_… into admin → Resources → Secrets as STRIPE_WEBHOOK_SECRET and set the account's webhookSecret to vault / STRIPE_WEBHOOK_SECRET.`,
       },
       {
         ok: Boolean(st.lastEvent),
@@ -342,7 +342,7 @@ export function billingAdminRoutes(): Workflow[] {
 
 export function billingFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "System", label: "Billing", icon: "credit-card", path: "/x/billing", order: 22 }],
+    menu: [{ category: "Administration", label: "Billing", icon: "credit-card", path: "/x/billing", order: 50 }],
     // The Tier-2 page is just its source; the admin serves + imports it. It owns
     // the setup checklist, driver-spec-driven editable accounts (per-field
     // secret refs), and the customers/events tables.

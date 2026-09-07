@@ -16,8 +16,11 @@ the fastest way to build and watch a workflow.
 
 ## 1. New workflow
 
-From the **Catalog**, choose **New** (or start from a **Template**: auth-gated
-endpoint, SSE stream, cron, …). You land in the graph editor with an empty canvas.
+From **Workflows**, choose **New workflow** (blank, or a **Template**: auth-gated
+endpoint, SSE stream, cron, …). You land in a workflow workspace — Editor · Runs ·
+Versions · Settings — on an empty canvas. Type a slug in the toolbar; the dock on
+the right shows the workflow's own name, description, and execution flags until
+you select a node.
 
 ## 2. Drop a trigger and ops
 
@@ -58,16 +61,22 @@ edit: problems mark the offending node/port and collect in a Problems panel.
 When it's clean:
 
 - **Save** mints an immutable version (a full JSON snapshot).
-- **Deploy** makes that version *live*. If its HTTP route conflicts with another
-  live workflow, the admin doesn't guess: it offers **cancel** or **swap**.
+- **Deploy** first shows what changes against the live version — routes that
+  start or stop serving, auth gates that change, external-effect nodes joining
+  the graph, durable/offload flips — then saves and makes that version *live*.
+  If its HTTP route conflicts with another live workflow, the admin doesn't
+  guess: it offers **cancel** or **swap**.
 
-Enable/disable is control-plane state: a disabled workflow stays in the store but
-isn't registered.
+The workspace header always says where you are: *Unsaved changes* (the canvas
+differs from what's saved), *Saved v8* (the newest version), *Live v7* (what
+runs). Deploy/undeploy is control-plane state (the **Settings** tab): an
+undeployed workflow stays in the store but isn't registered.
 
 ## 6. Run it and watch
 
 Hit **Run** (a manual trigger lets you type the input; an HTTP trigger can be
-simulated from its schema). Then open **Runs**:
+simulated from its schema). Then open the workspace's **Runs** tab (or
+Activity → Runs for every workflow):
 
 - a per-node **waterfall** with timing and status,
 - **sampled I/O** you can peek (secrets masked),
@@ -77,13 +86,15 @@ simulated from its schema). Then open **Runs**:
 
 ## 7. Version, diff, roll back
 
-**Versions** lists every snapshot with a structural **JSON diff** between any two.
-Promote or roll back with a single pointer move. Rollback is instant and leaves
-in-flight runs untouched. Every promote/rollback is recorded in the audit trail.
+The **Versions** tab lists every snapshot with a structural **JSON diff** between
+any two. Promote or roll back with a single pointer move. Rollback is instant and
+leaves in-flight runs untouched. Every promote/rollback is recorded in the audit
+trail.
 
 ## Export to a file
 
-Authored visually but want it in your repo? Export the workflow JSON and drop it
-into `workflows/`: it's the exact same document. The reverse works too: file
-workflows show up in the catalog (as read-only `code`/`file` source) and can be
-**forked** into an editable copy. See [Author a workflow in JSON](workflow-in-json.md).
+Authored visually but want it in your repo? Export the workflow JSON (the editor's
+export button, or Settings → Export JSON) and drop it into `workflows/`: it's the
+exact same document. The reverse works too: file workflows show up under
+Workflows (as read-only `code`/`file` source) and can be **forked** into an
+editable copy. See [Author a workflow in JSON](workflow-in-json.md).

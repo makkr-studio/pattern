@@ -18,7 +18,14 @@
 
 /** A nav entry contributed by a mod (admin-spec §6). */
 export interface MenuEntry {
-  /** Grouping category; the shell builds sections from the union of these. */
+  /**
+   * The sidebar section. The admin's vocabulary, top to bottom: `Home`,
+   * `Workflows`, `Activity`, `Resources` (data, secrets, email, AI providers —
+   * what workflows use), `Administration` (users, tokens, billing, settings),
+   * `Reference` (ops, mods, system map). Any other name becomes its own section
+   * after those — right for a product surface (chat conversations). See
+   * `ADMIN_SECTIONS` in `@pattern-js/admin-sdk`.
+   */
   category: string;
   label: string;
   /** lucide-react icon name (resolved by the admin shell). */
@@ -233,7 +240,7 @@ export interface FrontendContribution {
   menu?: MenuEntry[];
   pages?: PageDef[];
   commands?: CommandDef[];
-  /** Sections rendered on the admin's Settings page (System → Settings). */
+  /** Sections rendered on the admin's Settings page (Administration → Settings). */
   settings?: SettingsSection[];
   /** Setup checklists the admin dashboard aggregates (see ChecklistDef). */
   checklists?: ChecklistDef[];

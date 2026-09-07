@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useDeploy, useDiff, useSaveWorkflow, useVersions, useWorkflow } from "../lib/queries";
-import { Badge, GlassPanel, Modal, NeonButton, PageHeader, Spinner } from "../components/ui";
+import { Badge, GlassPanel, Modal, NeonButton, Spinner } from "../components/ui";
 import { JsonDiff } from "../components/JsonDiff";
 import { ago } from "../lib/format";
 import { hasErrors } from "../lib/issues";
@@ -10,6 +10,7 @@ import { GitFork, Pencil } from "lucide-react";
 import { Rocket } from "../components/icon";
 import { sfx } from "../lib/sfx";
 
+/** A workflow's Versions tab: immutable snapshots, A/B diff, restore, fork. */
 export function VersionsPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -70,7 +71,7 @@ export function VersionsPage() {
     if (!slug) return;
     const doc = await api.versions.get(slug, versionId);
     sfx.play("nav");
-    navigate(`/editor/${slug}`, { state: { loadDoc: doc, note: versionId } });
+    navigate(`/workflows/${encodeURIComponent(slug)}/editor`, { state: { loadDoc: doc, note: versionId } });
   };
 
   /** Fork one version to a brand-new slug. */
@@ -87,20 +88,15 @@ export function VersionsPage() {
     }
     setForkFrom(null);
     sfx.play("save");
-    navigate(`/editor/${id}`);
+    navigate(`/workflows/${encodeURIComponent(id)}/editor`);
   };
 
   return (
     <>
-      <PageHeader
-        title={`Versions · ${slug}`}
-        subtitle="Immutable snapshots. Restore is a one-click pointer move; fork copies any version to a new slug."
-        actions={
-          <NeonButton variant="ghost" onClick={() => navigate(`/editor/${slug}`)}>
-            <Pencil size={14} /> Open in editor
-          </NeonButton>
-        }
-      />
+      <p className="text-muted mb-4 text-sm">
+        Immutable snapshots, newest first. Pick A and B to diff them; Restore is a one-click pointer move (an older version becomes live);
+        Edit opens a version on the canvas; Fork copies it to a new slug.
+      </p>
       {notice && (
         <div
           role={notice.kind === "error" ? "alert" : "status"}

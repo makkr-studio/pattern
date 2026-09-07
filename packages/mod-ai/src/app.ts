@@ -123,7 +123,7 @@ function AliasForm({ providers, secrets, models, form, setForm, reload, onTest }
         h(NeonButton, { onClick: save, disabled: busy || !form.name || !form.modelId }, "Save alias"),
         h(NeonButton, { onClick: () => onTest(payload()), disabled: busy || !form.modelId }, "Test"),
         form.name && h(NeonButton, { onClick: () => setForm(blank) }, "New")),
-      h("p", { className: "text-xs text-muted" }, "Secrets come from the vault (System → Secrets) or an env var — pick the source per field.")));
+      h("p", { className: "text-xs text-muted" }, "Secrets come from the vault (Resources → Secrets) or an env var — pick the source per field.")));
 }
 
 // The list of saved aliases (click to edit, delete).

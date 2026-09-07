@@ -43,7 +43,7 @@ scripting (`--help` lists them all):
   scaffold writes a `mods/oidc.mjs` to fill in), or both.
 - **Sign-in link delivery** (`--email console|resend|smtp`): keep the console,
   or wire real email — mod-email plus the chosen driver; create the `default`
-  account in admin → System → Email and links send themselves.
+  account in admin → Resources → Email and links send themselves.
 - **Docs** (`--docs`), **examples** (`--no-examples` for a clean scaffold), a
   generated **vault key**, and the **AI providers** to install (AI packs).
 
@@ -119,5 +119,5 @@ You now have a running engine. Pick the path that matches what you're building:
 
 > No API key needed for the basics. When you add a model, mod-ai resolves a
 > provider key (e.g. `OPENAI_API_KEY` for OpenAI) from the encrypted vault
-> (admin → System → Secrets — the scaffold's default; a paste applies on the
+> (admin → Resources → Secrets — the scaffold's default; a paste applies on the
 > next call, no restart) or from a `.env` next to `pattern.config.json`.

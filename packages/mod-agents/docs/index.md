@@ -106,7 +106,7 @@ run → stream the response. The canvas version, end to end:
     { "id": "in",    "op": "boundary.http.request", "config": { "method": "POST", "path": "/api/agent" } },
     { "id": "msg",   "op": "core.object.get", "config": { "path": "message" }, "comment": "the user's text out of the body" },
     { "id": "tools", "op": "agents.tools.workflows", "comment": "every boundary.tool in the app; name a subset to narrow" },
-    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5" }, "comment": "or skip this and set a default in Settings → AI Providers" },
+    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5" }, "comment": "or skip this and set a default in Resources → AI Providers" },
     { "id": "agent", "op": "agents.agent", "config": { "name": "assistant", "instructions": "You are a helpful assistant." } },
     { "id": "run",   "op": "agents.run", "comment": "streams turn events; runs on the wired/default model" },
     { "id": "out",   "op": "boundary.http.response" } ],

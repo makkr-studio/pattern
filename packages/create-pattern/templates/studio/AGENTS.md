@@ -191,7 +191,7 @@ query (GET) or JSON body (POST). `mods/quotes.mjs` is a complete worked example.
   `views: [{ title?, view }]`; that's how you build a details page.
 - **Command** (⌘K palette): `{ id, label, group, route?, path? }`; `route`
   calls a dedicated route and shows its result; `path` navigates.
-- **Settings section** (on System → Settings): `{ id, title, description?,
+- **Settings section** (on Administration → Settings): `{ id, title, description?,
   route, submitRoute, fields }` under the mod's `frontend.settings`: `route`
   returns current values, `submitRoute` receives `{ key: value }` patches,
   fields are `{ key, label, type: toggle|select|text|number, options? }`.
@@ -232,7 +232,7 @@ Add the identity mods to `pattern.config.json`:
   delivered }`: send it, set `delivered: true`). The turnkey subscriber:
   install `@pattern-js/mod-email` plus a driver (`mod-email-resend` /
   `mod-email-smtp`), list them in the mods, and create a `default` account in
-  admin → System → Email — its packaged `email.deliver-token` workflow then
+  admin → Resources → Email — its packaged `email.deliver-token` workflow then
   claims the hook automatically (console again if you delete the account).
   For "Continue with Google/Microsoft/Keycloak" buttons, add
   `@pattern-js/mod-auth-oidc` via a small wrapper mod (see its README).

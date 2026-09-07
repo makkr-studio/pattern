@@ -77,7 +77,7 @@ function OpDetail({ op }: { op: OpInfo }) {
                 title={`Open ${wf} in the editor`}
                 onClick={() => {
                   sfx.play("nav");
-                  navigate(`/editor/${wf}`);
+                  navigate(`/workflows/${encodeURIComponent(wf)}/editor`);
                 }}
                 className="glass rounded-lg px-2.5 py-1 font-mono text-xs hover:bg-white/10 hover:text-[var(--color-neon-cyan)]"
               >

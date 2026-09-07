@@ -344,7 +344,7 @@ function RerunPlanPanel({ plan, busy, onGo, onClose }: { plan: RerunPlan; busy: 
   );
 }
 
-function RunDetail({ runId }: { runId: string }) {
+function RunDetail({ runId, base = "/runs" }: { runId: string; base?: string }) {
   const { data, isLoading } = useRun(runId);
   const control = useRunControl(runId);
   const navigate = useNavigate();
@@ -389,7 +389,7 @@ function RunDetail({ runId }: { runId: string }) {
         setBlocked(null);
         setPlan(null);
         sfx.play("click");
-        navigate(`/runs/${res.runId}`);
+        navigate(`${base}/${res.runId}`);
       } else if (res.blocked) {
         setPlan(null);
         setBlocked(res.blocked);
@@ -603,10 +603,17 @@ function LiveTail() {
   );
 }
 
+/**
+ * Runs — global under Activity, or one workflow's under its workspace tab
+ * (`/workflows/:slug/runs`, where the layout provides the header and the list
+ * is filtered server-side to that workflow).
+ */
 export function RunsPage() {
   const navigate = useNavigate();
-  const { runId } = useParams();
-  const { data, isLoading } = useRuns({ limit: FETCH_WINDOW });
+  const { runId, slug } = useParams();
+  const scoped = Boolean(slug);
+  const base = scoped ? `/workflows/${encodeURIComponent(slug!)}/runs` : "/runs";
+  const { data, isLoading } = useRuns({ limit: FETCH_WINDOW, ...(slug ? { workflow: slug } : {}) });
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
 
@@ -623,10 +630,17 @@ export function RunsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Runs"
-        subtitle="Recent runs from the durable trace store (persisted across restarts; CLI runs land here too). Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
-      />
+      {scoped ? (
+        <p className="text-muted mb-4 text-sm">
+          This workflow's runs, newest first (from the durable trace store — CLI runs land here too). Pick one: the panel on the right is its
+          timeline, with Resume and Re-run for durable runs.
+        </p>
+      ) : (
+        <PageHeader
+          title="Runs"
+          subtitle="Recent runs from the durable trace store (persisted across restarts; CLI runs land here too). Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
+        />
+      )}
       <div className="grid grid-cols-[1fr_1.3fr] gap-6">
         <div className="space-y-4">
           {/* Fuzzy search over the retained window */}
@@ -638,7 +652,7 @@ export function RunsPage() {
                 setQuery(e.target.value);
                 setPage(0);
               }}
-              placeholder="Fuzzy search runs (workflow, status, id)…"
+              placeholder={scoped ? "Fuzzy search runs (status, id)…" : "Fuzzy search runs (workflow, status, id)…"}
               aria-label="Search runs"
               className="w-full bg-transparent text-sm outline-none"
             />
@@ -651,12 +665,14 @@ export function RunsPage() {
 
           <GlassPanel className="overflow-hidden">
             {pageRuns.length === 0 && (
-              <div className="text-muted p-6 text-sm">{query ? "No runs match." : "No runs yet — trigger a workflow."}</div>
+              <div className="text-muted p-6 text-sm">
+                {query ? "No runs match." : scoped ? "No runs yet — hit Run in the editor, or call its route." : "No runs yet — trigger a workflow."}
+              </div>
             )}
             {pageRuns.map((r: RunSummary) => (
               <button
                 key={r.runId}
-                onClick={() => navigate(`/runs/${r.runId}`)}
+                onClick={() => navigate(`${base}/${r.runId}`)}
                 className={`flex w-full items-center gap-3 border-b hairline px-4 py-3 text-left last:border-0 hover:bg-white/5 ${
                   r.runId === runId ? "bg-white/10" : ""
                 }`}
@@ -667,7 +683,9 @@ export function RunsPage() {
                     ↳
                   </span>
                 )}
-                <span className="font-mono text-sm">{r.workflowId}</span>
+                {/* Scoped to one workflow, the id is the useful column; globally, the workflow is. */}
+                <span className="font-mono text-sm">{scoped ? r.runId.slice(0, 8) : r.workflowId}</span>
+                {scoped && r.status !== "ok" && <Badge hue={r.status === "error" ? 340 : r.status === "canceled" ? 45 : 200}>{r.status}</Badge>}
                 {r.executor && (
                   <span className="glass text-muted shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]" title={`ran on ${r.executor}`}>
                     {r.executor}
@@ -705,11 +723,11 @@ export function RunsPage() {
               </div>
             )}
           </GlassPanel>
-          <LiveTail />
+          {!scoped && <LiveTail />}
         </div>
         <div>
           {runId ? (
-            <RunDetail runId={runId} />
+            <RunDetail runId={runId} base={base} />
           ) : (
             <GlassPanel className="text-muted grid place-items-center p-12 text-sm">
               <div className="flex flex-col items-center gap-2">

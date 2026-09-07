@@ -19,7 +19,7 @@ npm install @pattern-js/mod-email @pattern-js/mod-email-resend
 
 Reach for it when your app sends email — sign-in links, notifications, agent
 tools — and you want the sender to be swappable config, not code: accounts
-live in admin → **System → Email**, credentials in the vault or env vars, and
+live in admin → **Resources → Email**, credentials in the vault or env vars, and
 re-pointing an account re-targets every workflow using it. Skip it if your app
 never sends email; if you only need dev sign-in, the magic-link console
 fallback already covers you with zero mods.
@@ -31,7 +31,7 @@ fallback already covers you with zero mods.
   `html`/`text`. Attachments from media bytes, blob refs, or literal files.
 - **`email.account`** — resolve a named account to a ref (like `ai.alias` for
   models); `required: false` turns it into a probe to branch on.
-- **Admin → System → Email** — accounts CRUD with per-driver fields, secrets
+- **Admin → Resources → Email** — accounts CRUD with per-driver fields, secrets
   from the vault or env, and a Test button that sends a REAL email.
 - **`email.deliver-token`** — a visible, forkable workflow subscribed to
   identity's `identity.deliverToken` hook: sign-in links email themselves once

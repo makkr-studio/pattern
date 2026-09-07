@@ -72,7 +72,7 @@ Then secrets and ship:
 ```bash
 fly secrets set PATTERN_PUBLIC_URL=https://my-app.fly.dev PATTERN_VAULT_KEY=...
 fly deploy
-# provider keys live in the vault (admin → System → Secrets) on the mounted
+# provider keys live in the vault (admin → Resources → Secrets) on the mounted
 # volume — set extra env secrets here only for refs you pointed at env
 
 ```

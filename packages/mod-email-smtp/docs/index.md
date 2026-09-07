@@ -11,7 +11,7 @@ like [Mailpit](https://mailpit.axllent.org) in dev.
 
 ## Fields
 
-Configured per account in admin → **System → Email**:
+Configured per account in admin → **Resources → Email**:
 
 - **Option `host`** (required) — the SMTP server.
 - **Option `port`** — default `587`.

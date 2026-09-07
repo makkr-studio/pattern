@@ -120,7 +120,7 @@ interface Modpack {
  * Sign-in link DELIVERY (asked only when auth is on): console (the zero-config
  * dev fallback) or real email — mod-email (the contract: accounts, email.send,
  * the packaged deliverToken workflow) plus the chosen driver. Console stays
- * the fallback until a "default" account exists in admin → System → Email, so
+ * the fallback until a "default" account exists in admin → Resources → Email, so
  * either choice boots with zero config.
  */
 
@@ -141,7 +141,7 @@ interface Modpack {
  * embedding — the names agents, RAG examples and Buddy resolve) into
  * `.pattern-data/ai-config.json`, each authenticating via `{ source: "env",
  * key: envKey }`. Ids come from mod-ai's curated catalog and stay editable in
- * admin → Settings → AI Providers; provider ids match mod-ai's registry.
+ * admin → Resources → AI Providers; provider ids match mod-ai's registry.
  * Unseeded providers keep the status quo (create aliases in Settings).
  */
 interface AiProviderChoice {
@@ -289,7 +289,7 @@ const AI_ALIASES: Array<[string, string]> = [
 /** "Next steps" lines suggesting the model aliases to create for an AI pack. */
 function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
   return [
-    `${pc.cyan("→")} create model aliases in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— each brings its own key (vault or env var):")}`,
+    `${pc.cyan("→")} create model aliases in admin → ${pc.bold("Resources → AI Providers")} ${pc.dim("— each brings its own key (vault or env var):")}`,
     ...items.map(([n, d]) => `     ${pc.bold(n)}${" ".repeat(Math.max(1, 15 - n.length))}${pc.dim(d)}`),
   ];
 }
@@ -302,14 +302,14 @@ function modelLines(seeded: SeedPlan | null, vaultKey = false): string[] {
   if (!seeded) return aliasLines();
   const show = (a: SeededAlias) => `${pc.bold(a.name)} ${pc.dim(`(${a.provider} ${a.modelId})`)}`;
   const keyHome = vaultKey
-    ? `add ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in admin → System → ${pc.bold("Secrets")} ${pc.dim("(encrypted vault, no restart — re-point to env anytime in Settings → AI Providers)")}`
-    : `set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Settings → AI Providers)")}`;
+    ? `add ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in admin → System → ${pc.bold("Secrets")} ${pc.dim("(encrypted vault, no restart — re-point to env anytime in Resources → AI Providers)")}`
+    : `set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Resources → AI Providers)")}`;
   const lines = [`${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — ${keyHome}`];
   if (!seeded.aliases.some((a) => a.name === "default")) {
-    lines.push(`${pc.cyan("→")} add a ${pc.bold("default")} language alias in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— agents and chat fall back to it")}`);
+    lines.push(`${pc.cyan("→")} add a ${pc.bold("default")} language alias in admin → ${pc.bold("Resources → AI Providers")} ${pc.dim("— agents and chat fall back to it")}`);
   }
   if (!seeded.aliases.some((a) => a.name === "embeddings")) {
-    lines.push(`${pc.cyan("→")} add an ${pc.bold("embeddings")} alias ${pc.dim("(modality: embedding)")} in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— RAG + semantic search need it")}`);
+    lines.push(`${pc.cyan("→")} add an ${pc.bold("embeddings")} alias ${pc.dim("(modality: embedding)")} in admin → ${pc.bold("Resources → AI Providers")} ${pc.dim("— RAG + semantic search need it")}`);
   }
   return lines;
 }
@@ -827,7 +827,7 @@ function packCard(pack: Modpack, dims: Dims): string {
     blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
   }
   if (vaultSecrets.length) {
-    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → System → Secrets)")}`);
+    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → Resources → Secrets)")}`);
   }
   blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — the recipes your coding agent reads`);
   return blocks.join("\n");
@@ -1101,7 +1101,7 @@ async function applyAuth(targetDir: string, packId: string, magicLink: boolean, 
 /**
  * Flip sign-in link delivery to real email: mod-email + the chosen driver join
  * the manifest right after the identity mods (they serve auth). Console stays
- * the fallback until a "default" account exists in admin → System → Email, so
+ * the fallback until a "default" account exists in admin → Resources → Email, so
  * the scaffold still boots with zero config. Runs AFTER applyAuth, and only
  * when magic link is on (email is what carries the links).
  */
@@ -1155,7 +1155,7 @@ async function applyOidc(targetDir: string, magicLink: boolean): Promise<void> {
 
   // The placeholder's secret ref points at env — make sure the hint has a home
   // even in templates that ship no .env.example.
-  await appendEnvHint(targetDir, "# OIDC (mods/oidc.mjs): the client secret lives here or in the vault (admin → System → Secrets)\n# GOOGLE_CLIENT_SECRET=\n");
+  await appendEnvHint(targetDir, "# OIDC (mods/oidc.mjs): the client secret lives here or in the vault (admin → Resources → Secrets)\n# GOOGLE_CLIENT_SECRET=\n");
 }
 
 /** A pack that wires mod-vault — only these get the vault-key offer. */
@@ -1182,11 +1182,11 @@ async function applyVaultKey(targetDir: string): Promise<void> {
 
 /**
  * Pre-write the seeded model aliases into `.pattern-data/ai-config.json` —
- * exactly the file admin → Settings → AI Providers manages, so a scaffold with
+ * exactly the file admin → Resources → AI Providers manages, so a scaffold with
  * a provider pick boots with `default` (+ `embeddings`) already resolvable and
  * the ONLY remaining step is the key. With a generated vault key each alias
  * authenticates via a VAULT-sourced secret REF ({ source: "vault", key }) —
- * paste the key in admin → System → Secrets and the next call has it, no
+ * paste the key in admin → Resources → Secrets and the next call has it, no
  * restart; without a vault the refs fall back to env. No value ever lands in
  * the scaffold either way. Runs BEFORE applyVaultKey so appended env hints
  * reach the generated `.env` too.
@@ -1213,8 +1213,8 @@ async function applyAiAliases(targetDir: string, plan: SeedPlan, useVault: boole
     await appendEnvHint(
       targetDir,
       useVault
-        ? `# Model alias keys live in the ENCRYPTED VAULT: paste them in admin → System →\n# Secrets under these names (no restart needed). Prefer env? Uncomment here and\n# re-point the alias in admin → Settings → AI Providers.\n${missing.map((k) => `# ${k}=`).join("\n")}\n`
-        : `# The seeded model aliases (admin → Settings → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
+        ? `# Model alias keys live in the ENCRYPTED VAULT: paste them in admin → System →\n# Secrets under these names (no restart needed). Prefer env? Uncomment here and\n# re-point the alias in admin → Resources → AI Providers.\n${missing.map((k) => `# ${k}=`).join("\n")}\n`
+        : `# The seeded model aliases (admin → Resources → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
     );
   }
 }
@@ -1330,7 +1330,7 @@ const STUDIO_AI_INDEX = `/**
  * \`ai.image.*\`, \`ai.speech.*\`, \`ai.transcribe\`, \`ai.video.*\`) and
  * mod-admin (the editor + run traces at /admin). Build a flow in the editor or
  * drop JSON in \`workflows/\` (see AGENTS.md); models resolve from the aliases
- * you configure in admin → Settings → AI Providers.
+ * you configure in admin → Resources → AI Providers.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 
@@ -1600,7 +1600,7 @@ function composeCard(layers: string[], dims: Dims): string {
     blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
   }
   if (vaultSecrets.length) {
-    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → System → Secrets)")}`);
+    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → Resources → Secrets)")}`);
   }
   blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — each layer documents itself for your coding agent`);
   return blocks.join("\n");
@@ -1850,7 +1850,7 @@ async function runInteractive(flags: Flags): Promise<void> {
         initialValue: "console" as EmailDelivery,
         options: [
           { value: "console", label: "Console (dev)", hint: "links print to the server console — zero config" },
-          { value: "resend", label: "Resend", hint: "mod-email + the Resend driver; add the account in admin → System → Email" },
+          { value: "resend", label: "Resend", hint: "mod-email + the Resend driver; add the account in admin → Resources → Email" },
           { value: "smtp", label: "SMTP", hint: "mod-email + the SMTP driver (nodemailer); any relay or local catcher" },
         ],
       });
@@ -1965,7 +1965,7 @@ async function runInteractive(flags: Flags): Promise<void> {
         : []),
       ...(auth && magicLink && email !== "console"
         ? [
-            `${pc.cyan("→")} email: admin → ${pc.bold("System → Email")} ${pc.dim(`— create the "default" account (${email === "resend" ? "Resend API key" : "SMTP host + password"} via vault or env); sign-in links then send automatically (console until then)`)}`,
+            `${pc.cyan("→")} email: admin → ${pc.bold("Resources → Email")} ${pc.dim(`— create the "default" account (${email === "resend" ? "Resend API key" : "SMTP host + password"} via vault or env); sign-in links then send automatically (console until then)`)}`,
           ]
         : []),
       ...(pack.id === "agentic" && examples && email === "resend"
@@ -2042,7 +2042,7 @@ async function runComposeInteractive(flags: Flags, name: string): Promise<void> 
       initialValue: "console" as EmailDelivery,
       options: [
         { value: "console", label: "Console (dev)", hint: "mod-email installed; sends print to the console until an account exists" },
-        { value: "resend", label: "Resend", hint: "the Resend driver; add the account in admin → System → Email" },
+        { value: "resend", label: "Resend", hint: "the Resend driver; add the account in admin → Resources → Email" },
         { value: "smtp", label: "SMTP", hint: "the SMTP driver (nodemailer); any relay or local catcher" },
       ],
     });
@@ -2126,10 +2126,10 @@ async function runHeadlessCompose(flags: Flags): Promise<void> {
   const seeded = aliasSeedPlan(dims.providers);
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
   if (dims.vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY.`);
-  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${dims.vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → System → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${dims.vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → Resources → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
   if (layers.includes("buddy")) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\`.`);
   if (dims.auth) console.log(`First boot prints a one-time admin link in the console.`);
-  if (layers.includes("billing")) console.log(`Stripe: keys in admin → System → Secrets (the encrypted vault), the account in admin → System → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
+  if (layers.includes("billing")) console.log(`Stripe: keys in admin → Resources → Secrets (the encrypted vault), the account in admin → System → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
   for (const ep of composeServes(layers, dims)) console.log(`  serves http://localhost:3000${ep}`);
   console.log(`Reproduce: ${composeCommand(name, layers, dims)}`);
 }
@@ -2152,12 +2152,12 @@ async function runHeadless(flags: Flags): Promise<void> {
   await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, ...dims });
   const seeded = aliasSeedPlan(providers);
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
-  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Settings → AI Providers).`);
-  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → System → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
+  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Resources → AI Providers).`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → Resources → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
   if (packHasBuddy(pack)) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\` (the pattern_* tools).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console${magicLink ? " (magic links print there too)" : ""}.`);
   if (oidc) console.log(`OIDC: fill in mods/oidc.mjs (issuer + client id; secret via env or vault), register /auth/oidc/<id>/callback at your IdP.`);
-  if (auth && magicLink && email !== "console") console.log(`Email delivery: create the "default" account in admin → System → Email — sign-in links then send via ${email} (console until then).`);
+  if (auth && magicLink && email !== "console") console.log(`Email delivery: create the "default" account in admin → Resources → Email — sign-in links then send via ${email} (console until then).`);
   if (pack.id === "agentic" && examples && email === "resend") console.log(`Inbound demo: workflows/email-agent-reply.json — point a Resend inbound webhook at POST /email/inbound/resend and an agent answers every email.`);
   for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
 }

@@ -113,7 +113,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Dashboard" subtitle={metrics ? `${metrics.window.label} · ${metrics.inFlight} in flight` : undefined} />
+      <PageHeader title="Home" subtitle={metrics ? `${metrics.window.label} · ${metrics.inFlight} in flight` : undefined} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label={`runs (${metrics?.window.label ?? "…"})`} value={metrics?.runs ?? "…"} />

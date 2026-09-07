@@ -31,14 +31,19 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const listId = "cmdk-list";
 
   const items: Item[] = useMemo(() => {
-    const list: Item[] = [
-      { id: "nav:workflows", label: "Workflows", group: "Go to", go: "/workflows" },
-      { id: "nav:runs", label: "Runs", group: "Go to", go: "/runs" },
-      { id: "nav:ops", label: "Ops", group: "Go to", go: "/ops" },
-      { id: "nav:system", label: "System map", group: "Go to", go: "/system" },
-      { id: "nav:metrics", label: "Metrics", group: "Go to", go: "/metrics" },
-    ];
-    for (const w of workflows ?? []) list.push({ id: `wf:${w.slug}`, label: w.name, group: "Workflow", go: `/editor/${w.slug}` });
+    // Every sidebar destination (the admin's and the mods') is one keystroke away.
+    const menu = manifest?.menu?.length
+      ? manifest.menu
+      : [
+          { label: "Home", path: "/" },
+          { label: "Workflows", path: "/workflows" },
+          { label: "Runs", path: "/runs" },
+          { label: "Ops", path: "/ops" },
+          { label: "System map", path: "/system" },
+          { label: "Metrics", path: "/metrics" },
+        ];
+    const list: Item[] = menu.map((m) => ({ id: `nav:${m.path}`, label: m.label, group: "Go to", go: m.path }));
+    for (const w of workflows ?? []) list.push({ id: `wf:${w.slug}`, label: w.name, group: "Workflow", go: `/workflows/${encodeURIComponent(w.slug)}/editor` });
     for (const o of ops ?? []) list.push({ id: `op:${o.type}`, label: o.type, group: "Op", go: `/ops/${o.type}` });
     // Mod commands: `path` navigates, `route` calls a dedicated route inline.
     for (const c of manifest?.commands ?? []) {

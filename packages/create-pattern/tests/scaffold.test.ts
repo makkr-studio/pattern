@@ -199,7 +199,7 @@ describe("create-pattern scaffold dimensions", () => {
     expect(deps["@pattern-js/mod-billing-stripe"]).toBe(RANGE);
     expect(deps["@pattern-js/mod-identity"]).toBe(RANGE);
     // Vault-first: the pack carries mod-vault, and the Stripe keys are only a
-    // COMMENTED env alternative — their home is admin → System → Secrets.
+    // COMMENTED env alternative — their home is admin → Resources → Secrets.
     expect(deps["@pattern-js/mod-vault"]).toBe(RANGE);
     const env = read(".env.example");
     expect(env).toContain("# STRIPE_API_KEY");
