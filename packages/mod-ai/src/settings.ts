@@ -101,7 +101,18 @@ async function readAliasFields(ctx: OpContext) {
     maybe<Record<string, { source?: string; key?: string }>>(ctx, "secrets"),
     maybe<Record<string, string>>(ctx, "options"),
   ]);
-  return { name, provider, modelId, modality, secrets, options };
+  // A partial write — `secrets` / `options` not wired or not in the body —
+  // keeps what the alias already has: an omitted field must never wipe a
+  // secret ref. An explicit `{}` is how you clear one.
+  const existing = configSvc(ctx).alias(name);
+  return {
+    name,
+    provider,
+    modelId,
+    modality: modality ?? existing?.modality,
+    secrets: secrets ?? existing?.secrets,
+    options: options ?? existing?.options,
+  };
 }
 
 const aliasWrite: OpDefinition = {

@@ -168,7 +168,7 @@ the admin.
 
 So offload is **selective and author-controlled, at the workflow level**:
 
-- Set a workflow's **`offload`** flag (editor → toolbar gear → *Workflow
+- Set a workflow's **`offload`** flag (editor → *Workflow
   settings*, or `"offload": true` in the JSON) and the engine moves that whole
   workflow off the loop onto a **worker pool**. Everything else stays
   inline. The flag is the unit because the seam is then crossed once per run, at

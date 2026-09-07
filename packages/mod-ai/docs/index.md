@@ -56,7 +56,7 @@ from GPT-5 to Claude in Settings instantly re-targets every workflow and agent
 using it, with no graph edits. Agents and chat fall back to the `default` alias
 when no model is wired.
 
-Provider **keys** live in the vault (admin → System → **Secrets**) or in env
+Provider **keys** live in the vault (admin → Resources → **Secrets**) or in env
 vars; an alias just references them by name and source.
 
 ## The modality ops

@@ -7,8 +7,10 @@ version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
 Open for business: durable execution (retry, resume, re-run — completed work is
 never re-executed, external effects are sealed or confirmed), a payments
-contract with a Stripe driver, AI usage metering, failure alerts, and a
-`saas-starter` scaffold with a deploy story.
+contract with a Stripe driver (subscriptions and one-time purchases, both
+projected into roles), AI usage metering, failure alerts, an admin reorganized
+around six rooms with a real workflow workspace, and a `saas-starter` scaffold
+with a deploy story.
 
 ### Durable execution
 

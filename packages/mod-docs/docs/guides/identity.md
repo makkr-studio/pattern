@@ -84,7 +84,7 @@ without an explicit `next` land on the app's advertised home: the admin
 registers its mount under core's `AUTH_HOME_URL` service key; absent that,
 identity's own `/auth/welcome` page (never a bare `/`); fetch
 calls get bare 401s, which the admin SPA turns into a login redirect. The
-admin grows an **Access** section: Users (invite, disable, log-out-everywhere),
+admin grows its **Administration** section: Users (invite, disable, log-out-everywhere),
 Invite, Sessions (revoke), all Tier-1 declarative pages over `identity.*` ops.
 
 ## The `user` port

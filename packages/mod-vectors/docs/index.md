@@ -85,7 +85,7 @@ default. pgvector follows the same shape.
 
 ## Admin
 
-**Data → Vectors** is the whole RAG loop on one page: the collections table
+**Resources → Vectors** is the whole RAG loop on one page: the collections table
 (alias, dims, filterables, row count, active engine), **Ingest text** (paste
 anything — it's chunked, embedded through the collection's alias and indexed;
 the collection is created on first use; re-pasting the same text is a no-op

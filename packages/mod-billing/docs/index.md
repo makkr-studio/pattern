@@ -31,7 +31,7 @@ test → live is a no-op. The saas-starter ships both flows
 Like email, billing speaks in **accounts** — memorable names bound to a driver
 plus *sourced* secrets (`{"source":"vault","key":"STRIPE_API_KEY"}` — the
 default; an env ref is the alternative — never a value). Paste the keys in
-**admin → Resources → Secrets**, configure the account in **admin → System →
+**admin → Resources → Secrets**, configure the account in **admin → Administration →
 Billing**; ops fall back to the `"default"` account. Re-pointing an account
 re-targets every workflow that uses it.
 

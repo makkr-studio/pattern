@@ -46,7 +46,7 @@ export interface ComposeLayer {
   agentsMd: string;
 }
 
-const STRIPE_ENV_HINT = `# Stripe keys live in the ENCRYPTED VAULT: paste them in admin → System →
+const STRIPE_ENV_HINT = `# Stripe keys live in the ENCRYPTED VAULT: paste them in admin → Resources →
 # Secrets as STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET (test keys from
 # https://dashboard.stripe.com/test/apikeys; the webhook secret comes from
 # \`stripe listen\` in dev). Vault writes apply on the next call — no restart.

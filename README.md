@@ -57,10 +57,11 @@ npm run dev                      # then open http://localhost:3000/admin
 ```
 
 Pick the **studio** modpack and you land in a visual workspace with example
-workflows you can edit, run, and trace — or **saas-starter** for a subscription
-SaaS with sign-in, Stripe billing, and a gated page out of the box — or
-**compose your own** layer by layer (`--with admin,auth,billing,…`) and grow
-any existing app later with `pattern add`. Or go straight to code: drop a
+workflows you can edit, run, and trace — or **saas-starter** for a paid product
+with sign-in, Stripe billing (subscriptions and one-time purchases), and a gated
+page out of the box — or **compose your own** layer by layer
+(`--with admin,auth,billing,…`) and grow any existing app later with
+`pattern add`. Or go straight to code: drop a
 `.json` workflow into `workflows/` and the dev server picks it up on save.
 
 ```jsonc
@@ -138,10 +139,12 @@ contract with Resend and SMTP drivers — install a driver, create the account i
 the admin, and sign-in links send themselves.
 
 **Billing (0.5).** A payments contract (`@pattern-js/mod-billing`) with a
-zero-dependency Stripe driver: checkout and the customer portal as ops,
-signature-verified webhooks as triggers, and a subscription→roles bridge — an
-active plan becomes a scope, so gating a route behind payment is an auth
-requirement, not code. AI usage metering is an edge on the canvas: agent token
+zero-dependency Stripe driver: checkout and the customer portal as ops (the same
+node sells a subscription or a one-time purchase), signature-verified webhooks
+as triggers, and a payments→roles bridge — an active plan or a lifetime deal
+becomes a role, so gating a route behind payment is an auth requirement, not
+code. Prices are named by Stripe lookup keys, so config carries no ids and
+test → live is a no-op. AI usage metering is an edge on the canvas: agent token
 counts flow into Stripe meter events. `npm create pattern` has a
 **saas-starter** pack that wires the whole loop, Dockerfile included.
 

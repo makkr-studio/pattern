@@ -830,3 +830,40 @@ describe("grants on subscriptions", () => {
     expect(identity.users.get("ada")!.roles).toEqual(["admin", "pro-tier"]);
   });
 });
+
+describe("billing.accounts.write (admin)", () => {
+  /** boundary.manual feeding billing.accounts.write on exactly the named ports. */
+  const writeWorkflow = (id: string, ports: string[]): Workflow => ({
+    id,
+    nodes: [
+      { id: "in", op: "boundary.manual", config: { outputs: ports } },
+      { id: "write", op: "billing.accounts.write" },
+      { id: "out", op: "boundary.return.named", config: { inputs: ["result"] } },
+    ],
+    edges: [
+      ...ports.map((p) => ({ from: { node: "in", port: p }, to: { node: "write", port: p } })),
+      { from: { node: "write", port: "result" }, to: { node: "out", port: "result" } },
+    ],
+  });
+
+  it("a write without `secrets` keeps the stored refs; an explicit {} clears them", async () => {
+    const { engine, config } = await boot();
+    expect(config.account("default")?.secrets).toEqual({ apiKey: { source: "env", key: "FAKE_KEY" } });
+
+    // Re-save the provider only — secrets and options are not wired at all.
+    engine.registerWorkflow(writeWorkflow("keep-secrets", ["name", "provider"]));
+    const res = await engine.run("keep-secrets", { input: { name: "default", provider: "fake" } });
+    expect(res.status).toBe("ok");
+    expect(config.account("default")).toMatchObject({
+      secrets: { apiKey: { source: "env", key: "FAKE_KEY" } },
+      options: { defaultPriceKey: "price_pro" },
+    });
+
+    // The Tier-1 form posts JSON strings; "{}" is the deliberate way to drop them.
+    engine.registerWorkflow(writeWorkflow("clear-secrets", ["name", "provider", "secrets"]));
+    const cleared = await engine.run("clear-secrets", { input: { name: "default", provider: "fake", secrets: "{}" } });
+    expect(cleared.status).toBe("ok");
+    expect(config.account("default")?.secrets).toEqual({});
+    expect(config.account("default")?.options).toEqual({ defaultPriceKey: "price_pro" });
+  });
+});

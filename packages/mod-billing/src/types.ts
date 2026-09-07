@@ -237,7 +237,7 @@ export interface DriverUsageEvent {
 /**
  * A payment driver, registered by a provider mod via
  * `BillingService.registerDriver` in its `ready()`. The `secrets`/`options`
- * field lists drive the auto-generated account form in admin → System →
+ * field lists drive the auto-generated account form in admin → Administration →
  * Billing (same descriptors as mod-email's drivers).
  */
 export interface BillingDriverSpec {

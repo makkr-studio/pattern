@@ -1,7 +1,7 @@
 # Copied to `.env` (gitignored), loaded automatically on boot — existing
 # environment variables always win over this file.
 
-# Provider keys live in the ENCRYPTED VAULT: paste each one in admin → System →
+# Provider keys live in the ENCRYPTED VAULT: paste each one in admin → Resources →
 # Secrets (no restart), and the model alias in admin → Resources → AI Providers
 # reads it by name. Prefer an env var? Define it here (OPENAI_API_KEY below is
 # a common example) and point the alias at env instead. The Vercel AI Gateway

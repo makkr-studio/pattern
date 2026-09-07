@@ -46,7 +46,7 @@ export function OpenForBusiness() {
       id="business"
       eyebrow="Open for business"
       title="Take money. Keep promises."
-      subtitle="Payments demand durability — so they shipped together. Billing that turns subscriptions into scopes, durable execution that resumes instead of repeating, and failure alerts that reach you before your customers do."
+      subtitle="Payments demand durability — so they shipped together. Billing that turns a subscription or a one-time purchase into a role, durable execution that resumes instead of repeating, and failure alerts that reach you before your customers do."
     >
       <div className="grid gap-5 lg:grid-cols-3">
         {BEATS.map((b, i) => (
@@ -79,7 +79,7 @@ export function OpenForBusiness() {
       <p className="mt-8 text-center text-sm text-muted">
         Scaffold it wired: <span className="font-mono text-xs">npm create pattern@latest my-saas</span> — the{" "}
         <span className="font-semibold">SaaS starter</span> ships sign-in, Stripe billing, a gated members area, and
-        durable payment workflows, with a five-minute walkthrough to your first test subscription.
+        durable payment workflows, with a five-minute walkthrough to your first test payment — recurring or one-time.
       </p>
     </SectionShell>
   );

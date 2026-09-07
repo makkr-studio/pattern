@@ -3,7 +3,7 @@
  *
  * Same construction as mod-email's page: the ESM SOURCE of the component,
  * written against the shared `__PATTERN_ADMIN__` global. The SETUP CHECKLIST
- * leads — how far this installation is from its first subscription, each
+ * leads — how far this installation is from its first payment, each
  * unmet step with the exact next action (dashboard step, the `stripe listen`
  * command with the real forward URL, the test card), and "last event
  * received" flipping green in front of the operator. Below it, two columns:

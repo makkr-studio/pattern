@@ -60,7 +60,17 @@ async function readAccountFields(ctx: OpContext) {
     maybe<Record<string, { source?: string; key?: string }>>(ctx, "secrets"),
     maybe<Record<string, string>>(ctx, "options"),
   ]);
-  return accountSchema.parse({ name, provider, from, secrets: secrets ?? {}, options: options ?? {} });
+  // A partial write — `secrets` or `options` not wired / not in the body —
+  // keeps what the account already has. An omitted field must never wipe a
+  // secret ref; sending an explicit `{}` is how you clear one.
+  const existing = emailConfig(ctx).account(name);
+  return accountSchema.parse({
+    name,
+    provider,
+    from,
+    secrets: secrets ?? existing?.secrets ?? {},
+    options: options ?? existing?.options ?? {},
+  });
 }
 
 const accountsRead: OpDefinition = {

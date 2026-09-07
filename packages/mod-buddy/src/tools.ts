@@ -260,7 +260,7 @@ export function patternMcpServerWorkflow(path = "/mcp/pattern"): Workflow {
     name: `Buddy · Pattern MCP server (POST ${path})`,
     description:
       "Exposes the pattern_* control-plane tools to external MCP clients (Claude Code, Cursor, …) over " +
-      "StreamableHTTP JSON-RPC. Gated by API tokens (mint them in admin → Access → API tokens); a token's " +
+      "StreamableHTTP JSON-RPC. Gated by API tokens (mint them in admin → Administration → API tokens); a token's " +
       "scopes decide which calls succeed — authoring tokens can draft, only deploy-scoped tokens can ship.",
     nodes: [
       {

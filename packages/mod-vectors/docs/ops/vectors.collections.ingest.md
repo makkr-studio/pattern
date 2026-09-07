@@ -1,4 +1,4 @@
-The admin's paste-to-RAG op (behind Data → Vectors → **Ingest text**): chunk a
+The admin's paste-to-RAG op (behind Resources → Vectors → **Ingest text**): chunk a
 pasted text, embed it through the collection's declared alias, and upsert —
 creating the collection (with the given `alias`, default `embeddings`) when it
 doesn't exist yet. An EXISTING collection keeps its declared alias; the input

@@ -129,7 +129,7 @@ function BillingPanel({ userId }) {
   }, [userId]);
   if (!state.probed) return null;
   return h(GlassPanel, { className: "p-6 space-y-3" },
-    h("h3", { className: "font-semibold" }, "Subscription"),
+    h("h3", { className: "font-semibold" }, "Billing"),
     state.row
       ? h("div", { className: "space-y-2" },
           h(Row, { label: "Status" }, h(Badge, null, String(state.row.status || "—"))),
@@ -138,7 +138,7 @@ function BillingPanel({ userId }) {
           h(Row, { label: "Owns" }, String(state.row.purchased || "—")),
           h(Row, { label: "Customer" }, String(state.row.customerId || "—")),
           h(Row, { label: "Updated" }, ago(state.row.updatedAt) || "—"))
-      : h("p", { className: "text-sm text-muted" }, "No subscription — this user has never completed a checkout."));
+      : h("p", { className: "text-sm text-muted" }, "Nothing yet — this user has never completed a checkout."));
 }
 
 export default function UserPage({ params }) {

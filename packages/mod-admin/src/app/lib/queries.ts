@@ -6,7 +6,7 @@ import { api } from "./api";
 
 // The install-shaped catalogs (ops, mods, the UI manifest) only change when
 // the mod set changes — i.e. on a server restart. A long staleTime keeps
-// navigation between catalog pages instant instead of refetching a 370-op
+// navigation between catalog pages instant instead of refetching a 374-op
 // payload every visit; a reload (or deploy-driven invalidation) refreshes.
 const CATALOG_STALE_MS = 5 * 60_000;
 

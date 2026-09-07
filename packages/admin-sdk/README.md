@@ -45,7 +45,7 @@ import { buildNav, MenuRegistry, CommandRegistry, defineDeclarativePage } from "
 const nav = buildNav(menuEntries); // → ordered NavSection[] (category union, order then label)
 
 const commands = new CommandRegistry();
-commands.register({ id: "deploy", label: "Deploy…", group: "Author" });
+commands.register({ id: "deploy", label: "Deploy…", group: "Workflows" });
 commands.search("dep", recentIds); // recency-boosted fuzzy match
 
 const page = defineDeclarativePage("/x/metrics", { kind: "table", source: "mymod.metrics.list", columns: [] });

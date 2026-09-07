@@ -19,7 +19,7 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
    node wired into `agents.agent.model` (config `{ routing, provider, modelId }`),
    or set a default in admin → Resources → AI Providers and skip the node. The
    provider key resolves by name: `OPENAI_API_KEY` in the environment (`.env` is
-   loaded on boot, real env wins) → a vault secret of that name (admin → System →
+   loaded on boot, real env wins) → a vault secret of that name (admin → Resources →
    Secrets, masked out of run samples). Gateway routing uses one
    `AI_GATEWAY_API_KEY` instead. `PATTERN_VAULT_KEY` (the vault master key) lives
    in `.env`.
@@ -144,7 +144,7 @@ if you have no preference.
 
 This project ships a small worker pool (`workers` in `pattern.config.json`), so
 the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
-(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+(editor → *Workflow settings*, or `"offload": true`) to run a compute-heavy flow on that pool
 instead of the host event loop; remove the `workers` field to go back to inline.
 
 ## Where things live

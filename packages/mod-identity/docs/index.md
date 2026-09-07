@@ -166,7 +166,7 @@ codes (status 401, no enumeration). The code travels to custom templates as
 
 ## Invites (0.4)
 
-An invite is a **record**, not just a token: admin → **Access → Invites**
+An invite is a **record**, not just a token: admin → **Administration → Invites**
 sends one (email, roles, and an optional **next path** — where the invitee's
 first login lands, e.g. `/admin` or `/chat`) and lists every invite sent with
 its derived status: `pending` → `accepted` (or `expired` / `revoked`). Revoke
@@ -182,7 +182,7 @@ method.
 
 ## Administering users (0.4)
 
-Access → **Users** is the control room: per row — details, a minted sign-in
+Administration → **Users** is the control room: per row — details, a minted sign-in
 link, **disable / enable** (reversible lock-out; revokes sessions), **log out
 everywhere**, and **delete** (removes the user, their identity links and
 session rows; invites and API tokens keep the id as audit trail). Roles are
@@ -196,7 +196,7 @@ it.
 
 Sessions authenticate humans in browsers; **API tokens** authenticate
 programs — MCP clients on `/mcp/pattern`, CI deploys, scripts against the
-admin API. Mint them in admin → **Access → API tokens**: the raw `pat_…`
+admin API. Mint them in admin → **Administration → API tokens**: the raw `pat_…`
 secret is shown **exactly once** (only its sha256 is stored), and a bearer
 header authenticates it on any route:
 

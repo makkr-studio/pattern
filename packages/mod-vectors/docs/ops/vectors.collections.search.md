@@ -1,4 +1,4 @@
-The admin's try-a-query op (behind Data → Vectors → **Search**): top-k scored
+The admin's try-a-query op (behind Resources → Vectors → **Search**): top-k scored
 matches from a collection, hybrid by default (vector + keyword, RRF-fused),
 with each match's text (truncated) and meta. This is the smoke test for what
 an ingest actually indexed — paste in one section, search in the next, read

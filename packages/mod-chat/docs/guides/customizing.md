@@ -39,7 +39,7 @@ stays no-fork.
 ## Level 2: fork the turn pipeline
 
 Every message runs `chat.turn.pipeline`, a real workflow. In the admin:
-**fork** it (Editor → Fork), edit your copy, disable the built-in from the
+**fork** it (Settings → Fork), edit your copy, disable the built-in from the
 catalog. Its shape:
 
 ```

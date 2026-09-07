@@ -142,7 +142,7 @@ SEE when memory squeezes.
 
 This project ships a small worker pool (`workers` in `pattern.config.json`), so
 the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
-(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+(editor → *Workflow settings*, or `"offload": true`) to run a compute-heavy flow on that pool
 instead of the host event loop; remove the `workers` field to go back to inline.
 The chat turn pipeline itself stays inline (it streams and holds a lease).
 
@@ -151,4 +151,4 @@ The chat turn pipeline itself stays inline (it streams and holds a lease).
 - `workflows/`: file workflows (tools, routes); editable, committed
 - `./.pattern`: admin-versioned workflows (committed)
 - `./.pattern-data`: sqlite + blobs (conversations, secrets); gitignored
-- Chat data: admin → Data → Collections (`chat.conversations`, `chat.turns`)
+- Chat data: admin → Resources → Collections (`chat.conversations`, `chat.turns`)

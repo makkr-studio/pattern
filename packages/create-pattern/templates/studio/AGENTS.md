@@ -106,7 +106,7 @@ bundled docs (`@pattern-js/mod-docs` →
 Runs execute on the **host event loop by default**, correct for I/O-bound
 work, which is already free during its awaits. A workflow only stalls the loop
 (and the admin) when an op does **synchronous compute**. For those, set the
-workflow's **`offload`** flag (editor → toolbar gear → *Workflow settings*, or
+workflow's **`offload`** flag (editor → *Workflow settings*, or
 `"offload": true` in the JSON) to run that whole workflow on a worker pool
 instead. Tag a compute-bound op `cpuHeavy: true` and the editor nudges toward
 Offload. This project already ships a small pool (`workers` in

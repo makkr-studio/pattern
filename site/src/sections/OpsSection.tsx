@@ -56,7 +56,7 @@ export function OpsSection() {
       id="ops"
       eyebrow="The building blocks"
       title="Ops do the work"
-      subtitle="An op is a typed unit of work with named input and output ports. Pattern ships 175 in the base catalog — 370 with the first-party mods — and writing your own is a small TypeScript file."
+      subtitle="An op is a typed unit of work with named input and output ports. Pattern ships 175 in the base catalog — 374 with the first-party mods — and writing your own is a small TypeScript file."
     >
       <div className="flex flex-col items-center gap-12">
         {/* A few ops, as the nodes they are */}

@@ -70,11 +70,15 @@ async function readAccountFields(ctx: OpContext) {
     ctx.input.has("secrets") ? ctx.input.value("secrets") : undefined,
     ctx.input.has("options") ? ctx.input.value("options") : undefined,
   ]);
+  // A partial write — `secrets` / `options` not wired or not in the body —
+  // keeps what the account already has: an omitted field must never wipe a
+  // secret ref. An explicit `{}` is how you clear one.
+  const existing = billingConfig(ctx).account(name);
   return billingAccountSchema.parse({
     name,
     provider,
-    secrets: jsonObject(secrets, "secrets"),
-    options: jsonObject(options, "options"),
+    secrets: secrets === undefined ? (existing?.secrets ?? {}) : jsonObject(secrets, "secrets"),
+    options: options === undefined ? (existing?.options ?? {}) : jsonObject(options, "options"),
   });
 }
 

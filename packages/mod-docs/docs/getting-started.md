@@ -66,7 +66,7 @@ workflows into the local store on first boot, so the catalog isn't empty.
 
 ## 3. Run your first workflow
 
-In the admin: open the **Catalog**, pick the seeded `hello` workflow, open it in
+In the admin: open **Workflows**, pick the seeded `hello` workflow, open it in
 the editor, and hit **Run** (a manual trigger lets you type an input). Watch the
 run appear in **Runs**: a per-node waterfall with sampled I/O you can peek, and
 an on-canvas replay that animates the execution.

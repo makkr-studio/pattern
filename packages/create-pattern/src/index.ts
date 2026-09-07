@@ -82,7 +82,7 @@ interface Modpack {
   /** Env vars the pack needs (the card's "needs" line). */
   env: string[];
   /**
-   * Secret NAMES the pack expects in the encrypted vault (admin → System →
+   * Secret NAMES the pack expects in the encrypted vault (admin → Resources →
    * Secrets) — the card's "secrets" line. When the vault key is declined they
    * fall back to the "needs" line (env refs are the alternative).
    */
@@ -302,7 +302,7 @@ function modelLines(seeded: SeedPlan | null, vaultKey = false): string[] {
   if (!seeded) return aliasLines();
   const show = (a: SeededAlias) => `${pc.bold(a.name)} ${pc.dim(`(${a.provider} ${a.modelId})`)}`;
   const keyHome = vaultKey
-    ? `add ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in admin → System → ${pc.bold("Secrets")} ${pc.dim("(encrypted vault, no restart — re-point to env anytime in Resources → AI Providers)")}`
+    ? `add ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in admin → Resources → ${pc.bold("Secrets")} ${pc.dim("(encrypted vault, no restart — re-point to env anytime in Resources → AI Providers)")}`
     : `set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Resources → AI Providers)")}`;
   const lines = [`${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — ${keyHome}`];
   if (!seeded.aliases.some((a) => a.name === "default")) {
@@ -367,9 +367,9 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
   "@pattern-js/mod-vectors": "vector search: embedding collections, hybrid retrieval, RAG",
   "@pattern-js/mod-buddy": "Buddy: the editor assistant + the pattern_* MCP control plane",
-  "@pattern-js/mod-billing": "billing contract: checkout · portal · subscriptions → roles · metering",
+  "@pattern-js/mod-billing": "billing contract: checkout · portal · subscriptions + one-time purchases → roles · metering",
   "@pattern-js/mod-billing-stripe": "the Stripe driver: hosted checkout, portal, signed webhooks",
-  "./mods/billing.mjs (app-local)": "app-local: billing configured — the subscription→role bridge",
+  "./mods/billing.mjs (app-local)": "app-local: billing configured — the payments→roles bridge (entitlement + grants)",
   "./mods/identity.mjs (app-local)": "app-local: identity configured — roles→scopes (member → pro)",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
@@ -505,8 +505,8 @@ const MODPACKS: Modpack[] = [
         `${pc.dim("$")} ${runCmd} dev`,
         "",
         `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} — open it, you're the owner`,
-        `${pc.cyan("→")} landing at ${pc.bold("http://localhost:3000/")} — Subscribe 401s until Stripe is connected`,
-        `${pc.cyan("→")} connect Stripe (test mode): keys in admin → System → ${pc.bold("Secrets")} (the encrypted vault), the account in admin → Administration → Billing,`,
+        `${pc.cyan("→")} landing at ${pc.bold("http://localhost:3000/")} — Subscribe and Buy 401 until Stripe is connected`,
+        `${pc.cyan("→")} connect Stripe (test mode): keys in admin → Resources → ${pc.bold("Secrets")} (the encrypted vault), the account in admin → Administration → Billing,`,
         `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("(the walkthrough lives in AGENTS.md)")}`,
         `${pc.cyan("→")} pay with ${pc.bold("4242 4242 4242 4242")} — the webhook grants the member role and ${pc.bold("/pro")} unlocks`,
       ].filter((l) => l !== ""),
@@ -1213,7 +1213,7 @@ async function applyAiAliases(targetDir: string, plan: SeedPlan, useVault: boole
     await appendEnvHint(
       targetDir,
       useVault
-        ? `# Model alias keys live in the ENCRYPTED VAULT: paste them in admin → System →\n# Secrets under these names (no restart needed). Prefer env? Uncomment here and\n# re-point the alias in admin → Resources → AI Providers.\n${missing.map((k) => `# ${k}=`).join("\n")}\n`
+        ? `# Model alias keys live in the ENCRYPTED VAULT: paste them in admin → Resources →\n# Secrets under these names (no restart needed). Prefer env? Uncomment here and\n# re-point the alias in admin → Resources → AI Providers.\n${missing.map((k) => `# ${k}=`).join("\n")}\n`
         : `# The seeded model aliases (admin → Resources → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
     );
   }
@@ -1672,8 +1672,8 @@ async function applyCompose(targetDir: string, layers: string[], dims: Dims, nam
     const saasTry = "console.log(`  Landing ${base}/   (Subscribe or Buy → Stripe test checkout)`);\nconsole.log(`  Members ${base}/pro   (unlocks with a subscription or a lifetime purchase)`);";
     const headlessAnchor = 'console.log("  GET  /hello/:name       (default port)");';
     const headlessLead =
-      'console.log("  GET  /                  landing — Subscribe → Stripe test checkout");\n' +
-      'console.log("  GET  /pro               members area (unlocks with an active subscription)");\n' +
+      'console.log("  GET  /                  landing — Subscribe or Buy → Stripe test checkout");\n' +
+      'console.log("  GET  /pro               members area (unlocks with a subscription or a one-time purchase)");\n' +
       headlessAnchor;
     if (idx.includes(studioTry)) await writeFile(idxPath, idx.replace(studioTry, saasTry));
     else if (idx.includes(headlessAnchor)) await writeFile(idxPath, idx.replace(headlessAnchor, headlessLead));
