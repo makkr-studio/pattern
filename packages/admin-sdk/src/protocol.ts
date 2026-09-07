@@ -281,8 +281,8 @@ export interface MetricsSummary {
 
 export interface NodeChange {
   id: string;
-  before: { op: string; config?: unknown; title?: string; comment?: string };
-  after: { op: string; config?: unknown; title?: string; comment?: string };
+  before: { op: string; config?: unknown; retry?: WorkflowDoc["nodes"][number]["retry"]; title?: string; comment?: string };
+  after: { op: string; config?: unknown; retry?: WorkflowDoc["nodes"][number]["retry"]; title?: string; comment?: string };
 }
 
 export interface DiffNode {

@@ -80,6 +80,9 @@ export * from "./errors.js";
 // Durable execution — the RunLedger (0.5)
 export * from "./durable/ledger.js";
 
+// What a workflow DOES, as data — the one definition hashing/diffing/pinning share
+export * from "./workflow-behavior.js";
+
 // Registries
 export {
   InMemoryOpRegistry,

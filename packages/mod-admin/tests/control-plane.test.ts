@@ -148,14 +148,36 @@ describe("versioning helpers", () => {
     expect(d.nodes.changed.some((c) => c.id === "body")).toBe(true);
   });
 
-  it("diffWorkflows tracks the offload flag as metadata (hash stays structural)", () => {
+  it("the content hash covers BEHAVIOR beyond the graph — offload, durable, retry each mint a version; layout never does", async () => {
     const a = httpWorkflow("h", "/h");
-    const b: Workflow = { ...a, offload: true };
-    // Offload is metadata: it doesn't change the structural content hash…
-    expect(contentHash(a)).toBe(contentHash(b));
-    // …but the diff surfaces it so a version bump records the change.
-    const d = diffWorkflows(a, b);
-    expect(d.equal).toBe(false);
-    expect(d.meta.some((m) => m.field === "offload" && m.after === true)).toBe(true);
+    const offloaded: Workflow = { ...a, offload: true };
+    const durable: Workflow = { ...a, durable: true };
+    const retried: Workflow = { ...a, nodes: a.nodes.map((n) => (n.id === "body" ? { ...n, retry: { attempts: 3 } } : n)) };
+    const moved: Workflow = { ...a, nodes: a.nodes.map((n) => ({ ...n, ui: { x: 999, y: 999 }, title: "renamed", comment: "note" })) };
+    // Anything the engine READS changes the hash…
+    for (const changed of [offloaded, durable, retried]) expect(contentHash(changed)).not.toBe(contentHash(a));
+    // …layout, titles, and comments never do (a nudge is not a version).
+    expect(contentHash(moved)).toBe(contentHash(a));
+    // The diff surfaces each change so the version history explains itself.
+    expect(diffWorkflows(a, offloaded).meta.some((m) => m.field === "offload" && m.after === true)).toBe(true);
+    expect(diffWorkflows(a, durable).meta.some((m) => m.field === "durable" && m.after === true)).toBe(true);
+    const r = diffWorkflows(a, retried, true);
+    expect(r.equal).toBe(false);
+    expect(r.nodes.changed.find((c) => c.id === "body")?.after.retry).toEqual({ attempts: 3 });
+    expect(diffWorkflows(a, moved, true).equal).toBe(true);
+
+    // And the store agrees: a reliability change is a NEW immutable snapshot,
+    // not a rewrite of the version already deployed.
+    const { store, cp } = setup();
+    const v1 = await store.saveVersion("h", a, {});
+    await cp.deploy("h", v1.id);
+    const v2 = await store.saveVersion("h", durable, {});
+    expect(v2.id).toBe("v2");
+    expect((await store.getVersion("h", "v1"))?.durable).toBeUndefined(); // v1 untouched — rollback still means v1
+    expect((await store.getVersion("h", "v2"))?.durable).toBe(true);
+    expect((await store.getMeta("h"))?.live).toBe("v1"); // save ≠ deploy
+    // A pure layout save reuses the version id (positions refresh, no bump).
+    const v1again = await store.saveVersion("h", moved, {});
+    expect(v1again.id).toBe("v1");
   });
 });

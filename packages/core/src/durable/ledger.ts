@@ -16,6 +16,7 @@
  */
 
 import type { Principal, Workflow } from "../types.js";
+import { workflowStructure } from "../workflow-behavior.js";
 
 /** Engine service key under which the host provides the durable `RunLedger`. */
 export const RUN_LEDGER = "runLedger";
@@ -146,19 +147,14 @@ function stable(v: unknown): string {
 }
 
 /**
- * Structural hash of a workflow for resume pinning: nodes (id/op/config/retry)
- * and edges — layout (`ui`), comments, and run-shaping metadata like `offload`
- * and `durable` are ignored, mirroring the admin's behavioral-hash stance.
+ * Structural hash of a workflow for resume pinning — `workflowStructure` (the
+ * one definition of "the graph that ran": nodes id/op/config/retry + edges).
+ * Layout, comments, and the run-shaping flags (`offload`, `durable`) don't
+ * pin: flipping durability on a workflow shouldn't orphan its recorded runs.
+ * The admin's version hash is the superset (`workflowBehavior`).
  */
 export function ledgerWorkflowHash(workflow: Workflow): string {
-  const doc = stable({
-    nodes: [...workflow.nodes]
-      .map((n) => ({ id: n.id, op: n.op, config: n.config, retry: n.retry }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    edges: [...workflow.edges]
-      .map((e) => ({ from: e.from, to: e.to }))
-      .sort((a, b) => (`${a.from.node}${a.from.port}${a.to.node}${a.to.port}` < `${b.from.node}${b.from.port}${b.to.node}${b.to.port}` ? -1 : 1)),
-  });
+  const doc = stable(workflowStructure(workflow));
   // FNV-1a, 32-bit ×2 (seeded) — fast, sync, dependency-free; not cryptographic
   // (the ledger is local; this guards drift, not adversaries).
   let h1 = 0x811c9dc5;

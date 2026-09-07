@@ -1,14 +1,16 @@
 /**
  * @pattern-js/mod-admin — versioning helpers (admin internals §5).
  *
- * Content-addressed snapshots (a stable hash over the doc, ignoring data-only
- * `ui`) and a structural JSON diff between any two versions: nodes/edges/config
- * added/removed/changed, with an optional toggle to ignore data-only
+ * Content-addressed snapshots (a stable hash over the doc's BEHAVIOR — core's
+ * `workflowBehavior`: nodes id/op/config/retry, edges, `offload`, `durable`;
+ * never layout, titles, or comments) and a structural JSON diff between any
+ * two versions: nodes/edges/config/retry added/removed/changed plus the
+ * behavior-shaping metadata, with an optional toggle to ignore data-only
  * `ui`/`title`/`comment`.
  */
 
 import { createHash } from "node:crypto";
-import type { Edge, Workflow, WorkflowNode } from "@pattern-js/core";
+import { workflowBehavior, type Edge, type Workflow, type WorkflowNode } from "@pattern-js/core";
 
 /** Deterministic JSON with sorted object keys (so hashes/diffs are stable). */
 export function stableStringify(value: unknown): string {
@@ -27,26 +29,23 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
-/** Strip data-only canvas/label fields so the hash reflects behavior, not layout. */
-function structural(doc: Workflow): unknown {
-  return {
-    nodes: doc.nodes.map((n) => ({ id: n.id, op: n.op, config: n.config ?? {} })),
-    // Edge `ui` (portals) is annotation — behavior is from/to only.
-    edges: doc.edges.map((e) => ({ from: e.from, to: e.to })),
-  };
-}
-
-/** Content hash of a workflow's *behavior* (ignores `ui`/`title`/`comment`). */
+/**
+ * Content hash of a workflow's *behavior* — core's one definition
+ * (`workflowBehavior`): the graph plus `retry`, `offload`, and `durable`.
+ * Ignores `ui`/`frames`/`title`/`comment`/`name`/`tags`. Anything that changes
+ * what a run does changes the hash, so saving it mints a NEW version instead
+ * of rewriting the deployed snapshot in place.
+ */
 export function contentHash(doc: Workflow): string {
-  return createHash("sha256").update(stableStringify(structural(doc))).digest("hex").slice(0, 16);
+  return createHash("sha256").update(stableStringify(workflowBehavior(doc))).digest("hex").slice(0, 16);
 }
 
 // ── Structural diff ──
 
 export interface NodeChange {
   id: string;
-  before: Pick<WorkflowNode, "op" | "config" | "title" | "comment">;
-  after: Pick<WorkflowNode, "op" | "config" | "title" | "comment">;
+  before: Pick<WorkflowNode, "op" | "config" | "retry" | "title" | "comment">;
+  after: Pick<WorkflowNode, "op" | "config" | "retry" | "title" | "comment">;
 }
 
 export interface JsonDiff {
@@ -60,9 +59,10 @@ export interface JsonDiff {
 const edgeKey = (e: Edge): string => `${e.from.node}.${e.from.port}->${e.to.node}.${e.to.port}`;
 
 function nodeFields(n: WorkflowNode, ignoreUi: boolean) {
+  // `retry` is behavior (the engine reads it) — it always counts.
   return ignoreUi
-    ? { op: n.op, config: n.config ?? {} }
-    : { op: n.op, config: n.config ?? {}, title: n.title, comment: n.comment };
+    ? { op: n.op, config: n.config ?? {}, retry: n.retry }
+    : { op: n.op, config: n.config ?? {}, retry: n.retry, title: n.title, comment: n.comment };
 }
 
 /** Structural diff `a → b`. With `ignoreUi`, data-only fields don't count. */
@@ -81,8 +81,8 @@ export function diffWorkflows(a: Workflow, b: Workflow, ignoreUi = false): JsonD
     } else if (stableStringify(nodeFields(an, ignoreUi)) !== stableStringify(nodeFields(bn, ignoreUi))) {
       changed.push({
         id,
-        before: { op: an.op, config: an.config, title: an.title, comment: an.comment },
-        after: { op: bn.op, config: bn.config, title: bn.title, comment: bn.comment },
+        before: { op: an.op, config: an.config, retry: an.retry, title: an.title, comment: an.comment },
+        after: { op: bn.op, config: bn.config, retry: bn.retry, title: bn.title, comment: bn.comment },
       });
     }
   }
@@ -94,7 +94,8 @@ export function diffWorkflows(a: Workflow, b: Workflow, ignoreUi = false): JsonD
   const edgesRemoved = [...aEdges].filter(([k]) => !bEdges.has(k)).map(([, e]) => e);
 
   const meta: JsonDiff["meta"] = [];
-  for (const field of ["name", "description", "tags", "offload"] as const) {
+  // `offload` and `durable` shape how a run executes — behavior, on the record.
+  for (const field of ["name", "description", "tags", "offload", "durable"] as const) {
     const av = (a as Record<string, unknown>)[field];
     const bv = (b as Record<string, unknown>)[field];
     if (stableStringify(av) !== stableStringify(bv)) meta.push({ field, before: av, after: bv });
