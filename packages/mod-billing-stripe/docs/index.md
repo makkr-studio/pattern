@@ -12,18 +12,39 @@ scheme, feeding the contract's normalized event pipeline.
 
 ## Setup
 
-1. In **admin → Administration → Billing**, add an account with provider `stripe`:
-   the secret key and webhook secret as **refs** —
-   `{"apiKey":{"source":"env","key":"STRIPE_API_KEY"},"webhookSecret":{"source":"env","key":"STRIPE_WEBHOOK_SECRET"}}` —
-   and options like `{"defaultPriceKey":"pro"}` (a lookup key, or a `price_…` id).
-2. Point a Stripe webhook endpoint at the seeded route
+1. Store the keys in the vault: admin → **Resources → Secrets**, as
+   `STRIPE_API_KEY` (your `sk_test_…` from dashboard → Developers → API keys)
+   and, once step 3 prints it, `STRIPE_WEBHOOK_SECRET`. Vault secrets resolve
+   per call, so no restart is needed.
+2. In **admin → Administration → Billing**, add an account named `default`
+   with provider `stripe`, its secrets as **refs** to those names:
+   `{"apiKey":{"source":"vault","key":"STRIPE_API_KEY"},"webhookSecret":{"source":"vault","key":"STRIPE_WEBHOOK_SECRET"}}`
+   (use `"source":"env"` to read environment variables instead, for example
+   in a container), and options like `{"defaultPriceKey":"pro"}` (a lookup
+   key, or a `price_…` id). The same writes are open to scripts and agents:
+   `billing.accounts.write` and `vault.admin.write` back the admin's
+   `/admin/api/...` routes (their op pages show the shapes).
+3. Local dev: `stripe listen --forward-to localhost:<PORT>/billing/webhook/stripe`
+   prints its own `whsec_…`: use THAT as the webhook secret while developing.
+4. Production: point a Stripe webhook endpoint at the seeded route
    **POST `/billing/webhook/stripe`**, sending at least:
    `checkout.session.completed`, `customer.subscription.created`,
    `customer.subscription.updated`, `customer.subscription.deleted`,
    `invoice.paid`, `invoice.payment_failed`.
-3. Local dev: `stripe listen --forward-to localhost:3000/billing/webhook/stripe`
-   prints its own `whsec_…` — use THAT as the webhook secret while developing,
-   and `stripe trigger checkout.session.completed` to fire test events.
+
+**Testing the bridge.** The honest test is a real test-mode checkout: run
+`stripe listen`, sign in, subscribe, and pay with `4242 4242 4242 4242`.
+`stripe trigger checkout.session.completed` fires an event, but it belongs to
+no user of yours (it has no `client_reference_id`), so it can't grant
+anything. The fields the driver reads are: on the completed session,
+`client_reference_id` (your user id), `customer`, `subscription`, `mode`, and
+`metadata.priceKey`; on subscription events, `customer`, `status`, and
+`items.data[].price.lookup_key` (else `.id`). A hand-signed event with those
+fields works too: the signature is HMAC-SHA256 hex over `t.rawBody` with the
+`whsec_…` value.
+
+Verifying a webhook needs only the webhook secret; the API key is not read
+for incoming events.
 
 ## What the driver does
 
@@ -39,7 +60,8 @@ scheme, feeding the contract's normalized event pipeline.
   price's **lookup key** (set it in the dashboard: Product catalog → the price
   → lookup key) and resolved through `GET /v1/prices?lookup_keys[]=` once per
   key. Name prices `pro` / `lifetime` in test and live and the workflows never
-  change. An unknown key fails with the no-effect verdict (nothing was created).
+  change. Lookup keys are unique per Stripe account: if `pro` is taken (a
+  shared test account), pick another and change the workflow's `priceKey`. An unknown key fails with the no-effect verdict (nothing was created).
 - **Portal** (`/v1/billing_portal/sessions`): a portal *configuration* must
   exist; the driver looks one up (or creates a minimal
   cancel/invoices/payment-methods one) on first use.

@@ -10,7 +10,7 @@
  * stick").
  */
 
-import { fromBody, fromParams, httpEndpoint, required, value, z, type ChecklistStep, type FrontendContribution, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
+import { fromBody, fromParams, httpEndpoint, required, resolveSourced, value, z, type ChecklistStep, type FrontendContribution, type OpContext, type OpDefinition, type Workflow } from "@pattern-js/core";
 import { DEFAULT_ACCOUNT } from "./config.js";
 import { REMOTE } from "./app.js";
 import { billingAccountSchema } from "./types.js";
@@ -136,10 +136,24 @@ async function computeStatus(ctx: OpContext) {
   const account = accounts.find((a) => a.name === DEFAULT_ACCOUNT) ?? accounts[0];
   const driver = account ? drivers.find((d) => d.id === account.provider) : drivers[0];
   const requiredSecrets = (driver?.secrets ?? []).filter((f) => f.required !== false).map((f) => f.field);
-  const missingSecrets = requiredSecrets.filter((f) => !account?.secrets?.[f]);
+  // A ref that points at an unset env var or an empty vault slot is as
+  // missing as no ref at all: resolve each one (the value never leaves here).
+  const resolves = async (field: string): Promise<boolean> => {
+    const ref = account?.secrets?.[field];
+    if (!ref) return false;
+    try {
+      return Boolean(await resolveSourced(ctx, ref, "mod-billing"));
+    } catch {
+      return false;
+    }
+  };
+  const missingSecrets: string[] = [];
+  for (const f of requiredSecrets) if (!(await resolves(f))) missingSecrets.push(f);
   const webhookFields = (driver?.secrets ?? []).map((f) => f.field).filter((f) => /webhook/i.test(f));
-  const hasWebhookSecret = webhookFields.some((f) => Boolean(account?.secrets?.[f]));
-  const origin = (ctx.env.PATTERN_PUBLIC_URL?.trim() || "http://localhost:3000").replace(/\/$/, "");
+  let hasWebhookSecret = false;
+  for (const f of webhookFields) if (await resolves(f)) hasWebhookSecret = true;
+  const port = ctx.env.PORT?.trim() || "3000";
+  const origin = (ctx.env.PATTERN_PUBLIC_URL?.trim() || `http://localhost:${port}`).replace(/\/$/, "");
   const provider = account?.provider ?? driver?.id ?? "stripe";
   let lastEvent: { kind: unknown; at: unknown } | null = null;
   const store = docsStore(ctx);

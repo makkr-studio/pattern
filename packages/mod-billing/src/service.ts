@@ -350,7 +350,9 @@ export class DefaultBillingService implements BillingService {
     accountName: string,
     ctx: OpContext,
   ): Promise<IngestResult> {
-    const { account, driver, creds } = await this.resolve(accountName, ctx);
+    // Verification needs only the signing secret: an unsigned request must
+    // never make the app resolve (or report on) its API key.
+    const { account, driver, creds } = await this.resolve(accountName, ctx, { webhookOnly: true });
     const evt = await driver.verifyAndParse(raw, headers, creds, account.options, ctx);
     if (!evt) return { ok: true, ignored: true };
 
@@ -521,9 +523,9 @@ export class DefaultBillingService implements BillingService {
   /** PATTERN_PUBLIC_URL beats the request-derived origin (proxies lie). */
   private origin(ctx: OpContext, requestOrigin?: string): string {
     const configured = ctx.env.PATTERN_PUBLIC_URL?.trim();
-    const origin = (configured || requestOrigin || "http://localhost:3000").replace(/\/$/, "");
+    const origin = (configured || requestOrigin || `http://localhost:${ctx.env.PORT?.trim() || "3000"}`).replace(/\/$/, "");
     if (!configured && !requestOrigin) {
-      console.warn("[pattern/mod-billing] no PATTERN_PUBLIC_URL set — checkout redirect URLs assume http://localhost:3000");
+      console.warn(`[pattern/mod-billing] no PATTERN_PUBLIC_URL set — checkout redirect URLs assume ${origin}`);
     }
     return origin;
   }
@@ -531,6 +533,7 @@ export class DefaultBillingService implements BillingService {
   private async resolve(
     name: string | undefined,
     ctx: OpContext,
+    opts: { webhookOnly?: boolean } = {},
   ): Promise<{ account: BillingAccount; driver: BillingDriverSpec; creds: Record<string, string> }> {
     const accountName = name?.trim() || DEFAULT_ACCOUNT;
     const account = this.config.account(accountName);
@@ -544,7 +547,9 @@ export class DefaultBillingService implements BillingService {
           `install its mod (e.g. @pattern-js/mod-billing-${account.provider}) and list it in pattern.config.json.`,
       );
     }
-    for (const field of driver.secrets.filter((s) => s.required !== false)) {
+    // The webhook path resolves only the driver's webhook fields (by name).
+    const wanted = (field: string) => !opts.webhookOnly || /webhook/i.test(field);
+    for (const field of driver.secrets.filter((s) => s.required !== false && wanted(s.field))) {
       if (!account.secrets[field.field]) {
         throw new BillingNotConfiguredError(
           `account "${account.name}" is missing the "${field.field}" secret its ${driver.label} driver requires (admin → Administration → Billing).`,
@@ -553,6 +558,7 @@ export class DefaultBillingService implements BillingService {
     }
     const creds: Record<string, string> = {};
     for (const [field, ref] of Object.entries(account.secrets)) {
+      if (!wanted(field)) continue;
       try {
         creds[field] = await resolveSourced(ctx, ref, "mod-billing");
       } catch (err) {

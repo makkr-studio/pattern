@@ -275,6 +275,34 @@ export class HttpHost {
   readonly rateLimiter = new RateLimiter();
 
   /**
+   * Refuse a request the route's `requireAuth` doesn't admit (§9):
+   * - anonymous → 401; a browser GET asking for HTML is bounced to the
+   *   advertised login page (identity registers AUTH_LOGIN_URL) with `next`;
+   * - signed in but missing a scope → 403, so a client can tell "sign in"
+   *   from "upgrade".
+   * The body is JSON when the client accepts it, else a line of text.
+   */
+  private deny(req: IncomingMessage, res: ServerResponse, principal: Principal, reason: string, mayRedirect: boolean): void {
+    const accept = String(req.headers["accept"] ?? "");
+    const anonymous = principal.kind === "anonymous";
+    if (anonymous && mayRedirect && accept.includes("text/html")) {
+      const loginUrl = this.engine.service<string>(AUTH_LOGIN_URL);
+      if (loginUrl) {
+        res.writeHead(302, { location: `${loginUrl}?next=${encodeURIComponent(req.url ?? "/")}` }).end();
+        return;
+      }
+    }
+    const status = anonymous ? 401 : 403;
+    if (accept.includes("application/json")) {
+      res
+        .writeHead(status, { "content-type": "application/json" })
+        .end(JSON.stringify({ error: anonymous ? "unauthorized" : "forbidden", reason }));
+      return;
+    }
+    res.writeHead(status, { "content-type": "text/plain" }).end(`${anonymous ? "Unauthorized" : "Forbidden"}: ${reason}`);
+  }
+
+  /**
    * Count one request against the route's budget; past it, answer 429 with
    * Retry-After and report true so the caller stops before the run.
    */
@@ -574,10 +602,7 @@ export class HttpHost {
     }
     const principal: Principal = await this.engine.authenticate({ headers, raw: req });
     const auth = this.engine.authorize(principal, route.requireAuth as any);
-    if (!auth.ok) {
-      res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
-      return;
-    }
+    if (!auth.ok) return this.deny(req, res, principal, auth.reason, method === "GET");
     if (route.rateLimit?.by === "user") {
       const who = principal.kind === "user" ? `user:${principal.id}` : `ip:${ip}`;
       if (this.limited(res, route, who, req)) return;
@@ -660,7 +685,7 @@ export class HttpHost {
     }
     if (result.status === "error") {
       delivered = true;
-      return writeError(res, result.error);
+      return writeError(res, result.error, result.runId);
     }
 
     const payload = firstOutgate(result, workflow, "boundary.http.response");
@@ -696,20 +721,7 @@ export class HttpHost {
       }
       const principal = await this.engine.authenticate({ headers, raw: req });
       const auth = this.engine.authorize(principal, app.requireAuth as any);
-      if (!auth.ok) {
-        // A browser asking for HTML gets bounced to the advertised login page
-        // (§9) — the identity mod registers AUTH_LOGIN_URL; fetch/XHR callers
-        // still get the bare 401 and handle it client-side.
-        const loginUrl = this.engine.service<string>(AUTH_LOGIN_URL);
-        const accept = String(req.headers["accept"] ?? "");
-        if (loginUrl && accept.includes("text/html")) {
-          const next = encodeURIComponent(req.url ?? "/");
-          res.writeHead(302, { location: `${loginUrl}?next=${next}` }).end();
-          return;
-        }
-        res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
-        return;
-      }
+      if (!auth.ok) return this.deny(req, res, principal, auth.reason, true);
     }
 
     const fs: Filesystem | undefined = filesystems(this.engine).get(app.filesystem);
@@ -942,10 +954,21 @@ async function* streamIter(stream: ReadableStream<unknown>): AsyncGenerator<unkn
   }
 }
 
-function writeError(res: ServerResponse, err: unknown): void {
+/**
+ * A failed run's HTTP answer. In development the error message helps; in
+ * production (NODE_ENV=production) it can carry internals (config names,
+ * account ids, paths) to an unauthenticated caller, so the client gets a
+ * generic error and the run id, and the operator reads the rest in the trace.
+ */
+function writeError(res: ServerResponse, err: unknown, runId?: string): void {
   const message = err instanceof Error ? err.message : String(err);
+  const production = process.env.NODE_ENV === "production";
   if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
-  res.end(JSON.stringify({ error: message }));
+  res.end(
+    JSON.stringify(
+      production ? { error: "internal_error", ...(runId ? { runId } : {}) } : { error: message, ...(runId ? { runId } : {}) },
+    ),
+  );
 }
 
 function firstOutgate(result: RunResult, workflow: Workflow, opType: string): ResponsePayload | undefined {

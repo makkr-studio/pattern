@@ -519,7 +519,7 @@ describe("chat auth gate (CHAT_REQUIRE_AUTH)", () => {
       body: "{}",
       headers: { "x-user": "benoit" },
     });
-    expect(denied.status).toBe(401);
+    expect(denied.status).toBe(403); // signed in, missing the scope
     expect(await denied.text()).toContain("member");
   });
 });

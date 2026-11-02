@@ -58,6 +58,11 @@ export default identityMod({
     admin: ["admin"],
     member: ["pro"],
   },
+  // A product sells to strangers: anyone may create an account by signing in
+  // (the identity default is "invite", where unknown emails are silently
+  // refused). Sign-in emails are rate limited per address and per IP. The
+  // admin's Settings page can flip this at runtime; this only seeds it.
+  signup: "open",
 });
 `;
 

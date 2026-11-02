@@ -105,11 +105,11 @@ describe("bearer auth over HTTP (port 5071)", () => {
     const deployer = await service.createApiToken({ name: "deployer", scopes: ["deploy"] });
     const root = await service.createApiToken({ name: "root", scopes: ["admin"] });
 
-    // author token: read yes, deploy no.
+    // author token: read yes, deploy no (authenticated, missing the scope → 403).
     expect((await fetch(`${base}/cp/read`, bearer(author.token))).status).toBe(200);
-    expect((await fetch(`${base}/cp/deploy`, bearer(author.token))).status).toBe(401);
+    expect((await fetch(`${base}/cp/deploy`, bearer(author.token))).status).toBe(403);
     // deploy token: the reverse.
-    expect((await fetch(`${base}/cp/read`, bearer(deployer.token))).status).toBe(401);
+    expect((await fetch(`${base}/cp/read`, bearer(deployer.token))).status).toBe(403);
     expect((await fetch(`${base}/cp/deploy`, bearer(deployer.token))).status).toBe(200);
     // admin = root scope: satisfies both.
     expect((await fetch(`${base}/cp/read`, bearer(root.token))).status).toBe(200);

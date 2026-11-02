@@ -268,6 +268,13 @@ with a deploy story.
 
 ### Security
 
+- **Production hides a failed run's error from the client.** With
+  `NODE_ENV=production`, a failed HTTP run answers
+  `{ error: "internal_error", runId }`; the message (which can name accounts,
+  secrets or paths) stays in the trace. Development still shows it.
+- **The Stripe webhook verifies with the signing secret alone.** It used to
+  resolve every account secret first, so an unsigned request on a half-set-up
+  app got a 500 naming the missing API key.
 - **Rate limits are a brick, and sign-in uses them by default.** Any
   `boundary.http.request` takes `rateLimit: { max, window, by: "ip" | "user" }`:
   past it the host answers 429 with `Retry-After` before the run starts. The
@@ -383,6 +390,19 @@ with a deploy story.
 
 ### Core & fixes
 
+- **401 means "sign in", 403 means "upgrade".** A signed-in user missing a
+  route's scope now gets 403 (anonymous callers still get 401), as JSON when
+  the client accepts it; a signed-out browser `GET` on any gated route is
+  redirected to the login page with `next`, as app mounts already were.
+- **The billing checklist stops claiming secrets it can't read.** A ref to an
+  unset env var or an empty vault slot counts as missing; the webhook URL in
+  the checklist and checkout's fallback origin use the app's `PORT`.
+- **`pattern ops`, `validate`, `graph` and `run` stay quiet.** They no longer
+  mint and print a first-admin bootstrap link (core's `ENGINE_INTROSPECT`
+  service key tells mods nothing is being served).
+- **The saas-starter accepts sign-ups.** Its identity wrapper (and the
+  compose billing layer's) seeds `signup: "open"`: a product sells to
+  strangers, and the identity default (`invite`) silently refused them.
 - **Every op has a reference page.** The 90 ops that showed only registry
   data on `/docs/ops` (all of `mod-ai`, the agent, admin, email-account,
   store-admin, vault-admin and `docs.*` ops) now carry "when to use" prose,

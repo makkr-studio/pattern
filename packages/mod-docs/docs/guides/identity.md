@@ -79,12 +79,13 @@ shown under Options below) is the standard way to give your app its own roles.
 
 Installing mod-identity flips `/admin` (API + SPA) to require the `admin`
 scope, unless `adminMod({ auth: … })` was set explicitly (`auth: false` keeps
-it open). A logged-out browser hitting `/admin` is 302'd to the login page
+it open). A logged-out browser hitting `/admin` (or any gated `GET` route) is 302'd to the login page
 (any mod can advertise one via core's `AUTH_LOGIN_URL` service key). Logins
 without an explicit `next` land on the app's advertised home: the admin
 registers its mount under core's `AUTH_HOME_URL` service key; absent that,
 identity's own `/auth/welcome` page (never a bare `/`); fetch
-calls get bare 401s, which the admin SPA turns into a login redirect. The
+calls get 401 when signed out and 403 when signed in without the scope; the
+admin SPA turns a 401 into a login redirect. The
 admin grows its **Administration** section: Users (invite, disable, log-out-everywhere),
 Invite, Sessions (revoke), all Tier-1 declarative pages over `identity.*` ops.
 

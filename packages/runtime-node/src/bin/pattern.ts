@@ -21,6 +21,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import {
+  ENGINE_INTROSPECT,
   Engine,
   formatGraph,
   collectIssues,
@@ -137,6 +138,9 @@ function cmdAdd(args: string[]): void {
 async function projectEngine(): Promise<Engine> {
   loadDotEnv(process.cwd());
   const engine = new Engine({ env: process.env });
+  // Nothing is served from here: mods skip serve-time side effects (identity's
+  // bootstrap link would otherwise be minted and printed on every command).
+  engine.provideService(ENGINE_INTROSPECT, true);
   if (existsSync("pattern.config.json")) {
     try {
       const config = JSON.parse(readFileSync("pattern.config.json", "utf8")) as { mods?: string[] };

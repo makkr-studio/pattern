@@ -337,6 +337,13 @@ describe("the seeded webhook route (raw bytes end to end)", () => {
     expect(evt?.at).toBe(1_700_000_000_000);
   });
 
+  it("verifying needs only the webhook secret: no API key is resolved for an incoming event", async () => {
+    const body = JSON.stringify({ id: "evt_nokey_1", type: "invoice.paid", data: { object: { id: "in_1", customer: "cus_nokey" } } });
+    const noKey = { ...opCtx, env: { ...(opCtx.env as object), STRIPE_KEY: undefined } } as unknown as OpContext;
+    const res = await svc.ingestEvent(new TextEncoder().encode(body), { "stripe-signature": sign(body) }, "default", noKey);
+    expect(res).toBeTruthy();
+  });
+
   it("rejects a bad signature with 401 — the signature IS the gate", async () => {
     const res = await fetch(webhookUrl, {
       method: "POST",

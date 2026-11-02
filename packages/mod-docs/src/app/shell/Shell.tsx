@@ -148,7 +148,7 @@ export function Shell() {
       .manifest()
       .then(setManifest)
       .catch((err: { status?: number }) => {
-        if (err.status === 401) setDenied(true);
+        if (err.status === 401 || err.status === 403) setDenied(true);
       });
   }, []);
 

@@ -581,6 +581,16 @@ describe("billing.admin.status — the checklist tells the truth", () => {
     await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
     st = await read(engine);
     expect(st.lastEvent).toMatchObject({ kind: "checkout.completed" });
+
+    // A ref to a secret that doesn't exist is no secret: never a false ✓.
+    await config.upsertAccount({
+      name: "default",
+      provider: "fake",
+      secrets: { apiKey: { source: "env", key: "NOT_SET" }, webhookSecret: { source: "env", key: "NOT_SET_EITHER" } },
+      options: {},
+    });
+    st = await read(engine);
+    expect(st.account).toMatchObject({ missingSecrets: ["apiKey"], hasWebhookSecret: false });
   });
 });
 

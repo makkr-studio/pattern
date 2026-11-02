@@ -930,9 +930,9 @@ function listPacks(): void {
   console.log(`\n${pc.bold("Modpacks")} — a ladder; each rung adds one capability:\n`);
   for (const pack of LADDER.map((id) => packOrThrow(id))) {
     const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"}, docs: ${pack.docs?.default ? "on" : "off"} by default)`) : "";
-    console.log(`  ${pc.cyan(pack.id.padEnd(12))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
+    console.log(`  ${pc.cyan(pack.id.padEnd(13))} ${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
-  console.log(`\n  ${pc.cyan("compose".padEnd(12))}Compose your own — ${pc.dim("pick layers instead of a pack: admin, auth, email, AI, agents, chat, vectors, billing, buddy, docs")}`);
+  console.log(`\n  ${pc.cyan("compose".padEnd(13))} Compose your own — ${pc.dim("pick layers instead of a pack: admin, auth, email, AI, agents, chat, vectors, billing, buddy, docs")}`);
   console.log(
     `\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth] [--oidc] [--email console|resend|smtp] [--docs|--no-docs] [--examples|--no-examples]")}`,
   );

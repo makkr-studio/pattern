@@ -29,6 +29,14 @@ An unordered shelf — these are on the map, not yet in a milestone:
 - **API tokens that end with their minter**: an opt-in policy that revokes
   the `pat_` tokens an admin minted when that admin is demoted, disabled or
   deleted. Today tokens are app credentials and outlive their creator.
+- **A per-route answer for "signed in, not entitled"**: today a gated page
+  answers 403; an option such as `forbiddenRedirect: "/pricing"` would send a
+  browser to an upsell page instead.
+- **Signed agent approval tokens**: `agents.run`'s `stateToken` is plain
+  JSON (chat keeps it server-side); sign it so it can travel through a client.
+- **Admin API polish**: the API base follows the admin `mount`, 404 instead
+  of 500 for unknown versions and runs, scope failures on save/import as
+  403, import audited as `import`, paging in the Data browser.
 - **Billing and durability edge cases**: a rerun executes with the original
   run's principal (re-check it against the current roles); billing's role
   projection can race a concurrent admin role edit (make it a CAS write); a

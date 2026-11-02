@@ -79,6 +79,6 @@ export function renderSentPage(
 ${errorBanner(code?.error)}
 <p>If <strong>${escapeHtml(email)}</strong> has an account (or sign-ups are open), a sign-in link is on its way.</p>
 ${form}
-<p class="hint">No email mod installed? The ${code ? "link and code were" : "link was"} printed to the server console.</p>`,
+<p class="hint">No email account set up yet? The ${code ? "link and code were" : "link was"} printed to the server console.</p>`,
   );
 }

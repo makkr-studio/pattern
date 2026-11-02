@@ -27,6 +27,14 @@ export const AUTH_LOGIN_URL = "auth.loginUrl";
 export const AUTH_HOME_URL = "auth.homeUrl";
 
 /**
+ * Engine service key a host sets (to `true`) when the engine is built only to
+ * be inspected or to run one workflow, as the `pattern ops/validate/graph/run`
+ * commands do: nothing is served. Mods skip serve-time side effects then,
+ * such as identity minting and printing a first-admin bootstrap link.
+ */
+export const ENGINE_INTROSPECT = "engine.introspect";
+
+/**
  * Engine service key under which an identity service is registered (users,
  * sessions, tokens, login methods). The interface lives in the identity mod;
  * consumers that only need presence-detection (e.g. the admin's

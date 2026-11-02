@@ -68,10 +68,12 @@ code** — entitlement is an auth scope.
    Uncomment the keys in `.env.example`, copy to `.env`, and pick `env` refs
    instead — that path needs a restart per change.)
 3. Tunnel the webhook:
-   `stripe listen --forward-to localhost:3000/billing/webhook/stripe`
+   `stripe listen --forward-to localhost:3000/billing/webhook/stripe` (your
+   port if you changed `PORT`)
    — paste the printed `whsec_…` into admin → **Resources → Secrets** as
    `STRIPE_WEBHOOK_SECRET`. No restart needed.
-4. On the landing page: sign in (magic link prints to the console), hit
+4. On the landing page: sign in (magic link prints to the console; signup is
+   `open` in `mods/identity.mjs`, so any email creates an account), hit
    **Subscribe** or **Buy lifetime access**, pay with the test card
    `4242 4242 4242 4242` (any future date, any CVC).
 5. You land on `/billing/success` — a page mod-billing serves for you. It

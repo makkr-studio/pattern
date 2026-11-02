@@ -153,6 +153,7 @@ export { resolvePrincipal, meetsRequirement, resolveAuthRequirement, type AuthRe
 export {
   AUTH_HOME_URL,
   AUTH_LOGIN_URL,
+  ENGINE_INTROSPECT,
   IDENTITY_SERVICE,
   principalToUser,
   userInputSchema,
