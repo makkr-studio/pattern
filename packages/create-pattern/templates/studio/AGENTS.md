@@ -244,8 +244,8 @@ Add the identity mods to `pattern.config.json`:
   exists, `requireAuth` routes REFUSE requests (401 naming the fix) — unless
   `pattern.config.json` carries `"auth": { "unenforced": "open" }`, which
   `--no-auth` scaffolds write so the admin serves open on purpose; the host
-  warns loudly on boot either way. Users / Invite / Sessions screens appear
-  under "Access".
+  warns loudly on boot either way. Users / Invites / Sessions screens appear
+  under "Administration".
 - **Protect any route** with `requireAuth` on its trigger (the editor's auth
   selector, or `{ "scopes": ["admin"] }` in config). Same rule everywhere: a
   declared requirement is enforced once a provider exists, denied (or, with

@@ -22,12 +22,16 @@ npm run dev
 
 Pick a provider when you wire the model (`ai.model` config `{ provider, modelId }`),
 or set a `default` alias in admin → **Resources → AI Providers**. A model wired
-inline resolves that provider's conventional key by name (for OpenAI that's
-`OPENAI_API_KEY`) from `.env` (copied from `.env.example`, gitignored, loaded on
-boot, real env wins) or a vault secret of that name (admin → **Secrets**, masked
-out of run samples). Gateway routing uses one `AI_GATEWAY_API_KEY`. The vault's
-master key (`PATTERN_VAULT_KEY`) lives in `.env`; generate it ONCE with
-`openssl rand -base64 32`.
+inline resolves that provider's conventional key by name. Gateway routing uses
+one `AI_GATEWAY_API_KEY`.
+
+Keys live in the encrypted **vault**: paste one in admin → **Resources →
+Secrets** (for OpenAI the conventional name is `OPENAI_API_KEY`) and it applies
+on the next call, no restart. Keys kept in the vault never appear in run
+samples. Prefer an env var? Define it in `.env` (copied from `.env.example`,
+gitignored, loaded on boot, real env wins) and point the alias at env. The
+vault's own master key (`PATTERN_VAULT_KEY`) was generated into `.env` by the
+scaffolder: keep it forever, it decrypts `.pattern-data/vault.db`.
 
 ## The shape of an agentic workflow
 
@@ -63,3 +67,13 @@ agents.tools.workflows (toolset) → agents.agent → agents.run → boundary.ht
   `AGENTS.md` has the recipes (your coding agent reads it too).
 - **The handbook** at `/docs` (add `@pattern-js/mod-docs` if you didn't): the
   *Agents & chat* and *Designing your API* guides go deeper.
+
+## Grow & deploy
+
+- **Add capabilities later**: `npx pattern add billing,vectors` (or any layer:
+  auth, email, ai, agents, chat, docs…) applies them to this project additively;
+  `npx pattern add` lists what is installed.
+- **Ship it**: the `Dockerfile` here is ready (two volumes: `.pattern/` for the
+  workflow store, `.pattern-data/` for the databases). Set `PATTERN_PUBLIC_URL`
+  in production; the handbook at `/docs` → **Deploying** walks Fly.io, Railway
+  and Render.

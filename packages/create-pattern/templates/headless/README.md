@@ -53,3 +53,13 @@ npx pattern graph workflows/hello.json
 Working with a coding agent? `AGENTS.md` carries the route and op-authoring
 contracts. Want a visual control plane later? Add `@pattern-js/mod-admin` to the
 config; the admin appears at `/admin`.
+
+## Grow & deploy
+
+- **Add capabilities later**: `npx pattern add billing,vectors` (or any layer:
+  auth, email, ai, agents, chat, docs…) applies them to this project additively;
+  `npx pattern add` lists what is installed.
+- **Ship it**: the `Dockerfile` here is ready (two volumes: `.pattern/` for the
+  workflow store, `.pattern-data/` for the databases). Set `PATTERN_PUBLIC_URL`
+  in production; the handbook at `/docs` → **Deploying** walks Fly.io, Railway
+  and Render.

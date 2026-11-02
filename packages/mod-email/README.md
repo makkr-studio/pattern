@@ -36,6 +36,9 @@ fallback already covers you with zero mods.
 - **`email.deliver-token`** — a visible, forkable workflow subscribed to
   identity's `identity.deliverToken` hook: sign-in links email themselves once
   a `default` account exists.
+- **`email.alert-failed-run`** — failure alerts: set `PATTERN_ALERTS_TO` and any
+  failed run emails that address a deep link to the run (an ordinary workflow on
+  the `run.failed` event, so you can open and change it).
 - A tiny **driver SPI** — `registerDriver({ id, label, secrets, options, send })`
   in your mod's `ready()`; the admin form generates itself from the field specs.
 

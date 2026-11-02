@@ -34,7 +34,7 @@ const BEATS: Beat[] = [
     hue: 22,
     title: "Hear about it first",
     body:
-      "A run that exhausts its retries emits run.failed, and a seeded, editable workflow emails the operator with a link straight to the failing run. AI usage meters itself into your billing meter the same way — as an ordinary workflow edge you can open and change, not a hook you can't see.",
+      "A run that fails (after its retries) emits run.failed, and a seeded, editable workflow emails the operator with a link straight to the failing run. AI usage meters itself into your billing meter the same way — as an ordinary workflow edge you can open and change, not a hook you can't see.",
     receipt: "run.failed → email.send → /admin/runs/:id",
   },
 ];
@@ -79,7 +79,8 @@ export function OpenForBusiness() {
       <p className="mt-8 text-center text-sm text-muted">
         Scaffold it wired: <span className="font-mono text-xs">npm create pattern@latest my-saas</span> — the{" "}
         <span className="font-semibold">SaaS starter</span> ships sign-in, Stripe billing, a gated members area, and
-        durable payment workflows, with a five-minute walkthrough to your first test payment — recurring or one-time.
+        durable payment workflows, with a five-minute walkthrough to your first test payment — recurring or one-time —
+        and a Dockerfile with a deploy guide for Fly.io, Railway and Render.
       </p>
     </SectionShell>
   );

@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// The framework version is the monorepo root's version (currently 0.2.1). Inject
+// The framework version is the monorepo root's version. Inject
 // it at build time so the nav badge, install snippets, and footer always match
 // what is published — no runtime env var.
 const version = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")).version as string;

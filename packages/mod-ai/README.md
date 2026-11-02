@@ -37,6 +37,11 @@ Two ops produce a model reference you wire into any `ai.*` op or
 
 Agents and chat fall back to the **`default`** alias when no model is wired.
 
+Every model call emits one **`ai.usage`** event (input/output/total tokens, model,
+the calling user): a `boundary.event` trigger turns it into a workflow, and
+`@pattern-js/mod-billing`'s `meterAiUsage` uses exactly that to meter tokens
+onto a Stripe meter.
+
 ## Providers
 
 mod-ai bundles no provider. The Vercel AI Gateway ships inside `ai` and works with

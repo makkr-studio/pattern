@@ -55,8 +55,9 @@ also returns the link in its result as `copy`.
 Opaque 256-bit tokens in an `HttpOnly; SameSite=Lax` cookie (`Secure` via the
 `cookieSecure` option; enable behind TLS). Only the sha256 lands in storage.
 Sliding 30-day expiry with throttled touches; revocable individually or
-per-user; **role changes and disabling revoke sessions** (privilege change =
-re-login). Storage is `node:sqlite` at `./.pattern-data/identity.db`
+per-user; **losing a role or scope, elevation to `admin`, and disabling revoke
+sessions** (re-login). A role gain keeps the session: scopes resolve live on
+every request, so a paid plan's role unlocks the user's open tab. Storage is `node:sqlite` at `./.pattern-data/identity.db`
 (**gitignored**); never put identity data in `.pattern/`, which is committed
 workflow storage. All racy writes are CAS (`version` columns), so a future
 Postgres driver is the same SQL and multi-instance degrades to CAS-retry.
@@ -161,6 +162,7 @@ export default identityMod({
 | --- | --- |
 | `GET /auth/login` | Login page (sections from registered methods) |
 | `GET /auth/token?t=…` | Token callback → session cookie → redirect `next` |
+| `POST /auth/code` | The emailed 6-digit code → session cookie (same single-use token as the link; 5 attempts) |
 | `POST /auth/logout` | Revoke current session, clear cookie |
 | `GET /auth/whoami` | Current principal (JSON) |
 | `GET /auth/welcome` | Post-login landing when no home is advertised |

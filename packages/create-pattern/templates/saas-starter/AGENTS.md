@@ -160,7 +160,7 @@ Know the edges before promising a feature; build these yourself or say so:
   shipping-address collection. Physical goods need your own address step and
   fulfillment workflow.
 - **Refunds and disputes are not projected.** A refunded purchase keeps its
-  role; revoke it from admin → Users if you want it gone.
+  role; revoke it from admin → Administration → Users if you want it gone.
 - **One tracked subscription per customer.** Plan changes happen in the
   portal (enable them in Stripe's portal settings); two parallel
   subscriptions for one user are not modeled.

@@ -117,7 +117,7 @@ records its exact inputs and outputs to the RunLedger — so a failed run can
 **resume from the failing node** (completed work is seeded, not repeated: an
 email that already went out is never re-sent) and any run can **re-run with
 the same input**, straight from the Runs page. Retry lives on the node
-(`retry: { attempts, backoff }`), every op declares its replay-safety, and
+(`retry: { attempts, backoffMs, factor, maxBackoffMs }`), every op declares its replay-safety, and
 resume refuses to cross an ambiguous side effect until a human confirms.
 
 **Agents and apps, expressed as workflows.** A tool is a workflow. A chat turn is
@@ -147,6 +147,15 @@ code. Prices are named by Stripe lookup keys, so config carries no ids and
 test → live is a no-op. AI usage metering is an edge on the canvas: agent token
 counts flow into Stripe meter events. `npm create pattern` has a
 **saas-starter** pack that wires the whole loop, Dockerfile included.
+
+**Operating it (0.5).** Set `PATTERN_ALERTS_TO` and any failed run emails you a
+deep link to it, through an ordinary workflow you can edit. The admin is
+organized in six rooms (Home, Workflows, Activity, Resources, Administration,
+Reference): each workflow opens as a workspace with its editor, runs, versions
+and settings, and every deploy shows a preview of what changes (routes, auth,
+external effects) before it goes live. Magic-link sign-in also carries a 6-digit
+code, so installed PWAs sign in where they run. Grow a project later with
+`npx pattern add billing,vectors`.
 
 <p align="center">
   <img src="assets/screenshots/chat.jpg" width="820" alt="A branded chat app served from a workflow" />
@@ -190,6 +199,7 @@ The handbook is served at `/docs` in any project that installs
 - [Concepts](packages/mod-docs/docs/concepts.md) and [Architecture](packages/mod-docs/docs/architecture.md)
 - Author a workflow [in the admin](packages/mod-docs/docs/guides/workflow-in-the-admin.md) or [in JSON](packages/mod-docs/docs/guides/workflow-in-json.md)
 - [Authoring ops](packages/mod-docs/docs/guides/authoring-ops.md), [serving a frontend app](packages/mod-docs/docs/guides/frontend-app-with-workflows.md), and [building a mod](packages/mod-docs/docs/guides/creating-a-mod.md)
+- [Recipes](packages/mod-docs/docs/guides/recipes.md), [the admin](packages/mod-docs/docs/guides/admin.md), and [deploying](packages/mod-docs/docs/guides/deploying.md) (Docker, Fly.io, Railway, Render)
 
 ## CLI
 
@@ -200,6 +210,8 @@ pattern validate file.json     # validate, with located, readable errors
 pattern dev [entry]            # run with file-watch hot reload
 pattern run file.json|id       # run a CLI workflow once
 pattern mcp                    # serve your app's tools over MCP on stdio
+pattern add billing,chat       # grow the project by layers (delegates to create-pattern add)
+pattern load scenario.json     # open-loop load test with engine flight-recording
 ```
 
 ## Develop

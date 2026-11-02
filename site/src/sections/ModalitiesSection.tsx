@@ -34,7 +34,7 @@ export function ModalitiesSection() {
       id="ai"
       eyebrow="AI, any provider"
       title="Every modality, any model"
-      subtitle="One mod gives your workflows text, structured output, embeddings, image, speech, transcription, and video — across the full first-party AI SDK catalog or the Vercel AI Gateway. Pick models by alias; re-point one in Settings and every workflow and agent retargets instantly."
+      subtitle="One mod gives your workflows text, structured output, embeddings, image, speech, transcription, and video — across the full first-party AI SDK catalog or the Vercel AI Gateway. Pick models by alias; re-point one in Resources → AI Providers and every workflow and agent retargets instantly."
     >
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {MODALITIES.map((m, i) => (

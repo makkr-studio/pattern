@@ -33,14 +33,14 @@ mod` (defaults to ops + routes + a Tier-1 page + docs).
 
 ## Modpacks (apps)
 
-Pick by **how much you want running**. The six sit on one ladder:
+Pick by **how much you want running**. The seven sit on one ladder:
 
 | Modpack | id | Adds over the previous rung | It's really… |
 |---------|----|-----------------------------|--------------|
 | **Engine only** | `blank` | (base) | a program, no server: run a workflow from code and watch it print |
 | **Headless server** | `headless` | the HTTP/WS/CLI host | a running server, no UI: serve workflows as endpoints |
 | **Studio** | `studio` | `@pattern-js/mod-admin` | a visual workspace at `/admin`: build, version, run & trace workflows |
-| **SaaS starter** | `saas-starter` | identity + `@pattern-js/mod-billing` (+ Stripe driver, email, store) | a **subscription SaaS**: sign in, subscribe via Stripe checkout, and a `/pro` area gated by a scope the webhook grants |
+| **SaaS starter** | `saas-starter` | identity + `@pattern-js/mod-billing` (+ Stripe driver, email, store) | a **SaaS that takes money**: sign in, subscribe or buy once via Stripe checkout, and a `/pro` area gated by a scope the webhook grants (plus a Dockerfile) |
 | **Studio + AI** | `studio-ai` | `@pattern-js/mod-ai` (+ vectors, store, vault) | plain **AI workflows** (text · object · image · speech) in the editor, no agent loop |
 | **Studio + Agents** | `agentic` | the agent stack (agents + Buddy) | build **agentic workflows** (`agents.agent` → `agents.run`, tools as workflows) in the editor, no chat UI |
 | **Studio + Agentic Chat** | `agent-chat` | `@pattern-js/mod-chat` | a chat product at `/chat`: tools, guardrails, HITL; its turn pipeline is an agentic workflow |
@@ -66,10 +66,12 @@ skeleton plus notes on how to add your own, so you don't scaffold-then-delete.
 **The AI packs work on first boot.** Picking a provider (`--providers openai`)
 doesn't just install its `@ai-sdk` package — it **seeds the model aliases** the
 platform resolves by name: `default` (language) and, when the provider has one,
-`embeddings` (embedding) land in `.pattern-data/ai-config.json`, each reading
-its key from `.env` via an env-sourced secret *reference* (no value is ever
-written). Set the key and agents, `/rag/*`, and Buddy all answer — re-point the
-aliases anytime in admin → Resources → AI Providers. The Buddy packs (`agentic`,
+`embeddings` (embedding) land in `.pattern-data/ai-config.json`, each holding a
+secret *reference* (no value is ever written): to the encrypted **vault** when a
+`PATTERN_VAULT_KEY` was generated (the default; paste the key in admin →
+Resources → Secrets and it applies on the next call, no restart), or to `.env`
+with `--no-vault-key`. Set the key and agents, `/rag/*`, and Buddy all answer —
+re-point the aliases anytime in admin → Resources → AI Providers. The Buddy packs (`agentic`,
 `agent-chat`) also scaffold **`.mcp.json`** wiring `npx pattern mcp`, so opening
 the project in Claude Code connects the `pattern_*` control-plane tools (ops,
 docs, validate, drafts, runs) with zero setup. And `agentic` with Resend email
@@ -122,7 +124,10 @@ here, picking the create-pattern generation that matches your project.
 ## Flags (headless)
 
 ```
-create-pattern <name> [--kind app|mod] [--modpack <id>] [--with <layers>] [--auth|--no-auth] [--docs|--no-docs] [--examples|--no-examples] [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
+create-pattern <name> [--kind app|mod] [--modpack <id>] [--with <layers>] [--auth|--no-auth]
+  [--magic-link|--no-magic-link] [--oidc|--no-oidc] [--email console|resend|smtp] [--docs|--no-docs]
+  [--examples|--no-examples] [--vault-key|--no-vault-key] [--providers <a,b,…>]
+  [--pm npm|pnpm|yarn|bun] [--no-install] [--no-git] [--yes] [--list] [--dry-run]
 
 # mod (--kind mod):
 create-pattern <name> --kind mod [--scope @acme] [--ops|--no-ops] [--workflows|--no-workflows] [--admin none|tier1|tier2] [--docs|--no-docs]

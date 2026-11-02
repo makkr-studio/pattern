@@ -1,7 +1,7 @@
 # Billing · Stripe
 
 `@pattern-js/mod-billing-stripe` is the Stripe driver for
-[mod-billing](../mod-billing): Checkout Sessions, the Customer Portal,
+`@pattern-js/mod-billing` (the **Billing** chapter): Checkout Sessions, the Customer Portal,
 subscription state and **Billing Meter** events — over a zero-dependency
 `fetch` client — plus webhook verification with Stripe's own signature
 scheme, feeding the contract's normalized event pipeline.

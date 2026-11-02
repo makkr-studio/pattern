@@ -175,8 +175,9 @@ So offload is **selective and author-controlled, at the workflow level**:
   the boundaries: lower latency than per-op offload, and
   simpler to reason about.
 - An op can declare **`cpuHeavy: true`**: purely a *signal* (like
-  `sensitivity`). It routes nothing; it makes the editor **nudge**: the gear
-  badges amber and the validator recommends turning on Offload when such a node
+  `sensitivity`). It routes nothing; it makes the editor **nudge**: the
+  workflow panel (nothing selected on the canvas) turns the Offload switch
+  amber, and the validator recommends turning on Offload when such a node
   sits in a non-offloaded workflow.
 
 Configure the pool in `pattern.config.json` with **`workers`**:

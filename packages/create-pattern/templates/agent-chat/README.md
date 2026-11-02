@@ -17,11 +17,15 @@ npm run dev
 
 Give the chat a model: set a `default` alias in admin → **Resources → AI
 Providers** (pick a provider, a model id, and where its key comes from, the vault
-or an env var). For an env-sourced key, define it in `.env` (copied from
-`.env.example`, gitignored, loaded on boot, real env wins); for OpenAI the
-conventional name is `OPENAI_API_KEY`. Keys kept in the vault never appear in run
-samples. The vault's own master key (`PATTERN_VAULT_KEY`) lives in `.env`:
-generate it ONCE with `openssl rand -base64 32` and keep it forever.
+or an env var).
+
+Keys live in the encrypted **vault**: paste one in admin → **Resources →
+Secrets** (for OpenAI the conventional name is `OPENAI_API_KEY`) and it applies
+on the next call, no restart. Keys kept in the vault never appear in run
+samples. Prefer an env var? Define it in `.env` (copied from `.env.example`,
+gitignored, loaded on boot, real env wins) and point the alias at env. The
+vault's own master key (`PATTERN_VAULT_KEY`) was generated into `.env` by the
+scaffolder: keep it forever, it decrypts `.pattern-data/vault.db`.
 
 ## Add a tool
 
@@ -53,3 +57,13 @@ in the admin. The agent, its tools, and its guardrails are graph nodes.
 - **The handbook** at `/docs` (add `@pattern-js/mod-docs` if you didn't): the
   *Agents & chat* chapter and the *Chat* chapter (customizing, multiple
   branded instances) go deeper.
+
+## Grow & deploy
+
+- **Add capabilities later**: `npx pattern add billing,vectors` (or any layer:
+  auth, email, ai, agents, chat, docs…) applies them to this project additively;
+  `npx pattern add` lists what is installed.
+- **Ship it**: the `Dockerfile` here is ready (two volumes: `.pattern/` for the
+  workflow store, `.pattern-data/` for the databases). Set `PATTERN_PUBLIC_URL`
+  in production; the handbook at `/docs` → **Deploying** walks Fly.io, Railway
+  and Render.
