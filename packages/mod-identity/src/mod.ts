@@ -54,7 +54,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     ops: identityOps,
     // Auth-page routes + the admin Access screens' dedicated routes (one
     // purposeful endpoint per screen and action, replacing the invoke path).
-    workflows: [...endpointWorkflows(opts.mount), ...identityAdminRoutes()],
+    workflows: [...endpointWorkflows(opts.mount, opts.rateLimit.perClient), ...identityAdminRoutes()],
     authProviders: [sessionAuthProvider(() => service), apiTokenAuthProvider(() => service)],
     hooks: [
       {

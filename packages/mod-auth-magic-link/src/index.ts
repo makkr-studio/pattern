@@ -79,7 +79,11 @@ const requestOp: OpDefinition = {
     if (looksLikeEmail(email)) {
       const user = await svc.findUserByEmail(email);
       const shouldIssue = user ? !user.disabled : (await svc.getSignup()) === "open";
-      if (shouldIssue) {
+      // The per-address budget: past it, nothing is sent, and the page below
+      // is identical, so the throttle reveals nothing either.
+      if (shouldIssue && !(await svc.signInEmailAllowed(email))) {
+        ctx.log("warn", "sign-in email not sent: this address hit its per-address budget (mod-identity rateLimit.perAddress)");
+      } else if (shouldIssue) {
         // `code: true` — the same token also gets a short sign-in code, so an
         // installed PWA (whose emailed link would open in the system browser's
         // cookie jar) can complete the login right here via POST {mount}/code.
@@ -109,7 +113,7 @@ const requestOp: OpDefinition = {
 
 /* ── the route ─────────────────────────────────────────────────────────── */
 
-function requestRoute(mount: string): Workflow {
+function requestRoute(mount: string, perClient: MagicLinkOptions["rateLimit"]): Workflow {
   return {
     id: "magic-link.route.request",
     name: `Identity · POST ${mount}/magic-link/request`,
@@ -118,7 +122,17 @@ function requestRoute(mount: string): Workflow {
       "hook (mod-email sends it; the console prints it otherwise). Responds with the \"check your email\" page.",
     source: "code",
     nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: "POST", path: `${mount}/magic-link/request` } },
+      {
+        id: "in",
+        op: "boundary.http.request",
+        config: {
+          method: "POST",
+          path: `${mount}/magic-link/request`,
+          // One client IP's budget across all addresses (429 past it); the
+          // per-address budget lives in mod-identity (rateLimit.perAddress).
+          ...(perClient ? { rateLimit: { max: perClient.max, window: perClient.window, by: "ip" } } : {}),
+        },
+      },
       { id: "form", op: "core.object.extract", config: { keys: ["email", "next"] } },
       { id: "call", op: "auth.magiclink.request" },
       { id: "ct", op: "core.const.object", config: { value: { "content-type": "text/html; charset=utf-8" } } },
@@ -142,6 +156,12 @@ export interface MagicLinkOptions {
   mount?: string;
   /** Label on the login page. Default "Send me a sign-in link". */
   label?: string;
+  /**
+   * Sign-in requests one client IP may make per window, whatever addresses it
+   * types (429 past it). Default { max: 10, window: "15m" }; `false` turns it
+   * off. Each address also has its own budget: mod-identity `rateLimit.perAddress`.
+   */
+  rateLimit?: { max: number; window: number | string } | false;
 }
 
 
@@ -161,7 +181,7 @@ export function magicLinkMod(options: MagicLinkOptions = {}): PatternMod {
     name: "@pattern-js/mod-auth-magic-link",
     docs: { filesystem: "magic-link-docs", title: "Magic-link login", order: 41 },
     ops: [requestOp],
-    workflows: [requestRoute(mount)],
+    workflows: [requestRoute(mount, options.rateLimit ?? { max: 10, window: "15m" })],
     // `ready`, not `setup`: the identity service registers in identity's setup,
     // and every setup runs before any ready — order in the config is free.
     ready: (engine: Engine) => {

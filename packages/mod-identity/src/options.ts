@@ -37,6 +37,27 @@ export interface IdentityOptions {
   cookieSecure?: boolean;
   /** Role(s) granted to the first (bootstrap) user. Default ["admin"]. */
   bootstrapRoles?: string[];
+  /**
+   * Abuse budgets for the public sign-in surface. `window` is ms or "15m".
+   * - `perAddress`: sign-in emails one address can receive per window,
+   *   counted in the identity store (survives restarts, shared by instances).
+   *   Past it, the request still gets the usual "check your email" page and
+   *   nothing is sent. Default { max: 5, window: "15m" }.
+   * - `perClient`: requests one client IP can make to the code form
+   *   (`POST {mount}/code`) and the bootstrap form, answered 429 past it.
+   *   Default { max: 20, window: "15m" }.
+   * `false` turns one off.
+   */
+  rateLimit?: {
+    perAddress?: RateBudget | false;
+    perClient?: RateBudget | false;
+  };
+}
+
+/** A budget: `max` hits per `window` (ms, or "30s" / "15m" / "1h"). */
+export interface RateBudget {
+  max: number;
+  window: number | string;
 }
 
 export interface ResolvedIdentityOptions {
@@ -50,6 +71,7 @@ export interface ResolvedIdentityOptions {
   tokenTtlMs: number;
   cookieSecure: boolean;
   bootstrapRoles: string[];
+  rateLimit: { perAddress: RateBudget | false; perClient: RateBudget | false };
 }
 
 export function resolveOptions(options: IdentityOptions = {}): ResolvedIdentityOptions {
@@ -64,5 +86,9 @@ export function resolveOptions(options: IdentityOptions = {}): ResolvedIdentityO
     tokenTtlMs: options.tokenTtlMs ?? 15 * 60 * 1000,
     cookieSecure: options.cookieSecure ?? false,
     bootstrapRoles: options.bootstrapRoles ?? ["admin"],
+    rateLimit: {
+      perAddress: options.rateLimit?.perAddress ?? { max: 5, window: "15m" },
+      perClient: options.rateLimit?.perClient ?? { max: 20, window: "15m" },
+    },
   };
 }

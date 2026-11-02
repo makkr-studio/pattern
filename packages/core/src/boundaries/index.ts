@@ -169,13 +169,20 @@ export const returnGateConfigurable: OpDefinition = {
 // HTTP
 // ────────────────────────────────────────────────────────────────────────────
 
+/** `boundary.http.request` config.rateLimit: the host answers 429 past it. */
+export const httpRateLimitSchema = z.object({
+  max: z.number().int().positive(),
+  window: z.union([z.number().int().positive(), z.string()]).default("1m"),
+  by: z.enum(["ip", "user"]).default("ip"),
+});
+
 export const httpRequest: OpDefinition = {
   type: "boundary.http.request",
   title: "boundary.http.request",
   description:
     "Inbound HTTP request trigger. The route is declared here: method, path, port, " +
     "cors, requireAuth, and JSON-Schema validation of body/query/params (400 on mismatch). " +
-    "Outputs { method, url, path, headers, query, params, body, user }. Keep ops HTTP-free: " +
+    "Outputs { method, url, path, headers, cookies, ip, query, params, body, user }. config.rateLimit { max, window, by } answers 429 before the run. Keep ops HTTP-free: " +
     "extract each field with core.object.get and declare its input schema in ONE place (here, " +
     "not also on the op's port) or the edge fails the schema check.",
   boundary: "trigger",
@@ -207,6 +214,9 @@ export const httpRequest: OpDefinition = {
     // stays cookie-unaware; session identity travels on `user`, this is the
     // lower-level escape hatch for non-session cookies.
     cookies: value(stringRecord),
+    // The client address the host resolved (socket peer, or the forwarded
+    // address PATTERN_TRUST_PROXY vouches for): a key for throttles and logs.
+    ip: value(z.string()),
     user: userPort(),
     query: config.query ? value(jsonSchemaToZod(config.query as any, { coerce: true }), { validate: true }) : value(stringRecord),
     params: config.params ? value(jsonSchemaToZod(config.params as any, { coerce: true }), { validate: true }) : value(stringRecord),
@@ -244,6 +254,14 @@ export const httpRequest: OpDefinition = {
      * where there's nothing worth finishing once the client is gone.
      */
     cancelOnDisconnect: z.boolean().optional(),
+    /**
+     * Per-client request budget, enforced by the host BEFORE the run starts:
+     * over it, the client gets 429 + Retry-After and nothing executes. `by`
+     * names the client: "ip" (default; set PATTERN_TRUST_PROXY behind a proxy)
+     * or "user" (the signed-in user, falling back to the IP when anonymous).
+     * `window` is ms or "30s" / "15m" / "1h". In-process counters.
+     */
+    rateLimit: httpRateLimitSchema.optional(),
   }),
   execute: TRIGGER_EXECUTE,
 };

@@ -23,9 +23,18 @@ An unordered shelf — these are on the map, not yet in a milestone:
 - **Durable timers & waits** — once durability lands: nodes that sleep for
   days (drip campaigns) or wait for an event or approval (human-in-the-loop)
   without holding a process open.
-- **Auth rate limiting** — throttle magic-link/invite issuance per address and
-  IP; today a hostile client can make an app send email as fast as its driver
-  allows.
+- **Shared rate-limit counters**: the 0.5 limits count per process (the
+  per-address sign-in budget already lives in the identity store); a store
+  seam would let a fleet share one budget.
+- **API tokens that end with their minter**: an opt-in policy that revokes
+  the `pat_` tokens an admin minted when that admin is demoted, disabled or
+  deleted. Today tokens are app credentials and outlive their creator.
+- **Billing and durability edge cases**: a rerun executes with the original
+  run's principal (re-check it against the current roles); billing's role
+  projection can race a concurrent admin role edit (make it a CAS write); a
+  `subscription.updated` for a second subscription replaces the tracked one
+  (track several per customer); events stamped in the same second can apply
+  out of order (order by the provider's sequence).
 - **Workflow import/export & a public gallery** — copy-as-JSON, import-from-URL,
   and a gallery of ready-to-import examples on the site.
 - **`pattern test`** — a workflow test harness: fixtures in, assertions out,

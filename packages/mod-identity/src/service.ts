@@ -13,7 +13,7 @@
  */
 
 import { timingSafeEqual } from "node:crypto";
-import type { ConnectionRegistry } from "@pattern-js/core";
+import { parseDurationMs, type ConnectionRegistry } from "@pattern-js/core";
 import type { ResolvedIdentityOptions } from "./options.js";
 import type { ApiTokenRow, IdentityStores, InviteRow, SessionRow, TokenPurpose, TokenRow, UserRow } from "./store/types.js";
 import { UniqueViolationError } from "./store/types.js";
@@ -148,6 +148,12 @@ export interface IdentityService {
     code?: boolean;
   }): Promise<IssuedToken>;
   consumeToken(rawToken: string, purpose?: TokenPurpose): Promise<TokenRow | null>;
+  /**
+   * The per-address sign-in email budget (`rateLimit.perAddress`): may this
+   * address receive another sign-in email now? A provider that hears "no"
+   * answers exactly as if it had sent, so the throttle leaks nothing.
+   */
+  signInEmailAllowed(email: string): Promise<boolean>;
   /**
    * Consume a token by its short sign-in code (the PWA path — the caller sets
    * the cookie in the browsing context that typed the code). Constant-time
@@ -442,6 +448,20 @@ export class DefaultIdentityService implements IdentityService {
     // Opportunistic sweep: issuing is rare enough to piggyback cleanup on.
     await this.stores.tokens.deleteExpired(now).catch(() => {});
     return { token, path, ...(code ? { code } : {}), expiresAt: row.expiresAt };
+  }
+
+  /**
+   * May this address receive another sign-in email right now? The per-address
+   * budget (`rateLimit.perAddress`), counted from the token table so it holds
+   * across restarts and instances. Callers that say no should still answer
+   * exactly as if they sent: the response must not reveal the throttle.
+   */
+  async signInEmailAllowed(email: string): Promise<boolean> {
+    const budget = this.options.rateLimit.perAddress;
+    if (!budget) return true;
+    const since = Date.now() - parseDurationMs(budget.window);
+    const sent = await this.stores.tokens.countIssuedSince(normalizeEmail(email), "login", since);
+    return sent < budget.max;
   }
 
   async consumeToken(rawToken: string, purpose?: TokenPurpose): Promise<TokenRow | null> {

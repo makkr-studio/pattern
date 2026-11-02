@@ -11,7 +11,12 @@
       "config": {
         "method": "POST",
         "path": "/billing/portal",
-        "requireAuth": true
+        "requireAuth": true,
+        "rateLimit": {
+          "max": 10,
+          "window": "1m",
+          "by": "user"
+        }
       },
       "ui": {
         "x": 40,

@@ -321,3 +321,58 @@ describe("engine.rerun — resume from failure", () => {
     expect((Object.values(second.outputs)[0] as { value: string }).value).toBe("picked");
   });
 });
+
+describe("engine.rerun — credentials are not needed to resume", () => {
+  it("an HTTP-shaped durable run resumes as the same user after its cookie/authorization were stripped from the ledger", async () => {
+    const engine = new Engine();
+    const ledger = new MemoryRunLedger();
+    engine.provideService(RUN_LEDGER, ledger);
+    let healed = false;
+    const seen: { user: unknown; principal: string | undefined; cookies: unknown }[] = [];
+    engine.registerOp({
+      type: "t.charge",
+      effects: "pure",
+      inputs: { user: { kind: "value", required: true }, cookies: { kind: "value" } },
+      outputs: { out: { kind: "value" } },
+      execute: async (ctx) => {
+        const user = await ctx.input.value("user");
+        const cookies = await ctx.input.value("cookies");
+        seen.push({ user, principal: ctx.principal?.id, cookies });
+        if (!healed) throw new Error("provider down");
+        return { out: `charged:${(user as { id: string }).id}` };
+      },
+    });
+    engine.registerWorkflow({
+      id: "checkout",
+      durable: true,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["headers", "cookies", "user"] } },
+        { id: "charge", op: "t.charge" },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "user" }, to: { node: "charge", port: "user" } },
+        { from: { node: "in", port: "cookies" }, to: { node: "charge", port: "cookies" } },
+        { from: { node: "charge", port: "out" }, to: { node: "out", port: "value" } },
+      ],
+    } as Workflow);
+
+    const first = await engine.run("checkout", {
+      input: {
+        headers: { cookie: "pattern_session=sess-secret", authorization: "Bearer pat_secret" },
+        cookies: { pattern_session: "sess-secret" },
+        user: { id: "u_ada", email: "ada@x.io" },
+      },
+      principal: { kind: "user", id: "u_ada", roles: ["member"] } as never,
+    });
+    expect(first.status).toBe("error");
+    expect(JSON.stringify(await ledger.get(first.runId))).not.toContain("sess-secret");
+
+    healed = true;
+    const second = await (await engine.rerun(first.runId)).result;
+    expect(second.status).toBe("ok");
+    expect((Object.values(second.outputs)[0] as { value: string }).value).toBe("charged:u_ada");
+    // The resumed attempt saw the recorded user + principal; only the raw cookie is gone.
+    expect(seen[1]).toEqual({ user: { id: "u_ada", email: "ada@x.io" }, principal: "u_ada", cookies: {} });
+  });
+});

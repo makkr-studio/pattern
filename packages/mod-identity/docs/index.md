@@ -166,6 +166,38 @@ codes (status 401, no enumeration). The code travels to custom templates as
 `code` on the `identity.deliverToken` payload, is worked into the default
 `message` copy, and prints with the console fallback.
 
+## Rate limits (0.5)
+
+The sign-in surface is public, and every request to it can cost an email. Two
+budgets are on by default:
+
+- **Per address**: at most 5 sign-in emails per address per 15 minutes,
+  counted in the identity store, so a restart or a second instance doesn't
+  reset it. Past it, the request gets the usual "check your email" page and
+  nothing is sent, so the budget reveals nothing about the address. Login
+  providers ask `svc.signInEmailAllowed(email)` before issuing (magic-link
+  does).
+- **Per client IP**: 20 requests per 15 minutes each to `POST {mount}/code`
+  and `POST {mount}/bootstrap`, answered `429` past it (the route's
+  `rateLimit`). Together with the five-guess burn, this keeps code guessing
+  far from useful. Behind a proxy, set `PATTERN_TRUST_PROXY` so the host sees
+  client addresses.
+
+Tune or turn them off in a wrapper mod:
+
+```js
+identityMod({
+  rateLimit: {
+    perAddress: { max: 5, window: "15m" },  // false = off
+    perClient: { max: 20, window: "15m" },  // false = off
+  },
+});
+```
+
+The magic-link form has its own per-IP budget (`magicLinkMod({ rateLimit })`).
+The same bricks are open to your own routes: `rateLimit` on any
+`boundary.http.request`, and `core.flow.throttle` inside a workflow.
+
 ## Invites (0.4)
 
 An invite is a **record**, not just a token: admin → **Administration → Invites**

@@ -69,6 +69,11 @@ to reword the copy, alert only on certain workflows, or reroute to another
 channel. A failing alert can't alert about itself — the engine's recursion
 guard skips runs that `run.failed` itself triggered.
 
+A `core.flow.throttle` node keyed on the workflow id holds the mail to one
+email per failing workflow every 10 minutes, so a route that fails on every
+request (or someone hammering one) costs one email. Change `max` and `window`
+on that node to taste.
+
 ## Writing a driver
 
 A driver mod registers an `EmailDriverSpec` on the email service in `ready()`:

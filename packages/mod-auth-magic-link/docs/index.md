@@ -28,6 +28,9 @@ service exists), so its order in `pattern.config.json` doesn't matter.
   everything else does no work and sends nothing (delivery costs money, and an
   open issuer is a spam relay). The response is byte-identical either way, so
   nothing leaks about who exists (no account enumeration).
+- **Budgets**: one client IP gets 10 requests per 15 minutes (then `429`),
+  and each address gets at most 5 sign-in emails per 15 minutes (identity's
+  `rateLimit.perAddress`; past it the page is the same and nothing is sent).
 - **Verify, the link way**: the recipient opens the link, which is identity's
   own `GET /auth/token?t=…`: it consumes the token, finds-or-creates the user
   per the signup policy, mints a session, and redirects with the cookie set
@@ -63,6 +66,7 @@ import { magicLinkMod } from "@pattern-js/mod-auth-magic-link";
 export default magicLinkMod({
   mount: "/auth",                       // must match the identity mod's mount
   label: "Send me a sign-in link",      // shown on the login page
+  rateLimit: { max: 10, window: "15m" }, // requests per client IP; false = off
 });
 ```
 

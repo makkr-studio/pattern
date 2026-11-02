@@ -23,6 +23,7 @@ import {
   type InviteStore,
   type SessionRow,
   type SessionStore,
+  type TokenPurpose,
   type TokenRow,
   type TokenStore,
   type UserRow,
@@ -342,6 +343,13 @@ class SqliteTokenStore implements TokenStore {
           "WHERE id = ? AND consumed_at IS NULL",
       )
       .run(maxAttempts, at, id);
+  }
+
+  async countIssuedSince(emailNorm: string, purpose: TokenPurpose, since: number): Promise<number> {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM tokens WHERE email_norm = ? AND purpose = ? AND created_at >= ?")
+      .get(emailNorm, purpose, since) as { n: number | bigint };
+    return Number(row.n);
   }
 
   async deleteExpired(now: number): Promise<number> {

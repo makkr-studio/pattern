@@ -8,7 +8,7 @@
 export { identityMod } from "./mod.js";
 export { default } from "./mod.js";
 
-export { resolveOptions, type IdentityOptions, type ResolvedIdentityOptions } from "./options.js";
+export { resolveOptions, type IdentityOptions, type RateBudget, type ResolvedIdentityOptions } from "./options.js";
 export {
   DefaultIdentityService,
   API_TOKEN_PREFIX,

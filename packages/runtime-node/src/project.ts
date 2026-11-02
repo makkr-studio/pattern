@@ -30,7 +30,7 @@ export interface PatternConfig {
   /** Directory of workflow `.json` files. Default "./workflows". */
   workflows?: string;
   /** HTTP host defaults. */
-  http?: { port?: number; host?: string };
+  http?: { port?: number; host?: string; trustProxy?: number };
   /**
    * Off-loop execution for workflows flagged `offload`. A worker-thread pool
    * runs those runs so their CPU-heavy compute can't stall the host event loop;
@@ -256,7 +256,7 @@ export async function loadProject(
     }
   }
 
-  const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host });
+  const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host, trustProxy: config.http?.trustProxy });
 
   // WS rides the same servers (auto mode: boundary.ws.* workflows bind live;
   // bare connections still serve as the notification channel). One WsHost

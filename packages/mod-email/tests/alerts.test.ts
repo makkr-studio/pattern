@@ -86,4 +86,12 @@ describe("email.alert-failed-run", () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(sent).toHaveLength(0);
   });
+
+  it("a workflow failing over and over costs one email per window (the throttle node)", async () => {
+    const { engine, sent } = await boot({ PATTERN_ALERTS_TO: "ops@example.com" });
+    for (let i = 0; i < 5; i++) expect((await engine.run("flaky", { input: { v: false } })).status).toBe("error");
+    await until(() => sent.length);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(sent).toHaveLength(1);
+  });
 });

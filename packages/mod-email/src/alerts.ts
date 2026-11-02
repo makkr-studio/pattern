@@ -10,6 +10,11 @@
  *
  * (A failing run that was itself triggered by `run.failed` never re-emits —
  * the engine's recursion guard — so a broken alert can't alert about itself.)
+ *
+ * A `core.flow.throttle` keyed by workflow id caps the mail at one per failing
+ * workflow per 10 minutes: a route failing on every request (or someone
+ * hammering it) costs one email, not one per request. Raise or drop it in the
+ * editor.
  */
 
 import type { Workflow } from "@pattern-js/core";
@@ -20,7 +25,8 @@ export function alertFailedRunWorkflow(): Workflow {
     name: "Email · alert on failed runs (run.failed)",
     description:
       "Emails PATTERN_ALERTS_TO whenever a top-level run fails, with the error and a deep link to the " +
-      "trace. Unset the env (or edit this workflow) to change the posture.",
+      "trace; at most one email per failing workflow every 10 minutes (the throttle node). Unset the env " +
+      "(or edit this workflow) to change the posture.",
     source: "code",
     internal: false,
     nodes: [
@@ -29,6 +35,9 @@ export function alertFailedRunWorkflow(): Workflow {
       { id: "to", op: "core.env", config: { name: "PATTERN_ALERTS_TO", default: "" } },
       { id: "wanted", op: "core.cast.toBoolean" },
       { id: "gate", op: "core.flow.gate" },
+      // One email per failing workflow per window; the rest are dropped.
+      { id: "which", op: "core.object.get", config: { path: "workflowId" } },
+      { id: "throttle", op: "core.flow.throttle", config: { max: 1, window: "10m" } },
       // The admin deep link needs a public origin; localhost is the honest dev default.
       { id: "origin", op: "core.env", config: { name: "PATTERN_PUBLIC_URL", default: "http://localhost:3000" } },
       { id: "info", op: "core.object.set", config: { path: "origin" } },
@@ -53,7 +62,10 @@ export function alertFailedRunWorkflow(): Workflow {
       { from: { node: "to", port: "out" }, to: { node: "send", port: "to" } },
       { from: { node: "subj", port: "out" }, to: { node: "send", port: "subject" } },
       { from: { node: "body", port: "out" }, to: { node: "send", port: "markdown" } },
-      { from: { node: "gate", port: "out" }, to: { node: "send", port: "in" } },
+      { from: { node: "in", port: "payload" }, to: { node: "which", port: "object" } },
+      { from: { node: "which", port: "out" }, to: { node: "throttle", port: "key" } },
+      { from: { node: "gate", port: "out" }, to: { node: "throttle", port: "in" } },
+      { from: { node: "throttle", port: "out" }, to: { node: "send", port: "in" } },
     ],
   };
 }

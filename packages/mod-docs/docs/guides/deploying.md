@@ -29,6 +29,7 @@ ciphertext there.
 |---|---|
 | `PORT` | the listen port (default 3000) |
 | `PATTERN_PUBLIC_URL` | your public origin, e.g. `https://app.example.com`. Emailed links (sign-in, invites), OIDC redirects, and checkout redirects are built on it. Behind ANY proxy this must be set — the request's Host header lies. |
+| `PATTERN_TRUST_PROXY` | how many proxies in front of the app append to `X-Forwarded-For` (1 behind Fly, Railway, Render or one load balancer). Rate limits key on the client IP, and without it every request looks like it came from the proxy. Default 0: the header is ignored, since a client can write it. |
 | `PATTERN_VAULT_KEY` | the vault's master key, if your app uses the vault (`.env.example` says) |
 | `PATTERN_ALERTS_TO` | optional: an operator address — a failed run sends an email there (needs a `default` email account) |
 | provider keys | only those you point at env: vault-sourced secrets (the scaffold default) travel inside the `.pattern-data` volume, unlocked by `PATTERN_VAULT_KEY` |
@@ -110,6 +111,7 @@ the gate — the routes are deliberately public.
 ## A production checklist
 
 - `PATTERN_PUBLIC_URL` set (proxies lie about Host)
+- `PATTERN_TRUST_PROXY=1` behind one proxy, so rate limits see client IPs
 - both state dirs on durable volumes
 - `cookieSecure: true` on identity once you're behind TLS
 - an email account named `default` (sign-in links, alerts)

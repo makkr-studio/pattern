@@ -19,8 +19,10 @@ import { Readable } from "node:stream";
 import {
   ANONYMOUS,
   AUTH_LOGIN_URL,
+  RateLimiter,
   RunCanceled,
   jsonSchemaToZod,
+  parseDurationMs,
   principalToUser,
   type Engine,
   type OpDefinition,
@@ -44,6 +46,29 @@ export interface HttpHostOptions {
    * Routes with `bodyMode: "stream"` are exempt — they never buffer.
    */
   maxBodyBytes?: number;
+  /**
+   * How many reverse proxies in front of this host append to X-Forwarded-For.
+   * 0 (default) trusts no header: the client IP is the socket peer. Behind one
+   * load balancer, 1: the IP is the entry that proxy appended (the rightmost),
+   * which a client cannot forge. Defaults to the PATTERN_TRUST_PROXY env var.
+   */
+  trustProxy?: number;
+}
+
+/**
+ * The client's address. Only the last `trustProxy` X-Forwarded-For hops are
+ * believed: anything to their left was written by the client and is forgeable.
+ */
+export function clientIp(req: IncomingMessage, trustProxy: number): string {
+  const peer = (req.socket?.remoteAddress ?? "").replace(/^::ffff:/, "") || "unknown";
+  if (trustProxy <= 0) return peer;
+  const raw = req.headers["x-forwarded-for"];
+  const hops = (Array.isArray(raw) ? raw.join(",") : (raw ?? ""))
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+  const ip = hops[hops.length - trustProxy];
+  return ip ? ip.replace(/^::ffff:/, "") : peer;
 }
 
 const DEFAULT_MAX_BODY = 10 * 1024 * 1024;
@@ -82,6 +107,8 @@ interface CompiledRoute {
   requireAuth?: unknown;
   /** Cancel the run when the client disconnects (opt-in; default keeps running). */
   cancelOnDisconnect?: boolean;
+  /** Per-client request budget (429 past it, before the run starts). */
+  rateLimit?: { max: number; windowMs: number; by: "ip" | "user" };
 }
 
 /** A static app mount derived from a `boundary.http.app` node (admin-spec P1). */
@@ -238,6 +265,35 @@ export class HttpHost {
     // Default = explicit `defaultPort` (e.g. from pattern.config.json http.port),
     // else the PORT env var, else 3000.
     this.defaultPort = opts.defaultPort ?? envPort() ?? 3000;
+    const envTrust = Number(process.env.PATTERN_TRUST_PROXY);
+    this.trustProxy = opts.trustProxy ?? (Number.isInteger(envTrust) && envTrust > 0 ? envTrust : 0);
+  }
+
+  /** Forwarded hops believed when resolving the client IP (see HttpHostOptions.trustProxy). */
+  private readonly trustProxy: number;
+  /** Per-route request budgets (`rateLimit` on boundary.http.request). */
+  readonly rateLimiter = new RateLimiter();
+
+  /**
+   * Count one request against the route's budget; past it, answer 429 with
+   * Retry-After and report true so the caller stops before the run.
+   */
+  private limited(res: ServerResponse, route: CompiledRoute, client: string, req: IncomingMessage): boolean {
+    const rule = route.rateLimit!;
+    const v = this.rateLimiter.hit(`${route.workflowId}:${route.trigger}:${client}`, rule);
+    if (v.ok) return false;
+    const retryAfter = Math.max(1, Math.ceil(v.retryAfterMs / 1000));
+    const html = String(req.headers.accept ?? "").includes("text/html");
+    res.writeHead(429, {
+      "content-type": html ? "text/plain; charset=utf-8" : "application/json",
+      "retry-after": String(retryAfter),
+    });
+    res.end(
+      html
+        ? `Too many requests. Try again in ${retryAfter} seconds.`
+        : JSON.stringify({ error: "rate_limited", retryAfter }),
+    );
+    return true;
   }
 
   /** Derive routes from registered workflows, open servers, and watch for changes. */
@@ -346,6 +402,9 @@ export class HttpHost {
           paramsSchema: cfg.params ? jsonSchemaToZod(cfg.params as any, { coerce: true }) : undefined,
           requireAuth: cfg.requireAuth,
           cancelOnDisconnect: Boolean(cfg.cancelOnDisconnect),
+          rateLimit: cfg.rateLimit
+            ? { max: cfg.rateLimit.max, windowMs: parseDurationMs(cfg.rateLimit.window ?? "1m"), by: cfg.rateLimit.by ?? "ip" }
+            : undefined,
         });
       }
     }
@@ -503,6 +562,10 @@ export class HttpHost {
       return;
     }
 
+    // ── Rate limit (by IP: before any auth or body work is spent) ──
+    const ip = clientIp(req, this.trustProxy);
+    if (route.rateLimit?.by === "ip" && this.limited(res, route, `ip:${ip}`, req)) return;
+
     // ── Auth (§9) ──
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
@@ -514,6 +577,10 @@ export class HttpHost {
     if (!auth.ok) {
       res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
       return;
+    }
+    if (route.rateLimit?.by === "user") {
+      const who = principal.kind === "user" ? `user:${principal.id}` : `ip:${ip}`;
+      if (this.limited(res, route, who, req)) return;
     }
 
     // ── Validate params, query & body against the declared JSON Schemas (§7) ──
@@ -558,6 +625,7 @@ export class HttpHost {
       path: url.pathname,
       headers: headersObj,
       cookies: parseCookies(headersObj.cookie),
+      ip,
       query,
       params: routeParams,
       body,

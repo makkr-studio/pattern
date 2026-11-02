@@ -12,6 +12,7 @@ import { WorkflowError } from "../errors.js";
 import { defineOp, required, value, z } from "./helpers.js";
 import { deepEqual } from "./scalars.js";
 import type { OpDefinition } from "../types.js";
+import { RateLimiter, parseDurationMs } from "../rate-limit.js";
 
 const subworkflowRef = z.union([z.object({ workflowId: z.string() }), z.object({ workflow: z.any() })]);
 
@@ -242,10 +243,46 @@ export const log = defineOp({
   },
 });
 
+/** `core.flow.throttle` counters, one set per engine (keyed by its event bus). */
+const throttleLimiters = new WeakMap<object, RateLimiter>();
+function throttleLimiterFor(owner: object): RateLimiter {
+  let l = throttleLimiters.get(owner);
+  if (!l) throttleLimiters.set(owner, (l = new RateLimiter()));
+  return l;
+}
+
+export const throttle = defineOp({
+  type: "core.flow.throttle",
+  // Stateful (it counts) but touches nothing outside the process: a resumed
+  // run re-counting one hit is harmless.
+  effects: "idempotent",
+  title: "core.flow.throttle",
+  description:
+    "Let at most config.max passes through per config.window (ms, or \"30s\" / \"15m\" / \"1h\") → pulses `out`; " +
+    "over the limit → pulses `limited` (with `retryAfterMs`). Counts per node, and per `key` when wired " +
+    "(an email, a user id, a workflow id). Sliding window, in-process.",
+  inputs: { key: value(z.unknown()) },
+  outputs: { remaining: value(z.number()), retryAfterMs: value(z.number()) },
+  config: z.object({
+    max: z.number().int().positive(),
+    window: z.union([z.number().int().positive(), z.string()]).default("1m"),
+  }),
+  controlOut: ["out", "limited"],
+  execute: async (ctx) => {
+    const { max, window } = ctx.config as { max: number; window: number | string };
+    const key = ctx.input.has("key") ? await ctx.input.value("key") : undefined;
+    const scope = `${ctx.workflowId}:${ctx.nodeId}:${key === undefined ? "" : typeof key === "string" ? key : JSON.stringify(key)}`;
+    const v = throttleLimiterFor(ctx.services.events).hit(scope, { max, windowMs: parseDurationMs(window) });
+    void ctx.pulse(v.ok ? "out" : "limited");
+    return { remaining: v.remaining, retryAfterMs: v.retryAfterMs };
+  },
+});
+
 export const flowOps: OpDefinition[] = [
   branch,
   switchOp,
   gate,
+  throttle,
   sequence,
   parallel,
   join,

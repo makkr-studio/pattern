@@ -189,3 +189,6 @@ export {
 export * as boundaries from "./boundaries/index.js";
 // The domain-outcome helper for boundary.http.status (collision-proof 4xx).
 export { httpOutcome } from "./boundaries/index.js";
+
+// The rate-limit brick: shared by the HTTP host's per-route `rateLimit` and `core.flow.throttle`.
+export { RateLimiter, parseDurationMs, type RateLimitRule, type RateLimitVerdict } from "./rate-limit.js";

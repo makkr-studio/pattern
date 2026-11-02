@@ -176,6 +176,12 @@ export interface TokenStore {
    * commutative, so concurrent guessers compose correctly without retries.
    */
   recordCodeAttempt(id: string, maxAttempts: number, at: number): Promise<void>;
+  /**
+   * Tokens of `purpose` minted for an email at or after `since` (consumed or
+   * not): the per-address sign-in email budget. Rows older than the token
+   * lifetime are swept, so a window longer than it sees only what remains.
+   */
+  countIssuedSince(emailNorm: string, purpose: TokenPurpose, since: number): Promise<number>;
   deleteExpired(now: number): Promise<number>;
 }
 
