@@ -127,7 +127,7 @@ describe("compose mode — artifacts", () => {
     }
     // The boot banner was retargeted at the app's own surface (both bases).
     const idx = read("src/index.ts");
-    expect(idx).toContain("Subscribe → Stripe test checkout");
+    expect(idx).toContain("Subscribe or Buy → Stripe test checkout");
   });
 
   it("--with billing pulls auth + email + store, says so, and wires both bridge wrappers", () => {
