@@ -8,32 +8,10 @@ records what actually shipped.
 > without migration paths or legacy shims; the CHANGELOG calls out every
 > breaking change.
 
-## Next — 0.5.0: open for business (direction)
+## Next
 
-The theme: everything a real product needs the day it starts taking money.
-Two headliners that are secretly one story — payments demand durability:
-
-- **Durable execution** — retry policies as node config (attempts, backoff),
-  resuming a failed run from the failing node instead of from scratch, and
-  idempotency semantics so a retry can never double-send an email or
-  double-charge a card. The deep engine work of the release; it also unlocks
-  resumable approval gates in agent runs.
-- **Payments (`mod-stripe`)** — checkout, the customer portal, and
-  subscription state; a signed `stripe.webhook` trigger (the 0.4
-  inbound-email recipe); and a subscription→identity bridge so plan status
-  projects into roles — gating a route behind a paid plan becomes an auth
-  requirement, not code. Plus **usage metering**: record agent and model
-  usage to Stripe metered billing straight from the canvas.
-- **The `saas-starter` pack + a deploy story** — scaffold sign-in, real
-  email, billing, and a gated app in one command; a Dockerfile in every
-  scaffold and guides for the usual platforms. From `npm create pattern` to
-  a paying customer.
-- **Failure alerts** — a run exhausts its retries, you get an email. Nearly
-  free on `mod-email`, and it completes the reliability story durability
-  starts.
-
-The scaffolder's composability rework (surfaces × stacks × recipes,
-`pattern add`) stays under consideration — being shaped by real usage first.
+The next milestone is being shaped by real usage of 0.5. It will come from the
+shelf below; orgs & teams and durable timers & waits are the front-runners.
 
 ## Later
 
@@ -63,6 +41,13 @@ An unordered shelf — these are on the map, not yet in a milestone:
 
 ## Shipped
 
+- **0.5.0** — open for business: durable execution (retry as node config,
+  the RunLedger, resume and re-run that never repeat completed work, external
+  effects sealed or confirmed), a payments contract with a Stripe driver
+  (subscriptions and one-time purchases projected into roles, the customer
+  portal, signed webhooks), AI usage metering, failure alerts, the
+  `saas-starter` pack with a Dockerfile in every scaffold, compose mode with
+  `pattern add`, sign-in codes, and an admin reorganized around six rooms.
 - **0.4.0** — Buddy (the workflow assistant), the `pattern_*` control plane
   with scoped API tokens + MCP (HTTP and `pattern mcp` stdio), `mod-vectors`
   with hybrid filterable search, per-user chat memory with provenance

@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-billing",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Payments for Pattern — the provider-neutral billing contract: named accounts with sourced secrets, hosted checkout + customer portal as ops, a normalized webhook event union with stable-id dedup, a user↔customer mapping, subscription→role entitlement projection into mod-identity, and usage metering. Providers plug in as driver mods (Stripe first).",
   "keywords": [
     "pattern",

@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/mod-billing-stripe",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Stripe driver for @pattern-js/mod-billing — Checkout Sessions, the Customer Portal, subscription state and Billing Meter events over a zero-dependency fetch client, plus Stripe-Signature webhook verification (raw bytes, constant-time, rotation-aware) feeding the normalized billing event pipeline.",
   "keywords": [
     "pattern",

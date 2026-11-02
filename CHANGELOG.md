@@ -3,7 +3,7 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
-## 0.5.0 — unreleased
+## 0.5.0 — 2026-11-02
 
 Open for business: durable execution (retry, resume, re-run — completed work is
 never re-executed, external effects are sealed or confirmed), a payments
