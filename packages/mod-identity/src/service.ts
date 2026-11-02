@@ -278,10 +278,27 @@ export class DefaultIdentityService implements IdentityService {
     if (!this.scopesForRoles(roles).includes("admin")) {
       await this.assertNotLastAdmin(userId, "demote");
     }
+    const before = await this.getUser(userId);
     const updated = await this.casUpdateUser(userId, { roles });
-    // Privilege change: existing sessions carry the old privilege — end them.
-    await this.revokeAllForUser(userId);
+    if (!before || this.roleChangeEndsSessions(before.roles, roles)) await this.revokeAllForUser(userId);
     return updated;
+  }
+
+  /**
+   * Scopes resolve LIVE from the user row on every request
+   * (`resolveSessionByToken`), so a pure gain reaches open sessions on their
+   * next request without ending them — a buyer whose payment just granted
+   * "member" stays signed in on the success page. Sessions end when privilege
+   * shrinks (any role or scope lost: live sockets authorized under the old
+   * principal must close) and on elevation to `admin` (renew the session on
+   * the one elevation that matters).
+   */
+  private roleChangeEndsSessions(oldRoles: string[], newRoles: string[]): boolean {
+    const oldScopes = this.scopesForRoles(oldRoles);
+    const newScopes = this.scopesForRoles(newRoles);
+    const lost = oldRoles.some((r) => !newRoles.includes(r)) || oldScopes.some((s) => !newScopes.includes(s));
+    const elevatedToAdmin = !oldScopes.includes("admin") && newScopes.includes("admin");
+    return lost || elevatedToAdmin;
   }
 
   async setDisabled(userId: string, disabled: boolean): Promise<UserRow> {

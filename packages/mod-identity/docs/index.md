@@ -40,8 +40,10 @@ Now a user with role `editor` resolves to scopes `["edit","read"]`; gate a
 route with `requireAuth: { scopes: ["edit"] }` and both `admin` (if you also
 grant it `edit`) and `editor` users get through, `viewer` does not. The same
 roles surface on the admin Users screen and are settable there
-(`identity.users.setRoles`, which **ends the user's sessions**, because a
-privilege change must re-login).
+(`identity.users.setRoles`). Scopes resolve live from the user's roles on
+every request, so a **gain** reaches the user's open sessions immediately;
+a **loss** (any role or scope removed) and an elevation to `admin` end the
+user's sessions instead.
 
 **Entitlements from billing (0.5).** Because scopes recompile from roles on
 every request, a paid plan can *be* a scope: `@pattern-js/mod-billing` projects
@@ -72,8 +74,8 @@ no special-case admin password anywhere.
 Opaque 256-bit secrets in an `HttpOnly; SameSite=Lax` cookie (`pattern_session`
 by default); only the sha256 is stored. Sliding 30-day expiry with throttled
 touches. Sessions are **revocable**: individually (`identity.sessions.revoke`),
-per user (`identity.users.revokeSessions`), and automatically when a role
-changes or a user is disabled. Set `cookieSecure: true` behind TLS in
+per user (`identity.users.revokeSessions`), and automatically when a user
+loses a role or scope, is elevated to `admin`, or is disabled. Set `cookieSecure: true` behind TLS in
 production. CSRF protection lives *inside* the session provider: a cross-site
 state-changing request doesn't authenticate (so it 401s with no token
 machinery), while GETs always pass; the magic-link callback is a cross-site

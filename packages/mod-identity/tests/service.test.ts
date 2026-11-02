@@ -97,6 +97,32 @@ describe("DefaultIdentityService", () => {
     expect(await svc.resolveSessionByToken(d.token)).not.toBeNull();
   });
 
+  it("a pure role GAIN keeps sessions (scopes resolve live); a loss or an admin elevation ends them", async () => {
+    const svc = makeService({ roles: { admin: ["admin"], member: ["pro"], editor: ["edit"] } });
+    const user = await svc.findOrCreateByIdentity(identity("ada@x.io"));
+    const s = await svc.mintSession(user!.id);
+    expect((await svc.resolveSessionByToken(s.token))?.scopes).toEqual([]);
+
+    // Gain: a payment grants "member" — the same session sees "pro" at once.
+    await svc.setRoles(user!.id, ["member"]);
+    expect((await svc.resolveSessionByToken(s.token))?.scopes).toEqual(["pro"]);
+    await svc.setRoles(user!.id, ["member", "editor"]);
+    expect((await svc.resolveSessionByToken(s.token))?.scopes).toEqual(["pro", "edit"]);
+
+    // Loss: the subscription lapses — sessions end.
+    await svc.setRoles(user!.id, ["editor"]);
+    expect(await svc.resolveSessionByToken(s.token)).toBeNull();
+
+    // A no-op write ends nothing.
+    const t = await svc.mintSession(user!.id);
+    await svc.setRoles(user!.id, ["editor"]);
+    expect(await svc.resolveSessionByToken(t.token)).not.toBeNull();
+
+    // Elevation to admin renews the session even though nothing was lost.
+    await svc.setRoles(user!.id, ["editor", "admin"]);
+    expect(await svc.resolveSessionByToken(t.token)).toBeNull();
+  });
+
   it("issues and consumes single-use tokens (purpose-checked, expiring)", async () => {
     const svc = makeService();
     const issued = await svc.issueToken({ purpose: "login", email: "Ada@X.io", data: { next: "/admin" } });
