@@ -152,7 +152,7 @@ interface AiProviderChoice {
   seed?: { provider: string; envKey: string; language?: string; embedding?: string };
 }
 const AI_PROVIDERS: AiProviderChoice[] = [
-  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^4", seed: { provider: "xai", envKey: "XAI_API_KEY", language: "grok-4.5" } },
+  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^5", seed: { provider: "xai", envKey: "XAI_API_KEY", language: "grok-4.5" } },
   { value: "@ai-sdk/openai", label: "OpenAI", hint: "", range: "^4", seed: { provider: "openai", envKey: "OPENAI_API_KEY", language: "gpt-5.6-terra", embedding: "text-embedding-3-small" } },
   { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI on Azure", range: "^4" },
   { value: "@ai-sdk/anthropic", label: "Anthropic", hint: "", range: "^4", seed: { provider: "anthropic", envKey: "ANTHROPIC_API_KEY", language: "claude-sonnet-5" } },
@@ -176,7 +176,7 @@ const AI_PROVIDERS: AiProviderChoice[] = [
   { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "", range: "^3" },
   { value: "@ai-sdk/replicate", label: "Replicate", hint: "image/video", range: "^3" },
   { value: "@ai-sdk/prodia", label: "Prodia", hint: "image", range: "^2" },
-  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "", range: "^4" },
+  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "", range: "^5" },
   { value: "@ai-sdk/luma", label: "Luma", hint: "image/video", range: "^3" },
   { value: "@ai-sdk/bytedance", label: "ByteDance", hint: "Seed/Seedance", range: "^2" },
   { value: "@ai-sdk/klingai", label: "Kling AI", hint: "video", range: "^4" },

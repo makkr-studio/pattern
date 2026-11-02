@@ -32,12 +32,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@pattern-js/core": "workspace:*",
     "@pattern-js/mod-agents": "workspace:*",
     "@pattern-js/runtime-node": "workspace:*",
-    "ai": "^7",
-    "zod": "^4.5.4"
+    "ai": "^7.0.159",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@ai-sdk/alibaba": "^2",
@@ -71,14 +71,14 @@
     "@ai-sdk/open-responses": "^2",
     "@ai-sdk/openai": "^4",
     "@ai-sdk/openai-compatible": "^3",
-    "@ai-sdk/perplexity": "^4",
+    "@ai-sdk/perplexity": "^5",
     "@ai-sdk/prodia": "^2",
     "@ai-sdk/quiverai": "^2",
     "@ai-sdk/replicate": "^3",
     "@ai-sdk/revai": "^3",
     "@ai-sdk/togetherai": "^3",
     "@ai-sdk/voyage": "^2",
-    "@ai-sdk/xai": "^4"
+    "@ai-sdk/xai": "^5"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/alibaba": {
@@ -200,8 +200,8 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/azure": "^4",
-    "@ai-sdk/openai": "^4",
+    "@ai-sdk/azure": "^4.0.114",
+    "@ai-sdk/openai": "^4.0.106",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
   },

@@ -111,7 +111,7 @@ export const SPECS: ProviderSpec[] = [
   },
 
   // ── Single-key direct providers ──
-  single("xai", "xAI Grok", "@ai-sdk/xai", "^4", "createXai", "XAI_API_KEY", ["language", "image", "video"]),
+  single("xai", "xAI Grok", "@ai-sdk/xai", "^5", "createXai", "XAI_API_KEY", ["language", "image", "video"]),
   single("openai", "OpenAI", "@ai-sdk/openai", "^4", "createOpenAI", "OPENAI_API_KEY", ["language", "embedding", "image", "speech", "transcription"]),
   single("anthropic", "Anthropic", "@ai-sdk/anthropic", "^4", "createAnthropic", "ANTHROPIC_API_KEY", ["language"]),
   single("groq", "Groq", "@ai-sdk/groq", "^4", "createGroq", "GROQ_API_KEY", ["language", "transcription"]),
@@ -130,7 +130,7 @@ export const SPECS: ProviderSpec[] = [
   single("cerebras", "Cerebras", "@ai-sdk/cerebras", "^3", "createCerebras", "CEREBRAS_API_KEY", ["language"]),
   single("replicate", "Replicate", "@ai-sdk/replicate", "^3", "createReplicate", "REPLICATE_API_TOKEN", ["image", "video"]),
   single("prodia", "Prodia", "@ai-sdk/prodia", "^2", "createProdia", "PRODIA_API_KEY", ["image", "video"]),
-  single("perplexity", "Perplexity", "@ai-sdk/perplexity", "^4", "createPerplexity", "PERPLEXITY_API_KEY", ["language"]),
+  single("perplexity", "Perplexity", "@ai-sdk/perplexity", "^5", "createPerplexity", "PERPLEXITY_API_KEY", ["language"]),
   single("luma", "Luma", "@ai-sdk/luma", "^3", "createLuma", "LUMA_API_KEY", ["image", "video"]),
   single("bytedance", "ByteDance", "@ai-sdk/bytedance", "^2", "createByteDance", "BYTEDANCE_API_KEY", ["language", "image", "video"]),
   single("elevenlabs", "ElevenLabs", "@ai-sdk/elevenlabs", "^3", "createElevenLabs", "ELEVENLABS_API_KEY", ["speech", "transcription"]),

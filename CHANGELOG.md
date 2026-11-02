@@ -355,14 +355,20 @@ with a deploy story.
   Enter/Space, focus ring); dialogs contain focus while open; dark-theme
   secondary text lifts to ≈7.6:1. The frontend project joins `pnpm
   typecheck`, so CI finally sees the SPA's types.
-- **Dependencies.** Vitest 5, Vite 8.2, React 19.2.8, Tailwind 4.3.3, motion
-  13, nodemailer 10, @clack/prompts 1.x, happy-dom 20, lucide 1.41, zod 4.5,
-  and the rest of the minors; the **Vercel AI SDK moves to v7** (`system` →
-  `instructions` at the call sites, speech/transcription out of
-  `experimental_`, `usage` accumulates across steps; every `@ai-sdk/*`
-  provider range follows its v7-era major; the retired v0 Vercel provider is
-  dropped; the usage tap reads the v4 provider spec and warns once about a
-  spec it can't). TypeScript stays 5.9 and `@types/node` on 22 on purpose.
+- **Dependencies.** Vitest 5, Vite 8.3, React 19.3, Tailwind 4.3.3, motion
+  14, nodemailer 10.3, @clack/prompts 1.8, happy-dom 21, lucide 1.66, zod 4.6,
+  @modelcontextprotocol/sdk 1.32, and the rest of the minors; the **Vercel AI
+  SDK moves to v7** (`system` → `instructions` at the call sites,
+  speech/transcription out of `experimental_`, `usage` accumulates across
+  steps; every `@ai-sdk/*` provider range follows its v7-era major; the
+  retired v0 Vercel provider is dropped; the usage tap reads the v4 provider
+  spec and warns once about a spec it can't). Two providers took their own
+  majors on the same spec: **`@ai-sdk/xai` ^5** (Responses API only) and
+  **`@ai-sdk/perplexity` ^5**, which moves from the Sonar chat models to the
+  Agent API: a direct Perplexity alias names an Agent API preset (`fast`,
+  `low`, `medium`, `high`, `xhigh`) or `perplexity/sonar`; the bare
+  `sonar-*` chat model ids are gone. TypeScript stays 5.9 and
+  `@types/node` on 22 on purpose.
 - `RunSummary`, the admin protocol, and the runs UI carry the `canceled`
   status; run detail exposes `ledgered` + `resumedFrom`.
 - The op count grows to **365** across the first-party mods (175 in the base
