@@ -104,8 +104,8 @@ export const checkoutCreateOp: OpDefinition = {
   effects: "idempotent",
   title: "billing.checkout.create",
   description:
-    "Create a hosted checkout session — redirect the browser to `url` and the provider handles cards, taxes, " +
-    "and 3DS. `mode` picks what is sold: \"subscription\" (recurring — the subscription becomes the entitlement " +
+    "Create a hosted checkout session — redirect the browser to `url` and the provider hosts the card form, " +
+    "wallets and 3DS. `mode` picks what is sold: \"subscription\" (recurring — the subscription becomes the entitlement " +
     "role while it stays paid) or \"payment\" (one-time — the purchase is recorded, `billing.owns` answers for " +
     "it, and a `grants` entry turns it into a role the buyer keeps). `userId` becomes the checkout's reference, " +
     "so the completion webhook maps the new customer back to your user — always wire the trigger's user.id. " +
@@ -166,8 +166,8 @@ export const portalCreateOp: OpDefinition = {
   effects: "idempotent",
   title: "billing.portal.create",
   description:
-    "Create a customer-portal session for `userId`'s provider customer — the provider's own UI for upgrades, " +
-    "cancellation, invoices and payment methods. Needs an existing customer (a completed checkout): before one " +
+    "Create a customer-portal session for `userId`'s provider customer — the provider's own UI for " +
+    "cancellation, invoices and payment methods (plan changes too, when the provider's portal settings allow them). Needs an existing customer (a completed checkout): before one " +
     "exists, `result` carries a friendly conflict outcome for boundary.http.status (subscribe first) instead of " +
     "failing the run; `url` stays for happy-path wiring. Retries are provider-side idempotent.",
   config: z.object({ account: z.string().default(DEFAULT_ACCOUNT) }),
@@ -281,7 +281,8 @@ export const usageRecordOp: OpDefinition = {
   description:
     "Record a metered-usage event: `value` units on `meter` (the provider meter's event name) against the " +
     "user's billing customer (or an explicit customerId). Pass a stable `identifier` to make retries " +
-    "provider-side idempotent. Invoices aggregate the meter automatically at period end.",
+    "provider-side idempotent. Invoices aggregate the meter automatically at period end. A user with no billing " +
+    "customer yet (a free tier) or an unconfigured account yields a conflict outcome on `result`, not a failed run.",
   config: z.object({ account: z.string().default(DEFAULT_ACCOUNT), meter: z.string().optional() }),
   inputs: {
     userId: value(z.string().optional()),
@@ -299,20 +300,28 @@ export const usageRecordOp: OpDefinition = {
     if (typeof amount !== "number" || !Number.isFinite(amount)) {
       throw new Error("billing.usage.record: `value` must be a finite number of units.");
     }
-    const result = await billingService(ctx).recordUsage(
-      {
-        account: cfg.account,
-        userId: await maybe<string>(ctx, "userId"),
-        customerId: await maybe<string>(ctx, "customerId"),
-        meter,
-        value: amount,
-        // Default the provider dedup key to the run+node seal, so a retried
-        // node can never double-count usage.
-        identifier: (await maybe<string>(ctx, "identifier")) ?? retrySeal(ctx),
-      },
-      ctx,
-    );
-    return { result };
+    try {
+      const result = await billingService(ctx).recordUsage(
+        {
+          account: cfg.account,
+          userId: await maybe<string>(ctx, "userId"),
+          customerId: await maybe<string>(ctx, "customerId"),
+          meter,
+          value: amount,
+          // Default the provider dedup key to the run+node seal, so a retried
+          // node can never double-count usage.
+          identifier: (await maybe<string>(ctx, "identifier")) ?? retrySeal(ctx),
+        },
+        ctx,
+      );
+      return { result };
+    } catch (err) {
+      // No customer for this user (a free tier) or billing not set up yet:
+      // an outcome on `result`, never a failed run (or a failure alert per call).
+      const outcome = unavailableOutcome(err);
+      if (outcome) return { result: outcome };
+      throw err;
+    }
   },
 };
 
@@ -336,12 +345,14 @@ export const billingEventTrigger: OpDefinition = {
     return kinds.map((kind) => ({
       event: `billing.${kind}`,
       map: (payload: unknown) => {
-        const p = payload as { event?: { kind?: string; userRef?: string }; account?: string };
+        const p = payload as { event?: { kind?: string; userRef?: string }; account?: string; userId?: string };
         return {
           event: p.event,
           kind: p.event?.kind,
           account: p.account,
-          userId: p.event && "userRef" in p.event ? p.event.userRef : undefined,
+          // The mapping's user (every kind, once the customer is bound), else
+          // the checkout's own reference.
+          userId: p.userId ?? (p.event && "userRef" in p.event ? p.event.userRef : undefined),
         };
       },
     }));

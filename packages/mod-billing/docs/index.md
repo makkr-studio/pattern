@@ -43,7 +43,7 @@ billing.portal.create    { userId }         → { url }   // manage/cancel
 ```
 
 Wire `url` into `boundary.http.response`'s redirect and you have a payment UI:
-the provider hosts cards, taxes, and 3DS. `userId` rides along as the
+the provider hosts the card form, wallets, and 3DS. `userId` rides along as the
 checkout's reference, so the completion webhook can map the new provider
 customer back to *your* user. Redirect URLs anchor on `PATTERN_PUBLIC_URL`
 (set it behind a proxy) with `/billing/success` and `/billing/cancel` paths
@@ -62,8 +62,8 @@ the mapping; the Billing page lists every sale.
 
 Name prices by **lookup key** (`priceKey: "lifetime"` on the node, or the
 account's `defaultPriceKey`). One-time buyers become provider customers too, so
-they can reach the portal for receipts, and both kinds of payment land in the
-same customer row.
+both kinds of payment land in the same customer row (receipts for one-time
+payments are the provider's emailed receipts).
 
 ## The return pages absorb the webhook race
 
@@ -114,7 +114,12 @@ The driver mod seeds a signed webhook route. Every delivery is:
 
 The `billing.event` trigger subscribes to those events, so *"on payment
 failed → email the user"* or *"on purchase → provision"* is an ordinary
-three-node workflow — filter with `config.kind` or take all six kinds.
+three-node workflow — filter with `config.kind` or take all six kinds. Its
+`userId` is the mapped user on every kind once a checkout has bound the
+customer (invoice and subscription events carry only the provider's customer
+id; the mapping fills it in). The webhook is acknowledged before the trigger's
+run, so the provider won't redeliver a failed one: make fulfillment workflows
+`durable` with a `retry` on the side-effect node.
 
 ## Payments become roles: `entitlement` and `grants`
 
@@ -138,9 +143,10 @@ plan — subscribed or bought — is:
 { "roles": { "member": ["pro"] } }   →   "requireAuth": { "scopes": ["pro"] }
 ```
 
-Projection happens **only on actual transitions** — `setRoles` revokes the
-user's sessions (it's a privilege change), so a renewal webhook must never log
-your customers out. Mid-graph, `billing.entitled` gives you `{ entitled,
+Projection happens **only on actual transitions**. An unlock is a pure role
+gain, so the buyer stays signed in and the success page forwards them the
+moment the webhook lands; a lapse removes the role and ends their sessions
+(identity revokes on any privilege loss), so access closes everywhere at once. Mid-graph, `billing.entitled` gives you `{ entitled,
 status, purchased }` and `billing.owns` gives you `{ owns }` for one price —
 both from the local mapping, no provider round-trip, safe on every request.
 
@@ -190,3 +196,25 @@ the `checkout.completed` event — mod-billing records the purchase and emits
 one-time buyer becomes a provider **customer**, since purchases hang off the
 customer ↔ user mapping. The secret/option field lists you declare drive the
 admin account form automatically.
+
+## What it does not do (yet)
+
+The contract is deliberately small. Know its edges before you promise a
+feature:
+
+- **One price per checkout.** No cart or multiple line items; `quantity`
+  multiplies the one price and is recorded on the purchase.
+- **Ownership is yes/no.** `billing.owns` answers whether a price was ever
+  bought. Consumables (credits, downloads) need your own counter, kept from
+  `purchase.completed`'s `quantity`.
+- **Not set at checkout:** taxes, promotion codes, trials and shipping-address
+  collection. The checkout is the provider's hosted page with the provider
+  defaults.
+- **Refunds and disputes are not projected.** The driver ignores them; a
+  refunded purchase keeps its grant until you change the user's roles.
+- **One tracked subscription per customer.** A newer subscription replaces
+  the older one on the mapping (and the older one's later cancellation is
+  ignored); parallel subscriptions for one user are not modeled.
+- **Delayed payment methods** (settling after the checkout returns) are not
+  recorded yet.
+- **Stripe is the only driver** so far; the section above is how to add one.

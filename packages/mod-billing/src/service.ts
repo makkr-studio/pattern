@@ -13,8 +13,8 @@
  * one is refused rather than acknowledged), update the user ↔ customer
  * mapping (serialized per customer, ordered by the provider's event time),
  * record one-time PURCHASES, project entitlement and grants into identity
- * ROLES — but only on actual transitions, because `setRoles` revokes sessions
- * and a renewal must never log anyone out — then emit the normalized
+ * ROLES — only on actual transitions (an unlock keeps the buyer signed in; a
+ * lapse ends their sessions, identity's rule for any privilege loss) — then emit the normalized
  * `billing.*` events any workflow can build on.
  */
 
@@ -122,6 +122,8 @@ export interface IngestResult {
   /** The event was older than the state already applied — recorded, not projected. */
   stale?: boolean;
   kind?: BillingEvent["kind"];
+  /** The user the provider's customer is bound to (from the mapping), when known. */
+  userId?: string;
   /** The role projection actually changed the user's roles this delivery. */
   roleChanged?: boolean;
   /** A payment-mode checkout: the purchase recorded (and `purchase.completed` emitted). */
@@ -318,7 +320,12 @@ export class DefaultBillingService implements BillingService {
   ): Promise<{ ok: true }> {
     const { account, driver, creds } = await this.resolve(input.account, ctx);
     let customerId = input.customerId;
-    if (!customerId && input.userId) customerId = (await this.customerForUser(input.userId, ctx))?.customerId;
+    if (!customerId && input.userId) {
+      customerId = (await this.customerForUser(input.userId, ctx))?.customerId;
+      // A signed-in user who never checked out (a free tier) has nothing to
+      // meter: setup-shaped, so the op turns it into an outcome, not a failure.
+      if (!customerId) throw new BillingNoCustomerError(`user "${input.userId}" has no billing customer — nothing to meter.`);
+    }
     if (!customerId) {
       throw new Error(
         `mod-billing: nothing to bill — pass \`customerId\`, or a \`userId\` with an existing billing customer.`,
@@ -408,7 +415,7 @@ export class DefaultBillingService implements BillingService {
         sessionId: evt.sessionId,
         paymentIntentId: evt.paymentIntentId,
       };
-      ctx.services.events.emit("billing.purchase.completed", { account: account.name, provider: account.provider, event: purchase, roleChanged: projection.roleChanged });
+      ctx.services.events.emit("billing.purchase.completed", { account: account.name, provider: account.provider, event: purchase, roleChanged: projection.roleChanged, userId: projection.userId });
     }
     return {
       ok: true,
@@ -576,8 +583,18 @@ export class DefaultBillingService implements BillingService {
     const id = `${account.provider}:${customerId}`;
     const existing = (await store.docs.get(CUSTOMERS_COLLECTION, id))?.data as unknown as BillingCustomer | undefined;
     const stateBearing = evt.kind === "subscription.updated" || evt.kind === "subscription.deleted";
+    // Every outcome names the mapped user, so a `billing.event` trigger knows
+    // whose invoice failed or whose subscription moved (those events carry
+    // only the provider's customer id).
+    const known = existing?.userId ? { userId: existing.userId } : {};
     if (stateBearing && evt.at !== undefined && existing?.lastEventAt !== undefined && evt.at < existing.lastEventAt) {
-      return { stale: true };
+      return { stale: true, ...known };
+    }
+    // One subscription is tracked per customer: the end of a DIFFERENT one
+    // (replaced earlier, canceled later) must not take the current one's
+    // access away.
+    if (evt.kind === "subscription.deleted" && existing?.subscriptionId && evt.subscriptionId && evt.subscriptionId !== existing.subscriptionId) {
+      return { ...known };
     }
     const next: BillingCustomer = {
       userId: existing?.userId,
@@ -642,11 +659,11 @@ export class DefaultBillingService implements BillingService {
       case "invoice.paid":
       case "invoice.payment_failed":
         // State lives on the subscription events; invoices just emit.
-        return {};
+        return { ...known };
     }
 
     await store.docs.put(CUSTOMERS_COLLECTION, id, next as unknown as Record<string, unknown>);
-    return { ...(await this.projectRoles(next, ctx)), ...(purchase ? { purchase } : {}) };
+    return { ...(await this.projectRoles(next, ctx)), ...(purchase ? { purchase } : {}), ...(next.userId ? { userId: next.userId } : {}) };
   }
 
   /**
@@ -654,9 +671,9 @@ export class DefaultBillingService implements BillingService {
    * every role a grant names) are recomputed from the mapping — the
    * entitlement role and the grants of subscribed prices while entitled, the
    * grants of purchased prices for good — and written ONLY on an actual
-   * transition, leaving every other role alone. `setRoles` revokes the user's
-   * sessions (privilege change), so a no-op write would log people out on
-   * every renewal webhook.
+   * transition, leaving every other role alone. `setRoles` ends the user's
+   * sessions on any privilege LOSS, so the managed set must be exact: a
+   * stray removal would log a paying customer out on a renewal webhook.
    */
   private async projectRoles(mapping: BillingCustomer, ctx: OpContext): Promise<{ roleChanged?: boolean }> {
     const rule = this.options.entitlement === false ? undefined : (this.options.entitlement ?? { role: "member" });
@@ -687,6 +704,8 @@ export class DefaultBillingService implements BillingService {
 /** What folding one event changed: roles, the ordering verdict, a recorded purchase. */
 interface Projection {
   roleChanged?: boolean;
+  /** The mapped user, when the customer is bound to one. */
+  userId?: string;
   stale?: boolean;
   purchase?: { priceKeys: string[]; quantity: number; amount?: number; currency?: string };
 }

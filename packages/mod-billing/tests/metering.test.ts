@@ -132,6 +132,16 @@ describe("billing.meter.ai-usage (the packaged metering workflow)", () => {
     expect(driver.usage).toHaveLength(0);
   });
 
+  it("a signed-in user with no billing customer (a free tier) is an outcome, never a failed run or an alert", async () => {
+    const { engine, driver } = await boot(true);
+    const failed: unknown[] = [];
+    engine.events.subscribe("run.failed", (p) => failed.push(p));
+    engine.emit("ai.usage", { modelId: "m", userId: "bob", totalTokens: 42, runId: "r", workflowId: "w", nodeId: "n" });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(driver.usage).toHaveLength(0);
+    expect(failed).toHaveLength(0);
+  });
+
   it("is absent entirely unless meterAiUsage is on", async () => {
     const { engine, driver } = await boot(false);
     engine.emit("ai.usage", { modelId: "m", userId: "ada", totalTokens: 9, runId: "r", workflowId: "w", nodeId: "n" });

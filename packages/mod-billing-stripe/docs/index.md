@@ -29,8 +29,8 @@ scheme, feeding the contract's normalized event pipeline.
 
 - **Checkout** (`POST /v1/checkout/sessions`): subscription mode by default,
   `mode: "payment"` for a one-time sale (the session then asks Stripe to
-  create a **customer**, so the purchase lands on the customer ↔ user mapping
-  and the buyer can reach the portal for receipts). Your `userId` rides as
+  create a **customer**, so the purchase lands on the customer ↔ user mapping;
+  receipts are Stripe's emailed receipts, on in Settings → Customer emails). Your `userId` rides as
   `client_reference_id`, the price key and quantity as session `metadata` —
   the completed-session webhook carries no line items, so that is how a
   purchase reads back what was bought. Redirect URLs anchor on

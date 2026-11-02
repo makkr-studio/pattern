@@ -18,6 +18,9 @@ import {
   type BillingEvent,
   type BillingService,
 } from "@pattern-js/mod-billing";
+import { DefaultIdentityService } from "../../mod-identity/src/service.js";
+import { memoryIdentityStores } from "../../mod-identity/src/store/memory.js";
+import { resolveOptions as resolveIdentityOptions } from "../../mod-identity/src/options.js";
 
 /* ── fakes ────────────────────────────────────────────────────────────── */
 
@@ -416,13 +419,36 @@ describe("billing.event trigger", () => {
     } as Workflow;
     engine.registerWorkflow(wf);
 
-    driver.parsed.push(subUpdated("e1")); // filtered out
+    // The checkout binds cus_1 to ada (filtered out, like the update).
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", subscriptionId: "sub_1", userRef: "ada" });
     await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push(subUpdated("e1"));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    // The invoice carries only the provider's customer id — the trigger still names the user.
     driver.parsed.push({ kind: "invoice.payment_failed", eventId: "e2", customerId: "cus_1" });
     await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
     await new Promise((r) => setTimeout(r, 50)); // the trigger run is fire-and-forget
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ kind: "invoice.payment_failed" });
+    expect(seen[0]).toEqual({ kind: "invoice.payment_failed", userId: "ada" });
+  });
+
+  it("the end of a subscription the customer no longer tracks leaves the current one's access alone", async () => {
+    const { svc, driver, identity, ctx } = await boot();
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", subscriptionId: "sub_old", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    // A new subscription replaces the old one on the mapping…
+    driver.parsed.push({ ...subUpdated("e1"), subscriptionId: "sub_new" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(identity.users.get("ada")!.roles).toContain("member");
+    // …then the OLD one's cancellation lands: nothing moves.
+    driver.parsed.push({ ...subDeleted("e2"), subscriptionId: "sub_old" });
+    expect(await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).toMatchObject({ ok: true, userId: "ada" });
+    expect(identity.users.get("ada")!.roles).toContain("member");
+    expect(await svc.entitled({ userId: "ada" }, ctx)).toMatchObject({ entitled: true });
+    // The tracked one ending does.
+    driver.parsed.push({ ...subDeleted("e3"), subscriptionId: "sub_new" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(identity.users.get("ada")!.roles).not.toContain("member");
   });
 });
 
@@ -558,34 +584,33 @@ describe("billing.admin.status — the checklist tells the truth", () => {
   });
 });
 
+// The pure page ops never see HTTP — a hand-rolled ctx is the whole harness.
+const pageCtx = (
+  services: OpContext["services"],
+  principal: unknown,
+  inputs: Record<string, unknown> = {},
+  config: unknown = {},
+): OpContext =>
+  ({
+    services,
+    principal,
+    config,
+    input: {
+      has: (p: string) => p in inputs,
+      value: async (p: string) => inputs[p],
+      stream: () => {
+        throw new Error("unused");
+      },
+    },
+  }) as unknown as OpContext;
+
+const opByType = (type: string) => {
+  const op = pageOps.find((o) => o.type === type)!;
+  expect(op).toBeDefined();
+  return op;
+};
 
 describe("the return pages absorb the webhook race", () => {
-  // The pure page ops never see HTTP — a hand-rolled ctx is the whole harness.
-  const pageCtx = (
-    services: OpContext["services"],
-    principal: unknown,
-    inputs: Record<string, unknown> = {},
-    config: unknown = {},
-  ): OpContext =>
-    ({
-      services,
-      principal,
-      config,
-      input: {
-        has: (p: string) => p in inputs,
-        value: async (p: string) => inputs[p],
-        stream: () => {
-          throw new Error("unused");
-        },
-      },
-    }) as unknown as OpContext;
-
-  const opByType = (type: string) => {
-    const op = pageOps.find((o) => o.type === type)!;
-    expect(op).toBeDefined();
-    return op;
-  };
-
   it("checkout threads `next` onto BOTH return URLs, open-redirect guarded", async () => {
     const { svc, driver, ctx } = await boot();
     await svc.checkout({ next: "/pro" }, ctx);
@@ -800,6 +825,47 @@ describe("one-time purchases", () => {
     expect(res.roleChanged).toBe(false);
     expect(identity.setRolesCalls).toHaveLength(0);
     expect((await svc.owns({ userId: "ada", priceKey: "lifetime" }, ctx)).owns).toBe(true);
+  });
+});
+
+describe("the buyer stays signed in through the unlock (real identity service)", () => {
+  it("a purchase grants the role WITHOUT ending the session the success page polls with; a lapse ends it", async () => {
+    const identity = new DefaultIdentityService(
+      memoryIdentityStores(),
+      resolveIdentityOptions({ touchThrottleMs: 0, roles: { admin: ["admin"], member: ["pro"] } }),
+    );
+    const buyer = (await identity.findOrCreateByIdentity({ provider: "magic-link", subject: "bo@x.io", email: "bo@x.io", allowCreate: true }))!;
+    const session = await identity.mintSession(buyer.id);
+    const { svc, driver, ctx } = await boot({
+      entitlement: { role: "member" },
+      grants: { lifetime: "member" },
+      identity: identity as unknown as ReturnType<typeof fakeIdentity>,
+    });
+    // What the HTTP layer does per request: the cookie's session → the principal.
+    const principal = async () => {
+      const r = await identity.resolveSessionByToken(session.token);
+      return r ? { kind: "user" as const, id: r.user.id, provider: "session", scopes: r.scopes } : { kind: "anonymous" as const };
+    };
+    const status = opByType("billing.status.mine");
+
+    driver.parsed.push(purchaseCompleted("evt_bo", "lifetime", { userRef: buyer.id }));
+    expect((await svc.ingestEvent(new Uint8Array(), {}, "default", ctx)).roleChanged).toBe(true);
+    // The success page's next poll: still signed in, the item owned, the scope live.
+    expect(await principal()).toMatchObject({ kind: "user", scopes: ["pro"] });
+    const polled = (await status.execute(pageCtx(ctx.services, await principal()))) as { state: Record<string, unknown> };
+    expect(polled.state).toMatchObject({ signedIn: true, purchased: ["lifetime"] });
+
+    // A subscription that lapses takes a role away → identity ends the sessions.
+    const sub = (await identity.findOrCreateByIdentity({ provider: "magic-link", subject: "cy@x.io", email: "cy@x.io", allowCreate: true }))!;
+    const subSession = await identity.mintSession(sub.id);
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e_cy", customerId: "cus_cy", subscriptionId: "sub_cy", userRef: sub.id, mode: "subscription" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push({ ...subUpdated("e_cy1"), customerId: "cus_cy", subscriptionId: "sub_cy" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect((await identity.resolveSessionByToken(subSession.token))?.scopes).toEqual(["pro"]);
+    driver.parsed.push({ ...subDeleted("e_cy2"), customerId: "cus_cy", subscriptionId: "sub_cy" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(await identity.resolveSessionByToken(subSession.token)).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 Create a hosted checkout session and output its `url` — wire it into
-`boundary.http.response`'s redirect and the provider hosts cards, taxes and
-3DS. Two modes, one node:
+`boundary.http.response`'s redirect and the provider hosts the card form,
+wallets and 3DS. Two modes, one node:
 
 - **`mode: "subscription"`** (default) — recurring. The subscription's state
   arrives on `subscription.*` events and grants the entitlement role while it

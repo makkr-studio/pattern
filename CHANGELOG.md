@@ -154,6 +154,29 @@ with a deploy story.
   `billing.checkout.create` threads onto both return URLs (relative-path
   guarded). Movable via `successPath`/`cancelPath`/`statusPath`, removable
   via `pages: false`; the saas-starter's checkout sets `next: "/pro"`.
+- **The buyer stays signed in through the unlock.** Granting the paid role
+  used to end every session of the user (identity's role-change rule), so the
+  success page's poll saw `signedIn: false` and a customer who had just paid
+  landed on a sign-in wall. Identity now ends sessions only when privilege
+  shrinks (or on elevation to `admin`); scopes already resolved live, so the
+  unlock reaches the open session on its next request.
+- **`billing.event` names the user on every kind.** Invoice and subscription
+  events carry only the provider's customer id; the trigger's `userId` now
+  comes from the customer mapping, so "payment failed → email the user"
+  works as documented.
+- **An old subscription's end can't cancel the new one.** A
+  `subscription.deleted` for a subscription the mapping no longer tracks is
+  ignored instead of revoking the current plan's access.
+- **Metering a free user is an outcome, not a failure.** `billing.usage.record`
+  for a signed-in user with no billing customer (or an unconfigured account)
+  returns a conflict outcome on `result`; the seeded `ai.usage` meter no
+  longer fails a run, and fires no failure alert, per free-tier model call.
+- **The docs say where billing stops.** The chapter and the saas-starter's
+  AGENTS.md list what the contract does not do yet (no cart, yes/no
+  ownership, no taxes/coupons/trials/shipping set at checkout, refunds not
+  projected, one tracked subscription per customer), and claims the code
+  didn't back (hosted taxes, portal upgrades by default, portal receipts for
+  one-time buyers) are corrected.
 
 ### Alerts & metering
 
@@ -220,6 +243,10 @@ with a deploy story.
 
 ### Identity
 
+- **Gaining a role keeps your session.** `setRoles` ends a user's sessions
+  when they lose a role or scope, or are elevated to `admin`; a pure gain
+  (a paid plan's role, an editor role) takes effect on the next request with
+  the session intact, since scopes resolve live from the user row.
 - **Magic links grow a magic code — installed PWAs can finally sign in.** The
   emailed link opens in the *system browser's* cookie jar, so a
   standalone-display app stayed logged out after "I clicked the link". Every

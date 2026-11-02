@@ -114,18 +114,22 @@ plan its own — `grants: { team: "team" }` in `mods/billing.mjs`, then
 `team: ["team", "pro"]` in `mods/identity.mjs` — and put
 `"requireAuth": { "scopes": ["team"] }` on the routes it unlocks.
 
-**Add a one-time purchase** — a one-time price with a lookup key (`credits`),
+**Add a one-time purchase** — a one-time price with a lookup key (`ebook`),
 a checkout workflow with `"mode": "payment"` (copy `buy.json`, set `priceKey`
-and `next`), and either a grant (`grants: { credits: "member" }` — the buyer
+and `next`), and either a grant (`grants: { ebook: "reader" }` — the buyer
 keeps the role) or a mid-graph check: `billing.owns` (config `priceKey`, wire
 the trigger's `user.id` into `userId`) → `core.flow.branch` on `owns`.
+Ownership is a yes/no: buying twice owns it once.
 
 **Do something when someone pays** — a workflow starting with the
 `billing.event` trigger, `config.kind` = `purchase.completed` (one-time) or
 `subscription.updated` / `invoice.payment_failed` (recurring). Its outputs
-carry `{ event, kind, account, userId }` — wire `email.send`, provision a
-resource, post to Slack. It runs after the role is projected, so the buyer is
-already unlocked.
+carry `{ event, kind, account, userId }` (`userId` on every kind once the
+customer is bound by a checkout) — wire `email.send`, provision a resource,
+post to Slack. It runs after the role is projected, so the buyer is already
+unlocked. The webhook is acknowledged before this workflow runs, so the
+provider will NOT redeliver if it fails: mark it `"durable": true` and give
+the side-effect node a `retry`, so a failure can be resumed from the run page.
 
 **Add a paid API endpoint** — copy `pro.json`, change `path`, wire your ops
 between the trigger and the response. The gate is the `requireAuth` scopes —
@@ -142,6 +146,27 @@ workflow. Attach a metered price to the meter and invoices bill themselves.
 
 **Failure alerts** — set `PATTERN_ALERTS_TO` in `.env` and create the `default`
 email account (admin → Resources → Email): any failed run emails you a deep link.
+
+## What billing does not do (yet)
+
+Know the edges before promising a feature; build these yourself or say so:
+
+- **One price per checkout.** No cart: selling several items in one payment
+  means one price that bundles them, or several checkouts.
+- **No consumable balances.** `billing.owns` is yes/no. Credits, tokens or
+  "5 downloads" need your own counter: on `purchase.completed`, add
+  `event.quantity` to a `store` doc (CAS on its version) and spend from it.
+- **Not set at checkout:** taxes (Stripe Tax), promotion codes, trials, and
+  shipping-address collection. Physical goods need your own address step and
+  fulfillment workflow.
+- **Refunds and disputes are not projected.** A refunded purchase keeps its
+  role; revoke it from admin → Users if you want it gone.
+- **One tracked subscription per customer.** Plan changes happen in the
+  portal (enable them in Stripe's portal settings); two parallel
+  subscriptions for one user are not modeled.
+- **Delayed payment methods** (bank debits that settle days later) are not
+  recorded; keep to card-like methods in Stripe's checkout settings.
+- **Stripe is the only driver** today; the contract is provider-neutral.
 
 ## Deploy
 

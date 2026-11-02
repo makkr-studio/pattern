@@ -246,7 +246,10 @@ The signed Stripe webhook route is seeded by the driver. Dev loop: keys in
 admin → Resources → Secrets (the encrypted vault — applies on the next call, no
 restart), the account in admin → Administration → Billing, then
 \`stripe listen --forward-to localhost:3000/billing/webhook/stripe\` and pay
-with 4242 4242 4242 4242.`,
+with 4242 4242 4242 4242. Limits to know (the Billing chapter's last section):
+one price per checkout (no cart), ownership is yes/no (keep your own counter
+for credits), no taxes/coupons/trials/shipping set at checkout, refunds are
+not projected, Stripe is the only driver.`,
   },
   {
     id: "buddy",

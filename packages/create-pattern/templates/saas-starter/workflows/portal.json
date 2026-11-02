@@ -2,7 +2,7 @@
   "$schema": "pattern/workflow/v1",
   "id": "billing-portal",
   "name": "POST /billing/portal",
-  "description": "The provider\u2019s own subscription UI (upgrade, cancel, invoices, cards) for the signed-in user\u2019s customer. Durable, like everything that touches money.",
+  "description": "The provider\u2019s own subscription UI (cancel, invoices, cards; plan changes when enabled in Stripe's portal settings) for the signed-in user\u2019s customer. Durable, like everything that touches money.",
   "durable": true,
   "nodes": [
     {
