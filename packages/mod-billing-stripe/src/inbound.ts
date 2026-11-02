@@ -12,7 +12,12 @@
 import { httpOutcome, stream, value, z, type OpDefinition, type Workflow } from "@pattern-js/core";
 import { BILLING_SERVICE, BillingSignatureError, type BillingService } from "@pattern-js/mod-billing";
 
-async function collect(bytes: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+/** Stripe event payloads are a few KB; anything near this is not Stripe. */
+export const MAX_WEBHOOK_BYTES = 1024 * 1024;
+
+/** The raw bytes, or null past `max` — the route is public and the body is
+ *  buffered before the signature can be checked, so it must be bounded. */
+async function collect(bytes: ReadableStream<Uint8Array>, max = MAX_WEBHOOK_BYTES): Promise<Uint8Array | null> {
   const parts: Uint8Array[] = [];
   let total = 0;
   const reader = bytes.getReader();
@@ -22,6 +27,10 @@ async function collect(bytes: ReadableStream<Uint8Array>): Promise<Uint8Array> {
     if (chunk) {
       parts.push(chunk);
       total += chunk.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
     }
   }
   const out = new Uint8Array(total);
@@ -59,6 +68,9 @@ export const stripeWebhookOp: OpDefinition = {
       ctx.input.value<Record<string, string>>("headers"),
       collect(ctx.input.stream<Uint8Array>("body")),
     ]);
+    if (!raw) {
+      return { result: httpOutcome("invalid", { error: "payload_too_large", message: `webhook body exceeds ${MAX_WEBHOOK_BYTES} bytes` }) };
+    }
 
     const secret = await svc.accountSecret(account, "webhookSecret", ctx);
     if (!secret) {

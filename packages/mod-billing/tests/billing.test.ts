@@ -655,6 +655,31 @@ describe("the return pages absorb the webhook race", () => {
     expect(entitled.redirect).toBe("/pro");
   });
 
+  it("a hostile `next` can neither run script in the poller nor leave the origin", async () => {
+    const { svc, driver, ctx } = await boot();
+    const success = opByType("billing.success.page");
+    const cfg = { statusPath: "/billing/status" };
+    const ada = { kind: "user", id: "ada", provider: "test" };
+
+    // A same-origin path that tries to close the inline <script>.
+    const xss = "/</script><script>alert(document.cookie)</script>";
+    const page = (await success.execute(pageCtx(ctx.services, ada, { next: xss }, cfg))) as { body?: string };
+    expect(page.body).not.toContain("</script><script>alert");
+    expect(page.body).toContain("\\u003c/script>");
+
+    // Backslash / control-character tricks browsers resolve off-origin.
+    for (const evil of ["/\\evil.com", "/\t/evil.com", "//evil.com", "https://evil.com"]) {
+      const waiting = (await success.execute(pageCtx(ctx.services, ada, { next: evil }, cfg))) as { body?: string };
+      expect(waiting.body).toContain('const next = "/"');
+    }
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e0", customerId: "cus_1", userRef: "ada" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push(subUpdated("e1"));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    const entitled = (await success.execute(pageCtx(ctx.services, ada, { next: "/\\evil.com" }, cfg))) as { redirect?: string };
+    expect(entitled.redirect).toBe("/");
+  });
+
   it("status.mine is principal-derived — anonymous stays blank, no userId input exists", async () => {
     const { svc, driver, ctx } = await boot();
     const status = opByType("billing.status.mine");
@@ -866,6 +891,28 @@ describe("the buyer stays signed in through the unlock (real identity service)",
     driver.parsed.push({ ...subDeleted("e_cy2"), customerId: "cus_cy", subscriptionId: "sub_cy" });
     await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
     expect(await identity.resolveSessionByToken(subSession.token)).toBeNull();
+  });
+});
+
+describe("one user, several provider customers", () => {
+  it("what one customer paid for survives another customer's cancellation — entitlement and ownership are per USER", async () => {
+    const { svc, driver, identity, ctx } = await boot({ grants: { lifetime: "member" } });
+    // A lifetime purchase on cus_1…
+    driver.parsed.push(purchaseCompleted("evt_buy", "lifetime"));
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    // …and, later, a subscription on a second customer, cus_2.
+    driver.parsed.push({ kind: "checkout.completed", eventId: "e_c2", customerId: "cus_2", subscriptionId: "sub_2", userRef: "ada", mode: "subscription" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    driver.parsed.push({ ...subUpdated("e_s2"), customerId: "cus_2", subscriptionId: "sub_2" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(await svc.entitled({ userId: "ada" }, ctx)).toMatchObject({ entitled: true, purchased: ["lifetime"] });
+
+    // cus_2's subscription ends: the lifetime purchase on cus_1 still holds the role.
+    driver.parsed.push({ ...subDeleted("e_d2"), customerId: "cus_2", subscriptionId: "sub_2" });
+    await svc.ingestEvent(new Uint8Array(), {}, "default", ctx);
+    expect(identity.users.get("ada")!.roles).toContain("member");
+    expect(await svc.owns({ userId: "ada", priceKey: "lifetime" }, ctx)).toMatchObject({ owns: true });
+    expect(await svc.entitled({ userId: "ada" }, ctx)).toMatchObject({ entitled: false, purchased: ["lifetime"] });
   });
 });
 

@@ -291,12 +291,13 @@ export class DefaultBillingService implements BillingService {
   }
 
   async entitled(input: { userId: string }, ctx: OpContext): Promise<{ entitled: boolean; status?: SubscriptionStatus; purchased: string[] }> {
-    const mapping = await this.customerForUser(input.userId, ctx);
-    return { entitled: mapping?.entitled ?? false, status: mapping?.status, purchased: mapping?.purchased ?? [] };
+    const rows = await this.customersOfUser(input.userId, ctx);
+    const active = rows.find((r) => r.entitled);
+    return { entitled: Boolean(active), status: (active ?? rows[0])?.status, purchased: purchasedAcross(rows) };
   }
 
   async owns(input: { userId: string; priceKey: string }, ctx: OpContext): Promise<{ owns: boolean; purchased: string[] }> {
-    const purchased = (await this.customerForUser(input.userId, ctx))?.purchased ?? [];
+    const purchased = purchasedAcross(await this.customersOfUser(input.userId, ctx));
     return { owns: purchased.includes(input.priceKey), purchased };
   }
 
@@ -498,6 +499,20 @@ export class DefaultBillingService implements BillingService {
 
   /* ── internals ─────────────────────────────────────────────────────── */
 
+  /**
+   * Every provider customer bound to the user, newest first. One user can
+   * hold several (two checkouts before the first webhook, a second account):
+   * what they are entitled to and own is the union across all of them, so an
+   * event on one customer never takes away what another one paid for.
+   */
+  private async customersOfUser(userId: string, ctx: OpContext): Promise<BillingCustomer[]> {
+    const store = docsStore(ctx);
+    if (!store) return [];
+    await this.ensureCollections(store);
+    const rows = await store.docs.query({ collection: CUSTOMERS_COLLECTION, where: { userId }, orderBy: "updatedAt", orderDir: "desc", limit: 100 });
+    return rows.map((r) => r.data as unknown as BillingCustomer);
+  }
+
   private grace(): boolean {
     const rule = this.options.entitlement;
     return rule !== false && Boolean(rule?.gracePastDue);
@@ -685,12 +700,17 @@ export class DefaultBillingService implements BillingService {
     const user = await identity.getUser(mapping.userId);
     if (!user) return {};
 
+    // The union over ALL the user's customers (this one as just folded).
+    const stored = await this.customersOfUser(mapping.userId, ctx);
+    const rows = [mapping, ...stored.filter((r) => !(r.provider === mapping.provider && r.customerId === mapping.customerId))];
     const desired = new Set<string>();
-    if (mapping.entitled) {
-      if (rule?.role) desired.add(rule.role);
-      for (const p of mapping.priceKeys ?? []) if (grants[p]) desired.add(grants[p]!);
+    for (const row of rows) {
+      if (row.entitled) {
+        if (rule?.role) desired.add(rule.role);
+        for (const p of row.priceKeys ?? []) if (grants[p]) desired.add(grants[p]!);
+      }
+      for (const p of row.purchased ?? []) if (grants[p]) desired.add(grants[p]!);
     }
-    for (const p of mapping.purchased ?? []) if (grants[p]) desired.add(grants[p]!);
 
     const current = user.roles;
     const next = [...current.filter((r) => !managed.has(r) || desired.has(r)), ...[...desired].filter((r) => !current.includes(r))];
@@ -699,6 +719,11 @@ export class DefaultBillingService implements BillingService {
     await identity.setRoles(user.id, next);
     return { roleChanged: true };
   }
+}
+
+/** Every price key the user bought, across their customers. */
+function purchasedAcross(rows: BillingCustomer[]): string[] {
+  return [...new Set(rows.flatMap((r) => r.purchased ?? []))];
 }
 
 /** What folding one event changed: roles, the ordering verdict, a recorded purchase. */

@@ -126,13 +126,25 @@ const headerMap = (
   return Object.fromEntries(entries.map(([k, v]) => [k.toLowerCase(), String(v)]));
 };
 
-async function collect(bytes: ReadableStream<Uint8Array>): Promise<Buffer> {
+/** Inbound mail can carry attachments, but a public route buffering before
+ *  the signature check must still be bounded. */
+export const MAX_INBOUND_BYTES = 40 * 1024 * 1024;
+
+async function collect(bytes: ReadableStream<Uint8Array>, max = MAX_INBOUND_BYTES): Promise<Buffer | null> {
   const parts: Uint8Array[] = [];
+  let total = 0;
   const reader = bytes.getReader();
   for (;;) {
     const { done, value: chunk } = await reader.read();
     if (done) break;
-    if (chunk) parts.push(chunk);
+    if (chunk) {
+      parts.push(chunk);
+      total += chunk.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+    }
   }
   return Buffer.concat(parts);
 }
@@ -163,6 +175,9 @@ export const resendWebhookOp: OpDefinition = {
       ctx.input.value<Record<string, string>>("headers"),
       collect(ctx.input.stream<Uint8Array>("body")),
     ]);
+    if (!raw) {
+      return { result: httpOutcome("invalid", { error: "payload_too_large", message: `webhook body exceeds ${MAX_INBOUND_BYTES} bytes` }) };
+    }
 
     const secret = await svc.accountSecret(account, "webhookSecret", ctx);
     if (!secret) {

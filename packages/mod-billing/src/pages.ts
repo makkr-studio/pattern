@@ -32,9 +32,26 @@ export function escapeHtml(s: string): string {
     .replaceAll("'", "&#39;");
 }
 
+/** JSON for an inline <script>: `<` and the JS line separators escaped, so a
+ *  value can never close the tag or break the statement. */
+function scriptJson(v: unknown): string {
+  return JSON.stringify(v).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
+
 /** Only relative paths survive as a forward destination (open-redirect guard). */
 export function safeNextPath(next: unknown): string {
   if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//")) return "/";
+  // Browsers read a backslash as "/" and drop tabs/newlines, so a next of
+  // slash-backslash-evil.com (or slash-tab-slash-evil.com) would leave the
+  // origin: refuse backslashes and control characters, then confirm the URL
+  // resolves to the same origin.
+  if (/[\\\u0000-\u001f\u007f]/.test(next)) return "/";
+  try {
+    const base = "http://pattern.invalid";
+    if (new URL(next, base).origin !== base) return "/";
+  } catch {
+    return "/";
+  }
   return next;
 }
 
@@ -152,7 +169,7 @@ export const successPageOp: OpDefinition = {
 <p class="hint" id="slow" hidden>Taking longer than expected — the payment provider is still
 confirming. Your access appears the moment it does; you can also continue and refresh there.</p>
 <script>
-  const next = ${JSON.stringify(next)}, status = ${JSON.stringify(cfg.statusPath)}, item = ${JSON.stringify(item ?? null)};
+  const next = ${scriptJson(next)}, status = ${scriptJson(cfg.statusPath)}, item = ${scriptJson(item ?? null)};
   let tries = 0;
   const unlocked = (s) => item ? Array.isArray(s.purchased) && s.purchased.indexOf(item) >= 0 : Boolean(s.entitled);
   const tick = async () => {

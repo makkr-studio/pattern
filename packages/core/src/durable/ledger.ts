@@ -97,6 +97,29 @@ export type EncodedValue = { json: string } | { unserializable: true };
 
 const BYTES_TAG = "__patternBytes";
 
+/** Request headers that carry credentials (lower-case, as the HTTP host delivers them). */
+const CREDENTIAL_HEADERS = new Set(["cookie", "authorization", "proxy-authorization", "x-api-key"]);
+
+/**
+ * The trigger input as the ledger records it: credentials stripped. A durable
+ * HTTP run would otherwise write the caller's live session cookie or bearer
+ * token in plaintext to the ledger, undoing identity's hashed-at-rest storage.
+ * The run's identity is recorded separately (the principal), so a resume
+ * needs neither: `headers` lose their credential entries and `cookies`
+ * records as empty.
+ */
+export function ledgerSafeTriggerInput(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...input };
+  const headers = input.headers;
+  if (headers && typeof headers === "object" && !Array.isArray(headers)) {
+    out.headers = Object.fromEntries(
+      Object.entries(headers as Record<string, unknown>).filter(([k]) => !CREDENTIAL_HEADERS.has(k.toLowerCase())),
+    );
+  }
+  if (input.cookies && typeof input.cookies === "object") out.cookies = {};
+  return out;
+}
+
 /** Encode a runtime value for the ledger. */
 export function encodeLedgerValue(v: unknown): EncodedValue {
   try {

@@ -17,11 +17,17 @@
 #   docker build -t {{name}} .
 #   docker run -p 3000:3000 --env-file .env \
 #     -v pattern-store:/app/.pattern -v pattern-data:/app/.pattern-data {{name}}
+#
+# The app runs as the unprivileged `node` user, which owns only the two state
+# directories (named volumes inherit that). Bind-mounting host directories
+# instead? Make them writable by uid 1000.
 FROM node:26-slim
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
+RUN mkdir -p .pattern .pattern-data && chown -R node:node .pattern .pattern-data
 ENV NODE_ENV=production
+USER node
 EXPOSE 3000
 CMD ["node", "src/index.ts"]

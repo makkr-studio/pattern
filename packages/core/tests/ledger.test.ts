@@ -53,6 +53,34 @@ describe("RunLedger capture", () => {
     expect(decodeLedgerValue(out!.outputs!.value!)).toBe("Hello, Ada!");
   });
 
+  it("never records credentials: cookie / authorization headers and parsed cookies stay out of the ledger", async () => {
+    const { engine, ledger } = engineWithLedger();
+    engine.registerWorkflow({
+      id: "creds",
+      durable: true,
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["headers", "cookies", "body"] } },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [{ from: { node: "in", port: "body" }, to: { node: "out", port: "value" } }],
+    } as Workflow);
+    const res = await engine.run("creds", {
+      input: {
+        headers: { cookie: "pattern_session=sess-secret", Authorization: "Bearer pat_secret", "content-type": "application/json" },
+        cookies: { pattern_session: "sess-secret" },
+        body: { plan: "pro" },
+      },
+    });
+    expect(res.status).toBe("ok");
+    const rec = await ledger.get(res.runId);
+    const dump = JSON.stringify(rec);
+    expect(dump).not.toContain("sess-secret");
+    expect(dump).not.toContain("pat_secret");
+    expect(decodeLedgerValue(rec!.header.input.headers!)).toEqual({ "content-type": "application/json" });
+    expect(decodeLedgerValue(rec!.header.input.cookies!)).toEqual({});
+    expect(decodeLedgerValue(rec!.header.input.body!)).toEqual({ plan: "pro" });
+  });
+
   it("a non-durable workflow records nothing", async () => {
     const { engine, ledger } = engineWithLedger();
     engine.registerWorkflow(durableWf({ id: "plain", durable: undefined }));

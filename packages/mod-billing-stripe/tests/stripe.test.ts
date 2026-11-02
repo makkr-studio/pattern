@@ -296,6 +296,13 @@ describe("the seeded webhook route (raw bytes end to end)", () => {
     expect(identity.setRolesCalls).toHaveLength(1);
   });
 
+  it("an oversized body is refused before buffering it all (the route is public)", async () => {
+    const huge = new Uint8Array(2 * 1024 * 1024).fill(0x20);
+    const res = await fetch(webhookUrl, { method: "POST", headers: { "stripe-signature": "t=1,v1=00" }, body: huge });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "payload_too_large" });
+  });
+
   it("a redelivery of the same event id is acknowledged but never re-projected", async () => {
     const res = await fetch(webhookUrl, { method: "POST", headers: { "stripe-signature": sign(subscriptionActive) }, body: subscriptionActive });
     expect(res.status).toBe(200);

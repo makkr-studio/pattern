@@ -21,6 +21,17 @@ export function escapeHtml(s: string): string {
  */
 export function safeNextPath(next: unknown): string {
   if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//")) return "/";
+  // Browsers read a backslash as "/" and drop tabs/newlines, so a next of
+  // slash-backslash-evil.com (or slash-tab-slash-evil.com) would leave the
+  // origin: refuse backslashes and control characters, then confirm the URL
+  // resolves to the same origin.
+  if (/[\\\u0000-\u001f\u007f]/.test(next)) return "/";
+  try {
+    const base = "http://pattern.invalid";
+    if (new URL(next, base).origin !== base) return "/";
+  } catch {
+    return "/";
+  }
   return next;
 }
 

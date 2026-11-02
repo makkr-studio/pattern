@@ -93,8 +93,26 @@ function copyFor(purpose: string, ttl: string | null, code?: string): { subject:
   }
 }
 
+/**
+ * In production an emailed link must not be built from the request: the Host
+ * header is client-controlled, so a forged one would mail a victim a VALID
+ * token pointing at someone else's domain. Dev keeps the request origin
+ * (localhost just works); production requires PATTERN_PUBLIC_URL.
+ */
+function linkOrigin(ctx: OpContext, requestOrigin: string | null | undefined): string | null | undefined {
+  const configured = configuredOrigin(ctx);
+  if (configured) return configured;
+  const env = ctx.env?.NODE_ENV ?? process.env.NODE_ENV;
+  if (env === "production") {
+    throw new Error(
+      "mod-identity: PATTERN_PUBLIC_URL is required in production — emailed links are not built from the request's Host header, which a client can forge. Set it to your public origin (https://app.example.com).",
+    );
+  }
+  return requestOrigin;
+}
+
 export async function deliverToken(ctx: OpContext, input: DeliverInput): Promise<DeliverResult> {
-  const url = absoluteUrl(input.path, configuredOrigin(ctx) ?? input.origin);
+  const url = absoluteUrl(input.path, linkOrigin(ctx, input.origin));
   const { subject, message } = copyFor(input.purpose, humanTtl(input.expiresAt), input.code);
   const payload = {
     email: input.email,

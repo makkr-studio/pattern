@@ -118,7 +118,7 @@ with a deploy story.
   a scope and
   `requireAuth: { scopes: ["pro"] }` gates paid features with no new code.
   mod-store and mod-identity are duck-typed: billing degrades gracefully
-  without either. Admin → System → **Billing** manages accounts, customers,
+  without either. Admin → Administration → **Billing** manages accounts, customers,
   and recent events.
 - **`@pattern-js/mod-billing-stripe` — the Stripe driver, zero dependencies.**
   A hand-rolled client (form-encoded v1, pinned `Stripe-Version`,
@@ -140,7 +140,7 @@ with a deploy story.
 - **Setup that guides instead of failing.** Billing that isn't configured yet
   (no account, unresolved key, no price — or the portal before a first
   subscription) answers a friendly 409 outcome the landing page renders as
-  guidance, not a failed run; and admin → System → Billing is now a real page:
+  guidance, not a failed run; and admin → Administration → Billing is now a real page:
   a **setup checklist** that ticks itself as you go (driver → account → key →
   price → webhook secret → *first event received*, live), driver-spec-driven
   **editable accounts** with per-field vault/env secret refs, and the
@@ -212,7 +212,7 @@ with a deploy story.
   to `.env`: with a generated vault key, seeded model aliases reference
   `{ source: "vault" }`, the saas-starter carries mod-vault (compose's
   billing layer pulls it too), and `.env.example` shrinks to infrastructure —
-  the keys' home is admin → System → **Secrets**, where a paste applies on
+  the keys' home is admin → Resources → **Secrets**, where a paste applies on
   the next call with no restart (that's what kills the old "edit .env,
   restart" loop; the billing walkthrough lost a restart step). Every env line
   survives as a commented alternative, `--no-vault-key` falls back to env
@@ -265,6 +265,36 @@ with a deploy story.
   `identity.deliverToken` payload (`code`), is worked into the default
   `message` copy ("…or enter the code 482 913…"), and prints with the console
   fallback — the seeded email workflow needed zero template changes.
+
+### Security
+
+- **The billing success page escapes its inline script.** A crafted `next`
+  (`/</script><script>…`) could run script for a signed-in buyer; values are
+  now emitted with `<` and the JS line separators escaped.
+- **Redirect guards hold against backslashes and control characters.**
+  `safeNextPath` (identity's post-login `next`, billing's return pages)
+  refused `//host` but let `/\host` and tab tricks resolve off-origin; it
+  now rejects them and checks the resolved origin.
+- **The RunLedger never stores credentials.** A durable HTTP run recorded
+  the caller's `Cookie` and `Authorization` headers (live session cookies and
+  `pat_` tokens) in plaintext; credential headers are dropped and `cookies`
+  records empty. The run's identity is the recorded principal.
+- **Public webhook bodies are bounded.** The Stripe (1 MiB) and Resend
+  inbound (40 MiB) routes stream their raw bytes for signature checks and
+  used to buffer without a limit; past the cap they answer 400.
+- **Entitlement is per user, not per provider customer.** A user with two
+  customers (two checkouts before the first webhook) could lose a lifetime
+  purchase's role when the other customer's subscription ended; roles,
+  `billing.entitled` and `billing.owns` now read the union of the user's
+  customers.
+- **No Host-header links in production.** Without `PATTERN_PUBLIC_URL` and
+  with `NODE_ENV=production`, identity refuses to email a link built from the
+  client-controlled Host header (a forged one would mail a victim a valid
+  token for someone else's domain), and says so at boot.
+- **Scaffolded containers run as `node`**, owning only `.pattern/` and
+  `.pattern-data/`; `.dockerignore` also excludes `.env.*`.
+- `pattern add` works on Windows (npm's npx entry via the current Node, no
+  shell); `pnpm audit` is clean (undici 7.30.1, file-type 22 floors).
 
 ### Admin
 
@@ -324,7 +354,7 @@ with a deploy story.
   when mod-billing is present. Tier-2 pages now receive route `:params` as a
   prop.
 - **The ops catalog keeps your place.** The install-shaped queries (ops,
-  mods, manifest) cache for five minutes instead of refetching a 370-op
+  mods, manifest) cache for five minutes instead of refetching a 374-op
   payload on every visit, and the list's fuzzy search + mod filter live in
   the URL — navigating into an op and back lands exactly where you left.
   The icon map also learned the names mods were already declaring
@@ -398,7 +428,7 @@ with a deploy story.
   `@types/node` on 22 on purpose.
 - `RunSummary`, the admin protocol, and the runs UI carry the `canceled`
   status; run detail exposes `ledgered` + `resumedFrom`.
-- The op count grows to **365** across the first-party mods (175 in the base
+- The op count grows to **374** across the first-party mods (175 in the base
   catalog).
 
 ## 0.4.0 — 2026-07-15

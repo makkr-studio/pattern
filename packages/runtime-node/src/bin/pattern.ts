@@ -18,7 +18,7 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import {
   Engine,
@@ -104,8 +104,22 @@ function cmdAdd(args: string[]): void {
   const pkgText = existsSync("package.json") ? readFileSync("package.json", "utf8") : null;
   const plan = planAddDelegation(pkgText, args);
   if (plan.warning) console.error(pc.yellow(`⚠ ${plan.warning}`));
-  const bin = process.platform === "win32" ? "npx.cmd" : "npx";
-  const child = spawn(bin, plan.argv, { stdio: "inherit" });
+  // Windows: Node refuses to spawn a .cmd without a shell, and cmd treats the
+  // `^` of a range as an escape — so run npm's own npx entry with this Node
+  // binary instead (no shell, no quoting). It ships beside node.exe.
+  let bin = "npx";
+  let argv = plan.argv;
+  if (process.platform === "win32") {
+    const npxCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npx-cli.js");
+    if (!existsSync(npxCli)) {
+      console.error(pc.red(`couldn't find npm's npx next to ${process.execPath} — run it yourself:`));
+      console.error(`  npx ${plan.argv.join(" ")}`);
+      process.exit(1);
+    }
+    bin = process.execPath;
+    argv = [npxCli, ...plan.argv];
+  }
+  const child = spawn(bin, argv, { stdio: "inherit" });
   child.on("exit", (code) => process.exit(code ?? 0));
   child.on("error", (err) => {
     console.error(pc.red(`npx failed: ${err instanceof Error ? err.message : String(err)}`));

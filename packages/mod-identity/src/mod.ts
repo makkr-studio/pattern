@@ -85,6 +85,12 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     },
     ready: async () => {
       if (!service) return;
+      if (process.env.NODE_ENV === "production" && !process.env.PATTERN_PUBLIC_URL?.trim()) {
+        console.warn(
+          "[pattern] ⚠ NODE_ENV=production without PATTERN_PUBLIC_URL: sign-in and invite links will NOT be emailed " +
+            "(they would be built from the client-controlled Host header). Set PATTERN_PUBLIC_URL to your public origin.",
+        );
+      }
       // Bootstrap-on-empty: the first admin signs up through a one-time link.
       const count = await service.listUsers().then((u) => u.length);
       if (count > 0) return;
