@@ -7,7 +7,7 @@
  * scope check) and `privileged`-tagged — their routes carry the admin gate.
  */
 
-import { value, required, stream, z, type OpContext, type OpDefinition } from "@pattern-js/core";
+import { httpOutcome, value, required, stream, z, type OpContext, type OpDefinition } from "@pattern-js/core";
 import { storeService } from "./well-known.js";
 
 const recordSchema = z.record(z.string(), z.unknown());
@@ -390,7 +390,7 @@ const adminDocGet = adminOp(
   { in: { collection: z.string(), id: z.string() }, out: "document" },
   async (args, ctx) => {
     const row = await storeService(ctx).docs.get(String(args.collection ?? ""), String(args.id ?? ""));
-    return row ?? { error: "not found" };
+    return row ?? httpOutcome("not_found", { error: "not found" });
   },
 );
 

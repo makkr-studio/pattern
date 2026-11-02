@@ -174,15 +174,21 @@ and `routeConflicts(doc)`. The filesystem is registered as an engine service so
 
 All `admin.*` ops are contributed by the mod, reach the control plane/engine via
 `ctx.services`, run in-process, and use Zod-typed value ports: `workflow.list/get/
-save/import/setEnabled/deploy/delete/explain`, `version.list/get/diff`,
-`op.list/get`, `ports.compatible`, `run.list/get/tail` (the tail is a stream wired to
-`http.response` SSE), `metrics.summary`, `mod.list`, `fixture.*`, `template.list`.
+save/import/validate/setEnabled/deploy/delete/explain`, `version.list/get/diff`,
+`op.list/get`, `ports.compatible`, `doc.ports`, `run` (run a workflow as the
+caller), `run.list/get/tail` (the tail is a stream wired to `http.response` SSE),
+`run.rerun/cancel/pause/resume`, `metrics.summary`, `mod.list`, `fixture.*`,
+`template.list`, `settings.get/set`, `system.map/stats/bench`, and
+`ui.manifest/page` (mod-contributed admin pages). Each op has a reference page
+under `/docs/ops`.
 
 ## 11. Endpoint workflows (the self-reflecting API)
 
 Each admin route is a workflow: `http.request → admin op → http.response`. The host
-derives routes by scanning these. Endpoints carry no `requireAuth` by default; when
-admin `auth` is enabled, registration stamps it onto every endpoint. The SPA itself
+derives routes by scanning these. Registration stamps `requireAuth: { scopes:
+["admin"] }` onto every endpoint unless the mod is created with `auth: false`, and
+each op re-checks its own narrower scope (`workflows:read`, `deploy`, ...) when an
+auth provider is installed, which is what lets a scoped API token call it. The SPA itself
 is a workflow with a single `boundary.http.app` node (`mount: "/admin"`,
 `spaFallback: "index.html"`).
 
@@ -217,10 +223,12 @@ Don't animate `backdrop-filter`; honor `prefers-reduced-motion`.
 Run-replay reconstructs execution order from the span event log and animates nodes
 pending→running→ok|error|skipped with a scrubber; ⌘K is a client-side fuzzy index
 over workflows/ops/runs/pages/commands; version diff is structural JSON; connection
-assist explains incompatibilities and one-click-inserts an adapter; test fixtures save
-`{ trigger, input, params, principal }`; templates clone JSON into the editor; "explain
-this workflow" is a deterministic structural walker; deep links restore editor/run
-state from stable ids.
+assist explains incompatibilities and one-click-inserts an adapter; templates clone
+JSON into the editor; deep links restore editor/run state from stable ids. Two
+features are API-only for now (the SPA doesn't call them yet): test fixtures
+(`admin.fixture.*` save `{ trigger, input, params, principal }`; `admin.run` always
+runs as the caller, so the stored principal is informational) and "explain this
+workflow" (`admin.workflow.explain`, a deterministic structural walker).
 
 ## 16. Build & dev
 

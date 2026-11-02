@@ -35,6 +35,13 @@ function fakeMod(): PatternMod {
         outputs: {},
         execute: async () => ({}),
       },
+      {
+        type: "fake.bare",
+        description: "An op its mod never wrote prose for.",
+        inputs: {},
+        outputs: {},
+        execute: async () => ({}),
+      },
     ],
     docs: { filesystem: "fake-docs", title: "Fake Mod", order: 50 },
     setup: (engine) => {
@@ -160,11 +167,10 @@ describe("the generated op reference", () => {
     )!;
     expect(condition.dataType).toBe("boolean");
 
-    // Unknown type → 404; an op with no prose file → prose null. (`docs.page` is
-    // an internal control-plane op — those skip prose; every shipped core op now
-    // carries "when to use" prose, and the fixture's `fake.op` ships its own.)
+    // Unknown type → 404; an op with no prose file → prose null (every shipped
+    // op carries "when to use" prose, so the fixture brings a bare one).
     expect((await fetch(`${base}/docs/api/op?type=no.such.op`)).status).toBe(404);
-    const noProse = (await (await fetch(`${base}/docs/api/op?type=docs.page`)).json()) as { prose: string | null };
+    const noProse = (await (await fetch(`${base}/docs/api/op?type=fake.bare`)).json()) as { prose: string | null };
     expect(noProse.prose).toBeNull();
 
     // Mods list with chapter slugs.

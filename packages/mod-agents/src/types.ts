@@ -69,7 +69,10 @@ export const modelRefSchema = z.object({
    * instantly re-targets every workflow and agent using it.
    */
   alias: z.string().optional(),
-  /** Pass-through provider options (temperature, reasoning, dimensions, voice…). */
+  /**
+   * Pass-through AI SDK provider options, keyed by provider id, sent with every
+   * call made with this model: `{ "openai": { "reasoningEffort": "low" } }`.
+   */
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 export type ModelRef = z.infer<typeof modelRefSchema>;

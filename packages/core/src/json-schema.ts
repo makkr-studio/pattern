@@ -119,7 +119,9 @@ export function jsonSchemaToZod(
       base = numberSchema(schema, true, coerce);
       break;
     case "boolean":
-      base = coerce ? z.coerce.boolean() : z.boolean();
+      // URL strings: "false" / "0" / "" / "no" / "off" must read false
+      // (z.coerce.boolean() is JS truthiness, which makes "false" true).
+      base = coerce ? z.preprocess(queryBool, z.boolean()) : z.boolean();
       break;
     case "null":
       base = z.null();
@@ -139,4 +141,13 @@ export function jsonSchemaToZod(
   }
 
   return nullable ? base.nullable() : base;
+}
+
+/** A query/params string → boolean, the way a person writes it in a URL. */
+function queryBool(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const t = v.trim().toLowerCase();
+  if (t === "true" || t === "1" || t === "yes" || t === "on") return true;
+  if (t === "false" || t === "0" || t === "no" || t === "off" || t === "") return false;
+  return v; // anything else fails validation with a 400
 }

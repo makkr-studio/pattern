@@ -268,6 +268,20 @@ with a deploy story.
 
 ### Security
 
+- **Rate limits are a brick, and sign-in uses them by default.** Any
+  `boundary.http.request` takes `rateLimit: { max, window, by: "ip" | "user" }`:
+  past it the host answers 429 with `Retry-After` before the run starts. The
+  trigger gains an `ip` output (the socket peer, or the forwarded address
+  `PATTERN_TRUST_PROXY` hops vouch for). `core.flow.throttle` is the same
+  counter inside a workflow: it pulses `out` or `limited`, per `key`.
+  Sign-in ships with budgets on: each address gets at most 5 sign-in emails
+  per 15 minutes (counted in the identity store, so restarts and extra
+  instances don't reset it; past it the page is unchanged and nothing is
+  sent), the magic-link form takes 10 requests per IP per 15 minutes, and the
+  code and bootstrap forms take 20. Tune them with identity's `rateLimit`
+  and magic-link's `rateLimit`, or set either to `false`. Failure alerts send
+  at most one email per failing workflow every 10 minutes, and the
+  saas-starter billing routes allow 10 requests per user per minute.
 - **The billing success page escapes its inline script.** A crafted `next`
   (`/</script><script>…`) could run script for a signed-in buyer; values are
   now emitted with `<` and the JS line separators escaped.
@@ -354,7 +368,7 @@ with a deploy story.
   when mod-billing is present. Tier-2 pages now receive route `:params` as a
   prop.
 - **The ops catalog keeps your place.** The install-shaped queries (ops,
-  mods, manifest) cache for five minutes instead of refetching a 374-op
+  mods, manifest) cache for five minutes instead of refetching a 375-op
   payload on every visit, and the list's fuzzy search + mod filter live in
   the URL — navigating into an op and back lands exactly where you left.
   The icon map also learned the names mods were already declaring
@@ -368,6 +382,26 @@ with a deploy story.
   now clears on save with a "stored — won't be shown again" receipt.
 
 ### Core & fixes
+
+- **Every op has a reference page.** The 90 ops that showed only registry
+  data on `/docs/ops` (all of `mod-ai`, the agent, admin, email-account,
+  store-admin, vault-admin and `docs.*` ops) now carry "when to use" prose,
+  checked against the source.
+- **Query booleans read like URLs.** A declared boolean query or path param
+  read `"false"` as true (JS truthiness); `false`, `0`, `no`, `off` and the
+  empty string now read false, and anything unrecognized is a 400.
+- **`mod-ai` honors what it declares.** An `ai.model`'s `providerOptions`
+  (the AI SDK shape, keyed by provider id) reaches every call made with it,
+  agent turns included; `ai.speech.generate` sends `format`;
+  `ai.video.generate` uses its `image` input for image-to-video;
+  `ai.transcribe` takes `audio` or `audioBytes` alone and sends its
+  `language` hint. History compaction honors cancel.
+- **A failed agent turn keeps the conversation.** `agents.run` and
+  `agents.run.resume` hand back the history the turn started from on
+  `error` and `cancelled`, so a workflow that saves `history` no longer
+  wipes it.
+- Admin audit entries for enable, disable and delete name the operator
+  instead of "anonymous"; `store.admin.doc.get` answers 404 on a miss.
 
 - **The model catalog catches up with mid-2026.** The static baseline (a
   suggestion list — the gateway `/v1/models` stays the live truth) now leads
@@ -428,7 +462,7 @@ with a deploy story.
   `@types/node` on 22 on purpose.
 - `RunSummary`, the admin protocol, and the runs UI carry the `canceled`
   status; run detail exposes `ledgered` + `resumedFrom`.
-- The op count grows to **374** across the first-party mods (175 in the base
+- The op count grows to **375** across the first-party mods (176 in the base
   catalog).
 
 ## 0.4.0 — 2026-07-15

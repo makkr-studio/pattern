@@ -63,7 +63,7 @@ located error naming the field and the fix — never a silently empty result.
 
 The pattern for complex structures: keep the canonical record in
 **mod-store** (the truth), index its text here with `docId` + taxonomy fields
-in meta (the index), and compose `vectors.query → store.doc.get` on the
+in meta (the index), and compose `vectors.query → store.get` on the
 canvas.
 
 ## The local engine, durability, and offload

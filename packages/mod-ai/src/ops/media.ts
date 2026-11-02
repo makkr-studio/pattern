@@ -4,7 +4,7 @@ import { required, stream, value, z, type OpDefinition } from "@pattern-js/core"
 import { modelRefSchema } from "@pattern-js/mod-agents";
 import { generateImage, generateSpeech, generateVideo, transcribe } from "../sdk.js";
 import { genProgressSchema, mediaRefSchema, mediaSchema, segmentSchema, type GenProgress, type Media, type MediaRef } from "../types.js";
-import { maybe, mediaBytes, providerService } from "./shared.js";
+import { callOptions, maybe, mediaBytes, providerKey, providerService } from "./shared.js";
 
 /** Emit start → (await the work) → done. A thin progress channel for long jobs. */
 function progressStream(work: Promise<unknown>): ReadableStream<GenProgress> {
@@ -71,10 +71,10 @@ export const imageGenerate: OpDefinition = {
 
     // Forward any input images under the underlying provider's options key (best-effort, provider-dependent).
     const inputRefs = [...(oneImage ? [oneImage] : []), ...(manyImages ?? [])];
-    let providerOptions = cfg.providerOptions ? { ...cfg.providerOptions } : undefined;
+    let providerOptions = callOptions(modelRef, cfg.providerOptions).providerOptions as Record<string, Record<string, unknown>> | undefined;
     if (inputRefs.length) {
       const urls = await imageDataUrls(ctx, inputRefs);
-      const key = modelRef.routing === "gateway" ? modelRef.modelId.split("/")[0] || "gateway" : modelRef.provider;
+      const key = providerKey(modelRef);
       providerOptions = { ...(providerOptions ?? {}) };
       providerOptions[key] = { ...(providerOptions[key] ?? {}), image: urls[0], images: urls };
     }
@@ -118,15 +118,18 @@ export const speechGenerate: OpDefinition = {
       ctx.input.value<string>("text"),
       maybe<string>(ctx, "instructions"),
     ]);
-    const model = await providerService(ctx).speechModel(modelRefSchema.parse(modelRef), ctx);
-    const cfg = ctx.config as { voice?: string; speed?: number };
+    const ref = modelRefSchema.parse(modelRef);
+    const model = await providerService(ctx).speechModel(ref, ctx);
+    const cfg = ctx.config as { voice?: string; speed?: number; format?: string };
     const r = await generateSpeech({
       model,
       text,
       voice: cfg.voice,
       speed: cfg.speed,
+      outputFormat: cfg.format,
       instructions: instructions && instructions.trim() ? instructions : undefined,
       abortSignal: ctx.signal,
+      ...callOptions(ref),
     });
     return { audio: { bytes: r.audio.uint8Array, mime: r.audio.mediaType, kind: "audio" } satisfies Media };
   },
@@ -135,9 +138,9 @@ export const speechGenerate: OpDefinition = {
 export const transcribeOp: OpDefinition = {
   type: "ai.transcribe",
   title: "ai.transcribe",
-  description: "Transcribe audio to text (STT). Pass a MediaRef (or raw bytes). Returns text + optional segments.",
+  description: "Transcribe audio to text (STT). Wire `audio` (a MediaRef) or `audioBytes` (raw bytes; wins when both are wired). Returns text + optional segments.",
   config: z.object({ language: z.string().optional() }),
-  inputs: { model: required(modelRefSchema), audio: required(mediaRefSchema), audioBytes: value(z.instanceof(Uint8Array)) },
+  inputs: { model: required(modelRefSchema), audio: value(mediaRefSchema), audioBytes: value(z.instanceof(Uint8Array)) },
   outputs: {
     text: value(z.string()),
     segments: value(z.array(segmentSchema)),
@@ -147,12 +150,21 @@ export const transcribeOp: OpDefinition = {
   execute: async (ctx) => {
     const [modelRef, audioRef, audioBytes] = await Promise.all([
       ctx.input.value("model"),
-      ctx.input.value<MediaRef>("audio"),
+      maybe<MediaRef>(ctx, "audio"),
       maybe<Uint8Array>(ctx, "audioBytes"),
     ]);
-    const model = await providerService(ctx).transcriptionModel(modelRefSchema.parse(modelRef), ctx);
-    const audio = audioBytes ?? (await mediaBytes(ctx, audioRef));
-    const r = await transcribe({ model, audio, abortSignal: ctx.signal });
+    if (!audioBytes && !audioRef) throw new Error("ai.transcribe: wire `audio` (a MediaRef) or `audioBytes`.");
+    const ref = modelRefSchema.parse(modelRef);
+    const model = await providerService(ctx).transcriptionModel(ref, ctx);
+    const audio = audioBytes ?? (await mediaBytes(ctx, audioRef!));
+    // The SDK has no language parameter: the hint rides the provider's options.
+    const language = (ctx.config as { language?: string }).language;
+    const r = await transcribe({
+      model,
+      audio,
+      abortSignal: ctx.signal,
+      ...callOptions(ref, language ? { [providerKey(ref)]: { language } } : undefined),
+    });
     return {
       text: r.text,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -181,20 +193,28 @@ export const videoGenerate: OpDefinition = {
     progress: stream(genProgressSchema),
   },
   execute: async (ctx) => {
-    const [modelRef, prompt] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("prompt")]);
-    const model = await providerService(ctx).videoModel(modelRefSchema.parse(modelRef), ctx);
+    const [modelRef, prompt, image] = await Promise.all([
+      ctx.input.value("model"),
+      ctx.input.value<string>("prompt"),
+      maybe<MediaRef>(ctx, "image"),
+    ]);
+    const ref = modelRefSchema.parse(modelRef);
+    const model = await providerService(ctx).videoModel(ref, ctx);
+    // Image-to-video: the SDK takes the start frame inside the prompt.
+    const videoPrompt = image ? { image: await mediaBytes(ctx, image), text: prompt } : prompt;
     const cfg = ctx.config as { n: number; durationSeconds?: number; aspectRatio?: string };
     const media = (async () => {
       const r = await generateVideo({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         model: model as any,
-        prompt,
+        prompt: videoPrompt,
         n: cfg.n,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...(cfg.durationSeconds ? { duration: cfg.durationSeconds } : ({} as any)),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         aspectRatio: cfg.aspectRatio as any,
         abortSignal: ctx.signal,
+        ...callOptions(ref),
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (r.videos as any[]).map((v): Media => ({ bytes: v.uint8Array, mime: v.mediaType ?? "video/mp4", kind: "video" }));

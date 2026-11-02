@@ -301,7 +301,7 @@ const workflowValidate = adminOp(
  */
 const parkedCode = new Map<string, Workflow>();
 
-const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow; code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
+const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow; code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }, ctx) => {
   const slug = str(args.slug, "slug");
   const enabled = Boolean(args.enabled);
   if (enabled) {
@@ -313,7 +313,7 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
     }
     const meta = await controlPlane.store.getMeta(slug);
     if (!meta?.live) throw new DomainError("invalid", `"${slug}" has no live version to enable`);
-    const res = await controlPlane.deploy(slug, meta.live);
+    const res = await controlPlane.deploy(slug, meta.live, { principal: ctx.principal });
     return { ok: res.ok, ...(res.ok ? {} : { conflicts: res.conflicts }) };
   }
   // Undeploy. A code workflow has no store meta — park its doc (so it can come
@@ -326,7 +326,7 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
     engine.unregisterWorkflow(slug);
     return { ok: true };
   }
-  await controlPlane.disable(slug);
+  await controlPlane.disable(slug, { principal: ctx.principal });
   return { ok: true };
 });
 
@@ -334,9 +334,9 @@ const workflowDeploy = adminOp("admin.workflow.deploy", "Activate a version (rou
   controlPlane.deploy(str(args.slug, "slug"), str(args.version, "version"), { swap: Boolean(args.swap), principal: ctx.principal }),
 );
 
-const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", { in: { slug: P() }, out: "result" }, async (args, { controlPlane }) => {
+const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", { in: { slug: P() }, out: "result" }, async (args, { controlPlane }, ctx) => {
   const slug = str(args.slug, "slug");
-  await controlPlane.disable(slug).catch(() => {});
+  await controlPlane.disable(slug, { principal: ctx.principal }).catch(() => {});
   await controlPlane.store.delete(slug);
   return { ok: true };
 });

@@ -36,7 +36,7 @@ Two pieces, and the way they connect.
 
 - **Ops carry the code.** An op is a small typed function with named input and
   output ports: `core.string.template`, `core.http.fetch`, `agents.run`. The base
-  catalog ships 175 of them, the first-party mods roughly double that, and you
+  catalog ships 176 of them, the first-party mods roughly double that, and you
   add your own.
 - **Workflows wire ops together.** You connect an output port to an input port,
   and the *kind* of the port decides how data moves:

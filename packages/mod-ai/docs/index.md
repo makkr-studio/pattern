@@ -62,7 +62,8 @@ vars; an alias just references them by name and source.
 ## The modality ops
 
 All take a `model` (required) and write their result on named outputs. Text-ish
-ops accept `prompt` XOR `messages` plus an optional `system`. The generation ops
+ops take `prompt` or `messages` (`messages` wins when both are wired) plus an
+optional `system`. The generation ops
 (image/audio/video) output **raw media** (`{ bytes, mime, kind }`) and **don't
 save**: keeping the save out of the op means mod-ai never assumes a blob store.
 Wire the output into `store.blob.put` to persist it: its `ref` output is a
@@ -83,8 +84,8 @@ Wire the output into `store.blob.put` to persist it: its `ref` output is a
 
 **Long-running generation** (image, video): the op returns immediately with a
 `progress` **stream** (`start` → `done`) and settles the media when ready,
-and it honors `ctx.signal` so editor Stop / cancel aborts it. Video forces an
-extended 15-minute fetch timeout (it routinely takes minutes).
+and it honors `ctx.signal` so editor Stop / cancel aborts it. Video through the
+gateway gets an extended 15-minute fetch timeout (it routinely takes minutes).
 
 Verify exact ports any time: `npx pattern ops ai.image.generate`.
 

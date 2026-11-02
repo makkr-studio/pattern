@@ -3,7 +3,7 @@
 import { required, value, z, type OpDefinition } from "@pattern-js/core";
 import { modelRefSchema, usageSchema } from "@pattern-js/mod-agents";
 import { embed, embedMany } from "../sdk.js";
-import { mapUsage, providerService } from "./shared.js";
+import { callOptions, mapUsage, providerService } from "./shared.js";
 
 export const embedOp: OpDefinition = {
   type: "ai.embed",
@@ -14,8 +14,9 @@ export const embedOp: OpDefinition = {
   outputs: { embedding: value(z.array(z.number())), usage: value(usageSchema) },
   execute: async (ctx) => {
     const [modelRef, val] = await Promise.all([ctx.input.value("model"), ctx.input.value<string>("value")]);
-    const model = await providerService(ctx).textEmbeddingModel(modelRefSchema.parse(modelRef), ctx);
-    const r = await embed({ model, value: val, abortSignal: ctx.signal });
+    const ref = modelRefSchema.parse(modelRef);
+    const model = await providerService(ctx).textEmbeddingModel(ref, ctx);
+    const r = await embed({ model, value: val, abortSignal: ctx.signal, ...callOptions(ref) });
     return { embedding: r.embedding, usage: mapUsage(r.usage) };
   },
 };
@@ -29,9 +30,10 @@ export const embedManyOp: OpDefinition = {
   outputs: { embeddings: value(z.array(z.array(z.number()))), usage: value(usageSchema) },
   execute: async (ctx) => {
     const [modelRef, values] = await Promise.all([ctx.input.value("model"), ctx.input.value<string[]>("values")]);
-    const model = await providerService(ctx).textEmbeddingModel(modelRefSchema.parse(modelRef), ctx);
+    const ref = modelRefSchema.parse(modelRef);
+    const model = await providerService(ctx).textEmbeddingModel(ref, ctx);
     const cfg = ctx.config as { maxParallelCalls?: number };
-    const r = await embedMany({ model, values, maxParallelCalls: cfg.maxParallelCalls, abortSignal: ctx.signal });
+    const r = await embedMany({ model, values, maxParallelCalls: cfg.maxParallelCalls, abortSignal: ctx.signal, ...callOptions(ref) });
     return { embeddings: r.embeddings, usage: mapUsage(r.usage) };
   },
 };

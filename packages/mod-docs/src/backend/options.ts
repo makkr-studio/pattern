@@ -19,7 +19,7 @@ export interface DocsModOptions {
   /** Magic-link request path for the sign-in card. Default "/auth/magic-link/request". */
   loginRequestPath?: string;
   /**
-   * Memoize chapter nav / search index / llms.txt per process (content is
+   * Memoize the chapter list (nav, search index and llms.txt are built from it) per process (content is
    * version-locked, so this is safe). Set false while WRITING docs so nav
    * picks up new files without a restart. Default true.
    */

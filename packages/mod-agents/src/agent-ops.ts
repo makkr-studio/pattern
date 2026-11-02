@@ -103,10 +103,15 @@ const runOutputs = {
   usage: value(usageSchema.optional()),
 };
 
-function softOutputs(outcome: Promise<TurnOutcome>) {
+/**
+ * The run's soft outputs. A failed or cancelled turn has no new history; it
+ * hands back `fallbackHistory` (the history the turn started from) so a
+ * workflow that saves `history` unconditionally never wipes the conversation.
+ */
+function softOutputs(outcome: Promise<TurnOutcome>, fallbackHistory: unknown[]) {
   return {
     output: outcome.then((o) => o.output),
-    history: outcome.then((o) => o.history ?? []),
+    history: outcome.then((o) => o.history ?? fallbackHistory),
     stopReason: outcome.then((o) => o.stopReason),
     stateToken: outcome.then((o) => o.stateToken),
     usage: outcome.then((o) => o.usage),
@@ -179,7 +184,7 @@ const runOp: OpDefinition = {
       signal,
     });
     void outcome.finally(release);
-    return { events, ...softOutputs(outcome) };
+    return { events, ...softOutputs(outcome, history ?? []) };
   },
 };
 
@@ -223,7 +228,7 @@ const resumeOp: OpDefinition = {
       resume: { saved, decisions },
     });
     void outcome.finally(release);
-    return { events, ...softOutputs(outcome) };
+    return { events, ...softOutputs(outcome, saved.messages) };
   },
 };
 

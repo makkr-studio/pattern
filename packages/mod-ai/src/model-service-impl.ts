@@ -7,6 +7,7 @@
  * Pattern sub-runs. Maps SDK stream parts → neutral chunks.
  */
 
+import { callOptions } from "./ops/shared.js";
 import type {
   AiModelService,
   GenerateTextInput,
@@ -62,6 +63,7 @@ export class ModelServiceImpl implements AiModelService {
       tools: buildTools(input.tools),
       stopWhen: isStepCount(1),
       abortSignal: input.signal,
+      ...callOptions(input.modelRef ?? this.defaultModel(), input.providerOptions),
     });
 
     let text = "";
@@ -84,7 +86,13 @@ export class ModelServiceImpl implements AiModelService {
   async generateText(input: GenerateTextInput): Promise<{ text: string; usage?: Usage }> {
     const model = await this.languageModel(input.modelRef, input.ctx);
     const messages = await toModelMessages(input.messages, input.ctx);
-    const r = await generateText({ model, instructions: input.system, messages });
+    const r = await generateText({
+      model,
+      instructions: input.system,
+      messages,
+      abortSignal: input.signal,
+      ...callOptions(input.modelRef ?? this.defaultModel()),
+    });
     return { text: r.text, usage: mapUsage(r.usage) };
   }
 }

@@ -16,15 +16,15 @@ const textConfig = z.object({ maxOutputTokens: z.number().int().positive().optio
 export const textGenerate: OpDefinition = {
   type: "ai.text.generate",
   title: "ai.text.generate",
-  description: "Generate text in one shot. prompt XOR messages, optional system. Wire a model from ai.model.",
+  description: "Generate text in one shot. prompt or messages (messages wins), optional system. Wire a model from ai.model.",
   config: textConfig,
   inputs: textInputs,
   outputs: { text: value(z.string()), usage: value(usageSchema), finishReason: value(z.string()) },
   execute: async (ctx) => {
-    const { model, system, messages } = await textInput(ctx);
+    const { model, system, messages, options } = await textInput(ctx);
     const cfg = ctx.config as { maxOutputTokens?: number };
     // Our port stays `system`; the SDK's option is `instructions` since v7.
-    const r = await generateText({ model, instructions: system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
+    const r = await generateText({ model, instructions: system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal, ...options });
     return { text: r.text, usage: mapUsage(r.usage), finishReason: r.finishReason };
   },
 };
@@ -32,7 +32,7 @@ export const textGenerate: OpDefinition = {
 export const textStream: OpDefinition = {
   type: "ai.text.stream",
   title: "ai.text.stream",
-  description: "Stream text token-by-token; text/usage settle when done. prompt XOR messages, optional system.",
+  description: "Stream text token-by-token; text/usage settle when done. prompt or messages (messages wins), optional system.",
   config: textConfig,
   inputs: textInputs,
   outputs: {
@@ -42,9 +42,9 @@ export const textStream: OpDefinition = {
     finishReason: value(z.string()),
   },
   execute: async (ctx) => {
-    const { model, system, messages } = await textInput(ctx);
+    const { model, system, messages, options } = await textInput(ctx);
     const cfg = ctx.config as { maxOutputTokens?: number };
-    const result = streamText({ model, instructions: system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal });
+    const result = streamText({ model, instructions: system, messages, maxOutputTokens: cfg.maxOutputTokens, abortSignal: ctx.signal, ...options });
     return {
       textStream: iterableToStream(result.textStream),
       text: result.text,
