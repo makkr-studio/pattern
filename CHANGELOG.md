@@ -3,7 +3,7 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
-## 0.5.0 — 2026-11-02
+## 0.5.0 — 2026-11-04
 
 Open for business: durable execution (retry, resume, re-run — completed work is
 never re-executed, external effects are sealed or confirmed), a payments
@@ -391,8 +391,8 @@ with a deploy story.
 ### Core & fixes
 
 - **401 means "sign in", 403 means "upgrade".** A signed-in user missing a
-  route's scope now gets 403 (anonymous callers still get 401), as JSON when
-  the client accepts it; a signed-out browser `GET` on any gated route is
+  route's scope now gets 403 (anonymous callers still get 401), as JSON
+  `{ error, reason }` unless the client asks for HTML; a signed-out browser `GET` on any gated route is
   redirected to the login page with `next`, as app mounts already were.
 - **The billing checklist stops claiming secrets it can't read.** A ref to an
   unset env var or an empty vault slot counts as missing; the webhook URL in

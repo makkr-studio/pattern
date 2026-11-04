@@ -77,5 +77,10 @@ for incoming events.
 - Every POST carries an `Idempotency-Key`, so a retried call can never create
   a second session or charge.
 
-The API version is pinned in code (`2026-06-24.dahlia`) so upgrades are a
-deliberate one-line change.
+The API version of the calls Pattern makes is pinned in code
+(`2026-06-24.dahlia`) so upgrades are a deliberate one-line change. Webhook
+events are a separate matter: Stripe sends them in your account's API version
+(or the CLI's, under `stripe listen`), which can be newer than the pin. The
+webhook reads only fields that are stable across `dahlia` releases, and a
+newer `2026-07-29.dahlia` event stream was checked end to end with a real test
+checkout.

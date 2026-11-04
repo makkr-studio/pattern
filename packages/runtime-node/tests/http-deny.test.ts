@@ -42,9 +42,7 @@ describe("refusing a gated route", () => {
     expect((await fetch(`${base}/pro`)).status).toBe(401);
     const free = await fetch(`${base}/pro`, { headers: { "x-user": "ada" } });
     expect(free.status).toBe(403);
-    expect(await free.text()).toMatch(/^Forbidden: .*pro/);
-    const json = await fetch(`${base}/pro`, { headers: { "x-user": "ada", accept: "application/json" } });
-    expect(await json.json()).toMatchObject({ error: "forbidden" });
+    expect(await free.json()).toMatchObject({ error: "forbidden", reason: expect.stringMatching(/pro/) });
   });
 
   it("a browser GET while signed out is sent to the login page with next", async () => {
@@ -55,6 +53,7 @@ describe("refusing a gated route", () => {
     // A signed-in browser lacking the scope is NOT bounced to login.
     const free = await fetch(`${base}/pro`, { headers: { accept: "text/html", "x-user": "ada" }, redirect: "manual" });
     expect(free.status).toBe(403);
+    expect(await free.text()).toMatch(/^Forbidden: .*pro/);
   });
 });
 

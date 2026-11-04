@@ -280,7 +280,8 @@ export class HttpHost {
    *   advertised login page (identity registers AUTH_LOGIN_URL) with `next`;
    * - signed in but missing a scope → 403, so a client can tell "sign in"
    *   from "upgrade".
-   * The body is JSON when the client accepts it, else a line of text.
+   * The body is a line of text when the client asks for HTML, else JSON
+   * (`{ error, reason }`), the same rule as the 429 answer.
    */
   private deny(req: IncomingMessage, res: ServerResponse, principal: Principal, reason: string, mayRedirect: boolean): void {
     const accept = String(req.headers["accept"] ?? "");
@@ -293,13 +294,15 @@ export class HttpHost {
       }
     }
     const status = anonymous ? 401 : 403;
-    if (accept.includes("application/json")) {
+    if (accept.includes("text/html")) {
       res
-        .writeHead(status, { "content-type": "application/json" })
-        .end(JSON.stringify({ error: anonymous ? "unauthorized" : "forbidden", reason }));
+        .writeHead(status, { "content-type": "text/plain; charset=utf-8" })
+        .end(`${anonymous ? "Unauthorized" : "Forbidden"}: ${reason}`);
       return;
     }
-    res.writeHead(status, { "content-type": "text/plain" }).end(`${anonymous ? "Unauthorized" : "Forbidden"}: ${reason}`);
+    res
+      .writeHead(status, { "content-type": "application/json" })
+      .end(JSON.stringify({ error: anonymous ? "unauthorized" : "forbidden", reason }));
   }
 
   /**
