@@ -8,6 +8,7 @@ import { maybe } from "./shared.js";
 
 export const modelOp: OpDefinition = {
   type: "ai.model",
+  effects: "pure",
   title: "ai.model",
   description:
     "Build a model reference (a value) to wire into any ai.* op or agents.agent. Define it inline: " +
@@ -59,9 +60,10 @@ export const modelOp: OpDefinition = {
 
 export const aliasOp: OpDefinition = {
   type: "ai.alias",
+  effects: "pure",
   title: "ai.alias",
   description:
-    "Resolve a named model alias (configured in admin → Settings → AI Providers) to a model reference. " +
+    "Resolve a named model alias (configured in admin → Resources → AI Providers) to a model reference. " +
     'Re-pointing the alias in Settings instantly re-targets every workflow using it. Defaults to "default".',
   config: z.object({ alias: z.string().min(1).default("default") }),
   configInputs: { alias: value(z.string()) },
@@ -73,7 +75,7 @@ export const aliasOp: OpDefinition = {
     const model = config?.resolveAlias(alias);
     if (!model) {
       throw new Error(
-        `ai.alias: no alias "${alias}" is configured — set it in admin → Settings → AI Providers.`,
+        `ai.alias: no alias "${alias}" is configured — set it in admin → Resources → AI Providers.`,
       );
     }
     return { model };

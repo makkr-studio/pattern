@@ -60,8 +60,9 @@ const engine = new Engine({ transport: new WorkerPoolTransport({ size: 4 }) });
 
 - **`NodeConnectionRegistry`**: `ConnectionRegistry` bound to live WebSocket sockets (rooms, broadcast, streamed sends).
 - **Trace persistence**: `jsonlTraceSink(path)` plus durable trace stores (`MemoryTraceStore`, `SqliteTraceStore`, `createTraceStore`). Core emits telemetry; the runtime persists it.
+- **The RunLedger**: workflows flagged `durable: true` record exact inputs and outputs to `.pattern-data/ledger.db` (sqlite), so a failed run can resume from the failing node. Crashed runs are found by process liveness and swept at boot. The ledger stores real values: protect `.pattern-data/` like your database.
 - **`loadMods(engine, specifiers)`**: load external plugin mods by module specifier.
-- **`pattern` CLI**: `pattern ops|graph|validate|run|dev`.
+- **`pattern` CLI**: `pattern ops|graph|validate|run|mcp|add|dev|load`.
 
 ## CLI
 
@@ -70,5 +71,8 @@ pattern ops [query]              # list/inspect ops (project mods included)
 pattern graph workflow.json      # render the graph in the terminal
 pattern validate workflow.json   # located, human-readable validation errors
 pattern run workflow.json|id     # run a boundary.cli workflow once (records to the trace store)
+pattern mcp                      # serve the project's tool workflows over MCP on stdio
+pattern add billing,chat         # grow the project by layers (delegates to create-pattern add)
 pattern dev [entry]              # run an entry with file-watch hot-reload
+pattern load scenario.json       # open-loop load test (--sweep, --url, --out, --p99)
 ```

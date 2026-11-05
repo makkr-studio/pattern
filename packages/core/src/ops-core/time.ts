@@ -24,6 +24,7 @@ function durationToMs(d: z.infer<typeof duration>): number {
 export const timeOps: OpDefinition[] = [
   defineOp({
     type: "core.time.delay",
+    effects: "pure",
     title: "core.time.delay",
     description: "Waits `ms` (config or input) then passes `value` through. Abort-aware: a cancelled run clears the timer.",
     inputs: { value: value(), ms: value(num) },
@@ -48,6 +49,7 @@ export const timeOps: OpDefinition[] = [
   }),
   defineOp({
     type: "core.time.now",
+    effects: "pure",
     title: "core.time.now",
     description: "Current epoch timestamp in milliseconds (non-deterministic).",
     inputs: {},

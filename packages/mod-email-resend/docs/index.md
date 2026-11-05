@@ -12,9 +12,9 @@ single dependency-free fetch.
 ## Setup
 
 1. In Resend: verify your sending domain and create an API key.
-2. Put the key in the vault (admin → **System → Secrets**) or an env var such
+2. Put the key in the vault (admin → **Resources → Secrets**) or an env var such
    as `RESEND_API_KEY`.
-3. Admin → **System → Email** → new account: driver **Resend**, a From address
+3. Admin → **Resources → Email** → new account: driver **Resend**, a From address
    on the verified domain, the key's source. Name it `default` if it should
    carry sign-in links.
 4. Press **Test** — a real email lands in the inbox you name.

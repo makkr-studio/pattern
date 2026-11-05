@@ -40,6 +40,8 @@ export interface UiManifest {
   pages: UiManifestPage[];
   /** Mod-contributed Settings-page sections. */
   settings?: Array<{ mod: string; section: SettingsSection }>;
+  /** Mod-contributed setup checklists — the dashboard's "open for business" board. */
+  checklists?: Array<{ mod: string; id: string; title: string; route: { method?: string; path: string } }>;
   /** Whether any auth provider is registered — i.e. whether a `requireAuth` is
    *  actually enforced (vs. declared-but-advisory). The editor warns when false. */
   authProvider?: boolean;
@@ -107,7 +109,18 @@ export interface WorkflowDoc {
   source?: Source;
   /** Run this workflow off the host event loop on the worker pool (opt-in). */
   offload?: boolean;
-  nodes: Array<{ id: string; op: string; title?: string; comment?: string; config?: unknown; ui?: { x: number; y: number; [k: string]: unknown } }>;
+  /** Record runs in the RunLedger for resume/re-run (opt-in, 0.5). */
+  durable?: boolean;
+  nodes: Array<{
+    id: string;
+    op: string;
+    title?: string;
+    comment?: string;
+    config?: unknown;
+    /** Per-node retry policy (0.5, engine-read — attempts is the TOTAL count). */
+    retry?: { attempts: number; backoffMs?: number; factor?: number; maxBackoffMs?: number };
+    ui?: { x: number; y: number; [k: string]: unknown };
+  }>;
   edges: Array<{ from: { node: string; port: string }; to: { node: string; port: string }; ui?: { portal?: string; [k: string]: unknown } }>;
   /** Visual annotation boxes (data-only; engine-ignored, hash-ignored). */
   frames?: Array<{ id: string; label?: string; comment?: string; x: number; y: number; w: number; h: number; hue?: number }>;
@@ -152,6 +165,13 @@ export interface OpInfo {
   reusable: boolean;
   /** Does meaningful synchronous compute — the editor nudges toward Offload. */
   cpuHeavy?: boolean;
+  /**
+   * The op's declared replay-safety (`OpDefinition.effects`): "pure" /
+   * "idempotent" / "external", or "dynamic" when it depends on the node's
+   * config. Absent = undeclared, which the engine treats as external. The
+   * deploy preview uses it to name the nodes that will send or charge.
+   */
+  effects?: "pure" | "idempotent" | "external" | "dynamic";
 }
 
 export interface ModInfo {
@@ -179,7 +199,7 @@ export interface RunSummary {
   workflowId: string;
   trigger: string;
   principal: unknown;
-  status: "ok" | "error" | "running" | "streaming";
+  status: "ok" | "error" | "canceled" | "running" | "streaming";
   startTime: number;
   endTime?: number;
   /** Total run time, start → true end (all streams drained). */
@@ -240,6 +260,10 @@ export interface RunDetail {
   paused?: boolean;
   /** Sub-runs this run started via `ctx.invoke`, oldest first. */
   children?: RunSummary[];
+  /** A RunLedger record exists (durable workflow) — re-run/resume available. */
+  ledgered?: boolean;
+  /** The ledgered run this one resumed/re-ran (lineage chip). */
+  resumedFrom?: string;
 }
 
 export interface LatencyStats {
@@ -264,8 +288,8 @@ export interface MetricsSummary {
 
 export interface NodeChange {
   id: string;
-  before: { op: string; config?: unknown; title?: string; comment?: string };
-  after: { op: string; config?: unknown; title?: string; comment?: string };
+  before: { op: string; config?: unknown; retry?: WorkflowDoc["nodes"][number]["retry"]; title?: string; comment?: string };
+  after: { op: string; config?: unknown; retry?: WorkflowDoc["nodes"][number]["retry"]; title?: string; comment?: string };
 }
 
 export interface DiffNode {
@@ -325,7 +349,41 @@ export interface SaveResult {
 
 export type RunResult =
   | { ok: false; issues: ValidationIssue[] }
-  | { ok: true; runId: string; status: "ok" | "error"; outputs: Record<string, Record<string, unknown>>; error?: string };
+  | { ok: true; runId: string; status: "ok" | "error" | "canceled"; outputs: Record<string, Record<string, unknown>>; error?: string };
+
+/** An external-effect node whose outcome a resume can't vouch for (mirrors core's `AmbiguousNode`). */
+export interface AmbiguousNode {
+  nodeId: string;
+  op: string;
+  /** `started`: the process died mid-call. `error`: the op threw without a no-effect verdict. */
+  reason: "started" | "error";
+}
+
+/** What a re-run/resume would do — `admin.run.rerun` with `dryRun: true` (mirrors core's `RerunPlan`). */
+export interface RerunPlan {
+  runId: string;
+  from: "failure" | "start";
+  /** Seeded from recorded outputs — never re-executed. */
+  reuse: Array<{ nodeId: string; op: string }>;
+  /** Executes (again, or for the first time), with its replay-safety stamp. */
+  execute: Array<{ nodeId: string; op: string; effects: "pure" | "idempotent" | "external" }>;
+  /** Recorded skips that stay skipped. */
+  skipped: string[];
+  /** Blocks an unconfirmed resume. */
+  ambiguous: AmbiguousNode[];
+}
+
+/** `admin.run.rerun`'s answer: a started run, a plan (dryRun), or a blocked resume awaiting confirmation. */
+export interface RerunResult {
+  ok: boolean;
+  /** The new run (navigate to it). */
+  runId?: string;
+  /** dryRun: what would happen. */
+  plan?: RerunPlan;
+  /** Ambiguous external-effect nodes — resend with `confirmExternal: true` to proceed. */
+  blocked?: AmbiguousNode[];
+  message?: string;
+}
 
 export interface RunInput {
   slug?: string;

@@ -10,6 +10,7 @@
  */
 
 import type { Workflow } from "@pattern-js/core";
+import type { RateBudget } from "./options.js";
 import { authOpRoutes } from "./ops.js";
 
 interface EndpointSpec {
@@ -26,6 +27,17 @@ interface EndpointSpec {
   /** For json routes: the op's named output port, and which query keys it reads. */
   out?: string;
   query?: string[];
+  /** Per-client budget stamped on the trigger (`rateLimit`, 429 past it). */
+  rateLimit?: RateBudget | false;
+}
+
+/** The trigger config: method + path, plus the per-IP budget when the route has one. */
+function triggerConfig(spec: EndpointSpec): Record<string, unknown> {
+  return {
+    method: spec.method,
+    path: spec.path,
+    ...(spec.rateLimit ? { rateLimit: { max: spec.rateLimit.max, window: spec.rateLimit.window, by: "ip" } } : {}),
+  };
 }
 
 function endpoint(spec: EndpointSpec): Workflow {
@@ -37,7 +49,7 @@ function endpoint(spec: EndpointSpec): Workflow {
     const io = authOpRoutes[spec.op];
     if (!io) throw new Error(`identity route "${spec.id}": no auth I/O for op "${spec.op}"`);
     const nodes: Workflow["nodes"] = [
-      { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path } },
+      { id: "in", op: "boundary.http.request", config: triggerConfig(spec) },
       { id: "call", op: spec.op },
       { id: "ct", op: "core.const.object", config: { value: { "content-type": "text/html; charset=utf-8" } } },
       { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
@@ -76,7 +88,7 @@ function endpoint(spec: EndpointSpec): Workflow {
   const out = spec.out ?? "out";
   const query = spec.query ?? [];
   const nodes: Workflow["nodes"] = [
-    { id: "in", op: "boundary.http.request", config: { method: spec.method, path: spec.path } },
+    { id: "in", op: "boundary.http.request", config: triggerConfig(spec) },
     { id: "call", op: spec.op },
     { id: "status", op: "boundary.http.status" },
     { id: "out", op: "boundary.http.response", config: { mode: "buffered" } },
@@ -96,16 +108,17 @@ function endpoint(spec: EndpointSpec): Workflow {
 }
 
 /** The identity routes under `mount` (default /auth). */
-export function endpointWorkflows(mount: string): Workflow[] {
+export function endpointWorkflows(mount: string, perClient: RateBudget | false = { max: 20, window: "15m" }): Workflow[] {
   const specs: EndpointSpec[] = [
     { id: "identity.route.login", method: "GET", path: `${mount}/login`, op: "identity.login.page", shape: "http" },
     { id: "identity.route.token", method: "GET", path: `${mount}/token`, op: "identity.token.callback", shape: "http" },
+    { id: "identity.route.code", method: "POST", path: `${mount}/code`, op: "identity.code.callback", shape: "http", rateLimit: perClient },
     { id: "identity.route.logout", method: "POST", path: `${mount}/logout`, op: "identity.logout", shape: "http" },
     { id: "identity.route.whoami", method: "GET", path: `${mount}/whoami`, op: "identity.whoami", shape: "json", out: "whoami" },
     { id: "identity.route.welcome", method: "GET", path: `${mount}/welcome`, op: "identity.welcome.page", shape: "http" },
     { id: "identity.route.invited", method: "GET", path: `${mount}/invited`, op: "identity.invited.page", shape: "http" },
     { id: "identity.route.bootstrap", method: "GET", path: `${mount}/bootstrap`, op: "identity.bootstrap.page", shape: "http" },
-    { id: "identity.route.bootstrap.submit", method: "POST", path: `${mount}/bootstrap`, op: "identity.bootstrap.submit", shape: "http" },
+    { id: "identity.route.bootstrap.submit", method: "POST", path: `${mount}/bootstrap`, op: "identity.bootstrap.submit", shape: "http", rateLimit: perClient },
   ];
   return specs.map(endpoint);
 }

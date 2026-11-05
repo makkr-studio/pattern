@@ -22,7 +22,7 @@ The no-fork knobs cover the common cases:
 
 - `agent.{name,instructions,model}`: the built-in agent's persona and model.
   `model` is `{ routing?, provider, modelId }` (it wires an `ai.model` node);
-  omit it to use the default model from admin → Settings → AI Providers.
+  omit it to use the default model from admin → Resources → AI Providers.
 - `guardrail`: the shipped professional-conduct input guardrail (`boolean`, or
   `{ enabled, model, instructions }`, where `model` is the same shape). On by
   default; the `CHAT_GUARDRAIL` env var is the runtime switch.
@@ -39,7 +39,7 @@ stays no-fork.
 ## Level 2: fork the turn pipeline
 
 Every message runs `chat.turn.pipeline`, a real workflow. In the admin:
-**fork** it (Editor → Fork), edit your copy, disable the built-in from the
+**fork** it (Settings → Fork), edit your copy, disable the built-in from the
 catalog. Its shape:
 
 ```

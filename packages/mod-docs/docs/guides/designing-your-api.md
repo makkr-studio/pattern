@@ -34,9 +34,14 @@ keep the op a pure domain function:
 - **Validation**: put a JSON Schema on `boundary.http.request`'s `body` /
   `query` / `params`. The engine returns **400 with located `issues`** *before*
   your graph runs. Validated values flow out of the trigger's ports.
-- **Auth**: `requireAuth: { scopes: ["edit"] }` on the trigger gives you
-  **401 / 403** at the boundary (set it with the editor's auth selector, or wire
-  it from a `core.env`/`core.const` source; it resolves once at registration).
+- **Auth**: `requireAuth: { scopes: ["edit"] }` on the trigger answers at the
+  boundary: **401** when nobody is signed in (a browser `GET` asking for HTML
+  is redirected to the login page with `next`), **403** when the user is
+  signed in without the scope, so a client can tell "sign in" from "upgrade".
+  The refusal body is JSON (`{ error, reason }`) unless the client asks for
+  HTML, which gets a line of text. Set `requireAuth` with the editor's auth
+  selector, or wire it from a `core.env`/`core.const` source; it resolves once
+  at registration.
   No in-op scope checks. If an op reads sensitive data, tag it
   `sensitivity: "privileged"`: the validator then *warns* whenever a network
   trigger can reach it without `requireAuth`, so a forgotten gate is caught while

@@ -4,7 +4,8 @@
  * One purposeful route per thing the screen exposes (list / write / delete) —
  * no generic op invoker. Each is a normal workflow (request → extract →
  * vault.admin.* op → status → response) built by the shared `httpEndpoint`,
- * admin-scope-gated at the boundary (the op also re-checks `admin` in-op).
+ * admin-scope-gated at the boundary. The ops are tagged `privileged`: any
+ * other trigger that calls them must be gated by its author.
  * Paths are single-sourced here so the workflows and the manifest can't drift.
  */
 
@@ -17,6 +18,8 @@ export const PATHS = {
   /** GET (list) and POST (write/rotate) share the collection path. */
   secrets: "/vault/secrets",
   secret: "/vault/secrets/:name",
+  /** POST a pasted .env — every KEY=VALUE line becomes an encrypted secret. */
+  import: "/vault/secrets/import",
 } as const;
 
 /** The route workflows that back the Secrets screen (admin-scope gated). */
@@ -48,6 +51,15 @@ export function vaultAdminRoutes(): Workflow[] {
       path: `${API}${PATHS.secret}`,
       op: "vault.admin.delete",
       io: { in: { name: fromParams() }, out: "result" },
+      auth,
+    }),
+    httpEndpoint({
+      id: "vault.route.admin.import",
+      name: `Vault · POST ${API}${PATHS.import}`,
+      method: "POST",
+      path: `${API}${PATHS.import}`,
+      op: "vault.admin.import",
+      io: { in: { dotenv: fromBody() }, out: "result" },
       auth,
     }),
   ];

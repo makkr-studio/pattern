@@ -29,7 +29,7 @@ Add these alongside in `pattern.config.json`:
 - **`@pattern-js/mod-store`**: conversations, turn docs, blobs, and the per-turn
   lease live here. `ready` throws without it.
 - **`@pattern-js/mod-agents`** plus **`@pattern-js/mod-ai`** (the model provider).
-  Set a default model in admin → Settings → AI Providers and the provider key
+  Set a default model in admin → Resources → AI Providers and the provider key
   (e.g. `OPENAI_API_KEY`) in the vault; the shipped pipeline's `agents.run` runs on it.
 
 Optional but assumed by the defaults: `@pattern-js/mod-identity` +
@@ -50,7 +50,7 @@ chatMod({
 
 `agent.{name,instructions,model}` are the no-fork knobs (`model` is
 `{ routing?, provider, modelId }`, or omit it for the default model from admin →
-Settings → AI Providers). Every message runs the `chat.turn.pipeline` workflow.
+Resources → AI Providers). Every message runs the `chat.turn.pipeline` workflow.
 Fork it in the admin to swap models, add guardrails, or narrow toolsets.
 
 Full documentation: the **Chat** chapter at `/docs` (served by

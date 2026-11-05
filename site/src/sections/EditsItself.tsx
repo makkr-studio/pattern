@@ -9,7 +9,7 @@ import type { MiniGraph } from "../graph/types";
 const selfGraph: MiniGraph = {
   nodes: [
     { id: "in", op: "boundary.http.request", title: "GET /workflows", boundary: "trigger", inputs: [], outputs: [{ name: "params", kind: "value", schemaType: "object" }], pos: { x: 0, y: 40 } },
-    { id: "list", op: "admin.workflows.list", title: "List workflows", inputs: [{ name: "in", kind: "control" }], outputs: [{ name: "out", kind: "value", schemaType: "array" }], pos: { x: 250, y: 40 } },
+    { id: "list", op: "admin.workflow.list", title: "List workflows", inputs: [{ name: "in", kind: "control" }], outputs: [{ name: "out", kind: "value", schemaType: "array" }], pos: { x: 250, y: 40 } },
     { id: "out", op: "boundary.http.response", title: "Respond", boundary: "outgate", inputs: [{ name: "body", kind: "value", schemaType: "array" }], outputs: [], pos: { x: 500, y: 40 } },
   ],
   edges: [

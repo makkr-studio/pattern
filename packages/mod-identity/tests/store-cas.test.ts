@@ -41,6 +41,8 @@ const token = (over: Partial<Parameters<IdentityStores["tokens"]["create"]>[0]> 
   purpose: "login" as const,
   emailNorm: "a@b.c",
   data: null,
+  codeHash: null,
+  attempts: 0,
   createdAt: Date.now(),
   expiresAt: Date.now() + 60_000,
   consumedAt: null,
@@ -131,6 +133,26 @@ describe.each(drivers)("identity stores (%s)", (_name, open) => {
     expect(ids.sort()).toEqual([a.id, b.id].sort());
     expect((await stores.sessions.findById(a.id))?.revokedAt).not.toBeNull();
     expect((await stores.sessions.listForUser(bob.id))[0]?.revokedAt).toBeNull();
+    await stores.close();
+  });
+
+  it("code attempts: concurrent wrong guesses all count, and the cap burns the row", async () => {
+    const stores = await open();
+    const t = await stores.tokens.create(token({ codeHash: "deadbeef" }));
+    // Only pending code-bearing rows are candidates.
+    await stores.tokens.create(token({ emailNorm: "a@b.c" })); // link-only
+    expect((await stores.tokens.listPendingWithCode("a@b.c", Date.now())).map((r) => r.id)).toEqual([t.id]);
+
+    // Relative increment (deliberately not CAS): all 5 concurrent guesses land…
+    await Promise.all(
+      Array.from({ length: 5 }, () => stores.tokens.recordCodeAttempt(t.id, 5, Date.now())),
+    );
+    // …and the 5th burned the row: consumed, so no longer a candidate and CAS-dead.
+    expect(await stores.tokens.listPendingWithCode("a@b.c", Date.now())).toEqual([]);
+    const burned = (await stores.tokens.findByTokenHash(t.tokenHash))!;
+    expect(burned.attempts).toBe(5);
+    expect(burned.consumedAt).not.toBeNull();
+    expect(await stores.tokens.consume(burned.id, burned.version, Date.now())).toBeNull();
     await stores.close();
   });
 

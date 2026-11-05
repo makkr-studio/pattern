@@ -18,9 +18,10 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import {
+  ENGINE_INTROSPECT,
   Engine,
   formatGraph,
   collectIssues,
@@ -32,6 +33,7 @@ import {
   type Workflow,
 } from "@pattern-js/core";
 import { loadMods } from "../mods.js";
+import { planAddDelegation } from "../add-delegate.js";
 import { loadWorkflowDir, loadDotEnv } from "../project.js";
 import { runCli } from "../cli.js";
 import { createTraceStore } from "../trace/index.js";
@@ -59,6 +61,8 @@ async function main(): Promise<void> {
       return cmdRun(rest);
     case "mcp":
       return cmdMcp();
+    case "add":
+      return cmdAdd(rest);
     case "dev":
       return cmdDev(rest[0]);
     case "load":
@@ -84,11 +88,44 @@ function usage(): void {
   ${pc.cyan("pattern validate")} <file.json>  validate a workflow document
   ${pc.cyan("pattern run")} <file.json|id> [-- args]  run a boundary.cli workflow once by file or id (records to the trace store)
   ${pc.cyan("pattern mcp")}                   serve this project's tool workflows to a local MCP client over stdio
+  ${pc.cyan("pattern add")} <layer>[,…]       grow this project by layers (billing, chat, vectors, …) — delegates to create-pattern add
   ${pc.cyan("pattern dev")} [entry]           run an entry with --watch hot-reload
   ${pc.cyan("pattern load")} <scenario.json>  open-loop load test with engine flight-recording
                               ${pc.dim("--sweep  find max sustainable rps   --url <u>  target a running server")}
                               ${pc.dim("--out <file>  write the JSON report   --p99 <ms>  sweep knee budget")}
 `);
+}
+
+/**
+ * `pattern add` — delegate to the project-generation-matched create-pattern.
+ * The scaffolder owns layer logic; this only derives WHICH scaffolder from
+ * the project's own @pattern-js range and hands over the terminal.
+ */
+function cmdAdd(args: string[]): void {
+  const pkgText = existsSync("package.json") ? readFileSync("package.json", "utf8") : null;
+  const plan = planAddDelegation(pkgText, args);
+  if (plan.warning) console.error(pc.yellow(`⚠ ${plan.warning}`));
+  // Windows: Node refuses to spawn a .cmd without a shell, and cmd treats the
+  // `^` of a range as an escape — so run npm's own npx entry with this Node
+  // binary instead (no shell, no quoting). It ships beside node.exe.
+  let bin = "npx";
+  let argv = plan.argv;
+  if (process.platform === "win32") {
+    const npxCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npx-cli.js");
+    if (!existsSync(npxCli)) {
+      console.error(pc.red(`couldn't find npm's npx next to ${process.execPath} — run it yourself:`));
+      console.error(`  npx ${plan.argv.join(" ")}`);
+      process.exit(1);
+    }
+    bin = process.execPath;
+    argv = [npxCli, ...plan.argv];
+  }
+  const child = spawn(bin, argv, { stdio: "inherit" });
+  child.on("exit", (code) => process.exit(code ?? 0));
+  child.on("error", (err) => {
+    console.error(pc.red(`npx failed: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
+  });
 }
 
 /**
@@ -101,6 +138,9 @@ function usage(): void {
 async function projectEngine(): Promise<Engine> {
   loadDotEnv(process.cwd());
   const engine = new Engine({ env: process.env });
+  // Nothing is served from here: mods skip serve-time side effects (identity's
+  // bootstrap link would otherwise be minted and printed on every command).
+  engine.provideService(ENGINE_INTROSPECT, true);
   if (existsSync("pattern.config.json")) {
     try {
       const config = JSON.parse(readFileSync("pattern.config.json", "utf8")) as { mods?: string[] };

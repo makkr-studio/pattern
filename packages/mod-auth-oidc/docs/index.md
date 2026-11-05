@@ -49,7 +49,7 @@ mod-identity: find-or-create per the effective signup policy → mint session �
 set the cookie → redirect to `next`.
 
 Every failure is a redirect to `/auth/login?error=<code>` with a **fixed**
-code (`oidc-state`, `oidc-exchange`, `oidc-token`, `email-not-verified`,
+code (`oidc-state`, `oidc-exchange`, `oidc-token`, `oidc-no-email`, `email-not-verified`,
 `signup-closed`, `account-disabled`, `oidc-failed`) — IdP-supplied text is
 only ever logged, never reflected into a URL or page.
 

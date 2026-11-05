@@ -11,18 +11,54 @@ is served through the app boundary alongside the rest of your app.
 
 ## What's there
 
-- **Catalog**: every op, mod, and workflow the engine knows. Source badges
-  (`code` / `file`), enable toggles, filters; code workflows are read-only but
-  forkable into editable copies.
+The sidebar: **Home** · **Workflows** · **Activity** (Runs, Metrics, Process) ·
+**Resources** (what mods contribute: data, vectors, secrets, email, AI providers)
+· **Administration** (users, billing, settings) · **Reference** (Ops, Mods,
+System map). Mods place their pages with `MenuEntry.category` (see
+`ADMIN_SECTIONS` in `@pattern-js/admin-sdk`).
+
+- **Workflows**: every workflow the engine knows, with source badges (`code` /
+  `file`), deploy toggles, filters; code workflows are read-only but forkable.
+  A workflow opens as a **workspace** — one chrome, four tabs: **Editor**,
+  **Runs** (its own), **Versions**, **Settings** (identity, durable/offload,
+  deploy/undeploy, fork, export, delete). The workspace header says the
+  deployment truth in one strip: *Unsaved changes · Saved v8 · Live v7*, with
+  **Deploy v8** right there. Every workflow you open stays open (with its
+  draft) in the strip above until you close it.
 - **Graph editor**: the hero. An `@xyflow/react` canvas with node types
   rendered from each `OpDefinition`'s ports, config forms from the op's Zod
-  schema (secret fields redacted), live validation, and connection assist.
-  With `@pattern-js/mod-buddy` installed, a **Buddy dock** (the ✦ toolbar
-  toggle) drafts workflows in conversation and applies proposals to the open
-  canvas as undoable edits — Save and Deploy stay yours.
+  schema (secret fields redacted), live validation, and connection assist. The
+  palette collapses to an icon rail; the right dock holds the **Inspector**
+  (the selected node — with nothing selected, the workflow's own name,
+  description, tags, and execution flags) and, with `@pattern-js/mod-buddy`
+  installed, **Buddy** one tab over, drafting workflows in conversation and
+  applying proposals to the canvas as undoable edits — Save and Deploy stay
+  yours.
+- **Deploy preview**: Deploy (from the editor or the strip) first says what
+  changes between the live version and what's about to go live — routes that
+  start or stop serving, auth gates that change (a route going public is
+  called out), external-effect nodes joining the graph, durable/offload
+  flips, node/edge counts — then saves and moves the pointer.
 - **Runs + replay**: trigger a workflow, watch the per-node waterfall, then
   scrub the replay back over the graph as nodes animate pending → running →
-  ok / error / skipped. Run I/O is sampled (capped, secrets masked).
+  ok / error / skipped. Run I/O is sampled (capped, secrets masked). Retried
+  nodes show their `retry` attempts inline in the waterfall; cancelled runs
+  wear their own `canceled` badge (0.5).
+- **Resume & re-run** (0.5): runs of `durable: true` workflows carry two extra
+  buttons on the run detail — **Resume** (failed runs: completed nodes are
+  seeded from the RunLedger, only the failed frontier re-executes) and
+  **Re-run** (any run: a fresh run with the recorded trigger input). Either
+  click first shows the **plan** — which nodes reuse their recorded result,
+  which execute (external-effect ones tagged), which skips hold — and names
+  the **ambiguous zone**: external-effect nodes that started and never
+  finished, *or failed without saying the effect didn't happen*; their send or
+  charge may already exist, so resuming through them is a human call. A
+  re-run from start says plainly that every external node repeats (it opens a
+  new idempotency lineage; a resume keeps the original run's). Resumed runs
+  link their lineage both ways (“↻ resumed from …”). The workflow panel's
+  **Durable runs** toggle (the dock with nothing selected, or the Settings
+  tab) opts a workflow in; the Inspector's **Reliability** group sets a node's
+  retry policy.
 - **Versions + diff**: one live version per slug over an immutable history;
   structural JSON diff between any two versions; promote / rollback are
   one-click pointer moves with an audit trail.
@@ -59,7 +95,7 @@ binds a `path` to a `view`:
 that either calls a `route` (result shown to the operator) or navigates to a
 `path`. Sample's `sample.greet` calls the greetings route.
 
-**Settings sections.** A `settings` entry renders a section on System →
+**Settings sections.** A `settings` entry renders a section on Administration →
 Settings from `fields` (toggle / select / text / number), reading current
 values from a `route` and POSTing `{ [key]: value }` patches to a
 `submitRoute`; both are dedicated endpoints.

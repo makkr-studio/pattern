@@ -100,7 +100,7 @@ export interface EmailMessage {
 /**
  * A driver, registered by a provider mod (`mod-email-resend`, `mod-email-smtp`,
  * …) via `EmailService.registerDriver` in its `ready()`. The `secrets`/`options`
- * field lists drive the auto-generated account form in admin → System → Email.
+ * field lists drive the auto-generated account form in admin → Resources → Email.
  * (Field descriptors use `field` for the key — this mod's admin page is new
  * code, so it doesn't inherit mod-ai's `name` naming for the same idea.)
  */

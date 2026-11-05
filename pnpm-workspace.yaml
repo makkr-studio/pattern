@@ -4,3 +4,9 @@ packages:
 allowBuilds:
   esbuild: true
   protobufjs: true
+# Security floors for transitive deps (the app templates carry the same
+# file-type override): @flystorage/in-memory still asks for file-type ^20,
+# and the lockfile had pinned a pre-7.30.1 undici under @ai-sdk/provider-utils.
+overrides:
+  file-type: ^22.0.1
+  undici: ^7.30.1

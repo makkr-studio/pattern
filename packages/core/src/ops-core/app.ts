@@ -16,6 +16,7 @@ import type { OpDefinition } from "../types.js";
 /** Serve a registered filesystem as a static app (SPA-fallback aware). */
 export const staticApp: OpDefinition = {
   type: "core.app.static",
+  effects: "pure",
   title: "core.app.static",
   description:
     "Builds an app object serving a registered filesystem's assets: { filesystem, spaFallback, " +

@@ -25,7 +25,7 @@ Install alongside, in your `pattern.config.json` mods:
   lease all live here. `ready` throws without it.
 - The agent stack: `@pattern-js/mod-agents` (the agent ops + run loop) plus
   `@pattern-js/mod-ai` (the model provider). Set a default model in admin →
-  Settings → AI Providers and the provider key (e.g. `OPENAI_API_KEY`) in the
+  Resources → AI Providers and the provider key (e.g. `OPENAI_API_KEY`) in the
   vault; the shipped pipeline's `agents.run` then runs on it.
 
 Optional but assumed by the defaults: `@pattern-js/mod-identity` +

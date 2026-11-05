@@ -106,7 +106,7 @@ bundled docs (`@pattern-js/mod-docs` →
 Runs execute on the **host event loop by default**, correct for I/O-bound
 work, which is already free during its awaits. A workflow only stalls the loop
 (and the admin) when an op does **synchronous compute**. For those, set the
-workflow's **`offload`** flag (editor → toolbar gear → *Workflow settings*, or
+workflow's **`offload`** flag (editor → *Workflow settings*, or
 `"offload": true` in the JSON) to run that whole workflow on a worker pool
 instead. Tag a compute-bound op `cpuHeavy: true` and the editor nudges toward
 Offload. This project already ships a small pool (`workers` in
@@ -191,7 +191,7 @@ query (GET) or JSON body (POST). `mods/quotes.mjs` is a complete worked example.
   `views: [{ title?, view }]`; that's how you build a details page.
 - **Command** (⌘K palette): `{ id, label, group, route?, path? }`; `route`
   calls a dedicated route and shows its result; `path` navigates.
-- **Settings section** (on System → Settings): `{ id, title, description?,
+- **Settings section** (on Administration → Settings): `{ id, title, description?,
   route, submitRoute, fields }` under the mod's `frontend.settings`: `route`
   returns current values, `submitRoute` receives `{ key: value }` patches,
   fields are `{ key, label, type: toggle|select|text|number, options? }`.
@@ -232,7 +232,7 @@ Add the identity mods to `pattern.config.json`:
   delivered }`: send it, set `delivered: true`). The turnkey subscriber:
   install `@pattern-js/mod-email` plus a driver (`mod-email-resend` /
   `mod-email-smtp`), list them in the mods, and create a `default` account in
-  admin → System → Email — its packaged `email.deliver-token` workflow then
+  admin → Resources → Email — its packaged `email.deliver-token` workflow then
   claims the hook automatically (console again if you delete the account).
   For "Continue with Google/Microsoft/Keycloak" buttons, add
   `@pattern-js/mod-auth-oidc` via a small wrapper mod (see its README).
@@ -241,12 +241,15 @@ Add the identity mods to `pattern.config.json`:
   enforced (no provider)" note); installing a provider flips it on, and a
   logged-out browser now redirects to `/auth/login`. You **reconfigure
   nothing** (the admin's routes are code-derived each boot). Until a provider
-  exists, `requireAuth` routes serve open and the host warns loudly on boot.
-  Users / Invite / Sessions screens appear under "Access".
+  exists, `requireAuth` routes REFUSE requests (401 naming the fix) — unless
+  `pattern.config.json` carries `"auth": { "unenforced": "open" }`, which
+  `--no-auth` scaffolds write so the admin serves open on purpose; the host
+  warns loudly on boot either way. Users / Invites / Sessions screens appear
+  under "Administration".
 - **Protect any route** with `requireAuth` on its trigger (the editor's auth
   selector, or `{ "scopes": ["admin"] }` in config). Same rule everywhere: a
-  declared requirement is enforced once a provider exists, advisory-open +
-  warned before that. The trigger's **`user` output port** carries
+  declared requirement is enforced once a provider exists, denied (or, with
+  the explicit opt-in, open + warned) before that. The trigger's **`user` output port** carries
   `{ id, email?, scopes, claims } | null`; wire it to scope data per user
   (e.g. `in.user → yourOp.owner`). In op code, `ctx.principal` has the same.
 - Signup is **invite-only** by default; customize via a wrapper mod

@@ -31,11 +31,16 @@ Two ops produce a model reference you wire into any `ai.*` op or
 
 - **`ai.model`** defines a model inline (`routing: "direct" | "gateway"`,
   `provider`, `modelId`).
-- **`ai.alias`** resolves a model configured in admin → Settings → **AI
+- **`ai.alias`** resolves a model configured in admin → Resources → **AI
   Providers** by name. Re-point an alias there and every workflow using it
   re-targets at run time.
 
 Agents and chat fall back to the **`default`** alias when no model is wired.
+
+Every model call emits one **`ai.usage`** event (input/output/total tokens, model,
+the calling user): a `boundary.event` trigger turns it into a workflow, and
+`@pattern-js/mod-billing`'s `meterAiUsage` uses exactly that to meter tokens
+onto a Stripe meter.
 
 ## Providers
 
@@ -58,7 +63,7 @@ The bare-string install works once a model is configured:
 { "mods": ["@pattern-js/mod-ai"] }
 ```
 
-Set a default model and provider keys in admin → Settings → **AI Providers**.
+Set a default model and provider keys in admin → Resources → **AI Providers**.
 
 Full documentation: the **AI capabilities** chapter at `/docs` (served by
 `@pattern-js/mod-docs`), or [the source](docs/index.md).

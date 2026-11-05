@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { RunSummary, SpanData, SpanIoSample } from "@pattern-js/admin-sdk";
+import type { AmbiguousNode, RerunPlan, RunSummary, SpanData, SpanIoSample } from "@pattern-js/admin-sdk";
 import { api } from "../lib/api";
 import { useRun, useRunControl, useRuns } from "../lib/queries";
 import { Badge, Dot, GlassPanel, JsonView, NeonButton, PageHeader, Spinner } from "../components/ui";
 import { ago, ms, runDuration, statusColor } from "../lib/format";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { Pause, Play, Search } from "../components/icon";
-import { ChevronLeft, ChevronRight, Square } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Square, StepForward } from "lucide-react";
 import { sfx } from "../lib/sfx";
 
 const PAGE_SIZE = 25;
@@ -278,24 +278,138 @@ function whoOf(principal: unknown): string | null {
   return typeof p.claims?.email === "string" ? p.claims.email : (p.id ?? null);
 }
 
-function RunDetail({ runId }: { runId: string }) {
+const describeAmbiguous = (a: AmbiguousNode): string =>
+  `${a.nodeId} (${a.op}, ${a.reason === "started" ? "started, never finished" : "failed with an unknown outcome"})`;
+
+/**
+ * The re-run conversation: what a resume/re-run WILL do, before the click.
+ * Reused results, nodes that execute (external ones tagged), skips that hold,
+ * and the ambiguous zone — external-effect nodes whose send/charge may already
+ * exist. A fresh re-run says plainly that every external node repeats.
+ */
+function RerunPlanPanel({ plan, busy, onGo, onClose }: { plan: RerunPlan; busy: boolean; onGo: () => void; onClose: () => void }) {
+  const fromStart = plan.from === "start";
+  const external = plan.execute.filter((n) => n.effects === "external");
+  const risky = fromStart ? external.length > 0 : plan.ambiguous.length > 0;
+  const tone = risky ? "border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10" : "border-[var(--color-neon-cyan)]/30 bg-[var(--color-neon-cyan)]/5";
+  const Line = ({ label, nodes }: { label: string; nodes: string[] }) =>
+    nodes.length ? (
+      <div className="text-muted">
+        <span className="text-[var(--fg)]">{label}</span>{" "}
+        <span className="font-mono">
+          {nodes.map((id, i) => (
+            <span key={id}>
+              {i > 0 && ", "}
+              {id}
+              {external.some((e) => e.nodeId === id) && (
+                <span className="ml-1 align-middle">
+                  <Badge hue={45}>external</Badge>
+                </span>
+              )}
+            </span>
+          ))}
+        </span>
+      </div>
+    ) : null;
+  return (
+    <div className={`mb-3 rounded-lg border p-3 text-xs ${tone}`} role="region" aria-label="Re-run plan">
+      <div className="mb-1.5 font-semibold">{fromStart ? "Re-run from start" : "Resume from failure"} — what happens</div>
+      <div className="space-y-1">
+        {!fromStart && (
+          <Line label={`${plan.reuse.length} recorded result${plan.reuse.length === 1 ? "" : "s"} reused, never re-executed:`} nodes={plan.reuse.map((n) => n.nodeId)} />
+        )}
+        <Line label={`${plan.execute.length} node${plan.execute.length === 1 ? "" : "s"} execute:`} nodes={plan.execute.map((n) => n.nodeId)} />
+        <Line label={`${plan.skipped.length} stay skipped:`} nodes={plan.skipped} />
+      </div>
+      {fromStart && external.length > 0 && (
+        <p className="mt-2 text-[var(--color-neon-amber)]">
+          A fresh run is a new idempotency lineage: {external.map((n) => `${n.nodeId} (${n.op})`).join(", ")} will send / charge again.
+        </p>
+      )}
+      {plan.ambiguous.length > 0 && (
+        <p className="mt-2 text-[var(--color-neon-amber)]">
+          Outcome unknown for <span className="font-mono">{plan.ambiguous.map(describeAmbiguous).join(", ")}</span> — the effect may already have
+          happened. Resuming runs {plan.ambiguous.length === 1 ? "it" : "them"} again.
+        </p>
+      )}
+      <div className="mt-2.5 flex gap-2">
+        <NeonButton variant={risky ? "danger" : "solid"} className="!px-2 !py-1 text-xs" disabled={busy} onClick={onGo}>
+          {fromStart ? "Re-run" : plan.ambiguous.length ? "Resume anyway" : "Resume"}
+        </NeonButton>
+        <NeonButton variant="ghost" className="!px-2 !py-1 text-xs" disabled={busy} onClick={onClose}>
+          Cancel
+        </NeonButton>
+      </div>
+    </div>
+  );
+}
+
+function RunDetail({ runId, base = "/runs" }: { runId: string; base?: string }) {
   const { data, isLoading } = useRun(runId);
   const control = useRunControl(runId);
+  const navigate = useNavigate();
+  // Durable re-run/resume: the plan shown before the click, and the
+  // danger-zone node list when the server blocks anyway (state moved).
+  const [plan, setPlan] = useState<RerunPlan | null>(null);
+  const [blocked, setBlocked] = useState<AmbiguousNode[] | null>(null);
+  const [rerunNotice, setRerunNotice] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
   if (isLoading) return <Spinner />;
   if (!data) return <GlassPanel className="text-muted p-8 text-sm">Run not found (it may have been evicted from the ring buffer).</GlassPanel>;
-  const { summary, spans, inflight, paused, children } = data;
+  const { summary, spans, inflight, paused, children, ledgered, resumedFrom } = data;
   const runStart = Math.min(...spans.map((s) => s.startTime), summary.startTime);
   const runEnd = Math.max(...spans.map((s) => s.endTime), summary.endTime ?? summary.startTime);
   const act = (action: "cancel" | "pause" | "resume") => {
     sfx.play(action === "cancel" ? "error" : "toggle");
     control.mutate(action);
   };
+  // Step one: ask what would happen (dryRun) and show it. Nothing starts.
+  const openPlan = async (from: "failure" | "start") => {
+    setRerunning(true);
+    setRerunNotice(null);
+    setBlocked(null);
+    try {
+      const res = await api.runs.rerun(runId, { from, dryRun: true });
+      if (res.ok && res.plan) setPlan(res.plan);
+      else setRerunNotice(res.message ?? "couldn't plan the re-run");
+    } catch (err) {
+      sfx.play("error");
+      setRerunNotice(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRerunning(false);
+    }
+  };
+  // Step two: go — confirming the ambiguous zone the plan already showed.
+  const doRerun = async (from: "failure" | "start", confirmExternal = false) => {
+    setRerunning(true);
+    setRerunNotice(null);
+    try {
+      const res = await api.runs.rerun(runId, { from, confirmExternal });
+      if (res.ok && res.runId) {
+        setBlocked(null);
+        setPlan(null);
+        sfx.play("click");
+        navigate(`${base}/${res.runId}`);
+      } else if (res.blocked) {
+        setPlan(null);
+        setBlocked(res.blocked);
+      } else {
+        setRerunNotice(res.message ?? "re-run refused");
+      }
+    } catch (err) {
+      sfx.play("error");
+      setRerunNotice(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRerunning(false);
+    }
+  };
+  const resumable = ledgered && !inflight && (summary.status === "error" || summary.status === "canceled");
   return (
     <GlassPanel className="p-5">
       <div className="mb-4 flex items-center gap-3">
         <Dot color={paused ? "var(--color-neon-amber)" : statusColor(summary.status)} pulse={(summary.status === "running" || summary.status === "streaming") && !paused} />
         <span className="font-mono text-sm font-semibold">{summary.workflowId}</span>
-        <Badge hue={summary.status === "error" ? 340 : summary.status === "streaming" ? 280 : 150}>{summary.status}</Badge>
+        <Badge hue={summary.status === "error" ? 340 : summary.status === "streaming" ? 280 : summary.status === "canceled" ? 45 : 150}>{summary.status}</Badge>
         {paused && <Badge hue={45}>paused</Badge>}
         {summary.executor && <Badge hue={150} title={`ran on ${summary.executor}`}>{summary.executor}</Badge>}
         <span className="text-muted text-xs">{runDuration(summary)}</span>
@@ -305,6 +419,32 @@ function RunDetail({ runId }: { runId: string }) {
         >
           <Play size={12} /> replay on graph
         </Link>
+        {/* Durable-run affordances: resume seeds the completed frontier; re-run
+            replays the recorded input. Only ledgered (durable) runs have them. */}
+        {!inflight && ledgered && (
+          <span className="ml-auto flex items-center gap-1">
+            {resumable && (
+              <NeonButton
+                variant="ghost"
+                className="!px-2 !py-1"
+                title="Resume from failure — completed nodes are seeded from the ledger; only the failed frontier re-executes. Shows the plan first."
+                disabled={rerunning}
+                onClick={() => void openPlan("failure")}
+              >
+                <StepForward size={12} /> <span className="ml-1 text-xs">Resume</span>
+              </NeonButton>
+            )}
+            <NeonButton
+              variant="ghost"
+              className="!px-2 !py-1"
+              title="Re-run from start — a fresh run with this run's recorded trigger input; every node executes again. Shows the plan first."
+              disabled={rerunning}
+              onClick={() => void openPlan("start")}
+            >
+              <RotateCcw size={12} /> <span className="ml-1 text-xs">Re-run</span>
+            </NeonButton>
+          </span>
+        )}
         {/* In-flight controls: pause holds new node starts; stop aborts. */}
         {inflight && (
           <span className="ml-auto flex items-center gap-1">
@@ -330,8 +470,42 @@ function RunDetail({ runId }: { runId: string }) {
             </NeonButton>
           </span>
         )}
-        <span className={`text-muted font-mono text-xs ${inflight ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
+        <span className={`text-muted font-mono text-xs ${inflight || ledgered ? "" : "ml-auto"}`}>{summary.runId.slice(0, 8)}</span>
       </div>
+      {plan && (
+        <RerunPlanPanel
+          plan={plan}
+          busy={rerunning}
+          onGo={() => void doRerun(plan.from, plan.ambiguous.length > 0)}
+          onClose={() => setPlan(null)}
+        />
+      )}
+      {blocked && (
+        <div className="mb-3 rounded-lg border border-[var(--color-neon-amber)]/40 bg-[var(--color-neon-amber)]/10 p-3 text-xs">
+          <div className="mb-1 font-semibold text-[var(--color-neon-amber)]">Resume needs a human call</div>
+          <p className="text-muted mb-2">
+            The outcome of these external-effect nodes is unknown — the effect (a send, a charge) may already have
+            happened: <span className="font-mono">{blocked.map(describeAmbiguous).join(", ")}</span>. Resuming re-runs them.
+          </p>
+          <div className="flex gap-2">
+            <NeonButton variant="danger" className="!px-2 !py-1 text-xs" disabled={rerunning} onClick={() => void doRerun("failure", true)}>
+              Resume anyway
+            </NeonButton>
+            <NeonButton variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setBlocked(null)}>
+              Keep it parked
+            </NeonButton>
+          </div>
+        </div>
+      )}
+      {rerunNotice && <div className="mb-3 text-xs text-[var(--color-neon-amber)]">{rerunNotice}</div>}
+      {resumedFrom && (
+        <div className="text-muted mb-3 text-xs">
+          ↻ resumed from{" "}
+          <Link to={`/runs/${resumedFrom}`} className="font-mono text-[var(--color-neon-cyan)] hover:underline">
+            {resumedFrom.slice(0, 8)}
+          </Link>
+        </div>
+      )}
       {whoOf(summary.principal) && (
         <div className="text-muted mb-3 text-xs">
           run as <span className="font-mono text-[var(--color-neon-cyan)]">{whoOf(summary.principal)}</span>
@@ -429,10 +603,17 @@ function LiveTail() {
   );
 }
 
+/**
+ * Runs — global under Activity, or one workflow's under its workspace tab
+ * (`/workflows/:slug/runs`, where the layout provides the header and the list
+ * is filtered server-side to that workflow).
+ */
 export function RunsPage() {
   const navigate = useNavigate();
-  const { runId } = useParams();
-  const { data, isLoading } = useRuns({ limit: FETCH_WINDOW });
+  const { runId, slug } = useParams();
+  const scoped = Boolean(slug);
+  const base = scoped ? `/workflows/${encodeURIComponent(slug!)}/runs` : "/runs";
+  const { data, isLoading } = useRuns({ limit: FETCH_WINDOW, ...(slug ? { workflow: slug } : {}) });
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
 
@@ -449,10 +630,17 @@ export function RunsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Runs"
-        subtitle="Recent runs from the durable trace store (persisted across restarts; CLI runs land here too). Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
-      />
+      {scoped ? (
+        <p className="text-muted mb-4 text-sm">
+          This workflow's runs, newest first (from the durable trace store — CLI runs land here too). Pick one: the panel on the right is its
+          timeline, with Resume and Re-run for durable runs.
+        </p>
+      ) : (
+        <PageHeader
+          title="Runs"
+          subtitle="Recent runs from the durable trace store (persisted across restarts; CLI runs land here too). Pick a run: the panel on the right is its timeline — when each node ran, for how long, and what flowed through it. Try sample.replay for a telling one."
+        />
+      )}
       <div className="grid grid-cols-[1fr_1.3fr] gap-6">
         <div className="space-y-4">
           {/* Fuzzy search over the retained window */}
@@ -464,7 +652,7 @@ export function RunsPage() {
                 setQuery(e.target.value);
                 setPage(0);
               }}
-              placeholder="Fuzzy search runs (workflow, status, id)…"
+              placeholder={scoped ? "Fuzzy search runs (status, id)…" : "Fuzzy search runs (workflow, status, id)…"}
               aria-label="Search runs"
               className="w-full bg-transparent text-sm outline-none"
             />
@@ -477,12 +665,14 @@ export function RunsPage() {
 
           <GlassPanel className="overflow-hidden">
             {pageRuns.length === 0 && (
-              <div className="text-muted p-6 text-sm">{query ? "No runs match." : "No runs yet — trigger a workflow."}</div>
+              <div className="text-muted p-6 text-sm">
+                {query ? "No runs match." : scoped ? "No runs yet — hit Run in the editor, or call its route." : "No runs yet — trigger a workflow."}
+              </div>
             )}
             {pageRuns.map((r: RunSummary) => (
               <button
                 key={r.runId}
-                onClick={() => navigate(`/runs/${r.runId}`)}
+                onClick={() => navigate(`${base}/${r.runId}`)}
                 className={`flex w-full items-center gap-3 border-b hairline px-4 py-3 text-left last:border-0 hover:bg-white/5 ${
                   r.runId === runId ? "bg-white/10" : ""
                 }`}
@@ -493,7 +683,9 @@ export function RunsPage() {
                     ↳
                   </span>
                 )}
-                <span className="font-mono text-sm">{r.workflowId}</span>
+                {/* Scoped to one workflow, the id is the useful column; globally, the workflow is. */}
+                <span className="font-mono text-sm">{scoped ? r.runId.slice(0, 8) : r.workflowId}</span>
+                {scoped && r.status !== "ok" && <Badge hue={r.status === "error" ? 340 : r.status === "canceled" ? 45 : 200}>{r.status}</Badge>}
                 {r.executor && (
                   <span className="glass text-muted shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]" title={`ran on ${r.executor}`}>
                     {r.executor}
@@ -531,11 +723,11 @@ export function RunsPage() {
               </div>
             )}
           </GlassPanel>
-          <LiveTail />
+          {!scoped && <LiveTail />}
         </div>
         <div>
           {runId ? (
-            <RunDetail runId={runId} />
+            <RunDetail runId={runId} base={base} />
           ) : (
             <GlassPanel className="text-muted grid place-items-center p-12 text-sm">
               <div className="flex flex-col items-center gap-2">

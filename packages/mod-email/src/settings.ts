@@ -32,6 +32,7 @@ import { REMOTE } from "./app.js";
 
 const providersList: OpDefinition = {
   type: "email.providers.list",
+  effects: "pure",
   title: "email.providers.list",
   description: "List the registered email drivers + their secret/option field specs (drives the account form).",
   reusable: false,
@@ -59,11 +60,22 @@ async function readAccountFields(ctx: OpContext) {
     maybe<Record<string, { source?: string; key?: string }>>(ctx, "secrets"),
     maybe<Record<string, string>>(ctx, "options"),
   ]);
-  return accountSchema.parse({ name, provider, from, secrets: secrets ?? {}, options: options ?? {} });
+  // A partial write — `secrets` or `options` not wired / not in the body —
+  // keeps what the account already has. An omitted field must never wipe a
+  // secret ref; sending an explicit `{}` is how you clear one.
+  const existing = emailConfig(ctx).account(name);
+  return accountSchema.parse({
+    name,
+    provider,
+    from,
+    secrets: secrets ?? existing?.secrets ?? {},
+    options: options ?? existing?.options ?? {},
+  });
 }
 
 const accountsRead: OpDefinition = {
   type: "email.accounts.read",
+  effects: "pure",
   title: "email.accounts.read",
   description: "List the configured email accounts (secret NAMES/sources only, never values).",
   reusable: false,
@@ -76,6 +88,7 @@ const accountsRead: OpDefinition = {
 
 const accountsWrite: OpDefinition = {
   type: "email.accounts.write",
+  effects: "idempotent",
   title: "email.accounts.write",
   description: "Create or update an email account (upsert by name).",
   reusable: false,
@@ -92,6 +105,7 @@ const accountsWrite: OpDefinition = {
 
 const accountsDelete: OpDefinition = {
   type: "email.accounts.delete",
+  effects: "idempotent",
   title: "email.accounts.delete",
   description: "Delete an email account by name.",
   reusable: false,
@@ -140,7 +154,7 @@ export function emailAdminRoutes(): Workflow[] {
 
 export function emailFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "System", label: "Email", icon: "mail", path: "/x/email/accounts", order: 21 }],
+    menu: [{ category: "Resources", label: "Email", icon: "mail", path: "/x/email/accounts", order: 50 }],
     // The Tier-2 page is just its source; the admin serves + imports it (no workflow).
     pages: [{ path: "/x/email/accounts", title: "Email", module: REMOTE }],
   };

@@ -9,5 +9,5 @@ queries mix names and natural language).
 `filter: { field: value | values[] }` is an AND of equality/any-of over the
 collection's DECLARED filterables, pruned through the indexed side table
 BEFORE any scoring — filtering on an undeclared field is a located error, not
-an empty result. Compose `vectors.query → store.doc.get` when the canonical
+an empty result. Compose `vectors.query → store.get` when the canonical
 record lives in mod-store.

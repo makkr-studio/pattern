@@ -130,8 +130,12 @@ export class LocalVectorsEngine implements VectorsEngine {
     }
     if (opts.path !== ":memory:") mkdirSync(dirname(opts.path), { recursive: true });
     this.db = new DatabaseSync(opts.path);
-    this.db.exec("PRAGMA journal_mode = WAL");
+    // busy_timeout BEFORE the WAL switch: the switch itself takes locks, and a
+    // dev-server restart overlaps this boot with the dying process's
+    // checkpoint-on-close — with timeout 0 that's an instant "database is
+    // locked" crash; with it, we wait the few hundred ms and boot.
     this.db.exec("PRAGMA busy_timeout = 5000");
+    this.db.exec("PRAGMA journal_mode = WAL");
     this.runMigrations();
 
     let fts = false;

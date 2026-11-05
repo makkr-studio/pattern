@@ -168,15 +168,16 @@ the admin.
 
 So offload is **selective and author-controlled, at the workflow level**:
 
-- Set a workflow's **`offload`** flag (editor → toolbar gear → *Workflow
+- Set a workflow's **`offload`** flag (editor → *Workflow
   settings*, or `"offload": true` in the JSON) and the engine moves that whole
   workflow off the loop onto a **worker pool**. Everything else stays
   inline. The flag is the unit because the seam is then crossed once per run, at
   the boundaries: lower latency than per-op offload, and
   simpler to reason about.
 - An op can declare **`cpuHeavy: true`**: purely a *signal* (like
-  `sensitivity`). It routes nothing; it makes the editor **nudge**: the gear
-  badges amber and the validator recommends turning on Offload when such a node
+  `sensitivity`). It routes nothing; it makes the editor **nudge**: the
+  workflow panel (nothing selected on the canvas) turns the Offload switch
+  amber, and the validator recommends turning on Offload when such a node
   sits in a non-offloaded workflow.
 
 Configure the pool in `pattern.config.json` with **`workers`**:

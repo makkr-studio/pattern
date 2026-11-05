@@ -6,7 +6,7 @@
   "nodes": [
     { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/rag/ingest" }, "ui": { "x": 40, "y": 160 } },
     { "id": "docs", "op": "core.object.get", "config": { "path": "docs" }, "comment": "The request body's `docs` array.", "ui": { "x": 300, "y": 100 } },
-    { "id": "ensure", "op": "vectors.collection.ensure", "config": { "name": "kb", "alias": "embeddings", "filterables": ["topic"] }, "comment": "The collection DECLARES its embedding alias — define \"embeddings\" in admin → Settings → AI Providers (modality: embedding).", "ui": { "x": 300, "y": 260 } },
+    { "id": "ensure", "op": "vectors.collection.ensure", "config": { "name": "kb", "alias": "embeddings", "filterables": ["topic"] }, "comment": "The collection DECLARES its embedding alias — define \"embeddings\" in admin → Resources → AI Providers (modality: embedding).", "ui": { "x": 300, "y": 260 } },
     { "id": "index", "op": "vectors.index", "config": { "collection": "kb" }, "comment": "Chunk → embed (via the collection's alias) → upsert. Meta rides on every chunk, so `topic` stays filterable.", "ui": { "x": 580, "y": 160 } },
     { "id": "body", "op": "core.object.build", "config": { "keys": ["indexed", "chunks"] }, "ui": { "x": 840, "y": 160 } },
     { "id": "out", "op": "boundary.http.response", "config": { "mode": "buffered" }, "ui": { "x": 1080, "y": 160 } }

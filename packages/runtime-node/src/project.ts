@@ -15,9 +15,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Engine, TRACE_STORE, type TraceStore, type Workflow } from "@pattern-js/core";
+import { Engine, RUN_LEDGER, TRACE_STORE, applyLedgerEvent, type RunLedger, type TraceStore, type Workflow } from "@pattern-js/core";
 import { loadMods } from "./mods.js";
 import { createTraceStore } from "./trace/index.js";
+import { createRunLedger } from "./durable/sqlite.js";
 import { HttpHost } from "./http.js";
 import { WsHost } from "./ws.js";
 import { NodeConnectionRegistry } from "./ws-registry.js";
@@ -29,7 +30,7 @@ export interface PatternConfig {
   /** Directory of workflow `.json` files. Default "./workflows". */
   workflows?: string;
   /** HTTP host defaults. */
-  http?: { port?: number; host?: string };
+  http?: { port?: number; host?: string; trustProxy?: number };
   /**
    * Off-loop execution for workflows flagged `offload`. A worker-thread pool
    * runs those runs so their CPU-heavy compute can't stall the host event loop;
@@ -57,6 +58,25 @@ export interface PatternConfig {
    * in-memory automatically when `node:sqlite` is unavailable.
    */
   trace?: { persist?: boolean; path?: string; capacity?: number };
+  /**
+   * The RunLedger for `durable: true` workflows (0.5): exact run inputs +
+   * node outputs, powering resume and re-run. `persist: false` disables it;
+   * `path` overrides the default `<project>/.pattern-data/ledger.db` — kept
+   * OUT of `.pattern/` because it records real values (gitignored, like the
+   * identity and document stores). `keep` bounds retained terminal runs
+   * (default 200).
+   */
+  durable?: { persist?: boolean; path?: string; keep?: number };
+  /**
+   * Authentication posture. `unenforced` says what a declared `requireAuth`
+   * does when NO auth provider is installed (nobody can authenticate, so the
+   * requirement can't be enforced): `"deny"` (default) refuses those requests
+   * with a reason naming the fix; `"open"` serves them unauthenticated — the
+   * explicit opt-in for local work with no sign-in (`create-pattern --no-auth`
+   * writes it). Irrelevant once a provider is installed: the same declarations
+   * are then enforced.
+   */
+  auth?: { unenforced?: "deny" | "open" };
 }
 
 /** Identity helper for authoring `pattern.config.ts` with type-checking. */
@@ -152,7 +172,32 @@ export async function loadProject(
   // Inject process.env so workflow config can use `$env` / `${VAR}` references.
   // The node connection registry up-front means `core.ws.*` ops (notify,
   // broadcast…) reach the same sockets the WS host accepts.
-  const engine = opts.engine ?? new Engine({ env: process.env, connections: new NodeConnectionRegistry() });
+  const engine =
+    opts.engine ??
+    new Engine({ env: process.env, connections: new NodeConnectionRegistry(), unenforcedAuth: config.auth?.unenforced });
+
+  // The RunLedger (0.5 durable execution): created before the worker pool so
+  // offloaded durable runs can bridge their records here. Sqlite-backed in
+  // `.pattern-data/` (real values — gitignored). Asked for — the default — means
+  // REQUIRED: a ledger that can't open is a dead boot that names the fix, never
+  // "durable workflows run without capture" — that would silently drop the very
+  // guarantee the author turned on. `durable.persist: false` is the explicit
+  // way to run without it.
+  let runLedger: RunLedger | undefined;
+  if (!opts.engine && config.durable?.persist !== false) {
+    const ledgerPath = config.durable?.path ?? resolve(baseDir, ".pattern-data/ledger.db");
+    try {
+      runLedger = createRunLedger(ledgerPath, { keep: config.durable?.keep });
+    } catch (err) {
+      throw new Error(
+        `[pattern] the RunLedger could not open at ${ledgerPath}: ${err instanceof Error ? err.message : String(err)}. ` +
+          `Durable workflows (resume, re-run) need it — fix the path or its permissions, or set ` +
+          `"durable": { "persist": false } in pattern.config.json to run without it.`,
+        { cause: err },
+      );
+    }
+    engine.provideService(RUN_LEDGER, runLedger);
+  }
 
   if (!opts.engine && config.workers !== undefined) {
     const w = typeof config.workers === "number" ? { size: config.workers } : config.workers;
@@ -163,6 +208,9 @@ export async function loadProject(
       size: w.size,
       mods: w.mods ?? config.mods,
       onTrace: (evt) => engine.ingestTrace(evt),
+      onLedger: (evt) => {
+        if (runLedger) void applyLedgerEvent(runLedger, evt);
+      },
     });
     engine.setOffloadTransport(offloadPool);
   }
@@ -192,7 +240,23 @@ export async function loadProject(
     await engine.registerWorkflowAsync(wf);
   }
 
-  const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host });
+  // Durability was asked for on a workflow but switched off at the project:
+  // say so at boot, by name. (The engine repeats it once per workflow at run
+  // time, which also covers flags toggled later from the admin.)
+  if (!opts.engine && !runLedger) {
+    const durable = engine.workflows
+      .list()
+      .filter((w) => w.durable === true)
+      .map((w) => w.id);
+    if (durable.length) {
+      console.warn(
+        `\n[pattern] ⚠ durable: true on ${durable.map((id) => `"${id}"`).join(", ")} but the RunLedger is off ` +
+          `(durable.persist: false) — these runs are NOT recorded; resume and re-run are unavailable.\n`,
+      );
+    }
+  }
+
+  const http = new HttpHost(engine, { defaultPort: config.http?.port, host: config.http?.host, trustProxy: config.http?.trustProxy });
 
   // WS rides the same servers (auto mode: boundary.ws.* workflows bind live;
   // bare connections still serve as the notification channel). One WsHost

@@ -187,6 +187,7 @@ export const arrayOps: OpDefinition[] = [
   }),
   defineOp({
     type: "core.array.range",
+    effects: "pure",
     title: "core.array.range",
     description: "Generate [start, end) stepping by `step`.",
     inputs: {},

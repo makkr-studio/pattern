@@ -2,9 +2,12 @@
 
 [Website](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/mod-admin)
 
-An authorable, self-reflecting **control surface** for a Pattern engine: workflow
-authoring, live deploy, run inspection, versioning, and a catalog of everything
-in the system. It is an ordinary **mod**, a brick you `engine.use()`.
+An authorable, self-reflecting **control surface** for a Pattern engine, in six
+rooms (Home, Workflows, Activity, Resources, Administration, Reference): each
+workflow opens as a workspace (editor, runs, versions, settings) with a deploy
+preview before anything goes live; failed durable runs **Resume** or **Re-run**
+from the run page after showing their plan; and a catalog of everything in the
+system. It is an ordinary **mod**, a brick you `engine.use()`.
 
 > **Status:** the control plane, workflow store, versioning, the `admin.*` ops,
 > the self-reflecting HTTP API, and the in-memory run/metrics sink all ship. The
@@ -34,7 +37,7 @@ await host.start(); // serves /admin (UI) + /admin/api/* (the workflow-backed AP
 | `storage` | `"./.pattern"` | workflow store (a dir path or a `Filesystem`) |
 | `storePrefix` | `"workflows"` | path prefix inside the store |
 | `assets` | built SPA (`dist-app/`) | SPA assets (a dir path or a `Filesystem`) |
-| `auth` | `{ scopes: ["admin"] }` | stamp `requireAuth` (+ scopes) on every endpoint; inert until an `AuthProvider` mod is installed. Pass `auth: false` for an acknowledged-public admin. |
+| `auth` | `{ scopes: ["admin"] }` | stamp `requireAuth` (+ scopes) on every endpoint. Auth fails closed: without an `AuthProvider` mod (e.g. mod-identity) every endpoint answers 401, unless the project opts in with `"auth": { "unenforced": "open" }` in `pattern.config.json`. Pass `auth: false` for an acknowledged-public admin. |
 | `traceCapacity` | `500` | runs retained in the in-memory sink |
 
 ## How it self-reflects
@@ -54,6 +57,7 @@ POST /admin/api/deploy/:slug         admin.workflow.deploy      (route-conflict 
 GET  /admin/api/ops[/:type]          admin.op.list / .get
 POST /admin/api/ports/compatible     admin.ports.compatible
 GET  /admin/api/runs[/:id|/tail]     admin.run.list / .get / .tail (SSE)
+POST /admin/api/runs/:runId/rerun    admin.run.rerun            (resume / re-run; { dryRun } returns the plan)
 GET  /admin/api/metrics              admin.metrics.summary
 GET  /admin/api/versions…/diff       admin.version.list / .get / .diff
 GET  /admin/api/mods | /templates    admin.mod.list / admin.template.list

@@ -1,21 +1,25 @@
 /**
- * @pattern-js/mod-identity — admin screens (Tier-1 declarative, zero build).
+ * @pattern-js/mod-identity — admin screens.
  *
- * Users / Invite / Sessions under an "Access" category. Every view and action
- * names its own dedicated route (see `./admin-routes.ts`) — there is no generic
- * op invoker; the routes are admin-scope-gated and the ops re-check scopes too.
+ * Users / Invite / Sessions under the "Administration" section — Tier-1 declarative
+ * (zero build) except the user DETAILS page, which is Tier-2: a roles editor
+ * needs interactivity the declarative kinds can't express. Every view and
+ * action names its own dedicated route (see `./admin-routes.ts`) — there is no
+ * generic op invoker; the routes are admin-scope-gated and the ops re-check
+ * scopes too.
  */
 
 import type { FrontendContribution } from "@pattern-js/core";
 import { PATHS } from "./admin-routes.js";
+import { USER_PAGE_REMOTE } from "./user-page.js";
 
 export function identityFrontend(): FrontendContribution {
   return {
     menu: [
-      { category: "Access", label: "Users", icon: "users", path: "/x/identity/users", order: 10 },
-      { category: "Access", label: "Invites", icon: "user-plus", path: "/x/identity/invite", order: 20 },
-      { category: "Access", label: "Sessions", icon: "key-round", path: "/x/identity/sessions", order: 30 },
-      { category: "Access", label: "API tokens", icon: "key-square", path: "/x/identity/api-tokens", order: 40 },
+      { category: "Administration", label: "Users", icon: "users", path: "/x/identity/users", order: 10 },
+      { category: "Administration", label: "Invites", icon: "user-plus", path: "/x/identity/invite", order: 20 },
+      { category: "Administration", label: "Sessions", icon: "key-round", path: "/x/identity/sessions", order: 30 },
+      { category: "Administration", label: "API tokens", icon: "key-square", path: "/x/identity/api-tokens", order: 40 },
     ],
     pages: [
       {
@@ -43,60 +47,13 @@ export function identityFrontend(): FrontendContribution {
         },
       },
       {
-        // The user details page: profile + run metrics, three declarative views
-        // over dedicated routes — the :userId param fills each route's path.
+        // The user details page, Tier-2: identity card + actions, a roles
+        // editor that knows the roles map (and warns that saving signs the
+        // user out), sessions, run stats — and the subscription panel when
+        // mod-billing is around (duck-typed off its customers route).
         path: "/x/identity/users/:userId",
-        views: [
-          { title: "Profile", view: { kind: "detail", route: { method: "GET", path: PATHS.user } } },
-          {
-            // Editing roles needs an input, which a row action can't carry —
-            // so it lives here as a form (the page's :userId fills the route).
-            title: "Set roles",
-            view: {
-              kind: "form",
-              schema: {
-                type: "object",
-                properties: {
-                  roles: {
-                    type: "string",
-                    description: 'Comma-separated — REPLACES the current set, e.g. "admin" (empty = plain user). Ends the user\'s sessions.',
-                  },
-                },
-              },
-              route: { method: "POST", path: PATHS.userSetRoles },
-            },
-          },
-          {
-            title: "Runs by workflow (recent window)",
-            view: {
-              kind: "table",
-              route: { method: "GET", path: PATHS.userRunStats },
-              columns: [
-                { key: "workflow", label: "Workflow" },
-                { key: "runs", label: "Runs" },
-                { key: "errors", label: "Errors" },
-                { key: "avg ms", label: "Avg ms" },
-                { key: "last run", label: "Last run" },
-              ],
-            },
-          },
-          {
-            title: "Sessions",
-            view: {
-              kind: "table",
-              route: { method: "GET", path: PATHS.userSessions },
-              columns: [
-                { key: "status", label: "Status", format: "badge" },
-                { key: "created", label: "Created", format: "date" },
-                { key: "lastSeen", label: "Last seen", format: "date" },
-                { key: "userAgent", label: "Device" },
-              ],
-              rowActions: [
-                { label: "Revoke", route: { method: "DELETE", path: PATHS.session }, args: { sessionId: "id" }, icon: "log-out", confirm: true },
-              ],
-            },
-          },
-        ],
+        title: "User",
+        module: USER_PAGE_REMOTE,
       },
       {
         // Invites: send (form) + the sent list with statuses, one page.
@@ -202,10 +159,10 @@ export function identityFrontend(): FrontendContribution {
       },
     ],
     commands: [
-      { id: "identity.invite", label: "Invite user…", group: "Access", icon: "user-plus", path: "/x/identity/invite" },
+      { id: "identity.invite", label: "Invite user…", group: "Administration", icon: "user-plus", path: "/x/identity/invite" },
       { id: "identity.whoami", label: "Who am I?", group: "Access", icon: "user", route: { method: "GET", path: PATHS.whoami } },
     ],
-    // Lives on the admin's Settings page (System → Settings), with the other knobs.
+    // Lives on the admin's Settings page (Administration → Settings), with the other knobs.
     settings: [
       {
         id: "identity",

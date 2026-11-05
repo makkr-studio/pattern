@@ -9,6 +9,8 @@
  */
 
 import {
+  RUN_LEDGER,
+  ResumeBlockedError,
   boundaries,
   collectIssues,
   httpOutcome,
@@ -19,6 +21,7 @@ import {
   type OpContext,
   type OpDefinition,
   type Ports,
+  type RunLedger,
   type Workflow,
 } from "@pattern-js/core";
 import { adminServices, ASSETS_FS } from "../services.js";
@@ -95,6 +98,7 @@ const OP_SCOPES: Record<string, AdminScope> = {
   "admin.run.tail": "runs:read",
   "admin.metrics.summary": "runs:read",
   "admin.run": "runs:write",
+  "admin.run.rerun": "runs:write",
   "admin.run.cancel": "runs:write",
   "admin.run.pause": "runs:write",
   "admin.run.resume": "runs:write",
@@ -107,9 +111,11 @@ const OP_SCOPES: Record<string, AdminScope> = {
  * The in-op scope re-check (defense in depth): admin routes gate at the HTTP
  * boundary, but these ops are ALSO reachable inside tool workflows (the
  * `pattern_*` control-plane tools, `pattern mcp`), where the caller may hold a
- * granular API token instead of an admin session. Advisory-open without an
- * auth provider — EXACTLY mirroring engine.authorize's posture, so
- * zero-config dev keeps working.
+ * granular API token instead of an admin session. Skipped without an auth
+ * provider: the trigger already decided (denied by default, or the explicit
+ * `auth.unenforced: "open"` / `adminMod({ auth: false })` opt-ins), and with
+ * no provider there is no scope to check against — an in-op 403 would only
+ * brick the acknowledged-open configurations.
  */
 function requireScope(ctx: OpContext, engine: { hasAuthProvider(): boolean }, scope: AdminScope, type: string): void {
   if (!engine.hasAuthProvider()) return;
@@ -295,7 +301,7 @@ const workflowValidate = adminOp(
  */
 const parkedCode = new Map<string, Workflow>();
 
-const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow; code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }) => {
+const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (register) or disable/undeploy (unregister) a workflow; code ones park until restart.", { in: { slug: P(), enabled: Bd(z.boolean()) }, out: "result" }, async (args, { controlPlane, engine }, ctx) => {
   const slug = str(args.slug, "slug");
   const enabled = Boolean(args.enabled);
   if (enabled) {
@@ -307,7 +313,7 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
     }
     const meta = await controlPlane.store.getMeta(slug);
     if (!meta?.live) throw new DomainError("invalid", `"${slug}" has no live version to enable`);
-    const res = await controlPlane.deploy(slug, meta.live);
+    const res = await controlPlane.deploy(slug, meta.live, { principal: ctx.principal });
     return { ok: res.ok, ...(res.ok ? {} : { conflicts: res.conflicts }) };
   }
   // Undeploy. A code workflow has no store meta — park its doc (so it can come
@@ -320,7 +326,7 @@ const workflowSetEnabled = adminOp("admin.workflow.setEnabled", "Enable (registe
     engine.unregisterWorkflow(slug);
     return { ok: true };
   }
-  await controlPlane.disable(slug);
+  await controlPlane.disable(slug, { principal: ctx.principal });
   return { ok: true };
 });
 
@@ -328,9 +334,9 @@ const workflowDeploy = adminOp("admin.workflow.deploy", "Activate a version (rou
   controlPlane.deploy(str(args.slug, "slug"), str(args.version, "version"), { swap: Boolean(args.swap), principal: ctx.principal }),
 );
 
-const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", { in: { slug: P() }, out: "result" }, async (args, { controlPlane }) => {
+const workflowDelete = adminOp("admin.workflow.delete", "Disable + remove a workflow from the store.", { in: { slug: P() }, out: "result" }, async (args, { controlPlane }, ctx) => {
   const slug = str(args.slug, "slug");
-  await controlPlane.disable(slug).catch(() => {});
+  await controlPlane.disable(slug, { principal: ctx.principal }).catch(() => {});
   await controlPlane.store.delete(slug);
   return { ok: true };
 });
@@ -386,7 +392,17 @@ const runGet = adminOp("admin.run.get", "One run's spans (+ I/O samples if captu
   const paused = engine.runPaused(str(args.runId, "runId"));
   // Sub-runs this run started via ctx.invoke — the "invoked by" link's mirror.
   const children = await sink.children(str(args.runId, "runId"));
-  return { ...detail, inflight: paused !== undefined, paused: paused ?? false, children };
+  // Durable-run affordances: a ledger record means re-run/resume are possible.
+  const ledger = engine.service<RunLedger>(RUN_LEDGER);
+  const lrec = ledger ? await ledger.get(str(args.runId, "runId")) : null;
+  return {
+    ...detail,
+    inflight: paused !== undefined,
+    paused: paused ?? false,
+    children,
+    ledgered: Boolean(lrec),
+    resumedFrom: lrec?.header.resumedFrom,
+  };
 });
 
 // ── In-flight run control (cancel works on any entry path; pause needs the
@@ -400,6 +416,39 @@ const runPause = adminOp("admin.run.pause", "Pause an in-flight run: no new node
 const runResume = adminOp("admin.run.resume", "Resume a paused run.", { in: { runId: P() }, out: "result" }, (args, { engine }) => ({
   ok: engine.resumeRun(str(args.runId, "runId")),
 }));
+const runRerun = adminOp(
+  "admin.run.rerun",
+  "Re-run a ledgered (durable) run: from=start replays the recorded input as a fresh run; from=failure seeds every completed node's recorded outputs and re-executes the failed frontier onward. dryRun=true returns { ok, plan } — what would reuse, execute, stay skipped, and which external-effect nodes are ambiguous — without starting anything. Otherwise returns { ok, runId }, or { ok: false, blocked } when ambiguous nodes need confirmExternal.",
+  {
+    in: {
+      runId: P(),
+      from: Bd(z.enum(["failure", "start"]).optional()),
+      confirmExternal: Bd(z.boolean().optional()),
+      dryRun: Bd(z.boolean().optional()),
+    },
+    out: "result",
+  },
+  async (args, { engine }) => {
+    const from = (args.from as "failure" | "start" | undefined) ?? "failure";
+    try {
+      // The plan is the conversation BEFORE the click: the UI shows what a
+      // resume reuses, what it re-executes, and where the outcome is unknown.
+      if (args.dryRun) return { ok: true, plan: await engine.rerunPlan(str(args.runId, "runId"), from) };
+      const h = await engine.rerun(str(args.runId, "runId"), {
+        from,
+        confirmExternal: Boolean(args.confirmExternal),
+      });
+      // Fire-and-return: the caller navigates to the new run and watches it live.
+      void h.result.catch(() => {});
+      return { ok: true, runId: h.runId };
+    } catch (err) {
+      // The danger zone is a CONVERSATION, not a failure: hand the node list to
+      // the UI so a human can confirm.
+      if (err instanceof ResumeBlockedError) return { ok: false, blocked: err.nodes, message: err.message };
+      throw new DomainError("invalid", err instanceof Error ? err.message : String(err));
+    }
+  },
+);
 const metricsSummary = adminOp("admin.metrics.summary", "Windowed run/error counters + per-workflow latency.", { in: { window: Q(z.unknown().optional()) }, out: "metrics" }, (args, { sink }) =>
   sink.metrics(args.window ? { minutes: Number((args.window as { minutes?: number }).minutes ?? args.window) } : undefined),
 );
@@ -483,7 +532,15 @@ const uiManifest = adminOp("admin.ui.manifest", "Aggregated frontend manifest (m
   });
   // `authProvider` lets the editor tell authors that a declared requireAuth
   // won't actually be enforced until an auth provider (e.g. identity) is added.
-  return { menu: fe.menu ?? [], commands: fe.commands ?? [], assets: fe.assets ?? [], pages, settings: fe.settings ?? [], authProvider: engine.hasAuthProvider() };
+  return {
+    menu: fe.menu ?? [],
+    commands: fe.commands ?? [],
+    assets: fe.assets ?? [],
+    pages,
+    settings: fe.settings ?? [],
+    checklists: fe.checklists ?? [],
+    authProvider: engine.hasAuthProvider(),
+  };
 });
 
 /**
@@ -643,6 +700,7 @@ export const adminOps: OpDefinition[] = [
   runCancel,
   runPause,
   runResume,
+  runRerun,
   runTail,
   metricsSummary,
   modListOp,

@@ -193,6 +193,7 @@ export const objectOps: OpDefinition[] = [
   }),
   defineOp({
     type: "core.object.build",
+    effects: "pure",
     title: "core.object.build",
     description:
       "Assemble an object by mapping the named input ports → keys. Each key in config.keys becomes an input port; unwired keys are omitted.",
@@ -210,6 +211,7 @@ export const objectOps: OpDefinition[] = [
   }),
   defineOp({
     type: "core.object.extract",
+    effects: "pure",
     title: "core.object.extract",
     description:
       "Extract values from the input `object` into one output port per config.keys entry (the inverse of core.object.build). Missing keys output undefined. Use it to decompose a request body/params into discrete op inputs.",

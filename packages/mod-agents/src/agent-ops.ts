@@ -20,6 +20,7 @@ import {
   modelRefSchema,
   toolsetSchema,
   turnEventSchema,
+  usageSchema,
   type AgentDescriptor,
   type GuardrailDescriptor,
   type MessagePart,
@@ -38,6 +39,7 @@ const asArray = <T>(v: unknown): T[] => (v == null ? [] : Array.isArray(v) ? (v 
 
 const agentOp: OpDefinition = {
   type: "agents.agent",
+  effects: "pure",
   title: "agents.agent",
   description:
     "Define an agent (a value you wire into agents.run, a handoff, or a tool). Wire a model from ai.model; " +
@@ -97,14 +99,22 @@ const runOutputs = {
   history: value(historySchema),
   stopReason: value(z.enum(["complete", "interrupted", "error", "cancelled"])),
   stateToken: value(z.string().nullable()),
+  /** Token accounting summed across the turn's model steps (0.5). */
+  usage: value(usageSchema.optional()),
 };
 
-function softOutputs(outcome: Promise<TurnOutcome>) {
+/**
+ * The run's soft outputs. A failed or cancelled turn has no new history; it
+ * hands back `fallbackHistory` (the history the turn started from) so a
+ * workflow that saves `history` unconditionally never wipes the conversation.
+ */
+function softOutputs(outcome: Promise<TurnOutcome>, fallbackHistory: unknown[]) {
   return {
     output: outcome.then((o) => o.output),
-    history: outcome.then((o) => o.history ?? []),
+    history: outcome.then((o) => o.history ?? fallbackHistory),
     stopReason: outcome.then((o) => o.stopReason),
     stateToken: outcome.then((o) => o.stateToken),
+    usage: outcome.then((o) => o.usage),
   };
 }
 
@@ -174,7 +184,7 @@ const runOp: OpDefinition = {
       signal,
     });
     void outcome.finally(release);
-    return { events, ...softOutputs(outcome) };
+    return { events, ...softOutputs(outcome, history ?? []) };
   },
 };
 
@@ -218,7 +228,7 @@ const resumeOp: OpDefinition = {
       resume: { saved, decisions },
     });
     void outcome.finally(release);
-    return { events, ...softOutputs(outcome) };
+    return { events, ...softOutputs(outcome, saved.messages) };
   },
 };
 
@@ -266,6 +276,7 @@ const compactOp: OpDefinition = {
 
 const mcpOp: OpDefinition = {
   type: "agents.mcp.client",
+  effects: "pure",
   title: "agents.mcp.client",
   description:
     "Connect to an MCP server and expose its tools as a toolset value (connection pooled by mod-ai). http: url (+headers) · stdio: command (+args). " +

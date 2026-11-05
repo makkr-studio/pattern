@@ -1,0 +1,33 @@
+# {{name}} — production container.
+#
+# State lives in two directories with different jobs — mount BOTH as volumes:
+#   .pattern/       the versioned workflow store (what you authored; commit it too)
+#   .pattern-data/  the databases: identity, documents, traces, the RunLedger,
+#                   billing config — REAL values; protect it like your database.
+#
+# Required env:
+#   PORT                 the listen port (default 3000)
+#   PATTERN_PUBLIC_URL   your public origin (https://app.example.com) — emailed
+#                        links and checkout redirects are built on it; behind
+#                        any proxy this MUST be set
+#   PATTERN_VAULT_KEY    if the app uses the vault (see .env.example)
+#   provider keys        whatever your .env.example lists (AI, email, billing)
+#
+# Build & run:
+#   docker build -t {{name}} .
+#   docker run -p 3000:3000 --env-file .env \
+#     -v pattern-store:/app/.pattern -v pattern-data:/app/.pattern-data {{name}}
+#
+# The app runs as the unprivileged `node` user, which owns only the two state
+# directories (named volumes inherit that). Bind-mounting host directories
+# instead? Make them writable by uid 1000.
+FROM node:26-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+RUN mkdir -p .pattern .pattern-data && chown -R node:node .pattern .pattern-data
+ENV NODE_ENV=production
+USER node
+EXPOSE 3000
+CMD ["node", "src/index.ts"]

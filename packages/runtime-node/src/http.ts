@@ -19,7 +19,10 @@ import { Readable } from "node:stream";
 import {
   ANONYMOUS,
   AUTH_LOGIN_URL,
+  RateLimiter,
+  RunCanceled,
   jsonSchemaToZod,
+  parseDurationMs,
   principalToUser,
   type Engine,
   type OpDefinition,
@@ -43,6 +46,29 @@ export interface HttpHostOptions {
    * Routes with `bodyMode: "stream"` are exempt — they never buffer.
    */
   maxBodyBytes?: number;
+  /**
+   * How many reverse proxies in front of this host append to X-Forwarded-For.
+   * 0 (default) trusts no header: the client IP is the socket peer. Behind one
+   * load balancer, 1: the IP is the entry that proxy appended (the rightmost),
+   * which a client cannot forge. Defaults to the PATTERN_TRUST_PROXY env var.
+   */
+  trustProxy?: number;
+}
+
+/**
+ * The client's address. Only the last `trustProxy` X-Forwarded-For hops are
+ * believed: anything to their left was written by the client and is forgeable.
+ */
+export function clientIp(req: IncomingMessage, trustProxy: number): string {
+  const peer = (req.socket?.remoteAddress ?? "").replace(/^::ffff:/, "") || "unknown";
+  if (trustProxy <= 0) return peer;
+  const raw = req.headers["x-forwarded-for"];
+  const hops = (Array.isArray(raw) ? raw.join(",") : (raw ?? ""))
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+  const ip = hops[hops.length - trustProxy];
+  return ip ? ip.replace(/^::ffff:/, "") : peer;
 }
 
 const DEFAULT_MAX_BODY = 10 * 1024 * 1024;
@@ -81,6 +107,8 @@ interface CompiledRoute {
   requireAuth?: unknown;
   /** Cancel the run when the client disconnects (opt-in; default keeps running). */
   cancelOnDisconnect?: boolean;
+  /** Per-client request budget (429 past it, before the run starts). */
+  rateLimit?: { max: number; windowMs: number; by: "ip" | "user" };
 }
 
 /** A static app mount derived from a `boundary.http.app` node (admin-spec P1). */
@@ -237,6 +265,66 @@ export class HttpHost {
     // Default = explicit `defaultPort` (e.g. from pattern.config.json http.port),
     // else the PORT env var, else 3000.
     this.defaultPort = opts.defaultPort ?? envPort() ?? 3000;
+    const envTrust = Number(process.env.PATTERN_TRUST_PROXY);
+    this.trustProxy = opts.trustProxy ?? (Number.isInteger(envTrust) && envTrust > 0 ? envTrust : 0);
+  }
+
+  /** Forwarded hops believed when resolving the client IP (see HttpHostOptions.trustProxy). */
+  private readonly trustProxy: number;
+  /** Per-route request budgets (`rateLimit` on boundary.http.request). */
+  readonly rateLimiter = new RateLimiter();
+
+  /**
+   * Refuse a request the route's `requireAuth` doesn't admit (§9):
+   * - anonymous → 401; a browser GET asking for HTML is bounced to the
+   *   advertised login page (identity registers AUTH_LOGIN_URL) with `next`;
+   * - signed in but missing a scope → 403, so a client can tell "sign in"
+   *   from "upgrade".
+   * The body is a line of text when the client asks for HTML, else JSON
+   * (`{ error, reason }`), the same rule as the 429 answer.
+   */
+  private deny(req: IncomingMessage, res: ServerResponse, principal: Principal, reason: string, mayRedirect: boolean): void {
+    const accept = String(req.headers["accept"] ?? "");
+    const anonymous = principal.kind === "anonymous";
+    if (anonymous && mayRedirect && accept.includes("text/html")) {
+      const loginUrl = this.engine.service<string>(AUTH_LOGIN_URL);
+      if (loginUrl) {
+        res.writeHead(302, { location: `${loginUrl}?next=${encodeURIComponent(req.url ?? "/")}` }).end();
+        return;
+      }
+    }
+    const status = anonymous ? 401 : 403;
+    if (accept.includes("text/html")) {
+      res
+        .writeHead(status, { "content-type": "text/plain; charset=utf-8" })
+        .end(`${anonymous ? "Unauthorized" : "Forbidden"}: ${reason}`);
+      return;
+    }
+    res
+      .writeHead(status, { "content-type": "application/json" })
+      .end(JSON.stringify({ error: anonymous ? "unauthorized" : "forbidden", reason }));
+  }
+
+  /**
+   * Count one request against the route's budget; past it, answer 429 with
+   * Retry-After and report true so the caller stops before the run.
+   */
+  private limited(res: ServerResponse, route: CompiledRoute, client: string, req: IncomingMessage): boolean {
+    const rule = route.rateLimit!;
+    const v = this.rateLimiter.hit(`${route.workflowId}:${route.trigger}:${client}`, rule);
+    if (v.ok) return false;
+    const retryAfter = Math.max(1, Math.ceil(v.retryAfterMs / 1000));
+    const html = String(req.headers.accept ?? "").includes("text/html");
+    res.writeHead(429, {
+      "content-type": html ? "text/plain; charset=utf-8" : "application/json",
+      "retry-after": String(retryAfter),
+    });
+    res.end(
+      html
+        ? `Too many requests. Try again in ${retryAfter} seconds.`
+        : JSON.stringify({ error: "rate_limited", retryAfter }),
+    );
+    return true;
   }
 
   /** Derive routes from registered workflows, open servers, and watch for changes. */
@@ -251,19 +339,31 @@ export class HttpHost {
 
   /**
    * Loud, honest signal: with NO auth provider installed, any route that
-   * *declares* `requireAuth` can't be enforced (nobody can authenticate) — the
-   * engine serves it open (advisory). Say so plainly at boot so it's never a
-   * silent surprise. Add a provider and the same declarations are enforced.
+   * *declares* `requireAuth` can't be enforced (nobody can authenticate). By
+   * default the engine DENIES those requests (the refusal names the fix); with
+   * the explicit `auth.unenforced: "open"` opt-in it serves them open. Say
+   * which at boot so neither is a silent surprise. Add a provider and the same
+   * declarations are enforced.
    */
   private warnIfUnenforceableAuth(): void {
-    if (this.engine.hasAuthProvider()) return;
+    const posture = this.engine.authPosture();
+    if (posture === "enforced") return;
     const gated = [...this.routes, ...this.apps].filter((r) => r.requireAuth).length;
     if (!gated) return;
+    if (posture === "open") {
+      console.warn(
+        `\n[pattern] ⚠ ${gated} route(s) declare requireAuth but NO auth provider is installed —\n` +
+          `[pattern]   auth.unenforced is "open", so they serve UNAUTHENTICATED (anyone who can reach\n` +
+          `[pattern]   the port has access). Add an auth provider (e.g. @pattern-js/mod-identity) to\n` +
+          `[pattern]   enforce them. Routes without requireAuth are unaffected.\n`,
+      );
+      return;
+    }
     console.warn(
       `\n[pattern] ⚠ ${gated} route(s) declare requireAuth but NO auth provider is installed —\n` +
-        `[pattern]   they are NOT enforced and serve UNAUTHENTICATED (anyone who can reach the\n` +
-        `[pattern]   port has access). Add an auth provider (e.g. @pattern-js/mod-identity) to enforce\n` +
-        `[pattern]   them. Routes without requireAuth are unaffected.\n`,
+        `[pattern]   they REFUSE every request (401) until you add one (e.g. @pattern-js/mod-identity).\n` +
+        `[pattern]   For local work without sign-in, set "auth": { "unenforced": "open" } in\n` +
+        `[pattern]   pattern.config.json. Routes without requireAuth are unaffected.\n`,
     );
   }
 
@@ -333,6 +433,9 @@ export class HttpHost {
           paramsSchema: cfg.params ? jsonSchemaToZod(cfg.params as any, { coerce: true }) : undefined,
           requireAuth: cfg.requireAuth,
           cancelOnDisconnect: Boolean(cfg.cancelOnDisconnect),
+          rateLimit: cfg.rateLimit
+            ? { max: cfg.rateLimit.max, windowMs: parseDurationMs(cfg.rateLimit.window ?? "1m"), by: cfg.rateLimit.by ?? "ip" }
+            : undefined,
         });
       }
     }
@@ -490,6 +593,10 @@ export class HttpHost {
       return;
     }
 
+    // ── Rate limit (by IP: before any auth or body work is spent) ──
+    const ip = clientIp(req, this.trustProxy);
+    if (route.rateLimit?.by === "ip" && this.limited(res, route, `ip:${ip}`, req)) return;
+
     // ── Auth (§9) ──
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) {
@@ -498,9 +605,10 @@ export class HttpHost {
     }
     const principal: Principal = await this.engine.authenticate({ headers, raw: req });
     const auth = this.engine.authorize(principal, route.requireAuth as any);
-    if (!auth.ok) {
-      res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
-      return;
+    if (!auth.ok) return this.deny(req, res, principal, auth.reason, method === "GET");
+    if (route.rateLimit?.by === "user") {
+      const who = principal.kind === "user" ? `user:${principal.id}` : `ip:${ip}`;
+      if (this.limited(res, route, who, req)) return;
     }
 
     // ── Validate params, query & body against the declared JSON Schemas (§7) ──
@@ -545,6 +653,7 @@ export class HttpHost {
       path: url.pathname,
       headers: headersObj,
       cookies: parseCookies(headersObj.cookie),
+      ip,
       query,
       params: routeParams,
       body,
@@ -566,7 +675,7 @@ export class HttpHost {
     let delivered = false;
     if (route.cancelOnDisconnect) {
       res.on("close", () => {
-        if (!delivered) ac.abort(new Error("client disconnected"));
+        if (!delivered) ac.abort(new RunCanceled("client disconnected"));
       });
     }
 
@@ -579,7 +688,7 @@ export class HttpHost {
     }
     if (result.status === "error") {
       delivered = true;
-      return writeError(res, result.error);
+      return writeError(res, result.error, result.runId);
     }
 
     const payload = firstOutgate(result, workflow, "boundary.http.response");
@@ -615,20 +724,7 @@ export class HttpHost {
       }
       const principal = await this.engine.authenticate({ headers, raw: req });
       const auth = this.engine.authorize(principal, app.requireAuth as any);
-      if (!auth.ok) {
-        // A browser asking for HTML gets bounced to the advertised login page
-        // (§9) — the identity mod registers AUTH_LOGIN_URL; fetch/XHR callers
-        // still get the bare 401 and handle it client-side.
-        const loginUrl = this.engine.service<string>(AUTH_LOGIN_URL);
-        const accept = String(req.headers["accept"] ?? "");
-        if (loginUrl && accept.includes("text/html")) {
-          const next = encodeURIComponent(req.url ?? "/");
-          res.writeHead(302, { location: `${loginUrl}?next=${next}` }).end();
-          return;
-        }
-        res.writeHead(401, { "content-type": "text/plain" }).end(`Unauthorized: ${auth.reason}`);
-        return;
-      }
+      if (!auth.ok) return this.deny(req, res, principal, auth.reason, true);
     }
 
     const fs: Filesystem | undefined = filesystems(this.engine).get(app.filesystem);
@@ -861,10 +957,21 @@ async function* streamIter(stream: ReadableStream<unknown>): AsyncGenerator<unkn
   }
 }
 
-function writeError(res: ServerResponse, err: unknown): void {
+/**
+ * A failed run's HTTP answer. In development the error message helps; in
+ * production (NODE_ENV=production) it can carry internals (config names,
+ * account ids, paths) to an unauthenticated caller, so the client gets a
+ * generic error and the run id, and the operator reads the rest in the trace.
+ */
+function writeError(res: ServerResponse, err: unknown, runId?: string): void {
   const message = err instanceof Error ? err.message : String(err);
+  const production = process.env.NODE_ENV === "production";
   if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
-  res.end(JSON.stringify({ error: message }));
+  res.end(
+    JSON.stringify(
+      production ? { error: "internal_error", ...(runId ? { runId } : {}) } : { error: message, ...(runId ? { runId } : {}) },
+    ),
+  );
 }
 
 function firstOutgate(result: RunResult, workflow: Workflow, opType: string): ResponsePayload | undefined {

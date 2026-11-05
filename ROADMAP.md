@@ -8,40 +8,63 @@ records what actually shipped.
 > without migration paths or legacy shims; the CHANGELOG calls out every
 > breaking change.
 
-## Next — 0.5.0: durable by default (direction)
+## Next
 
-The headline candidate: **durable retries & resume** — retry policies as node
-config, and resuming a failed run from the failing node instead of from
-scratch. The event-sourced span log already records every node's I/O in
-order; the work is resumable-state persistence and idempotency semantics (an
-`email.send` must never replay). Alongside it, the scaffolder's composability
-rework (surfaces × stacks × recipes, `pattern add`) is under consideration —
-being shaped by real usage first.
+The next milestone is being shaped by real usage of 0.5. It will come from the
+shelf below; orgs & teams and durable timers & waits are the front-runners.
 
 ## Later
 
 An unordered shelf — these are on the map, not yet in a milestone:
 
-- **Failure alerts** — a run fails, you get an email. Nearly free on `mod-email`.
-- **Auth rate limiting** — throttle magic-link/invite issuance per address and
-  IP; today a hostile client can make an app send email as fast as its driver
-  allows.
+- **Orgs & teams** — multi-tenant identity: organizations, team invites,
+  per-org data scoping and billing. The natural sequel to a SaaS that takes
+  money.
+- **Durable timers & waits** — once durability lands: nodes that sleep for
+  days (drip campaigns) or wait for an event or approval (human-in-the-loop)
+  without holding a process open.
+- **Shared rate-limit counters**: the 0.5 limits count per process (the
+  per-address sign-in budget already lives in the identity store); a store
+  seam would let a fleet share one budget.
+- **API tokens that end with their minter**: an opt-in policy that revokes
+  the `pat_` tokens an admin minted when that admin is demoted, disabled or
+  deleted. Today tokens are app credentials and outlive their creator.
+- **A per-route answer for "signed in, not entitled"**: today a gated page
+  answers 403; an option such as `forbiddenRedirect: "/pricing"` would send a
+  browser to an upsell page instead.
+- **Signed agent approval tokens**: `agents.run`'s `stateToken` is plain
+  JSON (chat keeps it server-side); sign it so it can travel through a client.
+- **Admin API polish**: the API base follows the admin `mount`, 404 instead
+  of 500 for unknown versions and runs, scope failures on save/import as
+  403, import audited as `import`, paging in the Data browser.
+- **Billing and durability edge cases**: a rerun executes with the original
+  run's principal (re-check it against the current roles); billing's role
+  projection can race a concurrent admin role edit (make it a CAS write); a
+  `subscription.updated` for a second subscription replaces the tracked one
+  (track several per customer); events stamped in the same second can apply
+  out of order (order by the provider's sequence).
 - **Workflow import/export & a public gallery** — copy-as-JSON, import-from-URL,
   and a gallery of ready-to-import examples on the site.
-- **Deploy story** — Dockerfile in every scaffold and guides for the usual
-  platforms; from `npm create pattern` to a URL in minutes.
 - **`pattern test`** — a workflow test harness: fixtures in, assertions out,
   trace snapshots.
 - **Typed clients** — generate a TypeScript client for your app's endpoints from
   the boundary schemas.
-- **Payments** — a Stripe mod, completing identity + email into a `saas-starter`
-  modpack.
-- **More vector drivers** — pgvector first.
+- **Document readers** — a text-extraction seam (PDF first) feeding
+  `mod-vectors` ingestion and file uploads in chat.
+- **Postgres drivers** — pgvector for vectors first; store and traces later,
+  so production can run on one database.
 - **Hosted docs** — the handbook, online at pattern-js.dev.
 - **Community mod registry** — discover third-party mods by npm keyword.
 
 ## Shipped
 
+- **0.5.0** — open for business: durable execution (retry as node config,
+  the RunLedger, resume and re-run that never repeat completed work, external
+  effects sealed or confirmed), a payments contract with a Stripe driver
+  (subscriptions and one-time purchases projected into roles, the customer
+  portal, signed webhooks), AI usage metering, failure alerts, the
+  `saas-starter` pack with a Dockerfile in every scaffold, compose mode with
+  `pattern add`, sign-in codes, and an admin reorganized around six rooms.
 - **0.4.0** — Buddy (the workflow assistant), the `pattern_*` control plane
   with scoped API tokens + MCP (HTTP and `pattern mcp` stdio), `mod-vectors`
   with hybrid filterable search, per-user chat memory with provenance

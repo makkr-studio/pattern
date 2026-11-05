@@ -17,7 +17,7 @@ The one persisted concept is the **account** — a memorable name bound to a
 driver, a From address, sourced secrets and driver options. Two accounts of
 the same driver with different credentials are just two records (prod + a
 staging relay, a marketing sender + an alerts sender). Manage them in admin →
-**System → Email**; the form generates itself from whatever fields the
+**Resources → Email**; the form generates itself from whatever fields the
 registered drivers declare, and the **Test** button sends a real email so you
 verify end-to-end delivery, not a wiring check.
 
@@ -54,6 +54,25 @@ fails, identity logs a warning, and the console fallback prints the link
 anyway. Open the workflow in the admin editor to reword the email (two
 `core.string.template` nodes) or fork it entirely — see the
 [delivery guide](guides/delivery.md).
+
+## Failure alerts (0.5)
+
+A run fails, you get an email. The engine emits one `run.failed` event per
+failed top-level run (sub-run failures fold into their parent; cancels don't
+count), and this mod ships **`email.alert-failed-run`** subscribed to it: set
+`PATTERN_ALERTS_TO=ops@example.com` and every failure lands in that inbox
+with the workflow name, the error, and a deep link to the run's trace
+(`PATTERN_PUBLIC_URL` shapes the link; durable runs can resume right from
+that page). Unset, the workflow gates out silently — installing mod-email
+changes nothing until you opt in. It's an ordinary editable workflow: open it
+to reword the copy, alert only on certain workflows, or reroute to another
+channel. A failing alert can't alert about itself — the engine's recursion
+guard skips runs that `run.failed` itself triggered.
+
+A `core.flow.throttle` node keyed on the workflow id holds the mail to one
+email per failing workflow every 10 minutes, so a route that fails on every
+request (or someone hammering one) costs one email. Change `max` and `window`
+on that node to taste.
 
 ## Writing a driver
 

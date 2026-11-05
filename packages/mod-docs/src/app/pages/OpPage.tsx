@@ -190,7 +190,7 @@ export function OpPage() {
                   {i > 0 && ", "}
                   {admin ? (
                     <a
-                      href={`${manifest.adminMount}/editor/${id}`}
+                      href={`${manifest.adminMount}/workflows/${encodeURIComponent(id)}/editor`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[var(--color-neon-cyan)] underline underline-offset-2"

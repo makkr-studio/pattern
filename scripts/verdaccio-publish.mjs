@@ -46,6 +46,8 @@ const PKG_DIRS = [
   "packages/mod-chat",
   "packages/mod-docs",
   "packages/mod-vectors",
+  "packages/mod-billing",
+  "packages/mod-billing-stripe",
   "packages/mod-buddy",
   "packages/create-pattern",
 ];

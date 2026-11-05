@@ -15,14 +15,14 @@ tools in a loop, that's the **mod-agents** layer, a different modpack.)
    - `npx pattern ops`: every op (core + this project's mods)
 2. **Validate every workflow JSON you touch:** `npx pattern validate <file>`,
    and `npx pattern graph <file>` to see the graph in the terminal.
-3. **Models come from an alias.** Configure one in admin → Settings → AI
+3. **Models come from an alias.** Configure one in admin → Resources → AI
    Providers (a provider + model id + the key it uses, from the vault or an env
    var), then resolve it with an `ai.alias` node (`config { alias }`, output
    `model` is a *value* you wire into any `ai.*` op's `model` input). The
    `default` alias is the fallback. Or define a model inline with `ai.model`
    (`config { routing, provider, modelId }`); it resolves the provider's
    conventional key (e.g. `OPENAI_API_KEY` for OpenAI) from `.env` (loaded on
-   boot, real env wins) or a vault secret of that name (admin → System → Secrets).
+   boot, real env wins) or a vault secret of that name (admin → Resources → Secrets).
    `PATTERN_VAULT_KEY` (the vault master key) lives in `.env`.
 4. Don't edit `./.pattern` by hand (admin-versioned workflows, committed);
    `./.pattern-data` is runtime data (sqlite, blobs, secrets) and is gitignored.
@@ -67,7 +67,7 @@ tested starting point if you have no preference.
 
 This project ships a small worker pool (`workers` in `pattern.config.json`), so
 the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
-(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+(editor → *Workflow settings*, or `"offload": true`) to run a compute-heavy flow on that pool
 instead of the host event loop; remove the `workers` field to go back to inline.
 
 ## Where things live

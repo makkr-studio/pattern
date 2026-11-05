@@ -90,6 +90,15 @@ describe("create-pattern scaffold dimensions", () => {
     expect(existsSync(join(dir, "load.example.json"))).toBe(false);
   });
 
+  it("studio --no-examples strips the demo mod from workers.mods too, not just mods", () => {
+    const { json } = scaffold("s-workers-clean", "--modpack", "studio", "--no-examples");
+    const cfg = json("pattern.config.json") as { mods: string[]; workers?: { mods?: string[] } };
+    expect(cfg.mods).not.toContain("./mods/quotes.mjs");
+    // The stale-entry bug: a removed demo mod lingering here made every worker
+    // boot try to import a deleted file.
+    expect(cfg.workers?.mods ?? []).not.toContain("./mods/quotes.mjs");
+  });
+
   it("agentic --providers openai: seeds default + embeddings aliases, writes .mcp.json", () => {
     const { read, json } = scaffold("s-seed", "--modpack", "agentic", "--no-auth", "--providers", "openai");
     const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
@@ -98,21 +107,31 @@ describe("create-pattern scaffold dimensions", () => {
       ["embeddings", "embedding", "openai"],
     ]);
     for (const a of ai.aliases) {
-      expect(a.secrets.apiKey).toEqual({ source: "env", key: "OPENAI_API_KEY" });
+      // Vault-first: the pack has a vault + a generated key, so the seeded ref
+      // points at the encrypted vault (paste the key in admin → Secrets).
+      expect(a.secrets.apiKey).toEqual({ source: "vault", key: "OPENAI_API_KEY" });
       // The seeded records must stay valid against mod-ai's REAL alias schema.
       expect(aliasSchema.safeParse(a).success, JSON.stringify(a)).toBe(true);
     }
     expect(json(".mcp.json")).toEqual({ mcpServers: { pattern: { command: "npx", args: ["pattern", "mcp"] } } });
-    expect(read(".env")).toContain("OPENAI_API_KEY="); // vault-key generation copied the (existing) hint into .env
+    expect(read(".env")).toContain("# OPENAI_API_KEY="); // the env ALTERNATIVE, commented, copied into .env
   });
 
-  it("agentic --providers anthropic: language-only seed, env hint reaches .env.example AND the generated .env", () => {
+  it("agentic --providers anthropic: language-only seed, the commented env hint reaches .env.example AND the generated .env", () => {
     const { read, json } = scaffold("s-seed-claude", "--modpack", "agentic", "--no-auth", "--providers", "anthropic");
     const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
     expect(ai.aliases).toHaveLength(1); // anthropic has no embedding models — no embeddings alias
     expect(ai.aliases[0]).toMatchObject({ name: "default", provider: "anthropic", modality: "language" });
-    expect(read(".env.example")).toContain("ANTHROPIC_API_KEY=");
-    expect(read(".env")).toContain("ANTHROPIC_API_KEY="); // seeding ran BEFORE the vault-key .env copy
+    expect(read(".env.example")).toContain("# ANTHROPIC_API_KEY=");
+    expect(read(".env")).toContain("# ANTHROPIC_API_KEY="); // seeding ran BEFORE the vault-key .env copy
+  });
+
+  it("agentic --no-vault-key: the seeded refs fall back to env", () => {
+    const { read, json } = scaffold("s-seed-novault", "--modpack", "agentic", "--no-auth", "--providers", "openai", "--no-vault-key");
+    const ai = json(".pattern-data/ai-config.json") as { aliases: Array<Record<string, any>> };
+    for (const a of ai.aliases) expect(a.secrets.apiKey).toEqual({ source: "env", key: "OPENAI_API_KEY" });
+    // The template documents the env line (commented) — uncomment to use it.
+    expect(read(".env.example")).toMatch(/^#?\s*OPENAI_API_KEY=$/m);
   });
 
   it("no provider pick seeds nothing; a pack without mod-buddy gets no .mcp.json", () => {
@@ -122,6 +141,19 @@ describe("create-pattern scaffold dimensions", () => {
     const agentic = scaffold("s-noseed-agentic", "--modpack", "agentic", "--no-auth");
     expect(existsSync(join(agentic.dir, ".pattern-data"))).toBe(false);
     expect(existsSync(join(agentic.dir, ".mcp.json"))).toBe(true);
+  });
+
+  it("--no-auth on an admin pack records the open admin EXPLICITLY (the engine denies unenforceable requireAuth by default)", () => {
+    // No provider → the admin's built-in requireAuth can't be enforced → the
+    // engine refuses. The scaffold writes the opt-in so the choice is on
+    // record (and the boot warning still fires); an auth scaffold never does.
+    const open = scaffold("s-open-admin", "--modpack", "studio", "--no-auth");
+    expect(open.json("pattern.config.json").auth).toEqual({ unenforced: "open" });
+    const locked = scaffold("s-locked-admin", "--modpack", "studio", "--auth");
+    expect(locked.json("pattern.config.json").auth).toBeUndefined();
+    // Headless has no admin — nothing declares requireAuth, nothing to opt into.
+    const headless = scaffold("s-headless-open", "--modpack", "headless", "--no-auth");
+    expect(headless.json("pattern.config.json").auth).toBeUndefined();
   });
 
   it("agentic + resend + examples writes the email→agent demo; agent-chat and --no-examples don't", () => {
@@ -144,6 +176,56 @@ describe("create-pattern scaffold dimensions", () => {
     expect(res.stdout).toContain("note: --no-docs ignored");
     const cfg = JSON.parse(readFileSync(join(cwd, "s-buddy-docs", "pattern.config.json"), "utf8")) as { mods: string[] };
     expect(cfg.mods).toContain("@pattern-js/mod-docs");
+  });
+
+  it("saas-starter: auth is part of the pack, both bridge wrappers written, config in install order", () => {
+    const { read, json } = scaffold("saas1", "--modpack", "saas-starter", "--no-auth"); // --no-auth is ignored (noted)
+    expect(json("pattern.config.json").mods).toEqual([
+      "./mods/identity.mjs",
+      "@pattern-js/mod-auth-magic-link",
+      "@pattern-js/mod-admin",
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
+      "@pattern-js/mod-email",
+      "./mods/billing.mjs",
+      "@pattern-js/mod-billing-stripe",
+      "@pattern-js/mod-docs",
+    ]);
+    // The two halves of the entitlement bridge:
+    expect(read("mods/identity.mjs")).toContain('member: ["pro"]');
+    expect(read("mods/billing.mjs")).toContain('entitlement: { role: "member" }');
+    const deps = json("package.json").dependencies as Record<string, string>;
+    expect(deps["@pattern-js/mod-billing"]).toBe(RANGE);
+    expect(deps["@pattern-js/mod-billing-stripe"]).toBe(RANGE);
+    expect(deps["@pattern-js/mod-identity"]).toBe(RANGE);
+    // Vault-first: the pack carries mod-vault, and the Stripe keys are only a
+    // COMMENTED env alternative — their home is admin → Resources → Secrets.
+    expect(deps["@pattern-js/mod-vault"]).toBe(RANGE);
+    const env = read(".env.example");
+    expect(env).toContain("# STRIPE_API_KEY");
+    expect(env).toContain("# STRIPE_WEBHOOK_SECRET");
+    expect(env).toMatch(/^PATTERN_VAULT_KEY=/m);
+    // Money workflows ship durable + retry (the 0.5 toolkit).
+    expect(json("workflows/checkout.json").durable).toBe(true);
+    expect(json("workflows/portal.json").durable).toBe(true);
+  });
+
+  it("saas-starter --email resend: the driver joins AFTER the pack's own mod-email — never doubled", () => {
+    const { json } = scaffold("saas2", "--modpack", "saas-starter", "--email", "resend");
+    const mods = json("pattern.config.json").mods as string[];
+    expect(mods.filter((m) => m === "@pattern-js/mod-email")).toHaveLength(1);
+    expect(mods[mods.indexOf("@pattern-js/mod-email") + 1]).toBe("@pattern-js/mod-email-resend");
+  });
+
+  it("every app template ships a Dockerfile + .dockerignore; blank (no server) doesn't", () => {
+    for (const pack of ["headless", "studio", "saas-starter", "studio-ai", "agentic", "agent-chat"]) {
+      const { dir } = scaffold(`docker-${pack}`, "--modpack", pack);
+      expect(existsSync(join(dir, "Dockerfile")), `${pack} Dockerfile`).toBe(true);
+      expect(existsSync(join(dir, ".dockerignore")), `${pack} .dockerignore`).toBe(true);
+      expect(readFileSync(join(dir, "Dockerfile"), "utf8")).toContain(".pattern-data");
+    }
+    const { dir } = scaffold("docker-blank", "--modpack", "blank");
+    expect(existsSync(join(dir, "Dockerfile"))).toBe(false);
   });
 
   it("flags a pack can't honor produce notes, not silence", () => {

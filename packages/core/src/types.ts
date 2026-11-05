@@ -188,14 +188,14 @@ export interface TraceSink {
   onRunReady?(run: {
     runId: string;
     traceId: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "canceled";
     /** High-res epoch ms when the result was ready. */
     at: number;
   }): void;
   onRunEnd?(run: {
     runId: string;
     traceId: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "canceled";
     error?: unknown;
     /** High-res epoch ms of the true end (so a forwarded worker run isn't
      *  inflated by transit). Falls back to the sink's clock if absent. */
@@ -365,6 +365,14 @@ export interface OpContext {
 
   // — capabilities (§4) —
   readonly runId: string;
+  /**
+   * The first run of this run's resume lineage (= `runId` unless this run
+   * resumed an earlier one). Pin provider idempotency keys to it —
+   * `${ctx.rootRunId}:${ctx.nodeId}` — so a node re-executed by a resume
+   * replays the provider's stored response instead of charging/sending twice.
+   * A re-run from start starts a fresh lineage on purpose.
+   */
+  readonly rootRunId: string;
   readonly nodeId: string;
   readonly workflowId: string;
   /** Run-scoped parameters (read by `core.input`); serializable. */
@@ -384,6 +392,16 @@ export interface OpContext {
 export type OpResult = Record<string, unknown | Promise<unknown> | ReadableStream<unknown>>;
 
 export type OpExecute = (ctx: OpContext) => OpResult | Promise<OpResult>;
+
+/**
+ * Replay-safety of an op (§5, durable execution):
+ *  - "pure":       no external mutation (reads are fine) — re-execute freely.
+ *  - "idempotent": mutates, but repeating with the same inputs converges
+ *                  (CAS writes, content-hashed upserts, deletes).
+ *  - "external":   a visible effect or a per-invocation cost (send, charge,
+ *                  generate) — replay may duplicate it.
+ */
+export type OpEffects = "pure" | "idempotent" | "external";
 
 /** A reusable op definition; lives in the `OpRegistry` keyed by `type` (§5). */
 export interface OpDefinition {
@@ -458,6 +476,23 @@ export interface OpDefinition {
    * graph on the worker pool), not a per-op switch. Unset = ordinary/I-O-bound.
    */
   cpuHeavy?: boolean;
+  /**
+   * Declares the op's replay-safety — a *signal*, never an enforcement (the
+   * validator warns when a retry sits on an `"external"` op; durable resume
+   * refuses to blindly re-run an ambiguous `"external"` node). May depend on
+   * config (e.g. `core.http.fetch`: GET ⇒ idempotent, POST ⇒ external).
+   * **Absent ⇒ treated as `"external"`** — deliberately inverted from its
+   * siblings' absent-means-benign: a missing stamp must mean "ask before
+   * re-running", never "silently double-charge".
+   */
+  effects?: OpEffects | ((config: any) => OpEffects);
+}
+
+/** Resolve an op's declared `effects` for a node's config (absent ⇒ "external"). */
+export function effectsOf(op: OpDefinition, config: unknown): OpEffects {
+  const e = op.effects;
+  if (typeof e === "function") return e(config);
+  return e ?? "external";
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -501,6 +536,25 @@ export const WorkflowNodeSchema = z.object({
    */
   comment: z.string().optional(),
   config: z.unknown().optional(),
+  /**
+   * Per-node retry policy — the first engine-read node field beyond `op` +
+   * `config`, and always explicit (the house stance stays "failure is a value
+   * you branch on"; nothing retries unless the author says so). `attempts` is
+   * the TOTAL count (1 = off). A failed attempt backs off `backoffMs`, then
+   * `× factor` per further attempt, capped at `maxBackoffMs`. Skips are never
+   * retried; a cancelled run stops retrying immediately. The validator warns
+   * when a retry sits on an op with `"external"` effects (a replay may
+   * duplicate its side effect) or with wired stream inputs (a failed attempt
+   * may have partially consumed them).
+   */
+  retry: z
+    .object({
+      attempts: z.number().int().min(1).max(10),
+      backoffMs: z.number().int().min(0).default(500),
+      factor: z.number().min(1).default(2),
+      maxBackoffMs: z.number().int().min(0).default(30_000),
+    })
+    .optional(),
   /** Editor canvas position + view hints (T3). Data-only. */
   ui: NodeUiSchema.optional(),
 });
@@ -560,6 +614,15 @@ export const WorkflowSchema = z.object({
    */
   offload: z.boolean().optional(),
   /**
+   * Record this workflow's runs in the RunLedger (0.5 durable execution):
+   * exact trigger input + every node's exact value outputs, written as the
+   * run progresses. Powers "resume from the failing node" and "re-run with
+   * the same input". Opt-in — durable runs pay one ledger write per node, and
+   * the ledger records REAL values (protect `.pattern-data/` like a database).
+   * Like `offload`, toggling it isn't a behavioral version.
+   */
+  durable: z.boolean().optional(),
+  /**
    * Framework plumbing (a route endpoint, an asset mount, …) rather than a
    * user-meaningful workflow. Data-only: the admin catalog hides `internal`
    * workflows by default (a toggle reveals them), keeping the list focused on
@@ -610,12 +673,27 @@ export interface RunRequest {
   hookDepth?: number;
   /** The run + node that started this one (`ctx.invoke` or a hook chain). */
   parent?: RunParentRef;
+  /**
+   * Durable resume (0.5): completed/skipped node records to SEED instead of
+   * executing — the frontier a resumed run replays from. Values stay in their
+   * encoded ledger form so the request survives transport seams; the scheduler
+   * decodes on seeding.
+   */
+  seed?: import("./durable/ledger.js").LedgerNodeRecord[];
+  /** Lineage: the ledgered run this one resumes / re-runs (recorded, not read). */
+  resumedFrom?: string;
+  /**
+   * Lineage root for provider idempotency: the first run of the resume chain.
+   * Set by `engine.rerun({ from: "failure" })`; absent ⇒ this run is its own
+   * root. Exposed to ops as `ctx.rootRunId`.
+   */
+  rootRunId?: string;
 }
 
 /** The terminal result of a run: the resolved outputs of each reachable out-gate. */
 export interface RunResult {
   runId: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "canceled";
   /** out-gate node id → its resolved external payload. */
   outputs: Record<string, Record<string, unknown>>;
   error?: unknown;

@@ -12,6 +12,7 @@ import { toolsetSchema, type GuardrailDescriptor, type ToolsetDescriptor } from 
 
 const toolsWorkflows: OpDefinition = {
   type: "agents.tools.workflows",
+  effects: "pure",
   title: "agents.tools.workflows",
   description:
     'Collect boundary.tool workflows into a toolset. config.tools: tool names to include, or empty/["*"] for all.',
@@ -47,6 +48,7 @@ const toolsWorkflows: OpDefinition = {
 
 const toolsOps: OpDefinition = {
   type: "agents.tools.ops",
+  effects: "pure",
   title: "agents.tools.ops",
   description:
     "Collect mod-contributed code tools into a toolset. config.tools: names to include, empty = all registered.",
@@ -68,6 +70,7 @@ const toolsOps: OpDefinition = {
 
 const toolsMerge: OpDefinition = {
   type: "agents.tools.merge",
+  effects: "pure",
   title: "agents.tools.merge",
   description: "Merge toolsets (workflow tools + MCP servers + op tools) into one. config.count sets the inputs.",
   config: z.object({ count: z.number().int().min(2).max(8).default(2) }),
@@ -98,6 +101,7 @@ const toolsMerge: OpDefinition = {
 
 const guardrail: OpDefinition = {
   type: "agents.guardrail",
+  effects: "pure",
   title: "agents.guardrail",
   description:
     "Wrap a boundary.tool workflow (returning { tripwire, info? }) as an input or output guardrail.",

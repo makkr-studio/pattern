@@ -1,4 +1,4 @@
-import { type LucideIcon, Bot, BookOpen, Database, KeyRound, Mail, MessagesSquare, Puzzle, ScanSearch, Shield, Sparkles, Users } from "lucide-react";
+import { type LucideIcon, Bot, BookOpen, Database, KeyRound, Mail, MessagesSquare, Puzzle, ScanSearch, Shield, Sparkles, Users, CreditCard } from "lucide-react";
 import { motion } from "motion/react";
 import { SectionShell } from "../components/SectionShell";
 import { GlowCard } from "../components/ui";
@@ -12,13 +12,14 @@ interface Mod {
 }
 
 const MODS: Mod[] = [
-  { icon: Shield, name: "Admin", pkg: "@pattern-js/mod-admin", body: "The visual editor, runs, replay, and a catalog of every op and mod.", hue: 265 },
+  { icon: Shield, name: "Admin", pkg: "@pattern-js/mod-admin", body: "Six rooms: a workflow workspace with a deploy preview, runs you can replay and resume, your resources, users and billing.", hue: 265 },
   { icon: BookOpen, name: "Docs", pkg: "@pattern-js/mod-docs", body: "A self-documenting handbook and a generated op reference, served at /docs.", hue: 262 },
   { icon: Database, name: "Store", pkg: "@pattern-js/mod-store", body: "Durable storage, blobs, turn documents, and per-turn leases.", hue: 330 },
   { icon: ScanSearch, name: "Vectors", pkg: "@pattern-js/mod-vectors", body: "Embedding collections with declared filters and hybrid search — RAG over your own data in two nodes.", hue: 190 },
   { icon: KeyRound, name: "Vault", pkg: "@pattern-js/mod-vault", body: "Secrets and API keys, resolved straight into the ops that need them.", hue: 258 },
-  { icon: Users, name: "Identity", pkg: "@pattern-js/mod-identity", body: "Users, sessions, roles and invites — sign in by magic link or any OIDC provider.", hue: 152 },
+  { icon: Users, name: "Identity", pkg: "@pattern-js/mod-identity", body: "Users, sessions, roles and invites — sign in by magic link (or its 6-digit code) or any OIDC provider.", hue: 152 },
   { icon: Mail, name: "Email", pkg: "@pattern-js/mod-email", body: "Send and receive: Resend or SMTP drivers, sign-in links that deliver themselves, inbound email that triggers workflows.", hue: 22 },
+  { icon: CreditCard, name: "Billing", pkg: "@pattern-js/mod-billing", body: "A payments contract with a Stripe driver: subscriptions and one-time purchases become scopes, webhooks are verified, and AI usage meters itself.", hue: 120 },
   { icon: Bot, name: "Agents", pkg: "@pattern-js/mod-agents", body: "An agent loop with tools, guardrails and streaming turns — plus MCP in both directions.", hue: 270 },
   { icon: Sparkles, name: "Buddy", pkg: "@pattern-js/mod-buddy", body: "The assistant in the editor: it drafts and repairs workflows on your canvas, and debugs failed runs from their traces.", hue: 285 },
   { icon: MessagesSquare, name: "Chat", pkg: "@pattern-js/mod-chat", body: "A full hosted chat application running over one shared backend.", hue: 199 },

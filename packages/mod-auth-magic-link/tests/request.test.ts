@@ -40,6 +40,9 @@ const requestLink = (base: string, body: Record<string, string>) =>
 const printedLink = (logSpy: ReturnType<typeof vi.spyOn>): string | undefined =>
   /(https?:\/\/\S*\/auth\/token\?t=\S+)/.exec(logSpy.mock.calls.map((c) => String(c[0])).join("\n"))?.[1];
 
+const printedCode = (logSpy: ReturnType<typeof vi.spyOn>): string | undefined =>
+  /code: (\d{3} \d{3})/.exec(logSpy.mock.calls.map((c) => String(c[0])).join("\n"))?.[1];
+
 describe("@pattern-js/mod-auth-magic-link", () => {
   it("registers its login method in either config order", async () => {
     const a = await boot(4881);
@@ -142,6 +145,43 @@ describe("@pattern-js/mod-auth-magic-link", () => {
     expect(printedLink(logSpy)).toBeUndefined();
   });
 
+  it("the code ride (PWA path): sent page carries the form, the typed code signs in right here", async () => {
+    const { base, logSpy } = await boot(4889);
+
+    const res = await requestLink(base, { email: "ada@x.io", next: "/admin" });
+    const sentPage = await res.text();
+    // The sent page IS the code-entry surface — posting to /auth/code sets the
+    // cookie in THIS browsing context, not the mail client's browser.
+    expect(sentPage).toContain('action="/auth/code"');
+    expect(sentPage).toContain('autocomplete="one-time-code"');
+    expect(sentPage).toContain('name="next" value="/admin"');
+
+    // The console fallback (stand-in for the emailed copy) printed the code.
+    const code = printedCode(logSpy);
+    expect(code).toMatch(/^\d{3} \d{3}$/);
+
+    const verify = await fetch(`${base}/auth/code`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email: "ada@x.io", code: code!, next: "/admin" }).toString(),
+      redirect: "manual",
+    });
+    expect(verify.status).toBe(302);
+    expect(verify.headers.get("location")).toBe("/admin");
+    const cookie = (verify.headers.get("set-cookie") ?? "").split(";")[0]!;
+    const who = await fetch(`${base}/auth/whoami`, { headers: { cookie } });
+    expect((await who.json()).email).toBe("ada@x.io");
+
+    // The same code again: the row burned with the first use.
+    const replay = await fetch(`${base}/auth/code`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email: "ada@x.io", code: code!, next: "/admin" }).toString(),
+      redirect: "manual",
+    });
+    expect(replay.status).toBe(401);
+  });
+
   it("a workflow subscribed to identity.deliverToken claims delivery (no console fallback)", async () => {
     const { engine, base, logSpy } = await boot(4886);
 
@@ -167,5 +207,68 @@ describe("@pattern-js/mod-auth-magic-link", () => {
     const res = await requestLink(base, { email: "ada@x.io" });
     expect(res.status).toBe(200);
     expect(printedLink(logSpy)).toBeUndefined(); // hook claimed it — nothing printed
+  });
+});
+
+describe("sign-in email budgets", () => {
+  const sentTo = (logSpy: ReturnType<typeof vi.spyOn>, email: string) =>
+    logSpy.mock.calls.filter((c) => String(c[0]).includes(`login link for ${email}`)).length;
+
+  it("per address: past the budget nothing is sent and the page is identical", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const engine = new Engine();
+    const mods = [
+      identityMod({ storage: "memory", signup: "open", rateLimit: { perAddress: { max: 2, window: "15m" } } }),
+      magicLinkMod({ rateLimit: false }),
+    ];
+    for (const mod of mods) await engine.useAsync(mod, { deferReady: true });
+    for (const mod of mods) await mod.ready?.(engine);
+    const { close } = await createHttpHost(engine, { defaultPort: 4843 }).start();
+    closer = close;
+    const base = "http://localhost:4843";
+
+    const pages: string[] = [];
+    for (let i = 0; i < 4; i++) pages.push(await (await requestLink(base, { email: "ada@x.io" })).text());
+    expect(sentTo(logSpy, "ada@x.io")).toBe(2);
+    expect(new Set(pages).size).toBe(1); // the throttle reveals nothing
+    // Another address has its own budget.
+    await requestLink(base, { email: "bob@x.io" });
+    expect(sentTo(logSpy, "bob@x.io")).toBe(1);
+  });
+
+  it("per client IP: past the budget the form answers 429 before anything runs", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const engine = new Engine();
+    const mods = [identityMod({ storage: "memory", signup: "open" }), magicLinkMod({ rateLimit: { max: 3, window: "15m" } })];
+    for (const mod of mods) await engine.useAsync(mod, { deferReady: true });
+    for (const mod of mods) await mod.ready?.(engine);
+    const { close } = await createHttpHost(engine, { defaultPort: 4844 }).start();
+    closer = close;
+    const base = "http://localhost:4844";
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i++) statuses.push((await requestLink(base, { email: `u${i}@x.io` })).status);
+    expect(statuses).toEqual([200, 200, 200, 429]);
+    expect(sentTo(logSpy, "u3@x.io")).toBe(0);
+  });
+
+  it("the code form has a per-IP budget too", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const engine = new Engine();
+    const mods = [identityMod({ storage: "memory", rateLimit: { perClient: { max: 2, window: "15m" } } }), magicLinkMod()];
+    for (const mod of mods) await engine.useAsync(mod, { deferReady: true });
+    for (const mod of mods) await mod.ready?.(engine);
+    const { close } = await createHttpHost(engine, { defaultPort: 4845 }).start();
+    closer = close;
+    const guess = () =>
+      fetch("http://localhost:4845/auth/code", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ email: "ada@x.io", code: "123456" }).toString(),
+        redirect: "manual",
+      });
+    expect((await guess()).status).not.toBe(429);
+    expect((await guess()).status).not.toBe(429);
+    expect((await guess()).status).toBe(429);
   });
 });

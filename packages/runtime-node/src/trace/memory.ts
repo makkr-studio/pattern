@@ -146,7 +146,7 @@ export class MemoryTraceStore implements TraceStore {
   /** Result-ready: the run's outputs are available, but a streaming tail may
    *  still be flowing. Keep it in-progress (so late producer spans still attach)
    *  and record how long it took to become ready + that it's now streaming. */
-  onRunReady(run: { runId: string; traceId: string; status: "ok" | "error"; at: number }): void {
+  onRunReady(run: { runId: string; traceId: string; status: "ok" | "error" | "canceled"; at: number }): void {
     if (this.excludedTraces.has(run.traceId)) return;
     const rec = this.inProgress.get(run.traceId);
     if (!rec) return;
@@ -158,7 +158,7 @@ export class MemoryTraceStore implements TraceStore {
   onRunEnd(run: {
     runId: string;
     traceId: string;
-    status: "ok" | "error";
+    status: "ok" | "error" | "canceled";
     error?: unknown;
     at?: number;
     endedBy?: "drain" | "timeout";

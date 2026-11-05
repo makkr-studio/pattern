@@ -43,6 +43,7 @@ export const wsBroadcast: OpDefinition = defineOp({
 
 export const wsJoin: OpDefinition = defineOp({
   type: "core.ws.join",
+  effects: "idempotent",
   title: "core.ws.join",
   description: "Add a connection to a room/topic.",
   inputs: { connection: required(connectionSchema), room: required(z.string()) },
@@ -56,6 +57,7 @@ export const wsJoin: OpDefinition = defineOp({
 
 export const wsLeave: OpDefinition = defineOp({
   type: "core.ws.leave",
+  effects: "idempotent",
   title: "core.ws.leave",
   description: "Remove a connection from a room/topic.",
   inputs: { connection: required(connectionSchema), room: required(z.string()) },

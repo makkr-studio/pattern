@@ -83,7 +83,7 @@ export function aiModelService(ctx: OpContext): AiModelService {
   if (!svc) {
     throw new Error(
       'agents need a model provider — add "@pattern-js/mod-ai" to your pattern.config.json mods ' +
-        "and configure a provider in admin → Settings → AI Providers.",
+        "and configure a provider in admin → Resources → AI Providers.",
     );
   }
   return svc;

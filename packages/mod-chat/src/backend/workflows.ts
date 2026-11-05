@@ -561,7 +561,7 @@ export function approvalPipelineWorkflow(opts: ResolvedChatOptions): Workflow {
 
 /**
  * A callable tool: the chat agent generates an image from a prompt. Resolves the
- * "image" alias (create it in admin → Settings → AI Providers, e.g. openai ·
+ * "image" alias (create it in admin → Resources → AI Providers, e.g. openai ·
  * gpt-image-1), generates the image, and returns a MediaRef the chat UI renders
  * inline. Auto-discovered by `agents.tools.workflows`.
  */
@@ -571,7 +571,7 @@ export function imageToolWorkflow(_opts: ResolvedChatOptions): Workflow {
     name: "Chat · tool · generate image",
     description:
       'A tool the chat agent can call to generate an image from a prompt. Resolves the "image" alias, generates ' +
-      "the image, and returns a MediaRef the chat UI shows inline. Configure an image alias in Settings → AI Providers.",
+      "the image, and returns a MediaRef the chat UI shows inline. Configure an image alias in Resources → AI Providers.",
     source: "code",
     nodes: [
       {
@@ -589,7 +589,7 @@ export function imageToolWorkflow(_opts: ResolvedChatOptions): Workflow {
         id: "model",
         op: "ai.alias",
         config: { alias: "image" },
-        comment: 'The "image" alias — create it in Settings → AI Providers (e.g. openai · gpt-image-1).',
+        comment: 'The "image" alias — create it in Resources → AI Providers (e.g. openai · gpt-image-1).',
         ui: { x: 300, y: 300 },
       },
       { id: "gen", op: "ai.image.generate", config: { n: 1 }, comment: "Generate the image (raw bytes + mime).", ui: { x: 560, y: 180 } },

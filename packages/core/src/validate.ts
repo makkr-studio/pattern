@@ -30,7 +30,7 @@ import {
 } from "./graph.js";
 import { schemasCompatible } from "./schema-compat.js";
 import { analyzeStreamRegions } from "./streams/region.js";
-import { CONTROL_IN, CONTROL_OUT, WorkflowSchema, type Workflow } from "./types.js";
+import { CONTROL_IN, CONTROL_OUT, WorkflowSchema, effectsOf, type Workflow } from "./types.js";
 
 export interface ValidateResult {
   ok: boolean;
@@ -344,6 +344,44 @@ export function collectIssues(input: unknown, ops: OpRegistry): ValidateResult {
   if (workflow) {
     for (const ri of analyzeStreamRegions(workflow, ops).issues) {
       issues.push({ nodeId: ri.nodeId, message: ri.message, code: "stream_region" });
+    }
+  }
+
+  // (9) Advisory (warning, never blocking): retry hazards. A retry on an op
+  // with `"external"` effects may duplicate its side effect (a resend, a
+  // double charge); a retry on a node with wired stream inputs may find them
+  // partially consumed by the failed attempt (outputs are safe — distribution
+  // happens after execute returns). Both are the author's call — warn, don't block.
+  if (workflow) {
+    for (const node of workflow.nodes) {
+      if (!node.retry || node.retry.attempts <= 1) continue;
+      const op = ops.get(node.op);
+      if (!op) continue;
+      // Parse the config when it parses (config-dependent effects/ports want
+      // defaults applied); a config that doesn't is already an error above —
+      // fall back to the raw value so the advisory pass never throws.
+      const parsed = op.config ? op.config.safeParse(node.config ?? {}) : undefined;
+      const nodeCfg = parsed?.success ? parsed.data : (node.config ?? {});
+      if (effectsOf(op, nodeCfg) === "external") {
+        issues.push({
+          nodeId: node.id,
+          message: `node "${node.id}" retries "${node.op}", whose effects are external — a retried attempt may repeat its side effect (send twice, charge twice); prefer an idempotent op here, or keep the retry knowingly`,
+          code: "retry_external_effects",
+          severity: "warning",
+        });
+      }
+      const streamIn = workflow.edges.find(
+        (e) => e.to.node === node.id && portKindOf(op, nodeCfg, e.to.port, "in") === "stream",
+      );
+      if (streamIn) {
+        issues.push({
+          nodeId: node.id,
+          port: streamIn.to.port,
+          message: `node "${node.id}" retries "${node.op}" but its "${streamIn.to.port}" input is a stream — a failed attempt may already have consumed part of it, so the retry sees the remainder, not a fresh stream`,
+          code: "retry_stream_input",
+          severity: "warning",
+        });
+      }
     }
   }
 

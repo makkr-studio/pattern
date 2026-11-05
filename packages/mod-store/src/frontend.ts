@@ -12,8 +12,8 @@ import { PATHS } from "./admin-routes.js";
 export function storeFrontend(): FrontendContribution {
   return {
     menu: [
-      { category: "Data", label: "Collections", icon: "database", path: "/x/store/collections", order: 10 },
-      { category: "Data", label: "Blobs", icon: "file-archive", path: "/x/store/blobs", order: 20 },
+      { category: "Resources", label: "Collections", icon: "database", path: "/x/store/collections", order: 10 },
+      { category: "Resources", label: "Blobs", icon: "file-archive", path: "/x/store/blobs", order: 20 },
     ],
     pages: [
       {

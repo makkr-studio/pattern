@@ -141,3 +141,58 @@ describe("vault service + ops", () => {
     expect(JSON.stringify(merged.value)).not.toContain("value-never-shown");
   });
 });
+
+describe("import .env", () => {
+  it("parseDotenv: keeps KEY=VALUE, strips quotes/export, skips noise with reasons", async () => {
+    const { parseDotenv } = await import("../src/ops.js");
+    const { entries, skipped } = parseDotenv(
+      [
+        "# a comment",
+        "",
+        "OPENAI_API_KEY=sk-abc",
+        'QUOTED="with spaces"',
+        "SINGLE='single'",
+        "export EXPORTED=yes",
+        "EMPTY=",
+        "PATTERN_VAULT_KEY=base64key",
+        "1BAD=nope",
+        "windows=line\r",
+      ].join("\n"),
+    );
+    expect(entries).toEqual([
+      ["OPENAI_API_KEY", "sk-abc"],
+      ["QUOTED", "with spaces"],
+      ["SINGLE", "single"],
+      ["EXPORTED", "yes"],
+      ["windows", "line"],
+    ]);
+    expect(skipped.map((s) => s.name)).toEqual(["EMPTY", "PATTERN_VAULT_KEY", "1BAD"]);
+    expect(skipped.find((s) => s.name === "PATTERN_VAULT_KEY")?.reason).toContain("master key");
+  });
+
+  it("vault.admin.import encrypts every line and echoes names only", async () => {
+    const { engine, svc } = await bootEngine(TEST_KEY);
+    engine.registerWorkflow({
+      id: "import-env",
+      nodes: [
+        { id: "in", op: "boundary.manual", config: { outputs: ["dotenv"] } },
+        { id: "imp", op: "vault.admin.import" },
+        { id: "out", op: "boundary.return" },
+      ],
+      edges: [
+        { from: { node: "in", port: "dotenv" }, to: { node: "imp", port: "dotenv" } },
+        { from: { node: "imp", port: "result" }, to: { node: "out", port: "value" } },
+      ],
+    });
+    const res = await engine.run("import-env", {
+      input: { dotenv: "STRIPE_API_KEY=sk_test_123\nPATTERN_VAULT_KEY=nope\nRESEND_API_KEY=re_456\n" },
+    });
+    expect(res.status).toBe("ok");
+    const merged = Object.assign({}, ...Object.values(res.outputs)) as { value: { imported: string[]; skipped: Array<{ name: string }> } };
+    expect(merged.value.imported).toEqual(["STRIPE_API_KEY", "RESEND_API_KEY"]);
+    expect(merged.value.skipped.map((s) => s.name)).toEqual(["PATTERN_VAULT_KEY"]);
+    // Values decrypt server-side but never ride the response.
+    expect(await svc.read("STRIPE_API_KEY")).toBe("sk_test_123");
+    expect(JSON.stringify(merged)).not.toContain("sk_test_123");
+  });
+});

@@ -25,7 +25,8 @@ const result = await engine.run(wf, { input: { /* trigger ports */ } });
 - **Scheduler**: value barriers + control pulses + backpressured stream fan-out; skip propagation for branches; sub-workflow invocation.
 - **Op catalog**: constants, scalars, strings, objects, arrays (+ higher-order), control flow, data/encoding, time, crypto, `http.fetch`, the stream ops, WebSocket ops, hooks/events. Browse the generated reference at `/docs/ops`.
 - **Boundaries**: contracts + payload schemas (HTTP, WS, CLI, manual, schedule, hook, event).
-- **Hooks & events**, **auth** (Principal + provider chain), **observability** (OTLP-shaped spans), **transport** (in-process; pluggable).
+- **Hooks & events**, **auth** (Principal + provider chain, fails closed without a provider), **observability** (OTLP-shaped spans), **transport** (in-process; pluggable).
+- **Durable execution**: per-node `retry: { attempts, backoffMs, factor, maxBackoffMs }`, per-op `effects: "pure" | "idempotent" | "external"` (absent = external), `noEffect(err)` for errors that prove nothing happened, and a pluggable RunLedger (`durable: true` workflows record exact inputs/outputs; runtime-node provides the sqlite one).
 
 Subpath exports: `@pattern-js/core` (everything), `@pattern-js/core/ops`, `@pattern-js/core/boundaries`.
 
@@ -40,6 +41,9 @@ Subpath exports: `@pattern-js/core` (everything), `@pattern-js/core/ops`, `@patt
 | `engine.registerOp(op)` / `engine.use(mod)` | extend with ops / a plugin mod |
 | `engine.onTrace(sink)` | subscribe to telemetry |
 | `engine.invokeHook(name, payload)` / `engine.emit(event, payload)` | extensibility |
+| `engine.rerunPlan(runId, from?)` | what a resume / re-run would reuse, execute, skip, and where it is ambiguous |
+| `engine.rerun(runId, { from?, confirmExternal? })` | resume from the failing node (`"failure"`) or re-run with the same input (`"start"`) |
+| `engine.authPosture()` | `"enforced"` \| `"denied"` \| `"open"`: what `requireAuth` does right now |
 | `validateWorkflow(doc, ops)` / `formatGraph(wf, ops)` | validate / render |
 
 See [authoring ops](../mod-docs/docs/guides/authoring-ops.md), [concepts](../mod-docs/docs/concepts.md), and [architecture](../mod-docs/docs/architecture.md).

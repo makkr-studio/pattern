@@ -23,6 +23,7 @@ import {
   type InviteStore,
   type SessionRow,
   type SessionStore,
+  type TokenPurpose,
   type TokenRow,
   type TokenStore,
   type UserRow,
@@ -93,6 +94,8 @@ const toToken = (r: Raw): TokenRow => ({
   purpose: String(r.purpose) as TokenRow["purpose"],
   emailNorm: (r.email_norm as string | null) ?? null,
   data: r.data == null ? null : (JSON.parse(String(r.data)) as Record<string, unknown>),
+  codeHash: (r.code_hash as string | null) ?? null,
+  attempts: Number(r.attempts ?? 0),
   createdAt: Number(r.created_at),
   expiresAt: Number(r.expires_at),
   consumedAt: r.consumed_at == null ? null : Number(r.consumed_at),
@@ -285,7 +288,7 @@ class SqliteTokenStore implements TokenStore {
   async create(row: Omit<TokenRow, "version">): Promise<TokenRow> {
     this.db
       .prepare(
-        "INSERT INTO tokens (id, token_hash, purpose, email_norm, data, created_at, expires_at, consumed_at, version) VALUES (?,?,?,?,?,?,?,?,1)",
+        "INSERT INTO tokens (id, token_hash, purpose, email_norm, data, code_hash, attempts, created_at, expires_at, consumed_at, version) VALUES (?,?,?,?,?,?,?,?,?,?,1)",
       )
       .run(
         row.id,
@@ -293,6 +296,8 @@ class SqliteTokenStore implements TokenStore {
         row.purpose,
         row.emailNorm,
         row.data == null ? null : JSON.stringify(row.data),
+        row.codeHash,
+        row.attempts,
         row.createdAt,
         row.expiresAt,
         row.consumedAt,
@@ -317,6 +322,34 @@ class SqliteTokenStore implements TokenStore {
       .prepare("UPDATE tokens SET consumed_at=?, version=version+1 WHERE id=? AND version=? AND consumed_at IS NULL")
       .run(at, id, expectedVersion);
     return Number(info.changes) === 1 ? this.findById(id) : null;
+  }
+
+  async listPendingWithCode(emailNorm: string, now: number): Promise<TokenRow[]> {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM tokens WHERE email_norm = ? AND code_hash IS NOT NULL AND consumed_at IS NULL AND expires_at > ?",
+      )
+      .all(emailNorm, now) as Raw[];
+    return rows.map(toToken);
+  }
+
+  async recordCodeAttempt(id: string, maxAttempts: number, at: number): Promise<void> {
+    // Relative increment, not CAS: concurrent wrong guesses must ALL count.
+    // The CASE burns the token (link included) the moment the budget is spent.
+    this.db
+      .prepare(
+        "UPDATE tokens SET attempts = attempts + 1, version = version + 1, " +
+          "consumed_at = CASE WHEN attempts + 1 >= ? THEN ? ELSE consumed_at END " +
+          "WHERE id = ? AND consumed_at IS NULL",
+      )
+      .run(maxAttempts, at, id);
+  }
+
+  async countIssuedSince(emailNorm: string, purpose: TokenPurpose, since: number): Promise<number> {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM tokens WHERE email_norm = ? AND purpose = ? AND created_at >= ?")
+      .get(emailNorm, purpose, since) as { n: number | bigint };
+    return Number(row.n);
   }
 
   async deleteExpired(now: number): Promise<number> {
@@ -472,6 +505,9 @@ export async function sqliteIdentityStores(filePath: string): Promise<IdentitySt
   }
   if (filePath !== ":memory:") mkdirSync(dirname(filePath), { recursive: true });
   const db = new DatabaseSync(filePath);
+  // busy_timeout before the WAL switch — the switch takes locks, and a dev
+  // restart overlaps the old process's checkpoint-on-close.
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   runMigrations(db);

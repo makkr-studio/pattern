@@ -31,6 +31,8 @@ npm create pattern my-app -- --modpack studio
 | `studio-ai` | studio + **mod-ai**: plain AI workflows (text, object, image, speech) in the editor. |
 | `agentic` | studio + AI + the agent stack (agent, run, tools): an `/ask` endpoint. |
 | `agent-chat` | studio + the full **chat app** at `/chat`. |
+| `saas-starter` | studio + sign-in, **Stripe billing** wired to roles, a gated `/pro` page. |
+| *compose* | **pick your layers** — one multiselect (or `--with admin,auth,billing,…`); every composition prints its reproducible one-liner. |
 
 The wizard then offers the orthogonal **dimensions** — every one has a flag for
 scripting (`--help` lists them all):
@@ -41,9 +43,15 @@ scripting (`--help` lists them all):
   scaffold writes a `mods/oidc.mjs` to fill in), or both.
 - **Sign-in link delivery** (`--email console|resend|smtp`): keep the console,
   or wire real email — mod-email plus the chosen driver; create the `default`
-  account in admin → System → Email and links send themselves.
+  account in admin → Resources → Email and links send themselves.
 - **Docs** (`--docs`), **examples** (`--no-examples` for a clean scaffold), a
   generated **vault key**, and the **AI providers** to install (AI packs).
+
+**Grow it later.** A scaffold isn't a final answer — inside any project,
+`pattern add billing` (or `npx create-pattern add billing`) applies more
+layers additively: dependencies at your project's own version, config in the
+right order, and your files never overwritten. `pattern add` alone lists
+every layer's status.
 
 ## 2. Run it
 
@@ -58,7 +66,7 @@ workflows into the local store on first boot, so the catalog isn't empty.
 
 ## 3. Run your first workflow
 
-In the admin: open the **Catalog**, pick the seeded `hello` workflow, open it in
+In the admin: open **Workflows**, pick the seeded `hello` workflow, open it in
 the editor, and hit **Run** (a manual trigger lets you type an input). Watch the
 run appear in **Runs**: a per-node waterfall with sampled I/O you can peek, and
 an on-canvas replay that animates the execution.
@@ -106,7 +114,10 @@ You now have a running engine. Pick the path that matches what you're building:
 - **Go further**: [Agents & chat](guides/agents-and-chat.md),
   [Identity](guides/identity.md), or build a
   [third-party mod](guides/creating-a-mod.md).
+- **Ship it** with [Deploying](guides/deploying.md): every server scaffold carries a
+  Dockerfile — two volumes and a `PATTERN_PUBLIC_URL` and you're live.
 
 > No API key needed for the basics. When you add a model, mod-ai resolves a
-> provider key (e.g. `OPENAI_API_KEY` for OpenAI) from a `.env` next to
-> `pattern.config.json`, or from the vault.
+> provider key (e.g. `OPENAI_API_KEY` for OpenAI) from the encrypted vault
+> (admin → Resources → Secrets — the scaffold's default; a paste applies on the
+> next call, no restart) or from a `.env` next to `pattern.config.json`.

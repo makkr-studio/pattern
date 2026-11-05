@@ -18,8 +18,11 @@ Reach for it whenever you want passwordless email sign-in and don't want to buil
 a provider yourself, or as the worked example to copy when writing your own
 (OIDC, SMS…). The flow: `POST /auth/magic-link/request` issues a gated single-use
 token, delivery sends the link, and identity's `GET /auth/token?t=…` verifies it
-and mints a session. With no delivery subscriber the link **prints to the server
-console**: the zero-config dev login.
+and mints a session. Every link also carries a **6-digit code** (same single-use
+token, 5 attempts): the "check your inbox" page takes it via `POST /auth/code`,
+so an installed PWA, whose link would open in the system browser, signs in where
+it runs. With no delivery subscriber the link **prints to the server console**:
+the zero-config dev login.
 
 ## Prerequisites
 

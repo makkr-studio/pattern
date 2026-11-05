@@ -41,13 +41,27 @@ describe("auth (§9)", () => {
     expect(engine.authorize({ kind: "anonymous" }, undefined).ok).toBe(true);
   });
 
-  it("degrades a declared requireAuth to advisory-open with NO provider", () => {
-    // Nobody can authenticate without a provider, so enforcing would brick the
-    // route — a declared requirement serves open instead (the host warns at boot).
-    const open = new Engine();
+  it("DENIES a declared requireAuth with NO provider by default — the refusal names the fix", () => {
+    // Nobody can authenticate without a provider, so the requirement can't be
+    // enforced. A route that asked for auth must never serve open because a
+    // provider mod went missing: refuse, and say what to do about it.
+    const denied = new Engine();
+    expect(denied.authPosture()).toBe("denied");
+    const res = denied.authorize({ kind: "anonymous" }, { scopes: ["admin"] });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toMatch(/no auth provider is installed.*mod-identity.*unenforced/s);
+    expect(denied.authorize({ kind: "anonymous" }, true).ok).toBe(false);
+    // Routes without a requirement are untouched.
+    expect(denied.authorize({ kind: "anonymous" }, undefined).ok).toBe(true);
+
+    // The explicit opt-in (what `create-pattern --no-auth` writes) serves open.
+    const open = new Engine({ unenforcedAuth: "open" });
+    expect(open.authPosture()).toBe("open");
     expect(open.authorize({ kind: "anonymous" }, true).ok).toBe(true);
     expect(open.authorize({ kind: "anonymous" }, { scopes: ["admin"] }).ok).toBe(true);
-    // Add a provider → the same requirement is enforced.
+
+    // Add a provider → the same requirement is enforced, whatever the opt-in.
+    expect(enforcing().authPosture()).toBe("enforced");
     expect(enforcing().authorize({ kind: "anonymous" }, { scopes: ["admin"] }).ok).toBe(false);
   });
 

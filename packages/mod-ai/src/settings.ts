@@ -39,6 +39,7 @@ function configSvc(ctx: OpContext): AiConfigService {
 
 const providersList: OpDefinition = {
   type: "ai.providers.list",
+  effects: "pure",
   title: "ai.providers.list",
   description: "List the supported providers + their secret/option field specs (drives the alias form).",
   reusable: false,
@@ -52,6 +53,7 @@ const providersList: OpDefinition = {
 
 const aliasesRead: OpDefinition = {
   type: "ai.aliases.read",
+  effects: "pure",
   title: "ai.aliases.read",
   description: "List the configured model aliases (secret NAMES/sources only, never values).",
   reusable: false,
@@ -99,11 +101,23 @@ async function readAliasFields(ctx: OpContext) {
     maybe<Record<string, { source?: string; key?: string }>>(ctx, "secrets"),
     maybe<Record<string, string>>(ctx, "options"),
   ]);
-  return { name, provider, modelId, modality, secrets, options };
+  // A partial write — `secrets` / `options` not wired or not in the body —
+  // keeps what the alias already has: an omitted field must never wipe a
+  // secret ref. An explicit `{}` is how you clear one.
+  const existing = configSvc(ctx).alias(name);
+  return {
+    name,
+    provider,
+    modelId,
+    modality: modality ?? existing?.modality,
+    secrets: secrets ?? existing?.secrets,
+    options: options ?? existing?.options,
+  };
 }
 
 const aliasWrite: OpDefinition = {
   type: "ai.aliases.write",
+  effects: "idempotent",
   title: "ai.aliases.write",
   description: "Create or update a model alias (upsert by name).",
   reusable: false,
@@ -120,6 +134,7 @@ const aliasWrite: OpDefinition = {
 
 const aliasDelete: OpDefinition = {
   type: "ai.aliases.delete",
+  effects: "idempotent",
   title: "ai.aliases.delete",
   description: "Delete a model alias by name.",
   reusable: false,
@@ -137,6 +152,7 @@ const aliasDelete: OpDefinition = {
 
 const modelsList: OpDefinition = {
   type: "ai.models.list",
+  effects: "pure",
   title: "ai.models.list",
   description: "List the model catalog (static suggestions + live gateway listing) for the settings UI.",
   reusable: false,
@@ -197,8 +213,8 @@ export function aiAdminRoutes(): Workflow[] {
 
 export function aiFrontend(): FrontendContribution {
   return {
-    // 22 keeps System deterministic: Settings 20 · Email 21 · AI Providers 22 · Secrets 40.
-    menu: [{ category: "System", label: "AI Providers", icon: "bot", path: "/x/ai/providers", order: 22 }],
+    // Resources: Collections 10 · Blobs 20 · Vectors 30 · Secrets 40 · Email 50 · AI providers 60.
+    menu: [{ category: "Resources", label: "AI Providers", icon: "bot", path: "/x/ai/providers", order: 60 }],
     // The Tier-2 page is just its source; the admin serves + imports it (no workflow).
     pages: [{ path: "/x/ai/providers", title: "AI Providers", module: REMOTE }],
   };

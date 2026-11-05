@@ -4,7 +4,8 @@
  * One purposeful route per thing the browser exposes — no generic op invoker.
  * Each is a normal workflow (request → extract → store.admin.* op → status →
  * response) built by the shared `httpEndpoint`, admin-scope-gated at the
- * boundary (the op also re-checks `admin` in-op, defense in depth). The paths
+ * boundary; the ops are tagged `privileged`, so any other trigger that calls
+ * them must be gated by its author. The paths
  * are single-sourced here so the workflows and the frontend manifest can't
  * drift: `PATHS.*` are relative to the admin API mount (what the manifest's
  * `RouteRef` carries); the workflows mount them under `${API}`.

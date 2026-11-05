@@ -63,7 +63,7 @@ located error naming the field and the fix — never a silently empty result.
 
 The pattern for complex structures: keep the canonical record in
 **mod-store** (the truth), index its text here with `docId` + taxonomy fields
-in meta (the index), and compose `vectors.query → store.doc.get` on the
+in meta (the index), and compose `vectors.query → store.get` on the
 canvas.
 
 ## The local engine, durability, and offload
@@ -85,7 +85,7 @@ default. pgvector follows the same shape.
 
 ## Admin
 
-**Data → Vectors** is the whole RAG loop on one page: the collections table
+**Resources → Vectors** is the whole RAG loop on one page: the collections table
 (alias, dims, filterables, row count, active engine), **Ingest text** (paste
 anything — it's chunked, embedded through the collection's alias and indexed;
 the collection is created on first use; re-pasting the same text is a no-op

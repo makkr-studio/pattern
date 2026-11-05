@@ -17,6 +17,7 @@ import type { NodePorts,
   OpInfo,
   PortCompatibility,
   PortRef,
+  RerunResult,
   RunDetail,
   RunInput,
   RunResult,
@@ -139,6 +140,18 @@ export class AdminClient {
     /** Pause an in-flight run: no new node starts; running ops finish. */
     pause: (runId: string): Promise<{ ok: boolean }> => this.request("POST", `/runs/${encodeURIComponent(runId)}/pause`, {}),
     resume: (runId: string): Promise<{ ok: boolean }> => this.request("POST", `/runs/${encodeURIComponent(runId)}/resume`, {}),
+    /**
+     * Re-run a ledgered (durable) run. from="failure" (default) resumes from
+     * the failing node, seeding completed nodes' recorded outputs; "start"
+     * replays the recorded input as a fresh run. `dryRun: true` returns the
+     * `plan` (what reuses, executes, stays skipped, and which external-effect
+     * nodes are ambiguous) without starting anything — show it before the
+     * click. `blocked` comes back when ambiguous nodes need `confirmExternal: true`.
+     */
+    rerun: (
+      runId: string,
+      opts: { from?: "failure" | "start"; confirmExternal?: boolean; dryRun?: boolean } = {},
+    ): Promise<RerunResult> => this.request("POST", `/runs/${encodeURIComponent(runId)}/rerun`, opts),
   };
   metrics = (minutes?: number): Promise<MetricsSummary> => this.request("GET", `/metrics${qs({ window: minutes })}`);
 

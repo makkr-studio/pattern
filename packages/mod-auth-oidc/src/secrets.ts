@@ -25,6 +25,6 @@ export async function resolveSourced(ctx: OpContext, ref: SecretRef): Promise<st
   const vault = ctx.services[VAULT_SERVICE_KEY] as VaultLike | undefined;
   if (vault?.unlocked() && (await vault.has(ref.key).catch(() => false))) return vault.read(ref.key);
   throw new Error(
-    `mod-auth-oidc: no vault secret "${ref.key}" — add it in admin → System → Secrets (vault must be unlocked).`,
+    `mod-auth-oidc: no vault secret "${ref.key}" — add it in admin → Resources → Secrets (vault must be unlocked).`,
   );
 }

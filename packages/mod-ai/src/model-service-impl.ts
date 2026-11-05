@@ -7,6 +7,7 @@
  * Pattern sub-runs. Maps SDK stream parts → neutral chunks.
  */
 
+import { callOptions } from "./ops/shared.js";
 import type {
   AiModelService,
   GenerateTextInput,
@@ -17,15 +18,10 @@ import type {
   Usage,
 } from "@pattern-js/mod-agents";
 import type { OpContext } from "@pattern-js/core";
-import { generateText, jsonSchema, stepCountIs, streamText, tool, type ToolSet } from "./sdk.js";
+import { generateText, isStepCount, jsonSchema, streamText, tool, type ToolSet } from "./sdk.js";
 import type { AiProviderService } from "./provider.js";
 import { toModelMessages } from "./messages.js";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapUsage(u: any): Usage | undefined {
-  if (!u) return undefined;
-  return { inputTokens: u.inputTokens, outputTokens: u.outputTokens, totalTokens: u.totalTokens };
-}
+import { mapUsage } from "./ops/shared.js";
 
 function buildTools(defs: NeutralToolDef[] | undefined): ToolSet | undefined {
   if (!defs?.length) return undefined;
@@ -51,7 +47,7 @@ export class ModelServiceImpl implements AiModelService {
     const ref = modelRef ?? this.defaultModel();
     if (!ref) {
       throw new Error(
-        "mod-ai: no model specified and no default configured — wire an ai.model node, or set a default in admin → Settings → AI Providers.",
+        "mod-ai: no model specified and no default configured — wire an ai.model node, or set a default in admin → Resources → AI Providers.",
       );
     }
     return this.provider.languageModel(ref, ctx);
@@ -62,11 +58,12 @@ export class ModelServiceImpl implements AiModelService {
     const messages = await toModelMessages(input.messages, input.ctx);
     const result = streamText({
       model,
-      system: input.system,
+      instructions: input.system, // our contract says `system`; the SDK's option is `instructions` (v7)
       messages,
       tools: buildTools(input.tools),
-      stopWhen: stepCountIs(1),
+      stopWhen: isStepCount(1),
       abortSignal: input.signal,
+      ...callOptions(input.modelRef ?? this.defaultModel(), input.providerOptions),
     });
 
     let text = "";
@@ -81,7 +78,7 @@ export class ModelServiceImpl implements AiModelService {
     yield {
       type: "finish",
       finishReason: await result.finishReason,
-      usage: mapUsage(await result.totalUsage),
+      usage: mapUsage(await result.usage), // v7: accumulated across steps (the old totalUsage)
       message: { role: "assistant", content: text, toolCalls: calls.length ? calls : undefined },
     };
   }
@@ -89,7 +86,13 @@ export class ModelServiceImpl implements AiModelService {
   async generateText(input: GenerateTextInput): Promise<{ text: string; usage?: Usage }> {
     const model = await this.languageModel(input.modelRef, input.ctx);
     const messages = await toModelMessages(input.messages, input.ctx);
-    const r = await generateText({ model, system: input.system, messages });
+    const r = await generateText({
+      model,
+      instructions: input.system,
+      messages,
+      abortSignal: input.signal,
+      ...callOptions(input.modelRef ?? this.defaultModel()),
+    });
     return { text: r.text, usage: mapUsage(r.usage) };
   }
 }

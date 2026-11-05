@@ -14,6 +14,8 @@ export interface OpNodeData extends Record<string, unknown> {
   op: string;
   title?: string;
   comment?: string;
+  /** Per-node retry policy (engine-read; the Inspector's Reliability group). */
+  retry?: { attempts: number; backoffMs?: number; factor?: number; maxBackoffMs?: number };
   /** The op's description (markdown) — surfaced as a node tooltip. */
   description?: string;
   config: Record<string, unknown>;
@@ -195,6 +197,7 @@ export function buildFlow(doc: WorkflowDoc, opMap: OpMap): { nodes: RFNode<OpNod
         op: n.op,
         title: n.title,
         comment: n.comment,
+        retry: n.retry,
         description: op?.description,
         config: (n.config as Record<string, unknown>) ?? {},
         inputs,
@@ -335,6 +338,7 @@ export function toDoc(base: WorkflowDoc, nodes: RFNode<OpNodeData>[], edges: RFE
       op: n.data.op,
       title: n.data.title,
       comment: n.data.comment,
+      retry: n.data.retry,
       config: n.data.config && Object.keys(n.data.config).length ? n.data.config : undefined,
       ui: {
         x: Math.round(n.position.x),

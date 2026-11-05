@@ -72,12 +72,13 @@ export function ManifestPage() {
     );
   }
   if (page.remote) {
-    const Remote = remote(page.remote);
+    const Remote = remote(page.remote) as ComponentType<{ params?: Record<string, string> }>;
     return (
       <>
         {header()}
         <Suspense fallback={<Spinner />}>
-          <Remote />
+          {/* Path params reach Tier-2 pages as a prop (Tier-1 views get them as args). */}
+          <Remote params={params} />
         </Suspense>
       </>
     );

@@ -134,7 +134,7 @@ export const level2Doc = {
   name: "POST /ask — streaming agent",
   nodes: [
     { id: "in", op: "boundary.http.request", config: { method: "POST", path: "/ask" } },
-    { id: "agent", op: "agents.agent", config: { name: "assistant", instructions: "You are concise and helpful.", model: "gpt-4.1-mini" } },
+    { id: "agent", op: "agents.agent", config: { name: "assistant", instructions: "You are concise and helpful.", model: "gpt-5.6-terra" } },
     { id: "run", op: "agents.run" },
     { id: "out", op: "boundary.http.response", config: { mode: "sse" } },
   ],

@@ -22,12 +22,12 @@ the agent value `agents.agent` builds. Two ops produce one.
 
 | Routing | What it is | Model id |
 |---|---|---|
-| `direct` | a native provider SDK + that provider's key | bare, e.g. `gpt-5` |
-| `gateway` | the **Vercel AI Gateway**: one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5` |
+| `direct` | a native provider SDK + that provider's key | bare, e.g. `gpt-5.6` |
+| `gateway` | the **Vercel AI Gateway**: one key, hundreds of models, BYOK | `provider/model`, e.g. `openai/gpt-5.6` |
 
 ```json
 { "id": "model", "op": "ai.model",
-  "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5" } }
+  "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5.6" } }
 ```
 
 **`ai.alias`** resolves a model configured in Settings by name:
@@ -43,7 +43,7 @@ Either way, wire `model.model` → any `ai.*` op's `model` input or
 ## Aliases
 
 An **alias** is one self-contained, named model handle (managed in admin →
-Settings → **AI Providers**): a provider, a model id, the secret(s) it
+Resources → **AI Providers**): a provider, a model id, the secret(s) it
 authenticates with, and any structured options. Each secret is sourced
 explicitly, from the **vault** or an **env var**, so nothing relies on guessing a
 provider's magic env-var name. A single-key provider needs only `apiKey`; Azure
@@ -56,13 +56,14 @@ from GPT-5 to Claude in Settings instantly re-targets every workflow and agent
 using it, with no graph edits. Agents and chat fall back to the `default` alias
 when no model is wired.
 
-Provider **keys** live in the vault (admin → System → **Secrets**) or in env
+Provider **keys** live in the vault (admin → Resources → **Secrets**) or in env
 vars; an alias just references them by name and source.
 
 ## The modality ops
 
 All take a `model` (required) and write their result on named outputs. Text-ish
-ops accept `prompt` XOR `messages` plus an optional `system`. The generation ops
+ops take `prompt` or `messages` (`messages` wins when both are wired) plus an
+optional `system`. The generation ops
 (image/audio/video) output **raw media** (`{ bytes, mime, kind }`) and **don't
 save**: keeping the save out of the op means mod-ai never assumes a blob store.
 Wire the output into `store.blob.put` to persist it: its `ref` output is a
@@ -83,8 +84,8 @@ Wire the output into `store.blob.put` to persist it: its `ref` output is a
 
 **Long-running generation** (image, video): the op returns immediately with a
 `progress` **stream** (`start` → `done`) and settles the media when ready,
-and it honors `ctx.signal` so editor Stop / cancel aborts it. Video forces an
-extended 15-minute fetch timeout (it routinely takes minutes).
+and it honors `ctx.signal` so editor Stop / cancel aborts it. Video through the
+gateway gets an extended 15-minute fetch timeout (it routinely takes minutes).
 
 Verify exact ports any time: `npx pattern ops ai.image.generate`.
 
@@ -94,6 +95,21 @@ Verify exact ports any time: `npx pattern ops ai.image.generate`.
 agent is provider-agnostic: wire an `ai.model` into `agents.agent.model` (or rely
 on the default), and `agents.run` works against OpenAI, Anthropic, Google, a
 gateway model, anything.
+
+## Usage accounting
+
+Every language-model call — a plain `ai.text.generate`, an agent step, a chat
+turn, a history compaction — reports its token usage from ONE seam: the
+provider service taps the model itself, so nothing escapes the count. Each
+call lands `ai.inputTokens` / `ai.outputTokens` / `ai.totalTokens` on its node
+span (visible in the run waterfall) and emits an **`ai.usage`** event on the
+bus: `{ modelId, inputTokens, outputTokens, totalTokens, userId?, runId,
+workflowId, nodeId }` — `userId` present only for a signed-in caller.
+Subscribe with a `boundary.event` workflow to build quotas, dashboards, or
+billing (mod-billing ships that workflow ready-made). The agent loop also sums
+its steps: `agents.run` now outputs `usage`, and the terminal `done` turn
+event carries the same total. Accounting is fail-open telemetry — a metering
+hiccup never breaks a generation.
 
 ## MCP: both directions
 
@@ -139,7 +155,7 @@ the ones you pick. The gateway needs no package.
 
 ## Settings
 
-Admin → Settings → **AI Providers** manages your **aliases**: pick a provider
+Admin → Resources → **AI Providers** manages your **aliases**: pick a provider
 (which surfaces exactly the secret + option fields it needs), source each secret
 from the vault or an env var, set the model id, and run a **Test** check. It also
 browses the model catalog (curated suggestions plus the live gateway listing when

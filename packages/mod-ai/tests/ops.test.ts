@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Engine, defineMod, type Workflow } from "@pattern-js/core";
-import { MockEmbeddingModelV3, MockLanguageModelV3 } from "ai/test";
+import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 import { aiOps } from "../src/ops/index.js";
 import { AI_PROVIDER_SERVICE } from "../src/well-known.js";
 import type { AiProviderService } from "../src/provider.js";
@@ -13,17 +13,17 @@ import type { AiProviderService } from "../src/provider.js";
 function mockProvider(): AiProviderService {
   return {
     languageModel: async () =>
-      new MockLanguageModelV3({
+      new MockLanguageModelV4({
         doGenerate: async () => ({
           content: [{ type: "text", text: "mock answer" }],
-          finishReason: "stop",
-          usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+          finishReason: { unified: "stop", raw: "stop" },
+          usage: { inputTokens: { total: 3, noCache: 3, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 2, text: 2, reasoning: undefined } },
           warnings: [],
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
     textEmbeddingModel: async () =>
-      new MockEmbeddingModelV3({
+      new MockEmbeddingModelV4({
         doEmbed: async () => ({ embeddings: [[0.1, 0.2, 0.3]], usage: { tokens: 3 } }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
@@ -96,6 +96,7 @@ describe("mod-ai ops against mock models", () => {
     const engine = await boot();
     engine.registerWorkflow(textWorkflow);
     const res = await engine.run("ai-text", { input: { prompt: "hi" } });
+    expect(res.error).toBeUndefined(); // the real reason first, not just "error"
     expect(res.status).toBe("ok");
     const out = merged(res as never);
     expect(out.text).toBe("mock answer");

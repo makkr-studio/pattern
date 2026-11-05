@@ -69,7 +69,10 @@ export const modelRefSchema = z.object({
    * instantly re-targets every workflow and agent using it.
    */
   alias: z.string().optional(),
-  /** Pass-through provider options (temperature, reasoning, dimensions, voice…). */
+  /**
+   * Pass-through AI SDK provider options, keyed by provider id, sent with every
+   * call made with this model: `{ "openai": { "reasoningEffort": "low" } }`.
+   */
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
 export type ModelRef = z.infer<typeof modelRefSchema>;
@@ -218,6 +221,8 @@ export const turnEventSchema = z.discriminatedUnion("type", [
     ...base,
     type: z.literal("done"),
     stopReason: z.enum(["complete", "interrupted", "error", "cancelled"]),
+    /** Token accounting summed across the turn's model steps (0.5, additive). */
+    usage: usageSchema.optional(),
   }),
 ]);
 export type TurnEvent = z.infer<typeof turnEventSchema>;

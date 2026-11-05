@@ -3,7 +3,7 @@
 The [Resend](https://resend.com) driver for
 [`@pattern-js/mod-email`](https://www.npmjs.com/package/@pattern-js/mod-email)
 on [Pattern](../../README.md) — dependency-free (Resend's send API is one
-fetch). Install both, create an account in admin → System → Email, and
+fetch). Install both, create an account in admin → Resources → Email, and
 `email.send` (plus sign-in links) delivers through Resend.
 
 **Links:** [pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/mod-email-resend)

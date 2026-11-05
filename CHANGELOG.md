@@ -3,6 +3,488 @@
 All notable changes to the Pattern framework. The packages release together; a
 version here applies across `@pattern-js/*` and `create-pattern` unless noted.
 
+## 0.5.0 — 2026-11-04
+
+Open for business: durable execution (retry, resume, re-run — completed work is
+never re-executed, external effects are sealed or confirmed), a payments
+contract with a Stripe driver (subscriptions and one-time purchases, both
+projected into roles), AI usage metering, failure alerts, an admin reorganized
+around six rooms with a real workflow workspace, and a `saas-starter` scaffold
+with a deploy story.
+
+### Durable execution
+
+- **Ops declare their replay-safety.** Every op can carry `effects: "pure" |
+  "idempotent" | "external"` — and *absent means external*: a missing stamp
+  must read as "ask before re-running", never "silently double-charge". The
+  base catalog and first-party mods are stamped (`pureOp`-built ops are pure
+  by construction); `core.http.fetch` stays deliberately unstamped because its
+  method arrives on a port.
+- **Retry as node config.** `retry: { attempts, backoffMs, factor,
+  maxBackoffMs }` on any node re-runs its execute with exponential backoff —
+  always explicit (failure stays a value you branch on). Skips are never
+  retried, a cancelled run stops immediately, the pause gate holds between
+  attempts, and every attempt lands on the trace (the waterfall shows them).
+  The validator warns on retrying `external` ops (`retry_external_effects`)
+  and wired stream inputs (`retry_stream_input`); the Inspector grows a
+  **Reliability** group.
+- **The RunLedger.** A workflow flagged `durable: true` records each run in
+  full fidelity — the exact trigger input and every node's exact value
+  outputs — to `.pattern-data/ledger.db` (deliberately NOT the trace store,
+  which stays sampled/capped/masked as a display surface; the ledger stores
+  real values — protect `.pattern-data/` like your database). Zero per-node
+  cost when off; offloaded runs bridge records to the host ledger. Crashed
+  runs become *resumable* interrupted errors — decided by process
+  **liveness**, never by run age: every writer heartbeats an owner row, and a
+  run whose owner is gone is swept at boot and on every beat, so a young run
+  of a dead process is caught while a long run of a live `pattern run` beside
+  the dev server is left alone (the trace store's stuck `finished = 0` rows
+  get the same treatment). Asked for means required: a ledger that can't open
+  is a boot error naming the fix, `durable.persist: false` is the explicit way
+  to run without one, and both boot and the engine say so — by workflow name —
+  when a durable workflow runs unrecorded.
+- **Resume & re-run.** `engine.rerun(runId)` — surfaced as **Resume** and
+  **Re-run** buttons on the run detail — seeds every completed node's
+  recorded outputs (the trigger-seeding move, generalized) and re-executes
+  only the failed frontier: *fail after a send, fix, resume — the send count
+  stays at one.* The workflow's structure is hash-pinned to the run. The
+  **ambiguous zone** — external-effect nodes that started and never finished,
+  *or that failed without vouching the effect didn't happen* (a thrown error
+  never proves the provider didn't act; ops that know better stamp
+  `noEffect(err)`: setup failures, refused 4xx) — blocks an unconfirmed
+  resume. Either button first shows the **plan** (`engine.rerunPlan`,
+  `admin.run.rerun { dryRun }`): what reuses its recorded result, what
+  executes (external nodes tagged), what stays skipped, and why anything is
+  ambiguous. A resume keeps the run's idempotency lineage — `ctx.rootRunId`,
+  the first run of the chain — so sealed provider calls *replay*; `from:
+  "start"` is a new lineage and says plainly that every external node repeats.
+  Resumed runs carry `resumedFrom` both ways.
+- **A cancel is not an error.** Cancellation (admin stop, client disconnect,
+  worker abort) now records `status: "canceled"` through the engine, the
+  trace stores, the admin badges and filters — and Buddy's tool descriptions,
+  which advertised the status before it existed.
+
+### Billing
+
+- **One-time purchases are first-class.** `billing.checkout.create` sells
+  either way — `mode: "subscription"` (recurring) or `mode: "payment"`
+  (one-time) — and a payment-mode checkout is now the whole story of a sale:
+  the driver reports what was bought (`mode`, `priceKeys`, `amount`,
+  `currency`, `sessionId`), mod-billing records a **purchase**
+  (`billing.purchases`, keyed by the session so a redelivery never
+  double-records), marks the price as *owned* on the customer mapping, and
+  emits **`purchase.completed`** with the details. New `billing.owns` asks
+  "does this user own X?" from the mapping (no provider round-trip);
+  `billing.entitled` and `/billing/status` report `purchased` too, and the
+  packaged success page waits for the bought `item` instead of a
+  subscription entitlement. `priceKey` is now also a config field on the
+  checkout node — a node that sells one thing says so.
+- **Payments become roles with `grants`.** `billingMod({ grants: { lifetime:
+  "member", team: "team" } })` maps price keys to identity roles: a price
+  bought outright grants its role for good; a price on an entitled
+  subscription grants its role while it stays paid. Grants compose with
+  `entitlement` (any paid subscription → one role) — billing recomputes only
+  the roles it manages and leaves every other role alone, still writing only
+  on actual transitions. Tiers, add-ons and lifetime deals are one config
+  line, and the gate stays `requireAuth: { scopes: [...] }`.
+- **Prices by lookup key.** The Stripe driver treats a `priceKey` that isn't a
+  `price_…` id as the price's **lookup key** (resolved once per key through
+  `/v1/prices`), so config says `pro` / `lifetime` and test → live is a
+  no-op; one-time checkouts ask Stripe to create a customer, so purchases hang
+  off the same customer ↔ user mapping and buyers reach the portal for
+  receipts. The saas-starter ships both flows — `checkout.json` (recurring,
+  `pro`) and the new `buy.json` (one-time, `lifetime`) — behind one gated
+  page, with `grants: { lifetime: "member" }` in `mods/billing.mjs`; the
+  Billing page gains a Purchases table and an *Owns* column, the identity
+  user page shows what a user owns, and AGENTS.md carries the recipes: add a
+  subscription paywall, add a one-time purchase, do something on payment.
+
+- **`@pattern-js/mod-billing` — the payments contract.** Provider-neutral
+  driver SPI and a normalized event union (`checkout.completed`,
+  `subscription.updated/deleted`, `invoice.paid/payment_failed`); accounts
+  with `{ vault | env }` secret refs in `.pattern-data/billing-config.json`;
+  ops for checkout, the customer portal, subscription state,
+  `billing.entitled` (reads the local mapping, never the provider), and
+  `billing.usage.record`; a `billing.event` trigger so "on payment failed →
+  email the user" is a canvas workflow. Webhook ingestion claims each provider
+  event id with a delivery **state** (`processing` → `processed` | `failed`):
+  a redelivery of a processed event is a duplicate, of a failed one the retry
+  it exists for, and a twin still in flight is refused (409) rather than
+  acknowledged blind; deliveries per customer are serialized, and
+  state-bearing events are ordered by the provider's event time so a delayed
+  older `active` can never resurrect a canceled subscription. It **projects
+  subscription status into an identity role only on actual entitlement
+  transitions** — a renewal never logs anyone out — so an active plan becomes
+  a scope and
+  `requireAuth: { scopes: ["pro"] }` gates paid features with no new code.
+  mod-store and mod-identity are duck-typed: billing degrades gracefully
+  without either. Admin → Administration → **Billing** manages accounts, customers,
+  and recent events.
+- **`@pattern-js/mod-billing-stripe` — the Stripe driver, zero dependencies.**
+  A hand-rolled client (form-encoded v1, pinned `Stripe-Version`,
+  `Idempotency-Key` on every POST) and hand-rolled webhook verification
+  (hex HMAC over `t.rawBody`, the `whsec_` secret used verbatim, multi-`v1`
+  rotation, ±5 min tolerance — deliberately not the svix routine). Checkout
+  sessions, customer portal (its configuration ensured on first use),
+  subscription lookup, and Billing Meter events. The signed webhook route
+  (`POST /billing/webhook/stripe`) arrives seeded, raw-bytes mode, signature
+  as the gate.
+
+- **Retries that can never double-charge.** Checkout, portal, and usage
+  recording pin their provider idempotency key to the node within its run
+  *lineage* (`ctx.rootRunId`, carried across resumes), so a per-node `retry`
+  AND a durable resume replay the SAME session instead of minting a second one
+  — the ops are stamped `idempotent` by construction, their setup failures
+  carry the no-effect verdict, Stripe 4xx refusals do too (idempotency clashes
+  excepted), and the starter's payment workflows boot warning-free.
+- **Setup that guides instead of failing.** Billing that isn't configured yet
+  (no account, unresolved key, no price — or the portal before a first
+  subscription) answers a friendly 409 outcome the landing page renders as
+  guidance, not a failed run; and admin → Administration → Billing is now a real page:
+  a **setup checklist** that ticks itself as you go (driver → account → key →
+  price → webhook secret → *first event received*, live), driver-spec-driven
+  **editable accounts** with per-field vault/env secret refs, and the
+  customers + events tables beneath it.
+- **The return pages absorb the webhook race.** mod-billing now serves
+  `GET /billing/success` and `/billing/cancel` itself (dark-glass, like
+  identity's front door), so the second after payment is honest instead of a
+  404: the success page polls the new `GET /billing/status`
+  (principal-derived `{ signedIn, entitled, status }` — unprobeable) until
+  the completion webhook grants the role, then forwards to `next` — which
+  `billing.checkout.create` threads onto both return URLs (relative-path
+  guarded). Movable via `successPath`/`cancelPath`/`statusPath`, removable
+  via `pages: false`; the saas-starter's checkout sets `next: "/pro"`.
+- **The buyer stays signed in through the unlock.** Granting the paid role
+  used to end every session of the user (identity's role-change rule), so the
+  success page's poll saw `signedIn: false` and a customer who had just paid
+  landed on a sign-in wall. Identity now ends sessions only when privilege
+  shrinks (or on elevation to `admin`); scopes already resolved live, so the
+  unlock reaches the open session on its next request.
+- **`billing.event` names the user on every kind.** Invoice and subscription
+  events carry only the provider's customer id; the trigger's `userId` now
+  comes from the customer mapping, so "payment failed → email the user"
+  works as documented.
+- **An old subscription's end can't cancel the new one.** A
+  `subscription.deleted` for a subscription the mapping no longer tracks is
+  ignored instead of revoking the current plan's access.
+- **Metering a free user is an outcome, not a failure.** `billing.usage.record`
+  for a signed-in user with no billing customer (or an unconfigured account)
+  returns a conflict outcome on `result`; the seeded `ai.usage` meter no
+  longer fails a run, and fires no failure alert, per free-tier model call.
+- **The docs say where billing stops.** The chapter and the saas-starter's
+  AGENTS.md list what the contract does not do yet (no cart, yes/no
+  ownership, no taxes/coupons/trials/shipping set at checkout, refunds not
+  projected, one tracked subscription per customer), and claims the code
+  didn't back (hosted taxes, portal upgrades by default, portal receipts for
+  one-time buyers) are corrected.
+
+### Alerts & metering
+
+- **`ai.usage` — every model call counted at one seam.** A fail-open
+  middleware inside the provider service (the single choke point every LLM
+  call crosses — plain ops, agents, chat, compaction) stamps token counts on
+  the node span and emits `ai.usage` with per-user attribution. The agent
+  loop stops dropping usage: turn totals surface on `agents.run`'s outputs
+  and the terminal `done` event. With billing's `meterAiUsage` on, a seeded,
+  editable workflow forwards attributed usage to a Stripe meter — **agent
+  usage → metered billing is an edge on the canvas, not code**.
+- **`run.failed` + failure alerts.** The engine emits `run.failed` for
+  parent-less failed runs (recursion-guarded, cancels excluded); mod-email
+  ships a seeded, editable `alert-failed-run` workflow — set
+  `PATTERN_ALERTS_TO` and a failed run emails you its error and a deep link
+  to the run. Unset, it no-ops; zero-config posture preserved.
+
+### Deploy & scaffolder
+
+- **`saas-starter`** — `npm create pattern` grows a subscription-SaaS pack:
+  magic-link sign-in, Stripe billing wired to roles (`member → ["pro"]`), a
+  public landing page with checkout, a gated `/pro` route, and the customer
+  portal — with the checkout/portal workflows shipped `durable: true` (0.5
+  dogfooding its own headliner). Editable app-local wrappers (`mods/billing.mjs`,
+  `mods/identity.mjs`) carry the knobs; AGENTS.md walks the first test
+  subscription in five minutes (`stripe listen`, card 4242…).
+- **A Dockerfile in every server scaffold** (+ `.dockerignore`), documenting
+  the two state volumes (`.pattern/` vs `.pattern-data/`) and required env —
+  and a new handbook guide, **Deploying**, with the container contract and
+  Fly.io / Railway / Render walk-throughs. Containers now build on
+  `node:26-slim` (the engines floor stays ≥22.5).
+- **Scaffolds are vault-first.** Provider and processor keys stop defaulting
+  to `.env`: with a generated vault key, seeded model aliases reference
+  `{ source: "vault" }`, the saas-starter carries mod-vault (compose's
+  billing layer pulls it too), and `.env.example` shrinks to infrastructure —
+  the keys' home is admin → Resources → **Secrets**, where a paste applies on
+  the next call with no restart (that's what kills the old "edit .env,
+  restart" loop; the billing walkthrough lost a restart step). Every env line
+  survives as a commented alternative, `--no-vault-key` falls back to env
+  refs, and the pack card grows a "secrets → encrypted vault" line so the
+  preview stays honest.
+
+### Compose & add
+
+- **Compose your own** — the modpack picker's last entry, and the packs'
+  general case: pick capability **layers** in one multiselect (admin, auth,
+  email, AI, agents, chat, vectors, billing, buddy, docs), answer
+  sub-questions only for what you picked, and dependencies pull in **with a
+  printed note** (`--with chat` tells you it brought agents + AI + store
+  along). Scriptable as `--with admin,auth:magic-link,email:resend,billing`;
+  every composition ends by printing its **reproducible one-liner** — share
+  it, script it, or hand it to a coding agent. Each layer seeds its own
+  example workflows (with scaffold vars substituted — no stray `{{name}}` in
+  a page title) and documents itself in AGENTS.md; a composed billing app's
+  boot banner leads with its landing page, not the base demo curls.
+- **`pattern add`** — the same layers, applied to an EXISTING project:
+  `npx create-pattern add billing` (or `pattern add billing`, which delegates
+  to the scaffolder generation matching the project's own `@pattern-js`
+  range). Additive and idempotent: deps at the project's range, config
+  entries in canonical positions, wrappers only when absent, your workflows
+  never overwritten — and `add` alone lists every layer's status. Adding
+  billing onto a bare identity upgrades it to the app-local roles wrapper,
+  completing the entitlement bridge with a printed explanation.
+
+### Identity
+
+- **Gaining a role keeps your session.** `setRoles` ends a user's sessions
+  when they lose a role or scope, or are elevated to `admin`; a pure gain
+  (a paid plan's role, an editor role) takes effect on the next request with
+  the session intact, since scopes resolve live from the user row.
+- **Magic links grow a magic code — installed PWAs can finally sign in.** The
+  emailed link opens in the *system browser's* cookie jar, so a
+  standalone-display app stayed logged out after "I clicked the link". Every
+  login token now also carries a **6-digit code** bound to the same
+  single-use row: the "check your inbox" page grows a code form (with
+  `autocomplete="one-time-code"` for OS autofill), and identity's new
+  `POST /auth/code` consumes it and sets the session cookie **in the browsing
+  context that asked**. Whichever of link or code is used first burns both.
+- **Budgeted, not entropic.** A 6-digit code can't lean on hash lookup the way
+  256-bit tokens do: verification compares in constant time against the
+  email's pending code-bearing rows, five wrong guesses burn the token (link
+  included, atomic increment — concurrent guesses all count), and failures
+  render identically for unknown emails and wrong codes (401, no
+  enumeration).
+- **The code reaches every channel for free.** It rides the
+  `identity.deliverToken` payload (`code`), is worked into the default
+  `message` copy ("…or enter the code 482 913…"), and prints with the console
+  fallback — the seeded email workflow needed zero template changes.
+
+### Security
+
+- **Production hides a failed run's error from the client.** With
+  `NODE_ENV=production`, a failed HTTP run answers
+  `{ error: "internal_error", runId }`; the message (which can name accounts,
+  secrets or paths) stays in the trace. Development still shows it.
+- **The Stripe webhook verifies with the signing secret alone.** It used to
+  resolve every account secret first, so an unsigned request on a half-set-up
+  app got a 500 naming the missing API key.
+- **Rate limits are a brick, and sign-in uses them by default.** Any
+  `boundary.http.request` takes `rateLimit: { max, window, by: "ip" | "user" }`:
+  past it the host answers 429 with `Retry-After` before the run starts. The
+  trigger gains an `ip` output (the socket peer, or the forwarded address
+  `PATTERN_TRUST_PROXY` hops vouch for). `core.flow.throttle` is the same
+  counter inside a workflow: it pulses `out` or `limited`, per `key`.
+  Sign-in ships with budgets on: each address gets at most 5 sign-in emails
+  per 15 minutes (counted in the identity store, so restarts and extra
+  instances don't reset it; past it the page is unchanged and nothing is
+  sent), the magic-link form takes 10 requests per IP per 15 minutes, and the
+  code and bootstrap forms take 20. Tune them with identity's `rateLimit`
+  and magic-link's `rateLimit`, or set either to `false`. Failure alerts send
+  at most one email per failing workflow every 10 minutes, and the
+  saas-starter billing routes allow 10 requests per user per minute.
+- **The billing success page escapes its inline script.** A crafted `next`
+  (`/</script><script>…`) could run script for a signed-in buyer; values are
+  now emitted with `<` and the JS line separators escaped.
+- **Redirect guards hold against backslashes and control characters.**
+  `safeNextPath` (identity's post-login `next`, billing's return pages)
+  refused `//host` but let `/\host` and tab tricks resolve off-origin; it
+  now rejects them and checks the resolved origin.
+- **The RunLedger never stores credentials.** A durable HTTP run recorded
+  the caller's `Cookie` and `Authorization` headers (live session cookies and
+  `pat_` tokens) in plaintext; credential headers are dropped and `cookies`
+  records empty. The run's identity is the recorded principal.
+- **Public webhook bodies are bounded.** The Stripe (1 MiB) and Resend
+  inbound (40 MiB) routes stream their raw bytes for signature checks and
+  used to buffer without a limit; past the cap they answer 400.
+- **Entitlement is per user, not per provider customer.** A user with two
+  customers (two checkouts before the first webhook) could lose a lifetime
+  purchase's role when the other customer's subscription ended; roles,
+  `billing.entitled` and `billing.owns` now read the union of the user's
+  customers.
+- **No Host-header links in production.** Without `PATTERN_PUBLIC_URL` and
+  with `NODE_ENV=production`, identity refuses to email a link built from the
+  client-controlled Host header (a forged one would mail a victim a valid
+  token for someone else's domain), and says so at boot.
+- **Scaffolded containers run as `node`**, owning only `.pattern/` and
+  `.pattern-data/`; `.dockerignore` also excludes `.env.*`.
+- `pattern add` works on Windows (npm's npx entry via the current Node, no
+  shell); `pnpm audit` is clean (undici 7.30.1, file-type 22 floors).
+
+### Admin
+
+- **The sidebar has six rooms, and a workflow is a workspace.** The nav is
+  now **Home · Workflows · Activity** (Runs, Metrics, Process) **· Resources**
+  (collections, blobs, vectors, secrets, email, AI providers) **·
+  Administration** (users, invites, sessions, API tokens, billing, settings)
+  **· Reference** (ops, mods, system map). The top-level *Editor* destination
+  is gone: a workflow opens from the list as its own workspace at
+  `/workflows/:slug` with four tabs — **Editor**, **Runs** (its runs only),
+  **Versions**, and a new **Settings** tab (name, description, tags,
+  durable/offload — saved as a version — plus deploy/undeploy, fork, export,
+  delete). Every workflow you open stays open in the strip above the
+  workspace with its unsaved draft until you close it, and the Workflows list
+  shows an *Open* row to jump back. Old `/editor/:slug` and `/versions/:slug`
+  links redirect. The section vocabulary is `ADMIN_SECTIONS` in admin-sdk
+  (`buildAdminNav` canonicalizes the pre-0.5 names — Access, Data, System,
+  Catalog… — so third-party mods land somewhere sensible), and ⌘K now lists
+  every sidebar destination, mod pages included.
+- **The deployment state is one honest strip.** The workspace header says
+  *Unsaved changes · Saved v8 · Live v7*, with **Deploy v8** right there for
+  a saved-but-not-live version. **Deploy — from the editor or the strip —
+  previews what changes first**: routes that start or stop serving, auth
+  gates that change (a route going public is called out), external-effect
+  nodes joining the graph (`OpInfo.effects` is now exposed), durable/offload
+  flips, and node/edge counts. Nothing moves until you confirm.
+- **The editor gets its room back.** The op palette collapses to an icon
+  rail (the category icons are a table of contents — click one to reopen at
+  that category); the right dock is shared by the **Inspector** and
+  **Buddy** as two tabs — selecting a node brings the Inspector forward,
+  Buddy keeps its thread while hidden — and with nothing selected the dock
+  shows the **workflow's own settings** (name, description, tags, durable,
+  offload), which replaced the gear modal. The 2,100-line editor page split
+  along those seams: `editor/Palette`, `editor/Inspector`,
+  `editor/WorkflowPanel`, `editor/WorkflowFlags`, `editor/DeployPreview`,
+  and `lib/workspace` (open tabs + drafts, one store both the strip and the
+  editor read) and `lib/deploy-preview` (the pure diff the preview renders).
+- **The dashboard opens the door.** `/admin` stops blind-redirecting to the
+  workflow list: the front page shows runs and errors in the window, recent
+  failures one click from their run page, and users + paying customers when
+  those mods are installed (tiles are duck-typed — absent mod, absent tile).
+  Mods can now contribute **setup checklists** (`FrontendContribution.
+  checklists` — a route returning `{ steps }`), and the dashboard aggregates
+  them into one "open for business" board that ticks itself live; billing's
+  checklist moved server-side (`billing.admin.checklist`) so its page and the
+  dashboard render the same truth.
+- **Every declarative table learns search, sort, and pagination** — one
+  change in the Tier-1 renderer, inherited by users, sessions, invites,
+  customers, events, store docs… And the column `format` hints ("date",
+  "badge", "code"), declared since day one but never rendered, finally are:
+  timestamps read "3m ago", statuses become hued pills, booleans ✓/—.
+- **The user page grows up (Tier-2).** Identity card with the action strip
+  (sign-in link with copy, disable, log out everywhere, delete — destructive
+  ones behind the Modal), a roles editor that renders the configured roles
+  map as checkboxes and says out loud that saving signs the user out
+  everywhere, sessions with revoke, run stats — and the user's subscription
+  when mod-billing is present. Tier-2 pages now receive route `:params` as a
+  prop.
+- **The ops catalog keeps your place.** The install-shaped queries (ops,
+  mods, manifest) cache for five minutes instead of refetching a 375-op
+  payload on every visit, and the list's fuzzy search + mod filter live in
+  the URL — navigating into an op and back lands exactly where you left.
+  The icon map also learned the names mods were already declaring
+  (credit-card, key, mail, bot, database…) instead of falling back to a box.
+- **The Secrets page grows up (Tier-2) and imports your .env.** Paste a
+  `.env` (or pick the file) and every `KEY=VALUE` line becomes an encrypted
+  secret in one click (`vault.admin.import`): quotes/`export ` stripped,
+  comments and empty placeholders skipped, and `PATTERN_VAULT_KEY` refused —
+  the master key can't live inside the vault it unlocks. The page previews
+  parsed NAMES client-side, values never render, and the add-or-rotate form
+  now clears on save with a "stored — won't be shown again" receipt.
+
+### Core & fixes
+
+- **401 means "sign in", 403 means "upgrade".** A signed-in user missing a
+  route's scope now gets 403 (anonymous callers still get 401), as JSON
+  `{ error, reason }` unless the client asks for HTML; a signed-out browser `GET` on any gated route is
+  redirected to the login page with `next`, as app mounts already were.
+- **The billing checklist stops claiming secrets it can't read.** A ref to an
+  unset env var or an empty vault slot counts as missing; the webhook URL in
+  the checklist and checkout's fallback origin use the app's `PORT`.
+- **`pattern ops`, `validate`, `graph` and `run` stay quiet.** They no longer
+  mint and print a first-admin bootstrap link (core's `ENGINE_INTROSPECT`
+  service key tells mods nothing is being served).
+- **The saas-starter accepts sign-ups.** Its identity wrapper (and the
+  compose billing layer's) seeds `signup: "open"`: a product sells to
+  strangers, and the identity default (`invite`) silently refused them.
+- **Every op has a reference page.** The 90 ops that showed only registry
+  data on `/docs/ops` (all of `mod-ai`, the agent, admin, email-account,
+  store-admin, vault-admin and `docs.*` ops) now carry "when to use" prose,
+  checked against the source.
+- **Query booleans read like URLs.** A declared boolean query or path param
+  read `"false"` as true (JS truthiness); `false`, `0`, `no`, `off` and the
+  empty string now read false, and anything unrecognized is a 400.
+- **`mod-ai` honors what it declares.** An `ai.model`'s `providerOptions`
+  (the AI SDK shape, keyed by provider id) reaches every call made with it,
+  agent turns included; `ai.speech.generate` sends `format`;
+  `ai.video.generate` uses its `image` input for image-to-video;
+  `ai.transcribe` takes `audio` or `audioBytes` alone and sends its
+  `language` hint. History compaction honors cancel.
+- **A failed agent turn keeps the conversation.** `agents.run` and
+  `agents.run.resume` hand back the history the turn started from on
+  `error` and `cancelled`, so a workflow that saves `history` no longer
+  wipes it.
+- Admin audit entries for enable, disable and delete name the operator
+  instead of "anonymous"; `store.admin.doc.get` answers 404 on a miss.
+
+- **The model catalog catches up with mid-2026.** The static baseline (a
+  suggestion list — the gateway `/v1/models` stays the live truth) now leads
+  with GPT-5.6 Sol/Terra/Luna, Claude Fable 5 + Sonnet 5, the Gemini 3.x
+  line, gpt-image-2 and the Nano Banana image models, Grok 4.5, Voyage 4,
+  Command A+; retired ids (DALL·E, Gemini 2.0, Llama 4 Scout on Groq)
+  dropped. Scaffold seeds and doc examples follow.
+- **`pattern dev` no longer crashes "database is locked" on restart.** A
+  watch restart overlaps the new boot with the dying process's sqlite
+  checkpoint-on-close, and every store's first statement was the
+  `journal_mode = WAL` switch — a locking operation — executed while
+  `busy_timeout` was still 0. All six sqlite openers (identity, store, vault,
+  vectors, trace, ledger) now set `busy_timeout = 5000` *before* the WAL
+  switch, so a booting process waits the lock out instead of dying; a
+  regression test holds the file from a second process while the engine
+  boots.
+
+- **`requireAuth` fails closed.** A declared requirement with NO auth provider
+  installed used to serve open (advisory, with a boot warning) — so a provider
+  mod going missing silently exposed every protected route, the admin
+  included. It now refuses (401, the reason names the fix); the old behavior
+  is an explicit `"auth": { "unenforced": "open" }` in pattern.config.json,
+  which `create-pattern --no-auth` writes for admin packs and `pattern add
+  auth` removes. `engine.authPosture()` tells hosts which applies.
+- **The version hash covers behavior.** `retry`, `durable`, and `offload`
+  hashed identical to their absence, so saving them reused the version id and
+  rewrote the deployed snapshot in place. Core now owns the one definition —
+  `workflowStructure` (what resume pins) and `workflowBehavior` (what
+  versioning hashes) — so a reliability change mints a new immutable version
+  while a layout nudge still doesn't; the diff reports `retry` and `durable`.
+- Inbound email (Resend) now **dedups svix redeliveries** when mod-store is
+  present — a delivery-state row per `svix-id`, the same `processing` →
+  `processed` | `failed` machine as billing's: a failed ingest is retried on
+  redelivery, an in-flight twin is refused (409); without mod-store, the 0.4
+  at-least-once behavior is unchanged.
+- **Ops classify their failures.** Core's `noEffect(err)` stamps an error as
+  "thrown before any external effect happened"; the ledger records the
+  verdict and resume re-runs those nodes without a human call. Stamped:
+  mod-billing setup errors and Stripe 4xx (minus idempotency clashes),
+  mod-email preflight and Resend 4xx (minus 409).
+- **Admin, keyboard-complete.** Clickable table rows are real controls (Tab,
+  Enter/Space, focus ring); dialogs contain focus while open; dark-theme
+  secondary text lifts to ≈7.6:1. The frontend project joins `pnpm
+  typecheck`, so CI finally sees the SPA's types.
+- **Dependencies.** Vitest 5, Vite 8.3, React 19.3, Tailwind 4.3.3, motion
+  14, nodemailer 10.3, @clack/prompts 1.8, happy-dom 21, lucide 1.66, zod 4.6,
+  @modelcontextprotocol/sdk 1.32, and the rest of the minors; the **Vercel AI
+  SDK moves to v7** (`system` → `instructions` at the call sites,
+  speech/transcription out of `experimental_`, `usage` accumulates across
+  steps; every `@ai-sdk/*` provider range follows its v7-era major; the
+  retired v0 Vercel provider is dropped; the usage tap reads the v4 provider
+  spec and warns once about a spec it can't). Two providers took their own
+  majors on the same spec: **`@ai-sdk/xai` ^5** (Responses API only) and
+  **`@ai-sdk/perplexity` ^5**, which moves from the Sonar chat models to the
+  Agent API: a direct Perplexity alias names an Agent API preset (`fast`,
+  `low`, `medium`, `high`, `xhigh`) or `perplexity/sonar`; the bare
+  `sonar-*` chat model ids are gone. TypeScript stays 5.9 and
+  `@types/node` on 22 on purpose.
+- `RunSummary`, the admin protocol, and the runs UI carry the `canceled`
+  status; run detail exposes `ledgered` + `resumedFrom`.
+- The op count grows to **375** across the first-party mods (176 in the base
+  catalog).
+
 ## 0.4.0 — 2026-07-15
 
 The framework learns to build itself: Buddy (the in-editor workflow

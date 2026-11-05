@@ -85,6 +85,11 @@ console.log(result.outputs);           // { out: { value: "Hello, world!" } }
 
 - [Agents & chat](guides/agents-and-chat.md): the AI stack (agents, tools-as-workflows, the chat app).
 - [Identity](guides/identity.md): users, sessions, roles, login methods.
+- [Durable execution](concepts.md#durable-execution): retry, the RunLedger, resume and re-run.
+- [The admin](guides/admin.md): the six rooms, the workflow workspace, runs and resume.
+- [Recipes](guides/recipes.md): short, copyable answers to common tasks.
+- [Deploying](guides/deploying.md): the Dockerfile, volumes, env, and Fly.io / Railway / Render.
+- [Load testing](guides/load-testing.md): `pattern load` and the engine flight recorder.
 - [Extending these docs](guides/extending-the-docs.md): ship a docs chapter inside your own mod.
 
 These docs are **self-reflecting** where it counts: the op reference and mods

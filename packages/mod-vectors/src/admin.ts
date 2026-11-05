@@ -50,6 +50,7 @@ function parseMeta(raw: unknown): Record<string, unknown> | undefined {
 /** Backing op for the collections table (privileged; the route carries the admin gate). */
 export const collectionsListOp: OpDefinition = {
   type: "vectors.collections.list",
+  effects: "pure",
   title: "vectors.collections.list",
   description: "List vector collections with alias, dims, filterables, row count and the active engine (admin).",
   reusable: false,
@@ -76,6 +77,7 @@ export const collectionsListOp: OpDefinition = {
 /** Paste-to-RAG (admin): chunk a text and index it, creating the collection when new. */
 export const collectionsIngestOp: OpDefinition = {
   type: "vectors.collections.ingest",
+  effects: "idempotent",
   title: "vectors.collections.ingest",
   description:
     "Ingest pasted text into a collection (admin): chunk → embed → upsert, creating the collection (with the " +
@@ -117,6 +119,7 @@ export const collectionsIngestOp: OpDefinition = {
 /** Try a query (admin): hybrid by default, scored matches back — the smoke test for what got indexed. */
 export const collectionsSearchOp: OpDefinition = {
   type: "vectors.collections.search",
+  effects: "pure",
   title: "vectors.collections.search",
   description:
     "Search a collection from the admin (hybrid by default): top-k scored matches with their text and meta — " +
@@ -186,7 +189,7 @@ export function vectorsAdminRoutes(): Workflow[] {
 
 export function vectorsFrontend(): FrontendContribution {
   return {
-    menu: [{ category: "Data", label: "Vectors", icon: "network", path: "/x/vectors/collections", order: 30 }],
+    menu: [{ category: "Resources", label: "Vectors", icon: "network", path: "/x/vectors/collections", order: 30 }],
     pages: [
       {
         // The whole RAG loop on one page: what's indexed, paste to ingest, search to verify.
@@ -216,7 +219,7 @@ export function vectorsFrontend(): FrontendContribution {
                 properties: {
                   collection: { type: "string", default: "kb", description: "Target collection (created if new)" },
                   text: { type: "string", format: "multiline", description: "Paste anything — it's chunked, embedded and indexed" },
-                  alias: { type: "string", default: "embeddings", description: "Embedding alias for a NEW collection (Settings → AI Providers)" },
+                  alias: { type: "string", default: "embeddings", description: "Embedding alias for a NEW collection (Resources → AI Providers)" },
                   docId: { type: "string", description: "Stable id for re-ingesting updates (empty = derived from the text)" },
                   meta: { type: "string", description: 'JSON object stamped on every chunk, e.g. {"topic":"billing"} — filterable if declared' },
                 },

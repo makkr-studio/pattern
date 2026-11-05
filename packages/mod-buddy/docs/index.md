@@ -49,7 +49,7 @@ the Runs page.
 ## The same tools, outside: the Pattern MCP server
 
 `POST /mcp/pattern` exposes exactly these ten tools to external MCP clients
-(Claude Code, Cursor, …), gated by **API tokens** (admin → Access → API
+(Claude Code, Cursor, …), gated by **API tokens** (admin → Administration → API
 tokens). A token's scopes decide what succeeds: `workflows:read` +
 `workflows:write` makes an authoring token that can draft but never ship;
 `deploy` is its own decision. For local dev, `pattern mcp` serves the same

@@ -4,7 +4,7 @@ The SMTP driver for
 [`@pattern-js/mod-email`](https://www.npmjs.com/package/@pattern-js/mod-email)
 on [Pattern](../../README.md), built on nodemailer — any relay, your own
 server, or a local catcher (Mailpit) in dev. Host/port/user are account
-options in admin → System → Email; the password comes from the vault or an
+options in admin → Resources → Email; the password comes from the vault or an
 env var.
 
 **Links:** [pattern-js.dev](https://pattern-js.dev) · [npm](https://www.npmjs.com/package/@pattern-js/mod-email-smtp)

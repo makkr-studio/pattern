@@ -40,8 +40,19 @@ Now a user with role `editor` resolves to scopes `["edit","read"]`; gate a
 route with `requireAuth: { scopes: ["edit"] }` and both `admin` (if you also
 grant it `edit`) and `editor` users get through, `viewer` does not. The same
 roles surface on the admin Users screen and are settable there
-(`identity.users.setRoles`, which **ends the user's sessions**, because a
-privilege change must re-login).
+(`identity.users.setRoles`). Scopes resolve live from the user's roles on
+every request, so a **gain** reaches the user's open sessions immediately;
+a **loss** (any role or scope removed) and an elevation to `admin` end the
+user's sessions instead.
+
+**Entitlements from billing (0.5).** Because scopes recompile from roles on
+every request, a paid plan can *be* a scope: `@pattern-js/mod-billing` projects
+subscription status into a role (say `member`) as verified webhooks arrive, and
+your map turns it into scopes (`{ member: ["pro"] }`) — so
+`requireAuth: { scopes: ["pro"] }` gates a route behind an active plan with no
+new enforcement code. The projection only writes on actual entitlement
+*transitions* (a renewal never logs anyone out). See the **Billing** chapter in
+the handbook — the `saas-starter` scaffold wires the whole bridge.
 
 ## Bootstrap on first boot
 
@@ -63,8 +74,8 @@ no special-case admin password anywhere.
 Opaque 256-bit secrets in an `HttpOnly; SameSite=Lax` cookie (`pattern_session`
 by default); only the sha256 is stored. Sliding 30-day expiry with throttled
 touches. Sessions are **revocable**: individually (`identity.sessions.revoke`),
-per user (`identity.users.revokeSessions`), and automatically when a role
-changes or a user is disabled. Set `cookieSecure: true` behind TLS in
+per user (`identity.users.revokeSessions`), and automatically when a user
+loses a role or scope, is elevated to `admin`, or is disabled. Set `cookieSecure: true` behind TLS in
 production. CSRF protection lives *inside* the session provider: a cross-site
 state-changing request doesn't authenticate (so it 401s with no token
 machinery), while GETs always pass; the magic-link callback is a cross-site
@@ -117,11 +128,12 @@ rooms:
 Magic links, invites, and the bootstrap link all print to the **server
 console** until delivery is wired. The packaged way: install
 `@pattern-js/mod-email` + a driver (Resend or SMTP) and create the `default`
-account in admin → System → Email — links then send by email automatically.
+account in admin → Resources → Email — links then send by email automatically.
 Any other channel works through the `identity.deliverToken` hook
-(`payload: { email, url, purpose, delivered }`): send the link by email/SMS/chat
-and return `delivered: true`. No subscriber (or `delivered: false`) falls back
-to the console, which **is** the zero-config dev login. Tokens are single-use, short-TTL (15 min; invites 7 days), sha256 at
+(`payload: { email, url, purpose, delivered, subject, message, code? }`): send
+the link by email/SMS/chat and return `delivered: true`. No subscriber (or
+`delivered: false`) falls back to the console, which **is** the zero-config dev
+login. Tokens are single-use, short-TTL (15 min; invites 7 days), sha256 at
 rest, consumed via CAS so replays fail closed. Purposes: `login`, `invite`
 (carries roles), `bootstrap`. The `/auth/token` callback turns a consumed token
 into a user + session per the **signup policy**: `invite` (default; unknown
@@ -135,9 +147,60 @@ proxy or tunnel the Host header is whatever the hop put there. Unset (dev),
 the request's own origin is used, so localhost links still work with zero
 config.
 
+## Sign-in codes (0.5)
+
+A login token issued with `code: true` (magic-link does this) also carries a
+**6-digit code** bound to the same row — same TTL, same single use. It exists
+for **installed PWAs and standalone web apps**: the emailed link opens in the
+*system browser's* cookie jar, so the session lands in Safari/Chrome while the
+installed app stays signed out. The code closes that gap — the "check your
+inbox" page carries a code form, and `POST /auth/code` `{ email, code, next }`
+consumes the token and sets the cookie **in the browsing context that asked**.
+Whichever of link or code lands first burns both.
+
+A short code can't lean on hash lookup the way 256-bit tokens do, so its
+safety is budgeted instead: verification compares in constant time against
+the email's pending code-bearing tokens, **five wrong guesses burn the token**
+(link included), and failures render identically for unknown emails and wrong
+codes (status 401, no enumeration). The code travels to custom templates as
+`code` on the `identity.deliverToken` payload, is worked into the default
+`message` copy, and prints with the console fallback.
+
+## Rate limits (0.5)
+
+The sign-in surface is public, and every request to it can cost an email. Two
+budgets are on by default:
+
+- **Per address**: at most 5 sign-in emails per address per 15 minutes,
+  counted in the identity store, so a restart or a second instance doesn't
+  reset it. Past it, the request gets the usual "check your email" page and
+  nothing is sent, so the budget reveals nothing about the address. Login
+  providers ask `svc.signInEmailAllowed(email)` before issuing (magic-link
+  does).
+- **Per client IP**: 20 requests per 15 minutes each to `POST {mount}/code`
+  and `POST {mount}/bootstrap`, answered `429` past it (the route's
+  `rateLimit`). Together with the five-guess burn, this keeps code guessing
+  far from useful. Behind a proxy, set `PATTERN_TRUST_PROXY` so the host sees
+  client addresses.
+
+Tune or turn them off in a wrapper mod:
+
+```js
+identityMod({
+  rateLimit: {
+    perAddress: { max: 5, window: "15m" },  // false = off
+    perClient: { max: 20, window: "15m" },  // false = off
+  },
+});
+```
+
+The magic-link form has its own per-IP budget (`magicLinkMod({ rateLimit })`).
+The same bricks are open to your own routes: `rateLimit` on any
+`boundary.http.request`, and `core.flow.throttle` inside a workflow.
+
 ## Invites (0.4)
 
-An invite is a **record**, not just a token: admin → **Access → Invites**
+An invite is a **record**, not just a token: admin → **Administration → Invites**
 sends one (email, roles, and an optional **next path** — where the invitee's
 first login lands, e.g. `/admin` or `/chat`) and lists every invite sent with
 its derived status: `pending` → `accepted` (or `expired` / `revoked`). Revoke
@@ -153,7 +216,7 @@ method.
 
 ## Administering users (0.4)
 
-Access → **Users** is the control room: per row — details, a minted sign-in
+Administration → **Users** is the control room: per row — details, a minted sign-in
 link, **disable / enable** (reversible lock-out; revokes sessions), **log out
 everywhere**, and **delete** (removes the user, their identity links and
 session rows; invites and API tokens keep the id as audit trail). Roles are
@@ -167,7 +230,7 @@ it.
 
 Sessions authenticate humans in browsers; **API tokens** authenticate
 programs — MCP clients on `/mcp/pattern`, CI deploys, scripts against the
-admin API. Mint them in admin → **Access → API tokens**: the raw `pat_…`
+admin API. Mint them in admin → **Administration → API tokens**: the raw `pat_…`
 secret is shown **exactly once** (only its sha256 is stored), and a bearer
 header authenticates it on any route:
 
@@ -220,6 +283,7 @@ workflow storage.
 | --- | --- |
 | `GET /auth/login` | Login page (a section per registered method) |
 | `GET /auth/token?t=…` | Token callback → session cookie → redirect `next` |
+| `POST /auth/code` | Sign-in code callback `{ email, code, next? }` → cookie **here** (the PWA path) |
 | `POST /auth/logout` | Revoke the current session, clear the cookie |
 | `GET /auth/whoami` | The current principal (JSON) |
 | `GET /auth/welcome` | Post-login landing when no home is advertised |

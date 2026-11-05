@@ -21,6 +21,17 @@ export function escapeHtml(s: string): string {
  */
 export function safeNextPath(next: unknown): string {
   if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//")) return "/";
+  // Browsers read a backslash as "/" and drop tabs/newlines, so a next of
+  // slash-backslash-evil.com (or slash-tab-slash-evil.com) would leave the
+  // origin: refuse backslashes and control characters, then confirm the URL
+  // resolves to the same origin.
+  if (/[\\\u0000-\u001f\u007f]/.test(next)) return "/";
+  try {
+    const base = "http://pattern.invalid";
+    if (new URL(next, base).origin !== base) return "/";
+  } catch {
+    return "/";
+  }
   return next;
 }
 
@@ -62,6 +73,7 @@ ${body}
 
 const ERROR_MESSAGES: Record<string, string> = {
   "invalid-token": "That link is invalid, expired, or was already used. Request a fresh one.",
+  "invalid-code": "That code didn't match. Check the newest email — or request a fresh sign-in link.",
   "signup-closed": "Sign-ups are invite-only. Ask an admin to invite you.",
   "account-disabled": "This account is disabled.",
   "invite-revoked": "That invitation has been revoked. Ask an admin for a new one.",

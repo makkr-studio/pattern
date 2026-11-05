@@ -204,3 +204,8 @@ mod you `engine.use()`.
 8. **Distribution is an invariant**: serializable state; transport, bus, and
    registries behind interfaces.
 9. **Cycles are forbidden**: the graph is a DAG, checked at validation time.
+10. **The RunLedger is not the trace store** (0.5): traces stay sampled, capped,
+   and secret-masked — a display surface. Durable runs (`durable: true`) write
+   exact inputs/outputs to a separate ledger in `.pattern-data/`, which is what
+   resume and re-run replay from; ops declare replay-safety via `effects`
+   (absent = external = ask before re-running).

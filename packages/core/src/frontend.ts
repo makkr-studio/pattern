@@ -18,7 +18,14 @@
 
 /** A nav entry contributed by a mod (admin-spec §6). */
 export interface MenuEntry {
-  /** Grouping category; the shell builds sections from the union of these. */
+  /**
+   * The sidebar section. The admin's vocabulary, top to bottom: `Home`,
+   * `Workflows`, `Activity`, `Resources` (data, secrets, email, AI providers —
+   * what workflows use), `Administration` (users, tokens, billing, settings),
+   * `Reference` (ops, mods, system map). Any other name becomes its own section
+   * after those — right for a product surface (chat conversations). See
+   * `ADMIN_SECTIONS` in `@pattern-js/admin-sdk`.
+   */
   category: string;
   label: string;
   /** lucide-react icon name (resolved by the admin shell). */
@@ -198,6 +205,30 @@ export interface CommandDef {
 }
 
 /**
+ * A step of a mod's setup checklist. `ok` flips as the installation progresses;
+ * `how` is the exact next action for the first unmet step; `detail` annotates a
+ * met one (e.g. "checkout.completed · 3m ago").
+ */
+export interface ChecklistStep {
+  ok: boolean;
+  label: string;
+  how?: string;
+  detail?: string;
+}
+
+/**
+ * A mod's setup checklist: `route` is a dedicated admin endpoint returning
+ * `{ steps: ChecklistStep[] }` (server-computed — the copy lives once, next to
+ * the state it reports on). The admin dashboard aggregates every mod's into
+ * one "open for business" board that ticks itself live.
+ */
+export interface ChecklistDef {
+  id: string;
+  title: string;
+  route: RouteRef;
+}
+
+/**
  * A mod's frontend manifest (admin-spec P2). A custom page rides as `module`
  * source in `pages` (the admin serves + imports it); a full SPA still serves
  * itself via a `boundary.http.app` workflow and points `assets` at its
@@ -209,6 +240,8 @@ export interface FrontendContribution {
   menu?: MenuEntry[];
   pages?: PageDef[];
   commands?: CommandDef[];
-  /** Sections rendered on the admin's Settings page (System → Settings). */
+  /** Sections rendered on the admin's Settings page (Administration → Settings). */
   settings?: SettingsSection[];
+  /** Setup checklists the admin dashboard aggregates (see ChecklistDef). */
+  checklists?: ChecklistDef[];
 }

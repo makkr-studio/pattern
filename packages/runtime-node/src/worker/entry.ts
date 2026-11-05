@@ -14,7 +14,7 @@
  */
 
 import { parentPort, workerData } from "node:worker_threads";
-import { Engine, type RunResult } from "@pattern-js/core";
+import { Engine, RUN_LEDGER, RunCanceled, type LedgerEvent, type RunLedger, type RunResult } from "@pattern-js/core";
 import { loadMods } from "../mods.js";
 
 const port = parentPort!;
@@ -40,6 +40,26 @@ engine.onTrace({
   onRunEnd: (run) => forward({ kind: "runEnd", run: { ...run, error: run.error ? serializeError(run.error) : undefined } }),
 });
 
+// The RunLedger bridge: a durable workflow offloaded to this worker writes its
+// records here, and they land in the HOST's ledger (one file, one truth). The
+// records are already codec-encoded plain JSON, so structured clone is safe.
+function forwardLedger(event: LedgerEvent): void {
+  try {
+    port.postMessage({ type: "ledger", event });
+  } catch {
+    /* never crash the run over a ledger forward */
+  }
+}
+const ledgerBridge: RunLedger = {
+  begin: (header) => forwardLedger({ kind: "begin", header }),
+  nodeStarted: (runId, nodeId, at) => forwardLedger({ kind: "nodeStarted", runId, nodeId, at }),
+  nodeFinished: (record) => forwardLedger({ kind: "nodeFinished", record }),
+  end: (runId, status, error) => forwardLedger({ kind: "end", runId, status, error }),
+  get: async () => null, // reads happen on the host
+  prune: () => 0,
+};
+engine.provideService(RUN_LEDGER, ledgerBridge);
+
 /** Mods install before the first run executes (messages queue behind this). */
 const ready: Promise<void> = (async () => {
   const mods = (workerData as { mods?: string[] } | undefined)?.mods ?? [];
@@ -63,15 +83,21 @@ interface RunMessage {
   sampleIo?: boolean;
   hookDepth?: number;
   parent?: { runId: string; workflowId: string; nodeId: string };
+  seed?: import("@pattern-js/core").LedgerNodeRecord[];
+  resumedFrom?: string;
+  rootRunId?: string;
 }
 
 port.on("message", (msg: RunMessage | { type: "abort"; id: string }) => {
   if (msg.type === "run") void handleRun(msg);
-  else if (msg.type === "abort") aborts.get(msg.id)?.abort();
+  // The only abort source across this seam is a cancellation (admin cancel /
+  // client disconnect forwarded by the pool) — mark it so the run records
+  // status "canceled" instead of "error".
+  else if (msg.type === "abort") aborts.get(msg.id)?.abort(new RunCanceled("canceled"));
 });
 
 async function handleRun(msg: RunMessage): Promise<void> {
-  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent } = msg;
+  const { id, workflow, triggerNodeId, input, principal, params, sampleIo, hookDepth, parent, seed, resumedFrom, rootRunId } = msg;
   const ac = new AbortController();
   aborts.set(id, ac);
 
@@ -87,7 +113,11 @@ async function handleRun(msg: RunMessage): Promise<void> {
       /* boundary config ports — resolved on the host, run directly here */
     }
     // Run under the HOST's run id so forwarded spans match the pool's handle.
-    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, id, parent);
+    result = await engine.runFrom(workflow, triggerNodeId, input, principal, ac.signal, params, sampleIo, hookDepth, id, parent, {
+      seed,
+      resumedFrom,
+      rootRunId,
+    });
   } catch (err) {
     port.postMessage({ type: "result", id, status: "error", outputs: {}, error: serializeError(err) });
     port.postMessage({ type: "done", id });

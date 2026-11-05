@@ -235,7 +235,9 @@ export function toolWorkflows(): Workflow[] {
       name: "pattern_get_run",
       description:
         "One run's full trace: per-node spans with status, timings, error messages/stacks, and masked I/O " +
-        "samples — everything needed to answer \"why did this run fail?\".",
+        "samples — everything needed to answer \"why did this run fail?\". Runs of durable workflows also " +
+        "report `ledgered: true`: those can be resumed from the failing node or re-run with the same input " +
+        "from the Runs page (suggest it when a fix has been deployed).",
       params: { runId: { type: "string" } },
       required: ["runId"],
       extract: ["runId"],
@@ -258,7 +260,7 @@ export function patternMcpServerWorkflow(path = "/mcp/pattern"): Workflow {
     name: `Buddy · Pattern MCP server (POST ${path})`,
     description:
       "Exposes the pattern_* control-plane tools to external MCP clients (Claude Code, Cursor, …) over " +
-      "StreamableHTTP JSON-RPC. Gated by API tokens (mint them in admin → Access → API tokens); a token's " +
+      "StreamableHTTP JSON-RPC. Gated by API tokens (mint them in admin → Administration → API tokens); a token's " +
       "scopes decide which calls succeed — authoring tokens can draft, only deploy-scoped tokens can ship.",
     nodes: [
       {

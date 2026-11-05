@@ -24,18 +24,32 @@ import { randomBytes } from "node:crypto";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { EMAIL_AGENT_REPLY_WORKFLOW, WHOAMI_WORKFLOW } from "./workflows.js";
+import {
+  DEFAULT_LAYERS,
+  VISIBLE_LAYERS,
+  layerOrThrow,
+  parseWith,
+  pickLayers,
+  resolveLayers,
+  type WithToken,
+} from "./layers.js";
+import {
+  DOCS_MOD,
+  EMAIL_DRIVERS,
+  EMAIL_MOD,
+  IDENTITY_MOD,
+  IDENTITY_WRAPPER_SAAS,
+  MAGIC_LINK_MOD,
+  OIDC_MOD,
+  OIDC_WRAPPER,
+  PATTERN_RANGE,
+  TEMPLATES_DIR,
+  appendEnvHint,
+  emailEnvHint,
+  seedFile,
+  type EmailDelivery,
+} from "./shared.js";
 
-const TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
-
-/**
- * The @pattern-js/* range every scaffold gets, derived from create-pattern's
- * OWN version (^major.minor.0) — a scaffold always resolves the mods published
- * alongside the CLI that created it. The static template package.jsons carry
- * whatever range was current when they were written; normalizeDepRanges
- * rewrites them at scaffold time, so they can never go stale.
- */
-const SELF_VERSION = (JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string }).version;
-const PATTERN_RANGE = `^${SELF_VERSION.split(".").slice(0, 2).join(".")}.0`;
 
 interface NextCtx {
   name: string;
@@ -67,6 +81,12 @@ interface Modpack {
   serves: (examples: boolean) => string[];
   /** Env vars the pack needs (the card's "needs" line). */
   env: string[];
+  /**
+   * Secret NAMES the pack expects in the encrypted vault (admin → Resources →
+   * Secrets) — the card's "secrets" line. When the vault key is declined they
+   * fall back to the "needs" line (env refs are the alternative).
+   */
+  vaultSecrets?: string[];
   /** Key generated paths shown as the card's file tree. */
   generates: (examples: boolean) => string[];
   /**
@@ -74,7 +94,7 @@ interface Modpack {
    * identity brick (magic-link login, users/sessions, secured admin). Absent
    * → the question is never asked (blank has no HTTP host).
    */
-  auth?: { default: boolean };
+  auth?: { default: boolean; required?: boolean };
   /**
    * Docs is a DIMENSION too: any pack serving HTTP can ship `/docs` — the
    * Pattern handbook + a live op reference, where every installed mod
@@ -86,8 +106,6 @@ interface Modpack {
 }
 
 /** What the auth toggle adds (pack card lines + config wiring). */
-const IDENTITY_MOD = "@pattern-js/mod-identity";
-const MAGIC_LINK_MOD = "@pattern-js/mod-auth-magic-link";
 
 /**
  * Sign-in METHODS (asked only when auth is on): magic link (the zero-config
@@ -97,24 +115,15 @@ const MAGIC_LINK_MOD = "@pattern-js/mod-auth-magic-link";
  * with a commented placeholder provider, so the project boots clean and the
  * login button appears the moment a provider is filled in.
  */
-const OIDC_MOD = "@pattern-js/mod-auth-oidc";
 
 /**
  * Sign-in link DELIVERY (asked only when auth is on): console (the zero-config
  * dev fallback) or real email — mod-email (the contract: accounts, email.send,
  * the packaged deliverToken workflow) plus the chosen driver. Console stays
- * the fallback until a "default" account exists in admin → System → Email, so
+ * the fallback until a "default" account exists in admin → Resources → Email, so
  * either choice boots with zero config.
  */
-const EMAIL_MOD = "@pattern-js/mod-email";
-const EMAIL_DRIVERS: Record<string, string> = {
-  resend: "@pattern-js/mod-email-resend",
-  smtp: "@pattern-js/mod-email-smtp",
-};
-type EmailDelivery = "console" | "resend" | "smtp";
 
-/** What the docs toggle adds: self-reflecting documentation at /docs. */
-const DOCS_MOD = "@pattern-js/mod-docs";
 
 /**
  * The AI provider packages offered when a pack uses mod-ai. mod-ai bundles NONE
@@ -124,7 +133,7 @@ const DOCS_MOD = "@pattern-js/mod-docs";
  * how likely it is to be picked; `value` is the package the scaffold installs.
  *
  * The @ai-sdk provider packages are at DIFFERENT majors (they share one spec
- * layer, @ai-sdk/provider@3, so all are ai-v6 compatible) — each range is pinned
+ * layer, @ai-sdk/provider@4, so all are ai-v7 compatible) — each range is pinned
  * to the package's real major (verified against npm) to avoid ETARGET installs.
  *
  * `seed` makes a pick work on FIRST boot: when a seeded provider is chosen, the
@@ -132,7 +141,7 @@ const DOCS_MOD = "@pattern-js/mod-docs";
  * embedding — the names agents, RAG examples and Buddy resolve) into
  * `.pattern-data/ai-config.json`, each authenticating via `{ source: "env",
  * key: envKey }`. Ids come from mod-ai's curated catalog and stay editable in
- * admin → Settings → AI Providers; provider ids match mod-ai's registry.
+ * admin → Resources → AI Providers; provider ids match mod-ai's registry.
  * Unseeded providers keep the status quo (create aliases in Settings).
  */
 interface AiProviderChoice {
@@ -143,46 +152,45 @@ interface AiProviderChoice {
   seed?: { provider: string; envKey: string; language?: string; embedding?: string };
 }
 const AI_PROVIDERS: AiProviderChoice[] = [
-  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^3", seed: { provider: "xai", envKey: "XAI_API_KEY", language: "grok-4" } },
-  { value: "@ai-sdk/vercel", label: "Vercel", hint: "v0 models", range: "^2" },
-  { value: "@ai-sdk/openai", label: "OpenAI", hint: "", range: "^3", seed: { provider: "openai", envKey: "OPENAI_API_KEY", language: "gpt-5.1", embedding: "text-embedding-3-small" } },
-  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI on Azure", range: "^3" },
-  { value: "@ai-sdk/anthropic", label: "Anthropic", hint: "", range: "^3", seed: { provider: "anthropic", envKey: "ANTHROPIC_API_KEY", language: "claude-sonnet-4-6" } },
-  { value: "@ai-sdk/open-responses", label: "Open Responses", hint: "self-hosted Responses API", range: "^1" },
-  { value: "@ai-sdk/anthropic-aws", label: "Claude on AWS", hint: "Claude via Bedrock", range: "^1" },
-  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "models on AWS", range: "^4" },
-  { value: "@ai-sdk/groq", label: "Groq", hint: "", range: "^3", seed: { provider: "groq", envKey: "GROQ_API_KEY", language: "llama-3.3-70b-versatile" } },
-  { value: "@ai-sdk/fal", label: "Fal", hint: "image/video/audio", range: "^2" },
-  { value: "@ai-sdk/deepinfra", label: "DeepInfra", hint: "", range: "^2" },
-  { value: "@ai-sdk/black-forest-labs", label: "Black Forest Labs", hint: "FLUX", range: "^1" },
-  { value: "@ai-sdk/google", label: "Google Generative AI", hint: "Gemini", range: "^3", seed: { provider: "google", envKey: "GOOGLE_GENERATIVE_AI_API_KEY", language: "gemini-2.5-flash", embedding: "gemini-embedding-001" } },
-  { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP", range: "^4" },
-  { value: "@ai-sdk/mistral", label: "Mistral AI", hint: "", range: "^3", seed: { provider: "mistral", envKey: "MISTRAL_API_KEY", language: "mistral-large-latest", embedding: "mistral-embed" } },
-  { value: "@ai-sdk/togetherai", label: "Together.ai", hint: "", range: "^2" },
-  { value: "@ai-sdk/cohere", label: "Cohere", hint: "", range: "^3", seed: { provider: "cohere", envKey: "COHERE_API_KEY", language: "command-a", embedding: "embed-v4.0" } },
-  { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "", range: "^2" },
-  { value: "@ai-sdk/voyage", label: "Voyage AI", hint: "embeddings", range: "^1", seed: { provider: "voyage", envKey: "VOYAGE_API_KEY", embedding: "voyage-3.5" } },
-  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "", range: "^2" },
-  { value: "@ai-sdk/moonshotai", label: "Moonshot AI", hint: "Kimi", range: "^2" },
-  { value: "@ai-sdk/alibaba", label: "Alibaba", hint: "Qwen", range: "^1" },
-  { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "", range: "^2" },
-  { value: "@ai-sdk/replicate", label: "Replicate", hint: "image/video", range: "^2" },
-  { value: "@ai-sdk/prodia", label: "Prodia", hint: "image", range: "^1" },
-  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "", range: "^3" },
-  { value: "@ai-sdk/luma", label: "Luma", hint: "image/video", range: "^2" },
-  { value: "@ai-sdk/bytedance", label: "ByteDance", hint: "Seed/Seedance", range: "^1" },
-  { value: "@ai-sdk/klingai", label: "Kling AI", hint: "video", range: "^3" },
-  { value: "@ai-sdk/elevenlabs", label: "ElevenLabs", hint: "speech/STT", range: "^2" },
-  { value: "@ai-sdk/assemblyai", label: "AssemblyAI", hint: "transcription", range: "^2" },
-  { value: "@ai-sdk/deepgram", label: "Deepgram", hint: "speech/STT", range: "^2" },
-  { value: "@ai-sdk/gladia", label: "Gladia", hint: "transcription", range: "^2" },
-  { value: "@ai-sdk/lmnt", label: "LMNT", hint: "speech", range: "^2" },
-  { value: "@ai-sdk/hume", label: "Hume", hint: "speech", range: "^2" },
-  { value: "@ai-sdk/revai", label: "Rev.ai", hint: "transcription", range: "^2" },
-  { value: "@ai-sdk/baseten", label: "Baseten", hint: "", range: "^1" },
-  { value: "@ai-sdk/huggingface", label: "Hugging Face", hint: "", range: "^1" },
-  { value: "@ai-sdk/quiverai", label: "QuiverAI", hint: "", range: "^1" },
-  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible", hint: "any OpenAI-style endpoint", range: "^2" },
+  { value: "@ai-sdk/xai", label: "xAI Grok", hint: "", range: "^5", seed: { provider: "xai", envKey: "XAI_API_KEY", language: "grok-4.5" } },
+  { value: "@ai-sdk/openai", label: "OpenAI", hint: "", range: "^4", seed: { provider: "openai", envKey: "OPENAI_API_KEY", language: "gpt-5.6-terra", embedding: "text-embedding-3-small" } },
+  { value: "@ai-sdk/azure", label: "Azure OpenAI", hint: "OpenAI on Azure", range: "^4" },
+  { value: "@ai-sdk/anthropic", label: "Anthropic", hint: "", range: "^4", seed: { provider: "anthropic", envKey: "ANTHROPIC_API_KEY", language: "claude-sonnet-5" } },
+  { value: "@ai-sdk/open-responses", label: "Open Responses", hint: "self-hosted Responses API", range: "^2" },
+  { value: "@ai-sdk/anthropic-aws", label: "Claude on AWS", hint: "Claude via Bedrock", range: "^2" },
+  { value: "@ai-sdk/amazon-bedrock", label: "Amazon Bedrock", hint: "models on AWS", range: "^5" },
+  { value: "@ai-sdk/groq", label: "Groq", hint: "", range: "^4", seed: { provider: "groq", envKey: "GROQ_API_KEY", language: "llama-3.3-70b-versatile" } },
+  { value: "@ai-sdk/fal", label: "Fal", hint: "image/video/audio", range: "^3" },
+  { value: "@ai-sdk/deepinfra", label: "DeepInfra", hint: "", range: "^3" },
+  { value: "@ai-sdk/black-forest-labs", label: "Black Forest Labs", hint: "FLUX", range: "^2" },
+  { value: "@ai-sdk/google", label: "Google Generative AI", hint: "Gemini", range: "^4", seed: { provider: "google", envKey: "GOOGLE_GENERATIVE_AI_API_KEY", language: "gemini-3.5-flash", embedding: "gemini-embedding-001" } },
+  { value: "@ai-sdk/google-vertex", label: "Google Vertex AI", hint: "Gemini/Claude on GCP", range: "^5" },
+  { value: "@ai-sdk/mistral", label: "Mistral AI", hint: "", range: "^4", seed: { provider: "mistral", envKey: "MISTRAL_API_KEY", language: "mistral-large-latest", embedding: "mistral-embed" } },
+  { value: "@ai-sdk/togetherai", label: "Together.ai", hint: "", range: "^3" },
+  { value: "@ai-sdk/cohere", label: "Cohere", hint: "", range: "^4", seed: { provider: "cohere", envKey: "COHERE_API_KEY", language: "command-a", embedding: "embed-v4.0" } },
+  { value: "@ai-sdk/fireworks", label: "Fireworks", hint: "", range: "^3" },
+  { value: "@ai-sdk/voyage", label: "Voyage AI", hint: "embeddings", range: "^2", seed: { provider: "voyage", envKey: "VOYAGE_API_KEY", embedding: "voyage-4" } },
+  { value: "@ai-sdk/deepseek", label: "DeepSeek", hint: "", range: "^3" },
+  { value: "@ai-sdk/moonshotai", label: "Moonshot AI", hint: "Kimi", range: "^3" },
+  { value: "@ai-sdk/alibaba", label: "Alibaba", hint: "Qwen", range: "^2" },
+  { value: "@ai-sdk/cerebras", label: "Cerebras", hint: "", range: "^3" },
+  { value: "@ai-sdk/replicate", label: "Replicate", hint: "image/video", range: "^3" },
+  { value: "@ai-sdk/prodia", label: "Prodia", hint: "image", range: "^2" },
+  { value: "@ai-sdk/perplexity", label: "Perplexity", hint: "", range: "^5" },
+  { value: "@ai-sdk/luma", label: "Luma", hint: "image/video", range: "^3" },
+  { value: "@ai-sdk/bytedance", label: "ByteDance", hint: "Seed/Seedance", range: "^2" },
+  { value: "@ai-sdk/klingai", label: "Kling AI", hint: "video", range: "^4" },
+  { value: "@ai-sdk/elevenlabs", label: "ElevenLabs", hint: "speech/STT", range: "^3" },
+  { value: "@ai-sdk/assemblyai", label: "AssemblyAI", hint: "transcription", range: "^3" },
+  { value: "@ai-sdk/deepgram", label: "Deepgram", hint: "speech/STT", range: "^3" },
+  { value: "@ai-sdk/gladia", label: "Gladia", hint: "transcription", range: "^3" },
+  { value: "@ai-sdk/lmnt", label: "LMNT", hint: "speech", range: "^3" },
+  { value: "@ai-sdk/hume", label: "Hume", hint: "speech", range: "^3" },
+  { value: "@ai-sdk/revai", label: "Rev.ai", hint: "transcription", range: "^3" },
+  { value: "@ai-sdk/baseten", label: "Baseten", hint: "", range: "^2" },
+  { value: "@ai-sdk/huggingface", label: "Hugging Face", hint: "", range: "^2" },
+  { value: "@ai-sdk/quiverai", label: "QuiverAI", hint: "", range: "^2" },
+  { value: "@ai-sdk/openai-compatible", label: "OpenAI Compatible", hint: "any OpenAI-style endpoint", range: "^3" },
 ];
 /** Prechecked in the interactive picker — the most common direct providers. */
 const AI_PROVIDERS_DEFAULT = ["@ai-sdk/openai", "@ai-sdk/anthropic"];
@@ -193,6 +201,25 @@ function packUsesAi(pack: Modpack): boolean {
 /** A pack that wires mod-buddy gets `.mcp.json` (Claude Code ⇄ `pattern mcp`). */
 function packHasBuddy(pack: Modpack): boolean {
   return pack.mods.some((m) => m.includes("mod-buddy"));
+}
+
+function packHasAdmin(pack: Modpack): boolean {
+  return pack.mods.some((m) => m.includes("mod-admin"));
+}
+
+/**
+ * `--no-auth` on a pack that ships the admin: nothing can authenticate, so the
+ * admin's built-in `requireAuth` would refuse every request (the engine denies
+ * unenforceable requirements by default — a missing provider must never
+ * silently open a route). Record the choice EXPLICITLY — `auth.unenforced:
+ * "open"` — so the admin serves open on purpose, the host still warns at boot,
+ * and `pattern add auth` removes the line the moment a provider arrives.
+ */
+async function applyOpenAuth(targetDir: string): Promise<void> {
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as Record<string, unknown>;
+  cfg.auth = { unenforced: "open" };
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 }
 
 /**
@@ -262,7 +289,7 @@ const AI_ALIASES: Array<[string, string]> = [
 /** "Next steps" lines suggesting the model aliases to create for an AI pack. */
 function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
   return [
-    `${pc.cyan("→")} create model aliases in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— each brings its own key (vault or env var):")}`,
+    `${pc.cyan("→")} create model aliases in admin → ${pc.bold("Resources → AI Providers")} ${pc.dim("— each brings its own key (vault or env var):")}`,
     ...items.map(([n, d]) => `     ${pc.bold(n)}${" ".repeat(Math.max(1, 15 - n.length))}${pc.dim(d)}`),
   ];
 }
@@ -271,17 +298,18 @@ function aliasLines(items: Array<[string, string]> = AI_ALIASES): string[] {
  * The model-alias next steps: with a seed plan, the aliases already exist —
  * the only step is the key; without one, the manual how-to (aliasLines).
  */
-function modelLines(seeded: SeedPlan | null): string[] {
+function modelLines(seeded: SeedPlan | null, vaultKey = false): string[] {
   if (!seeded) return aliasLines();
   const show = (a: SeededAlias) => `${pc.bold(a.name)} ${pc.dim(`(${a.provider} ${a.modelId})`)}`;
-  const lines = [
-    `${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Settings → AI Providers)")}`,
-  ];
+  const keyHome = vaultKey
+    ? `add ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in admin → Resources → ${pc.bold("Secrets")} ${pc.dim("(encrypted vault, no restart — re-point to env anytime in Resources → AI Providers)")}`
+    : `set ${seeded.envKeys.map((k) => pc.bold(k)).join(" + ")} in ${pc.bold(".env")} ${pc.dim("(re-point them anytime in admin → Resources → AI Providers)")}`;
+  const lines = [`${pc.cyan("→")} model aliases seeded: ${seeded.aliases.map(show).join(" + ")} — ${keyHome}`];
   if (!seeded.aliases.some((a) => a.name === "default")) {
-    lines.push(`${pc.cyan("→")} add a ${pc.bold("default")} language alias in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— agents and chat fall back to it")}`);
+    lines.push(`${pc.cyan("→")} add a ${pc.bold("default")} language alias in admin → ${pc.bold("Resources → AI Providers")} ${pc.dim("— agents and chat fall back to it")}`);
   }
   if (!seeded.aliases.some((a) => a.name === "embeddings")) {
-    lines.push(`${pc.cyan("→")} add an ${pc.bold("embeddings")} alias ${pc.dim("(modality: embedding)")} in admin → ${pc.bold("Settings → AI Providers")} ${pc.dim("— RAG + semantic search need it")}`);
+    lines.push(`${pc.cyan("→")} add an ${pc.bold("embeddings")} alias ${pc.dim("(modality: embedding)")} in admin → ${pc.bold("Resources → AI Providers")} ${pc.dim("— RAG + semantic search need it")}`);
   }
   return lines;
 }
@@ -339,12 +367,16 @@ const MOD_ROLES: Record<string, string> = {
   "@pattern-js/mod-docs": "/docs: handbook + a live op reference",
   "@pattern-js/mod-vectors": "vector search: embedding collections, hybrid retrieval, RAG",
   "@pattern-js/mod-buddy": "Buddy: the editor assistant + the pattern_* MCP control plane",
+  "@pattern-js/mod-billing": "billing contract: checkout · portal · subscriptions + one-time purchases → roles · metering",
+  "@pattern-js/mod-billing-stripe": "the Stripe driver: hosted checkout, portal, signed webhooks",
+  "./mods/billing.mjs (app-local)": "app-local: billing configured — the payments→roles bridge (entitlement + grants)",
+  "./mods/identity.mjs (app-local)": "app-local: identity configured — roles→scopes (member → pro)",
   "./mods/quotes.mjs (app-local)": "app-local: example ops + an admin page",
   "./mods/uppercase.mjs (app-local)": "app-local: the app.shout op",
 };
 
 /** Ladder order (ascending capability) for the picker + --list. */
-const LADDER = ["blank", "headless", "studio", "studio-ai", "agentic", "agent-chat"];
+const LADDER = ["blank", "headless", "studio", "saas-starter", "studio-ai", "agentic", "agent-chat"];
 
 const MODPACKS: Modpack[] = [
   {
@@ -437,6 +469,49 @@ const MODPACKS: Modpack[] = [
       ].filter((l) => l !== ""),
   },
   {
+    id: "saas-starter",
+    label: "SaaS starter",
+    hint: "a paid product — sign-in, Stripe subscriptions and one-time purchases, and a members area gated by a scope",
+    rung: "+ billing — checkout (recurring or one-time), webhooks, payments → roles",
+    tagline: "Studio + identity + billing — sign in, subscribe or buy once via Stripe, and a /pro area only a paying customer opens",
+    mods: [
+      "@pattern-js/mod-billing",
+      "@pattern-js/mod-billing-stripe",
+      "@pattern-js/mod-email",
+      "@pattern-js/mod-store",
+      "@pattern-js/mod-vault",
+      "@pattern-js/mod-admin",
+      "./mods/billing.mjs (app-local)",
+      "./mods/identity.mjs (app-local)",
+    ],
+    exampleSummary: "a landing page, subscribe + buy + portal routes (durable), and the gated /pro page",
+    serves: () => ["/", "/pro", "/billing/checkout", "/billing/buy", "/billing/portal", "/admin"],
+    env: ["PATTERN_VAULT_KEY"],
+    vaultSecrets: ["STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET"],
+    generates: () => [
+      "workflows/landing.json + checkout, buy, portal, pro",
+      "mods/billing.mjs + mods/identity.mjs",
+      "Dockerfile",
+      "src/index.ts",
+      ".env.example",
+    ],
+    // Billing without sign-in has nobody to entitle — auth is part of the pack.
+    auth: { default: true, required: true },
+    docs: { default: true },
+    next: ({ name, runCmd, installed, installLine }) =>
+      [
+        `${pc.dim("$")} cd ${name}`,
+        installed ? "" : installLine,
+        `${pc.dim("$")} ${runCmd} dev`,
+        "",
+        `${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} — open it, you're the owner`,
+        `${pc.cyan("→")} landing at ${pc.bold("http://localhost:3000/")} — Subscribe and Buy 401 until Stripe is connected`,
+        `${pc.cyan("→")} connect Stripe (test mode): keys in admin → Resources → ${pc.bold("Secrets")} (the encrypted vault), the account in admin → Administration → Billing,`,
+        `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("(the walkthrough lives in AGENTS.md)")}`,
+        `${pc.cyan("→")} pay with ${pc.bold("4242 4242 4242 4242")} — the webhook grants the member role and ${pc.bold("/pro")} unlocks`,
+      ].filter((l) => l !== ""),
+  },
+  {
     id: "studio-ai",
     label: "Studio + AI",
     hint: "call AI ops directly in the editor — text/object/embed/image/speech ops + vault; no agent loop",
@@ -462,7 +537,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        ...modelLines(seeded),
+        ...modelLines(seeded, vaultKey),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/summarize -H 'content-type: application/json' -d '{"text":"…"}' ${pc.dim("— ai.text.generate, no agent")}`
           : `${pc.cyan("→")} build an AI workflow: ${pc.bold("ai.alias → ai.text.generate")} (see AGENTS.md)`,
@@ -501,7 +576,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link; then ${pc.bold("http://localhost:3000/admin")}`]
           : [`${pc.cyan("→")} open ${pc.bold("http://localhost:3000/admin")}`]),
-        ...modelLines(seeded),
+        ...modelLines(seeded, vaultKey),
         examples
           ? `${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time (a linked sub-run)")}`
           : `${pc.cyan("→")} build an agentic workflow: ${pc.bold("agents.agent → agents.run")} (see AGENTS.md)`,
@@ -548,7 +623,7 @@ const MODPACKS: Modpack[] = [
         ...(auth
           ? [`${pc.cyan("→")} admin is locked — first boot prints a one-time owner link`]
           : [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`]),
-        ...modelLines(seeded),
+        ...modelLines(seeded, vaultKey),
         examples
           ? `${pc.cyan("→")} ask it ${pc.bold('"what time is it?"')} ${pc.dim("— the agent calls the get_time tool (a linked sub-run)")}`
           : `${pc.cyan("→")} add a tool workflow (see AGENTS.md), then ask the agent to call it`,
@@ -591,6 +666,8 @@ interface Flags {
   vaultKey?: boolean;
   /** Extra AI providers (short id or @ai-sdk pkg) to install. undefined = ask (mod-ai packs). */
   providers?: string[];
+  /** Compose mode: the chosen layers (`--with admin,auth:oidc,billing`). */
+  with?: WithToken[];
   /** Print the manifest for the resolved selection and write nothing. */
   dryRun: boolean;
   /** What to scaffold: an app (default) or a publishable mod. undefined = ask. */
@@ -643,6 +720,7 @@ function parseFlags(argv: string[]): Flags {
       }
       flags.providers = ids;
     }
+    else if (a === "--with" || a === "-w") flags.with = parseWith(argv[++i] ?? "");
     else if (a === "--yes" || a === "-y") flags.yes = true;
     else if (a === "--list" || a === "-l") flags.list = true;
     else if (a === "--help" || a === "-h") flags.help = true;
@@ -657,6 +735,10 @@ function parseFlags(argv: string[]): Flags {
     else if (!a.startsWith("-") && !flags.name) flags.name = a;
   }
   if (flags.modpack && LEGACY_IDS[flags.modpack]) flags.modpack = LEGACY_IDS[flags.modpack];
+  if (flags.with && flags.modpack && flags.modpack !== "compose") {
+    throw new Error("--with composes your own stack — drop --modpack (a pack is a preset of the same layers)");
+  }
+  if (flags.with) flags.modpack = "compose";
   // A modpack implies an app (the app ladder); never ask kind then.
   if (flags.modpack) flags.kind = "app";
   return flags;
@@ -727,7 +809,10 @@ function packCard(pack: Modpack, dims: Dims): string {
 
   // /whoami ships whenever headless+auth (applyAuth writes it example-free too).
   const serves = [...pack.serves(examples), ...(docs ? ["/docs"] : []), ...(auth && pack.id === "headless" ? ["/whoami"] : [])];
-  const env = [...pack.env, ...(seeded?.envKeys ?? [])];
+  // With a generated vault key, provider/processor keys live in the ENCRYPTED
+  // VAULT (their own "secrets" line); declined → they fall back to env needs.
+  const vaultSecrets = vaultKey ? [...(pack.vaultSecrets ?? []), ...(seeded?.envKeys ?? [])] : [];
+  const env = [...pack.env, ...(vaultKey ? [] : [...(pack.vaultSecrets ?? []), ...(seeded?.envKeys ?? [])])];
 
   const blocks: string[] = [`${pc.dim(pack.tagline)}`, "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
   if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
@@ -741,6 +826,9 @@ function packCard(pack: Modpack, dims: Dims): string {
     const hint = env.includes("PATTERN_VAULT_KEY") && !vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
     blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
   }
+  if (vaultSecrets.length) {
+    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → Resources → Secrets)")}`);
+  }
   blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — the recipes your coding agent reads`);
   return blocks.join("\n");
 }
@@ -753,7 +841,10 @@ function packCard(pack: Modpack, dims: Dims): string {
  */
 function resolveDims(pack: Modpack, flags: Flags): { dims: Dims; notes: string[] } {
   const notes: string[] = [];
-  const auth = pack.auth ? (flags.auth ?? pack.auth.default) : false;
+  const auth = pack.auth ? (pack.auth.required ? true : (flags.auth ?? pack.auth.default)) : false;
+  if (pack.auth?.required && flags.auth === false) {
+    notes.push(`--no-auth ignored (the ${pack.id} pack is built around sign-in — billing needs someone to entitle)`);
+  }
   const magicLink = auth ? (flags.magicLink ?? true) : false;
   const oidc = auth ? (flags.oidc ?? false) : false;
   if (auth && !magicLink && !oidc) {
@@ -803,6 +894,21 @@ function previewManifest(flags: Flags): void {
     console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
     return;
   }
+  if (flags.modpack === "compose") {
+    const { layers, pulled, notes } = resolveComposeSelection(flags);
+    const { dims, notes: dimNotes } = composeDims(layers, flags);
+    console.log(`  ${pc.bold("Composed")} ${pc.dim(`(--with ${composeWithTokens(layers, dims)})`)}\n`);
+    for (const n of [...pullNotes(pulled).map((x) => `+ ${x}`), ...notes, ...dimNotes]) console.log(`  ${pc.yellow("note:")} ${n}`);
+    if (pulled.length || notes.length || dimNotes.length) console.log("");
+    console.log(
+      composeCard(layers, dims)
+        .split("\n")
+        .map((l) => "  " + l)
+        .join("\n"),
+    );
+    console.log("\n  " + pc.dim("dry run — nothing written. Drop --dry-run to scaffold."));
+    return;
+  }
   const pack = packOrThrow(flags.modpack ?? "studio");
   const { dims, notes } = resolveDims(pack, flags);
   const { auth, oidc, email, docs, examples } = dims;
@@ -824,11 +930,13 @@ function listPacks(): void {
   console.log(`\n${pc.bold("Modpacks")} — a ladder; each rung adds one capability:\n`);
   for (const pack of LADDER.map((id) => packOrThrow(id))) {
     const authNote = pack.auth ? pc.dim(`  (auth: ${pack.auth.default ? "on" : "off"}, docs: ${pack.docs?.default ? "on" : "off"} by default)`) : "";
-    console.log(`  ${pc.cyan(pack.id.padEnd(12))}${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
+    console.log(`  ${pc.cyan(pack.id.padEnd(13))} ${pack.label} — ${pc.dim(pack.hint)}${authNote}`);
   }
+  console.log(`\n  ${pc.cyan("compose".padEnd(13))} Compose your own — ${pc.dim("pick layers instead of a pack: admin, auth, email, AI, agents, chat, vectors, billing, buddy, docs")}`);
   console.log(
     `\n  ${pc.dim("npm create pattern@latest my-app -- --modpack <id> [--auth|--no-auth] [--oidc] [--email console|resend|smtp] [--docs|--no-docs] [--examples|--no-examples]")}`,
   );
+  console.log(`  ${pc.dim("npm create pattern@latest my-app -- --with admin,auth:magic-link,email:resend,billing   (compose mode — dependencies pull in with a note)")}`);
   console.log(`  ${pc.dim("examples are included by default — pass --no-examples for a clean scaffold. --help for every flag.")}\n`);
 }
 
@@ -844,7 +952,15 @@ function usage(): void {
       `    npm create pattern@latest ${pc.dim("[name] [options]")}`,
       "",
       `  ${pc.bold("Modpacks")} ${pc.dim("(--list for the ladder)")}`,
-      f("--modpack, -m <id>", "blank | headless | studio | studio-ai | agentic | agent-chat"),
+      f("--modpack, -m <id>", "blank | headless | studio | saas-starter | studio-ai | agentic | agent-chat"),
+      "",
+      `  ${pc.bold("Compose")} ${pc.dim("(pick layers instead of a pack; deps pull in with a note)")}`,
+      f("--with, -w <a,b,…>", "admin | auth[:magic-link|oidc|both] | email[:console|resend|smtp]"),
+      f("", "| ai | agents | chat | vectors | billing | buddy | docs"),
+      "",
+      `  ${pc.bold("Grow an existing project")}`,
+      f("add <layer>[,<layer>…]", "same layers, applied additively in a scaffolded app"),
+      f("add", "list the layers + their status in this project"),
       "",
       `  ${pc.bold("Dimensions")} ${pc.dim("(omit a flag = ask, or take the pack default)")}`,
       f("--auth | --no-auth", "identity + sign-in, users & sessions"),
@@ -879,13 +995,17 @@ function usage(): void {
 async function copyTemplate(packId: string, targetDir: string, vars: Record<string, string>): Promise<void> {
   const src = join(TEMPLATES_DIR, packId);
   await cp(src, targetDir, { recursive: true });
-  // _gitignore → .gitignore (npm strips .gitignore from published packages).
-  if (existsSync(join(targetDir, "_gitignore"))) {
-    await rename(join(targetDir, "_gitignore"), join(targetDir, ".gitignore"));
-  }
-  // _env.example → .env.example (same npm-stripping dance for dotfiles).
-  if (existsSync(join(targetDir, "_env.example"))) {
-    await rename(join(targetDir, "_env.example"), join(targetDir, ".env.example"));
+  // Underscore-prefixed template files → their real names (npm strips dotfiles
+  // from published packages, and a real Dockerfile in the template would look
+  // like OUR container). One table, extended as templates grow.
+  const RENAMES: Array<[string, string]> = [
+    ["_gitignore", ".gitignore"],
+    ["_env.example", ".env.example"],
+    ["_Dockerfile", "Dockerfile"],
+    ["_dockerignore", ".dockerignore"],
+  ];
+  for (const [from, to] of RENAMES) {
+    if (existsSync(join(targetDir, from))) await rename(join(targetDir, from), join(targetDir, to));
   }
   // Replace {{name}} / {{pkgName}} / … placeholders in text files.
   await replacePlaceholders(targetDir, vars);
@@ -950,12 +1070,23 @@ async function normalizeDepRanges(targetDir: string): Promise<void> {
  * and give headless packs a protected /whoami route so the value is curl-able
  * in minute one. OIDC's wrapper file is applyOidc's job.
  */
-async function applyAuth(targetDir: string, packId: string, magicLink: boolean): Promise<void> {
-  const mods = [IDENTITY_MOD, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
+async function applyAuth(targetDir: string, packId: string, magicLink: boolean, rolesWrapper?: boolean): Promise<void> {
+  const deps = [IDENTITY_MOD, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
   const pkgPath = join(targetDir, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
-  for (const mod of mods) pkg.dependencies[mod] = PATTERN_RANGE;
+  for (const mod of deps) pkg.dependencies[mod] = PATTERN_RANGE;
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  // The saas-starter — and a composed stack with billing — configures identity
+  // (the roles→scopes map is the other half of billing's entitlement bridge):
+  // an app-local wrapper, like OIDC's.
+  let identityEntry = IDENTITY_MOD;
+  if (rolesWrapper ?? packId === "saas-starter") {
+    await mkdir(join(targetDir, "mods"), { recursive: true });
+    await writeFile(join(targetDir, "mods", "identity.mjs"), IDENTITY_WRAPPER_SAAS);
+    identityEntry = "./mods/identity.mjs";
+  }
+  const mods = [identityEntry, ...(magicLink ? [MAGIC_LINK_MOD] : [])];
 
   const cfgPath = join(targetDir, "pattern.config.json");
   const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
@@ -970,7 +1101,7 @@ async function applyAuth(targetDir: string, packId: string, magicLink: boolean):
 /**
  * Flip sign-in link delivery to real email: mod-email + the chosen driver join
  * the manifest right after the identity mods (they serve auth). Console stays
- * the fallback until a "default" account exists in admin → System → Email, so
+ * the fallback until a "default" account exists in admin → Resources → Email, so
  * the scaffold still boots with zero config. Runs AFTER applyAuth, and only
  * when magic link is on (email is what carries the links).
  */
@@ -986,63 +1117,20 @@ async function applyEmail(targetDir: string, delivery: EmailDelivery): Promise<v
   const cfgPath = join(targetDir, "pattern.config.json");
   const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
   // After identity + magic-link (email only applies when magic link is on).
+  // Templates that already carry mod-email (saas-starter) just gain the driver,
+  // right after it — a doubled mod would register its workflows twice.
   const at = 2;
-  cfg.mods = [...cfg.mods.slice(0, at), EMAIL_MOD, driver, ...cfg.mods.slice(at)];
+  const add = cfg.mods.includes(EMAIL_MOD) ? [] : [EMAIL_MOD];
+  if (cfg.mods.includes(EMAIL_MOD)) {
+    const emailAt = cfg.mods.indexOf(EMAIL_MOD) + 1;
+    cfg.mods = [...cfg.mods.slice(0, emailAt), driver, ...cfg.mods.slice(emailAt)];
+  } else {
+    cfg.mods = [...cfg.mods.slice(0, at), ...add, driver, ...cfg.mods.slice(at)];
+  }
   await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 
-  const hint =
-    delivery === "resend"
-      ? "# Email (Resend): the API key lives here or in the vault (admin → System → Secrets)\n# RESEND_API_KEY=\n"
-      : "# Email (SMTP): host/port/user are account options in admin → System → Email;\n# the password lives here or in the vault (admin → System → Secrets)\n# SMTP_PASSWORD=\n";
-  await appendEnvHint(
-    targetDir,
-    hint +
-      "\n# The app's public origin (e.g. https://app.example.com) — emailed links\n" +
-      "# (invites, sign-in) are built on it. Unset in dev = the request's host.\n" +
-      "# PATTERN_PUBLIC_URL=\n",
-  );
+  await appendEnvHint(targetDir, emailEnvHint(delivery)!);
 }
-
-/** Append a commented hint to .env.example, creating the file for templates that ship none. */
-async function appendEnvHint(targetDir: string, hint: string): Promise<void> {
-  const envPath = join(targetDir, ".env.example");
-  const current = existsSync(envPath) ? await readFile(envPath, "utf8") : "";
-  await writeFile(envPath, current ? `${current.replace(/\n*$/, "\n")}\n${hint}` : hint);
-}
-
-/**
- * The app-local OIDC wrapper the scaffold writes. The provider ships COMMENTED
- * OUT on purpose: the project boots clean (an empty provider list logs a hint
- * and contributes nothing), and the login button appears the moment a real
- * issuer + client id are filled in. The secret never lives in this file — it's
- * a { source, key } reference into env or the vault.
- */
-const OIDC_WRAPPER = `/**
- * OIDC sign-in — your providers, code-configured (docs: /docs → "OIDC login").
- *
- * Google, Microsoft, Keycloak, Auth0 — any OpenID Connect issuer works. Several
- * providers can sit side by side; each becomes a button on the login page.
- * OIDC composes with magic-link: the same verified email is the same user.
- */
-import { oidcMod } from "@pattern-js/mod-auth-oidc";
-
-export default oidcMod({
-  providers: [
-    // 1. Create an OAuth client at your IdP.
-    // 2. Register the redirect URI:
-    //      http://localhost:3000/auth/oidc/google/callback   (+ your production host)
-    // 3. Uncomment, fill in, and set GOOGLE_CLIENT_SECRET in .env —
-    //    the "Continue with Google" button appears on the login page.
-    // {
-    //   id: "google",
-    //   label: "Continue with Google",
-    //   issuer: "https://accounts.google.com",
-    //   clientId: "1234567890-abc.apps.googleusercontent.com",
-    //   clientSecret: { source: "env", key: "GOOGLE_CLIENT_SECRET" },
-    // },
-  ],
-});
-`;
 
 /**
  * Flip OIDC sign-in on: the mod-auth-oidc dep + an app-local wrapper mod at
@@ -1067,7 +1155,7 @@ async function applyOidc(targetDir: string, magicLink: boolean): Promise<void> {
 
   // The placeholder's secret ref points at env — make sure the hint has a home
   // even in templates that ship no .env.example.
-  await appendEnvHint(targetDir, "# OIDC (mods/oidc.mjs): the client secret lives here or in the vault (admin → System → Secrets)\n# GOOGLE_CLIENT_SECRET=\n");
+  await appendEnvHint(targetDir, "# OIDC (mods/oidc.mjs): the client secret lives here or in the vault (admin → Resources → Secrets)\n# GOOGLE_CLIENT_SECRET=\n");
 }
 
 /** A pack that wires mod-vault — only these get the vault-key offer. */
@@ -1094,34 +1182,39 @@ async function applyVaultKey(targetDir: string): Promise<void> {
 
 /**
  * Pre-write the seeded model aliases into `.pattern-data/ai-config.json` —
- * exactly the file admin → Settings → AI Providers manages, so a scaffold with
+ * exactly the file admin → Resources → AI Providers manages, so a scaffold with
  * a provider pick boots with `default` (+ `embeddings`) already resolvable and
- * the ONLY remaining step is the key in `.env`. Each alias authenticates via an
- * env-sourced secret REF ({ source: "env", key }) — no value ever lands in the
- * scaffold. Runs BEFORE applyVaultKey so appended env hints reach the generated
- * `.env` too.
+ * the ONLY remaining step is the key. With a generated vault key each alias
+ * authenticates via a VAULT-sourced secret REF ({ source: "vault", key }) —
+ * paste the key in admin → Resources → Secrets and the next call has it, no
+ * restart; without a vault the refs fall back to env. No value ever lands in
+ * the scaffold either way. Runs BEFORE applyVaultKey so appended env hints
+ * reach the generated `.env` too.
  */
-async function applyAiAliases(targetDir: string, plan: SeedPlan): Promise<void> {
+async function applyAiAliases(targetDir: string, plan: SeedPlan, useVault: boolean): Promise<void> {
   const aliases = plan.aliases.map((a) => ({
     name: a.name,
     provider: a.provider,
     modelId: a.modelId,
     modality: a.modality,
-    secrets: { apiKey: { source: "env", key: a.envKey } },
+    secrets: { apiKey: { source: useVault ? "vault" : "env", key: a.envKey } },
     options: {},
   }));
   await mkdir(join(targetDir, ".pattern-data"), { recursive: true });
   await writeFile(join(targetDir, ".pattern-data", "ai-config.json"), JSON.stringify({ aliases }, null, 2) + "\n");
 
-  // Every referenced env key gets a line in .env.example (unless the template
-  // already carries one, commented or not).
+  // Every referenced key gets a line in .env.example (unless the template
+  // already carries one, commented or not) — commented out in vault mode,
+  // where it documents the env ALTERNATIVE rather than the expected home.
   const envPath = join(targetDir, ".env.example");
   const current = existsSync(envPath) ? await readFile(envPath, "utf8") : "";
   const missing = plan.envKeys.filter((k) => !new RegExp(`^#?\\s*${k}=`, "m").test(current));
   if (missing.length) {
     await appendEnvHint(
       targetDir,
-      `# The seeded model aliases (admin → Settings → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
+      useVault
+        ? `# Model alias keys live in the ENCRYPTED VAULT: paste them in admin → Resources →\n# Secrets under these names (no restart needed). Prefer env? Uncomment here and\n# re-point the alias in admin → Resources → AI Providers.\n${missing.map((k) => `# ${k}=`).join("\n")}\n`
+        : `# The seeded model aliases (admin → Resources → AI Providers) read their key here\n${missing.map((k) => `${k}=`).join("\n")}\n`,
     );
   }
 }
@@ -1237,7 +1330,7 @@ const STUDIO_AI_INDEX = `/**
  * \`ai.image.*\`, \`ai.speech.*\`, \`ai.transcribe\`, \`ai.video.*\`) and
  * mod-admin (the editor + run traces at /admin). Build a flow in the editor or
  * drop JSON in \`workflows/\` (see AGENTS.md); models resolve from the aliases
- * you configure in admin → Settings → AI Providers.
+ * you configure in admin → Resources → AI Providers.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 
@@ -1332,8 +1425,11 @@ async function applyNoExamples(targetDir: string, packId: string, name: string):
 
   if (spec.configMods?.length) {
     const cfgPath = join(targetDir, "pattern.config.json");
-    const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[] };
+    const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[]; workers?: { size: number; mods?: string[] } };
     cfg.mods = cfg.mods.filter((m) => !spec.configMods!.includes(m));
+    // An entry stripped from cfg.mods must never linger in workers.mods —
+    // the worker would try to load a demo mod file that was just deleted.
+    if (cfg.workers?.mods) cfg.workers.mods = cfg.workers.mods.filter((m) => !spec.configMods!.includes(m));
     await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
   }
 
@@ -1348,6 +1444,305 @@ async function applyNoExamples(targetDir: string, packId: string, name: string):
     const full = join(targetDir, ...rel.split("/"));
     if (!existsSync(full)) await writeFile(full, body);
   }
+}
+
+// ── Compose mode (--with / the picker's last entry) ──────────────────────────
+// Packs are curated presets; compose picks the LAYERS individually. One
+// multiselect, sub-questions only for what was chosen, dependencies auto-pull
+// with a printed note, and the result prints its own reproducible one-liner.
+
+/** Fold `--with` tokens + compatible dimension flags into a resolved layer set. */
+function resolveComposeSelection(flags: Flags): { layers: string[]; pulled: Array<{ id: string; by: string }>; notes: string[] } {
+  const tokens = flags.with ?? [];
+  const chosen = new Set(tokens.map((t) => t.id));
+  const notes: string[] = [];
+  // Dimension flags keep working in compose (scripting compatibility).
+  if (flags.auth) chosen.add("auth");
+  if (flags.docs) chosen.add("docs");
+  if (flags.email !== undefined && flags.email !== "console" && !chosen.has("email")) {
+    chosen.add("email");
+    notes.push(`--email ${flags.email} adds the email layer`);
+  }
+  // Token answers land on the flags the dimension resolution already reads.
+  for (const t of tokens) {
+    if (t.id === "auth" && t.answer) {
+      flags.magicLink = t.answer !== "oidc";
+      flags.oidc = t.answer !== "magic-link";
+    }
+    if (t.id === "email" && t.answer) flags.email = t.answer as EmailDelivery;
+  }
+  const { layers, pulled } = resolveLayers([...chosen]);
+  return { layers, pulled, notes };
+}
+
+/** The compose equivalent of resolveDims: flags + layer set → dims + notes. */
+function composeDims(layers: string[], flags: Flags): { dims: Dims; notes: string[] } {
+  const notes: string[] = [];
+  const auth = layers.includes("auth");
+  const magicLink = auth ? (flags.magicLink ?? true) : false;
+  const oidc = auth ? (flags.oidc ?? false) : false;
+  if (auth && !magicLink && !oidc) throw new Error("auth needs at least one sign-in method — keep magic link or add --oidc");
+  if (!auth && (flags.magicLink !== undefined || flags.oidc !== undefined)) notes.push("--magic-link/--oidc ignored (no auth layer in the stack)");
+  const hasVault = layers.includes("vault");
+  if (flags.vaultKey !== undefined && !hasVault) notes.push("--vault-key ignored (no vault in the stack — the AI layer pulls it in)");
+  const hasAi = layers.includes("ai");
+  if (flags.providers !== undefined && !hasAi) notes.push("--providers ignored (no AI layer in the stack)");
+  return {
+    dims: {
+      auth,
+      magicLink,
+      oidc,
+      email: layers.includes("email") ? (flags.email ?? "console") : "console",
+      docs: layers.includes("docs"),
+      examples: flags.examples ?? true,
+      vaultKey: hasVault ? (flags.vaultKey ?? true) : false,
+      providers: hasAi ? (flags.providers ?? []).map(normProvider) : [],
+    },
+    notes,
+  };
+}
+
+/** The chosen layers as `--with` tokens (auth/email carry their answers). */
+function composeWithTokens(layers: string[], dims: Dims): string {
+  return VISIBLE_LAYERS.filter((id) => layers.includes(id))
+    .map((id) => {
+      if (id === "auth") return `auth:${dims.magicLink && dims.oidc ? "both" : dims.oidc ? "oidc" : "magic-link"}`;
+      if (id === "email") return `email:${dims.email}`;
+      return id;
+    })
+    .join(",");
+}
+
+/** The reproducible one-liner — any composition is shareable and scriptable. */
+function composeCommand(name: string, layers: string[], dims: Dims): string {
+  const extra = [
+    ...(dims.providers.length ? [`--providers ${dims.providers.map((x) => x.replace("@ai-sdk/", "")).join(",")}`] : []),
+    ...(dims.examples ? [] : ["--no-examples"]),
+    ...(layers.includes("vault") && !dims.vaultKey ? ["--no-vault-key"] : []),
+  ];
+  return `npm create pattern@latest ${name} -- --with ${composeWithTokens(layers, dims)}${extra.length ? " " + extra.join(" ") : ""}`;
+}
+
+/** The composed config/display mod list, install order (docs appended by dims). */
+function composeModList(layers: string[], dims: Dims): string[] {
+  const annotate = (m: string) => (m.startsWith("./mods/") ? `${m} (app-local)` : m);
+  const mods: string[] = [];
+  if (dims.auth) {
+    mods.push(layers.includes("billing") ? "./mods/identity.mjs (app-local)" : IDENTITY_MOD);
+    if (dims.magicLink) mods.push(MAGIC_LINK_MOD);
+    if (dims.oidc) mods.push(OIDC_MOD, "./mods/oidc.mjs (app-local)");
+  }
+  for (const layer of pickLayers(layers)) {
+    const entries = [...layer.configMods];
+    if (layer.id === "email" && dims.email !== "console") entries.push(EMAIL_DRIVERS[dims.email]!);
+    mods.push(...entries.map(annotate));
+  }
+  if (layers.includes("admin")) {
+    mods.push("@pattern-js/mod-admin");
+    if (dims.examples) mods.push("./mods/quotes.mjs (app-local)");
+  } else if (dims.examples) {
+    mods.push("./mods/uppercase.mjs (app-local)");
+  }
+  if (dims.docs) mods.push(DOCS_MOD);
+  return mods;
+}
+
+/** Everything the composed scaffold serves (base examples + each layer). */
+function composeServes(layers: string[], dims: Dims): string[] {
+  const s = new Set<string>(layers.includes("admin") ? [] : packOrThrow("headless").serves(dims.examples));
+  for (const layer of pickLayers(layers)) for (const e of layer.serves(dims.examples)) s.add(e);
+  if (dims.auth && !layers.includes("admin")) s.add("/whoami");
+  return [...s];
+}
+
+/** The compose manifest card — packCard's shape over a layer set. */
+function composeCard(layers: string[], dims: Dims): string {
+  const visible = VISIBLE_LAYERS.filter((id) => layers.includes(id)).map((id) => layerOrThrow(id).label);
+  const modList = composeModList(layers, dims);
+  const width = Math.max(0, ...modList.map((m) => modPath(m).length));
+  const modLines = modList.map((m) => `  ${pc.magenta(modPath(m).padEnd(width))}  ${pc.dim(MOD_ROLES[m] ?? "")}`);
+
+  const seeded = aliasSeedPlan(dims.providers);
+  const files: string[] = [];
+  for (const layer of pickLayers(layers)) {
+    const wfs = [...(layer.platformWorkflows?.workflows ?? []), ...(dims.examples ? (layer.examples?.workflows ?? []) : [])];
+    files.push(...wfs.map((f) => `workflows/${f}`));
+  }
+  if (layers.includes("billing")) files.push("mods/billing.mjs + mods/identity.mjs");
+  if (dims.examples) files.push(layers.includes("admin") ? "3 seeded workflows (in the admin store) + mods/quotes.mjs" : "workflows/hello.json + echo, shout, health");
+  if (seeded) files.push(`.pattern-data/ai-config.json (model aliases: ${seeded.aliases.map((a) => a.name).join(" + ")})`);
+  if (layers.includes("buddy")) files.push(".mcp.json (Claude Code → pattern mcp)");
+  files.push("Dockerfile", "src/index.ts");
+  const fileLines = files.map((f) => `  ${pc.cyan("›")} ${f}`);
+
+  const serves = [...composeServes(layers, dims)];
+  // Vault key generated → provider/processor keys live in the encrypted vault
+  // (their own "secrets" line); declined → they fall back to env needs.
+  const layerVaultSecrets = pickLayers(layers).flatMap((l) => l.vaultSecrets ?? []);
+  const vaultSecrets = dims.vaultKey ? [...new Set([...layerVaultSecrets, ...(seeded?.envKeys ?? [])])] : [];
+  const env = [
+    ...new Set([
+      ...pickLayers(layers).flatMap((l) => l.env),
+      ...(dims.vaultKey ? [] : [...layerVaultSecrets, ...(seeded?.envKeys ?? [])]),
+    ]),
+  ];
+
+  const blocks: string[] = [pc.dim(`your stack, composed — ${visible.join(" · ")}`), "", pc.bold("mods"), ...modLines, "", pc.bold("generates"), ...fileLines];
+  if (serves.length) blocks.push("", `${pc.bold("serves")}   ${serves.map((s) => pc.cyan(s)).join(pc.dim(" · "))}`);
+  if (env.length) {
+    const annotate = (e: string) =>
+      e === "PATTERN_VAULT_KEY" && dims.vaultKey
+        ? `${pc.magenta(e)} ${pc.green("(generated → .env)")}`
+        : seeded?.envKeys.includes(e)
+          ? `${pc.magenta(e)} ${pc.dim("(model aliases)")}`
+          : pc.magenta(e);
+    const hint = env.includes("PATTERN_VAULT_KEY") && !dims.vaultKey ? pc.dim("  (vault key: openssl rand -base64 32)") : "";
+    blocks.push(`${pc.bold("needs")}    ${env.map(annotate).join(pc.dim(" · "))}${hint}`);
+  }
+  if (vaultSecrets.length) {
+    blocks.push(`${pc.bold("secrets")}  ${vaultSecrets.map((s) => pc.magenta(s)).join(pc.dim(" · "))} ${pc.dim("→ encrypted vault (admin → Resources → Secrets)")}`);
+  }
+  blocks.push("", `${pc.green("✦")} AGENTS.md + CLAUDE.md — each layer documents itself for your coding agent`);
+  return blocks.join("\n");
+}
+
+/**
+ * Apply the composed layers onto the base scaffold: deps, config mods (the
+ * stack ahead of the base's own entries), workers, the billing wrapper, each
+ * layer's workflows (surface always, demos with examples; first writer wins),
+ * env hints, and the per-layer AGENTS.md/README appendices. applyAuth /
+ * applyOidc / applyDocs run after, exactly as they do for packs.
+ */
+async function applyCompose(targetDir: string, layers: string[], dims: Dims, name: string): Promise<void> {
+  const chosen = pickLayers(layers);
+
+  const pkgPath = join(targetDir, "package.json");
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as { dependencies: Record<string, string> };
+  for (const layer of chosen) for (const dep of layer.deps) pkg.dependencies[dep] = PATTERN_RANGE;
+  if (layers.includes("email") && dims.email !== "console") pkg.dependencies[EMAIL_DRIVERS[dims.email]!] = PATTERN_RANGE;
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  const cfgPath = join(targetDir, "pattern.config.json");
+  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as { mods: string[]; workers?: { size: number; mods?: string[] } };
+  const stack: string[] = [];
+  for (const layer of chosen) {
+    stack.push(...layer.configMods);
+    if (layer.id === "email" && dims.email !== "console") stack.push(EMAIL_DRIVERS[dims.email]!);
+  }
+  cfg.mods = [...stack, ...cfg.mods.filter((m) => !stack.includes(m))];
+  if (cfg.workers) {
+    // The offloadable stack + the base's surviving app-local mods (an entry
+    // stripped from cfg.mods must never linger in workers.mods).
+    const workerStack = chosen.flatMap((l) => l.workerMods);
+    const appLocal = (cfg.workers.mods ?? []).filter((m) => cfg.mods.includes(m) && !workerStack.includes(m));
+    cfg.workers.mods = [...workerStack, ...appLocal];
+  }
+  await writeFile(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+
+  if (layers.includes("billing")) {
+    await mkdir(join(targetDir, "mods"), { recursive: true });
+    await cp(join(TEMPLATES_DIR, "saas-starter", "mods", "billing.mjs"), join(targetDir, "mods", "billing.mjs"));
+  }
+
+  await mkdir(join(targetDir, "workflows"), { recursive: true });
+  const seedWorkflows = async (template: string, files: string[]): Promise<void> => {
+    for (const f of files) {
+      const dst = join(targetDir, "workflows", f);
+      // Substitute {{name}}-style scaffold vars at write time: these seeds land
+      // AFTER copyTemplate's placeholder pass already ran.
+      if (!existsSync(dst)) await seedFile(join(TEMPLATES_DIR, template, "workflows", f), dst, { name });
+    }
+  };
+  for (const layer of chosen) {
+    if (layer.platformWorkflows) await seedWorkflows(layer.platformWorkflows.template, layer.platformWorkflows.workflows);
+    if (dims.examples && layer.examples) await seedWorkflows(layer.examples.template, layer.examples.workflows);
+  }
+  // The known pair recipe: agents + real email (resend) → the inbound email agent.
+  if (dims.examples && layers.includes("agents") && dims.email === "resend") {
+    await writeFile(join(targetDir, "workflows", "email-agent-reply.json"), EMAIL_AGENT_REPLY_WORKFLOW);
+  }
+
+  // A composed billing app's boot banner leads with ITS surface — the landing
+  // and the members area — not the base template's demo curls. Template-anchored
+  // line swap; if the base banner ever changes shape, this silently no-ops.
+  if (layers.includes("billing")) {
+    const idxPath = join(targetDir, "src", "index.ts");
+    const idx = await readFile(idxPath, "utf8");
+    const studioTry = "console.log(`  Try     curl ${base}/hello/world`);\nconsole.log(`          curl ${base}/quote`);";
+    const saasTry = "console.log(`  Landing ${base}/   (Subscribe or Buy → Stripe test checkout)`);\nconsole.log(`  Members ${base}/pro   (unlocks with a subscription or a lifetime purchase)`);";
+    const headlessAnchor = 'console.log("  GET  /hello/:name       (default port)");';
+    const headlessLead =
+      'console.log("  GET  /                  landing — Subscribe or Buy → Stripe test checkout");\n' +
+      'console.log("  GET  /pro               members area (unlocks with a subscription or a one-time purchase)");\n' +
+      headlessAnchor;
+    if (idx.includes(studioTry)) await writeFile(idxPath, idx.replace(studioTry, saasTry));
+    else if (idx.includes(headlessAnchor)) await writeFile(idxPath, idx.replace(headlessAnchor, headlessLead));
+  }
+
+  for (const layer of chosen) if (layer.envHint) await appendEnvHint(targetDir, layer.envHint);
+  const mailHint = layers.includes("email") ? emailEnvHint(dims.email) : null;
+  if (mailHint) await appendEnvHint(targetDir, mailHint);
+
+  // Each layer documents itself: AGENTS.md gains a per-layer section, the
+  // README a bullet list, and both name the reproducible one-liner's tokens.
+  const agentsPath = join(targetDir, "AGENTS.md");
+  if (existsSync(agentsPath)) {
+    const current = await readFile(agentsPath, "utf8");
+    const sections = chosen.map((l) => l.agentsMd).join("\n\n");
+    await writeFile(
+      agentsPath,
+      current.replace(/\n*$/, "\n") +
+        `\n## Composed layers\n\nThis project was composed (\`--with ${composeWithTokens(layers, dims)}\`). What each layer gives you:\n\n${sections}\n`,
+    );
+  }
+  const readmePath = join(targetDir, "README.md");
+  if (existsSync(readmePath)) {
+    const current = await readFile(readmePath, "utf8");
+    const intro = current.replace(/with the \*\*(studio|headless)\*\* modpack/, "composed layer by layer (on the $1 base)");
+    const bullets = chosen.filter((l) => !l.hidden).map((l) => `- **${l.label}** — ${l.hint}`);
+    await writeFile(readmePath, intro.replace(/\n*$/, "\n") + `\n## Composed layers\n\n${bullets.join("\n")}\n`);
+  }
+}
+
+/** The pulled-dependency note ("chat pulls in agents · ai · store · vault"). */
+function pullNotes(pulled: Array<{ id: string; by: string }>): string[] {
+  if (!pulled.length) return [];
+  const byPuller = new Map<string, string[]>();
+  for (const { id, by } of pulled) byPuller.set(by, [...(byPuller.get(by) ?? []), id]);
+  return [...byPuller.entries()].map(([by, ids]) => `${by} pulls in ${ids.join(" + ")}`);
+}
+
+/** Compose-mode next steps, assembled from the layers that are actually there. */
+function composeNext(ctx: NextCtx, layers: string[], dims: Dims): string[] {
+  const admin = layers.includes("admin");
+  return [
+    `${pc.dim("$")} cd ${ctx.name}`,
+    ctx.installed ? "" : ctx.installLine,
+    ...(layers.includes("vault") ? [vaultLine(ctx.vaultKey)] : []),
+    `${pc.dim("$")} ${ctx.runCmd} dev`,
+    "",
+    ...(dims.auth
+      ? [`${pc.cyan("→")} first boot prints a ${pc.bold("one-time admin link")} in the console — open it, you're the owner`]
+      : []),
+    ...(admin ? [`${pc.cyan("→")} admin at ${pc.bold("http://localhost:3000/admin")}`] : []),
+    ...(layers.includes("chat") ? [`${pc.cyan("→")} chat at ${pc.bold("http://localhost:3000/chat")}`] : []),
+    ...(layers.includes("ai") ? modelLines(ctx.seeded) : []),
+    ...(layers.includes("agents") && ctx.examples
+      ? [`${pc.cyan("→")} curl -XPOST localhost:3000/ask -H 'content-type: application/json' -d '{"question":"what time is it?"}' ${pc.dim("— the agent calls get_time")}`]
+      : []),
+    ...(layers.includes("vectors") && ctx.examples
+      ? [`${pc.cyan("→")} RAG pair: POST ${pc.bold("/rag/ingest")} feeds the kb, POST ${pc.bold("/rag/ask")} answers from it ${pc.dim("(needs the embeddings alias)")}`]
+      : []),
+    ...(layers.includes("billing")
+      ? [
+          `${pc.cyan("→")} your landing page: ${pc.bold("http://localhost:3000/")} — Subscribe (recurring) or Buy (one-time) walk the Stripe test checkout`,
+          `${pc.cyan("→")} admin → ${pc.bold("Administration → Billing")} has the setup checklist (test key, prices, webhook) — it ticks itself as you go,`,
+          `  ${pc.dim("then")} stripe listen --forward-to localhost:3000/billing/webhook/stripe ${pc.dim("— pay with 4242 4242 4242 4242 and /pro unlocks")}`,
+        ]
+      : []),
+    ...(layers.includes("buddy") ? buddyNextLines() : []),
+    ...(dims.docs ? [`${pc.cyan("→")} docs: ${pc.bold("http://localhost:3000/docs")}`] : []),
+  ].filter((l) => l !== "");
 }
 
 async function runInteractive(flags: Flags): Promise<void> {
@@ -1391,15 +1786,21 @@ async function runInteractive(flags: Flags): Promise<void> {
     (await p.select({
       message: "Pick a modpack",
       initialValue: "studio",
-      options: LADDER.map((id) => packOrThrow(id)).map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
+      options: [
+        ...LADDER.map((id) => packOrThrow(id)).map((t) => ({ value: t.id, label: t.label, hint: t.hint })),
+        { value: "compose", label: "Compose your own", hint: "pick your layers — admin, auth, email, AI, agents, chat, vectors, billing, buddy, docs" },
+      ],
     }))!;
   if (p.isCancel(packId)) return cancel();
+  if (String(packId) === "compose") return runComposeInteractive(flags, String(name));
   const pack = packOrThrow(String(packId));
 
   // Auth is orthogonal to the pack — asked only where it makes sense.
   const packHasAdmin = pack.mods.some((m) => m.includes("mod-admin"));
   let auth = false;
-  if (pack.auth) {
+  if (pack.auth?.required) {
+    auth = true; // part of the pack (billing needs someone to entitle) — not asked
+  } else if (pack.auth) {
     if (flags.auth !== undefined) {
       auth = flags.auth;
     } else {
@@ -1449,7 +1850,7 @@ async function runInteractive(flags: Flags): Promise<void> {
         initialValue: "console" as EmailDelivery,
         options: [
           { value: "console", label: "Console (dev)", hint: "links print to the server console — zero config" },
-          { value: "resend", label: "Resend", hint: "mod-email + the Resend driver; add the account in admin → System → Email" },
+          { value: "resend", label: "Resend", hint: "mod-email + the Resend driver; add the account in admin → Resources → Email" },
           { value: "smtp", label: "SMTP", hint: "mod-email + the SMTP driver (nodemailer); any relay or local catcher" },
         ],
       });
@@ -1564,7 +1965,7 @@ async function runInteractive(flags: Flags): Promise<void> {
         : []),
       ...(auth && magicLink && email !== "console"
         ? [
-            `${pc.cyan("→")} email: admin → ${pc.bold("System → Email")} ${pc.dim(`— create the "default" account (${email === "resend" ? "Resend API key" : "SMTP host + password"} via vault or env); sign-in links then send automatically (console until then)`)}`,
+            `${pc.cyan("→")} email: admin → ${pc.bold("Resources → Email")} ${pc.dim(`— create the "default" account (${email === "resend" ? "Resend API key" : "SMTP host + password"} via vault or env); sign-in links then send automatically (console until then)`)}`,
           ]
         : []),
       ...(pack.id === "agentic" && examples && email === "resend"
@@ -1591,10 +1992,153 @@ async function runInteractive(flags: Flags): Promise<void> {
   p.outro(pc.green("Done — happy building! ✦"));
 }
 
+/** The compose flow: one multiselect, then sub-questions only for the picks. */
+async function runComposeInteractive(flags: Flags, name: string): Promise<void> {
+  let tokens = flags.with;
+  if (!tokens) {
+    const sel = await p.multiselect({
+      message: `Pick your layers ${pc.dim("(space toggles; dependencies pull in automatically, with a note)")}`,
+      options: VISIBLE_LAYERS.map((id) => layerOrThrow(id)).map((l) => ({ value: l.id, label: l.label, hint: l.hint })),
+      initialValues: DEFAULT_LAYERS,
+      required: true,
+    });
+    if (p.isCancel(sel)) return cancel();
+    tokens = (sel as string[]).map((id) => ({ id }));
+    flags.with = tokens;
+  }
+  const { layers, pulled, notes } = resolveComposeSelection(flags);
+  const pulls = pullNotes(pulled);
+  if (pulls.length) p.note(pulls.map((l) => `${pc.cyan("+")} ${l}`).join("\n"), "Pulled in");
+
+  // Sub-questions, only for what's in the stack (flags short-circuit each).
+  let magicLink = layers.includes("auth");
+  let oidc = false;
+  if (layers.includes("auth")) {
+    if (flags.magicLink !== undefined || flags.oidc !== undefined) {
+      magicLink = flags.magicLink ?? true;
+      oidc = flags.oidc ?? false;
+      if (!magicLink && !oidc) throw new Error("auth needs at least one sign-in method — keep magic link or add --oidc");
+    } else {
+      const sel = await p.multiselect({
+        message: `Sign-in methods? ${pc.dim("both compose — the login page lists every method")}`,
+        options: [
+          { value: "magic-link", label: "Magic link", hint: "email links; console fallback in dev — zero config" },
+          { value: "oidc", label: "OIDC", hint: "Google, Microsoft, Keycloak, any issuer — fill mods/oidc.mjs after scaffold" },
+        ],
+        initialValues: ["magic-link"],
+        required: true,
+      });
+      if (p.isCancel(sel)) return cancel();
+      magicLink = (sel as string[]).includes("magic-link");
+      oidc = (sel as string[]).includes("oidc");
+    }
+    flags.magicLink = magicLink;
+    flags.oidc = oidc;
+  }
+
+  if (layers.includes("email") && flags.email === undefined) {
+    const answer = await p.select({
+      message: `Email driver? ${pc.dim("console works with zero config — add a real driver anytime")}`,
+      initialValue: "console" as EmailDelivery,
+      options: [
+        { value: "console", label: "Console (dev)", hint: "mod-email installed; sends print to the console until an account exists" },
+        { value: "resend", label: "Resend", hint: "the Resend driver; add the account in admin → Resources → Email" },
+        { value: "smtp", label: "SMTP", hint: "the SMTP driver (nodemailer); any relay or local catcher" },
+      ],
+    });
+    if (p.isCancel(answer)) return cancel();
+    flags.email = answer as EmailDelivery;
+  }
+
+  if (flags.examples === undefined) {
+    const answer = await p.confirm({
+      message: `Include examples? ${pc.dim("each layer seeds its own demo workflows — off = a clean scaffold + notes")}`,
+      initialValue: true,
+    });
+    if (p.isCancel(answer)) return cancel();
+    flags.examples = answer;
+  }
+
+  if (layers.includes("vault") && flags.vaultKey === undefined) {
+    const answer = await p.confirm({
+      message: `Generate a vault key? ${pc.dim("mod-vault encrypts secrets at rest and needs a master key — we'll write a fresh one to .env")}`,
+      initialValue: true,
+    });
+    if (p.isCancel(answer)) return cancel();
+    flags.vaultKey = answer;
+  }
+
+  if (layers.includes("ai") && flags.providers === undefined) {
+    const sel = await p.multiselect({
+      message: `AI providers to install? ${pc.dim("the AI Gateway is built in; pick the direct providers you'll use")}`,
+      options: AI_PROVIDERS,
+      initialValues: AI_PROVIDERS_DEFAULT,
+      required: false,
+    });
+    if (p.isCancel(sel)) return cancel();
+    flags.providers = sel as string[];
+  }
+
+  const { dims, notes: dimNotes } = composeDims(layers, flags);
+  for (const n of [...notes, ...dimNotes]) p.log.warn(n);
+  p.note(composeCard(layers, dims), "Your composition");
+
+  const pm =
+    flags.pm ??
+    (await p.select({
+      message: "Package manager",
+      initialValue: detectPm(),
+      options: PMS.map((m) => ({ value: m, label: m })),
+    }))!;
+  if (p.isCancel(pm)) return cancel();
+  const install = flags.yes ? flags.install : !p.isCancel(await p.confirm({ message: `Install deps with ${pm}?`, initialValue: flags.install }));
+
+  await scaffold({ name, pack: "compose", composeLayers: layers, pm: pm as Pm, install, git: flags.git, ...dims });
+
+  const runCmd = pm === "npm" ? "npm run" : String(pm);
+  p.note(
+    composeNext(
+      { name, runCmd, installed: install, installLine: `${pc.dim("$")} ${pm} install`, auth: dims.auth, examples: dims.examples, vaultKey: dims.vaultKey, seeded: aliasSeedPlan(dims.providers) },
+      layers,
+      dims,
+    ).join("\n"),
+    "Next steps",
+  );
+  p.note(
+    [
+      `${pc.dim("This exact composition, as one command (share it, script it, hand it to an agent):")}`,
+      `${pc.dim("$")} ${composeCommand(name, layers, dims)}`,
+    ].join("\n"),
+    "Reproducible",
+  );
+  p.outro(pc.green("Done — happy building! ✦"));
+}
+
+async function runHeadlessCompose(flags: Flags): Promise<void> {
+  const name = flags.name ?? "my-pattern-app";
+  const pm = flags.pm ?? detectPm();
+  const { layers, pulled, notes } = resolveComposeSelection(flags);
+  const { dims, notes: dimNotes } = composeDims(layers, flags);
+  console.log(`create-pattern: composing "${name}" — ${composeWithTokens(layers, dims)} (${pm}${dims.examples ? "" : ", no examples"})`);
+  for (const n of pullNotes(pulled)) console.log(`note: ${n}`);
+  for (const n of [...notes, ...dimNotes]) console.log(`note: ${n}`);
+  await scaffold({ name, pack: "compose", composeLayers: layers, pm, install: flags.install, git: flags.git, ...dims });
+  const seeded = aliasSeedPlan(dims.providers);
+  console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
+  if (dims.vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY.`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${dims.vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → Resources → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
+  if (layers.includes("buddy")) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\`.`);
+  if (dims.auth) console.log(`First boot prints a one-time admin link in the console.`);
+  if (layers.includes("billing")) console.log(`Stripe: keys in admin → Resources → Secrets (the encrypted vault), the account in admin → Administration → Billing, then stripe listen --forward-to localhost:3000/billing/webhook/stripe.`);
+  for (const ep of composeServes(layers, dims)) console.log(`  serves http://localhost:3000${ep}`);
+  console.log(`Reproduce: ${composeCommand(name, layers, dims)}`);
+}
+
 async function runHeadless(flags: Flags): Promise<void> {
   // Headless defaults to an app (every existing CI script is preserved); a mod
   // is scaffolded headlessly only with an explicit --kind mod.
   if ((flags.kind ?? "app") === "mod") return runHeadlessMod(flags);
+  if (flags.modpack === "compose") return runHeadlessCompose(flags);
   const name = flags.name ?? "my-pattern-app";
   const pack = packOrThrow(flags.modpack ?? "studio");
   const pm = flags.pm ?? detectPm();
@@ -1608,12 +2152,12 @@ async function runHeadless(flags: Flags): Promise<void> {
   await scaffold({ name, pack: pack.id, pm, install: flags.install, git: flags.git, ...dims });
   const seeded = aliasSeedPlan(providers);
   console.log(`Done. Next: cd ${name} && ${pm === "npm" ? "npm run" : pm} dev`);
-  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Settings → AI Providers).`);
-  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — set ${seeded.envKeys.join(", ")} in .env.`);
+  if (vaultKey) console.log(`Wrote .env with a generated PATTERN_VAULT_KEY (add provider keys per model alias in admin → Resources → AI Providers).`);
+  if (seeded) console.log(`Seeded model aliases ${seeded.aliases.map((a) => `"${a.name}" (${a.provider} ${a.modelId})`).join(" + ")} — ${vaultKey ? `add ${seeded.envKeys.join(", ")} in admin → Resources → Secrets (encrypted vault, no restart).` : `set ${seeded.envKeys.join(", ")} in .env.`}`);
   if (packHasBuddy(pack)) console.log(`Wrote .mcp.json — Claude Code auto-connects to \`pattern mcp\` (the pattern_* tools).`);
   if (auth) console.log(`First boot prints a one-time admin link in the console${magicLink ? " (magic links print there too)" : ""}.`);
   if (oidc) console.log(`OIDC: fill in mods/oidc.mjs (issuer + client id; secret via env or vault), register /auth/oidc/<id>/callback at your IdP.`);
-  if (auth && magicLink && email !== "console") console.log(`Email delivery: create the "default" account in admin → System → Email — sign-in links then send via ${email} (console until then).`);
+  if (auth && magicLink && email !== "console") console.log(`Email delivery: create the "default" account in admin → Resources → Email — sign-in links then send via ${email} (console until then).`);
   if (pack.id === "agentic" && examples && email === "resend") console.log(`Inbound demo: workflows/email-agent-reply.json — point a Resend inbound webhook at POST /email/inbound/resend and an agent answers every email.`);
   for (const ep of [...pack.serves(examples), ...(docs ? ["/docs"] : [])]) console.log(`  serves http://localhost:3000${ep}`);
 }
@@ -1621,6 +2165,8 @@ async function runHeadless(flags: Flags): Promise<void> {
 async function scaffold(opts: Dims & {
   name: string;
   pack: string;
+  /** Compose mode: the resolved layer set (opts.pack === "compose"). */
+  composeLayers?: string[];
   pm: Pm;
   install: boolean;
   git: boolean;
@@ -1630,15 +2176,24 @@ async function scaffold(opts: Dims & {
     throw new Error(`directory "${opts.name}" already exists and is not empty`);
   }
 
+  // Compose builds on a base skeleton: the studio template when the admin
+  // layer is in, the headless one otherwise. Everything else layers on top.
+  const composing = opts.pack === "compose";
+  const layers = opts.composeLayers ?? [];
+  const base = composing ? (layers.includes("admin") ? "studio" : "headless") : opts.pack;
+
   const spin = process.stdout.isTTY ? p.spinner() : undefined;
-  spin?.start(`Unpacking the ${opts.pack} modpack`);
-  await copyTemplate(opts.pack, targetDir, { name: opts.name });
+  spin?.start(composing ? "Composing your stack" : `Unpacking the ${opts.pack} modpack`);
+  await copyTemplate(base, targetDir, { name: opts.name });
   // The template's @pattern-js/* ranges follow this CLI's version, always.
   await normalizeDepRanges(targetDir);
   // Strip examples BEFORE auth (so auth's /whoami route survives the strip).
-  if (!opts.examples) await applyNoExamples(targetDir, opts.pack, opts.name);
-  if (opts.auth) await applyAuth(targetDir, opts.pack, opts.magicLink);
-  if (opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);
+  if (!opts.examples) await applyNoExamples(targetDir, base, opts.name);
+  if (composing) await applyCompose(targetDir, layers, opts, opts.name);
+  if (opts.auth) await applyAuth(targetDir, base, opts.magicLink, composing ? layers.includes("billing") : undefined);
+  else if (composing ? layers.includes("admin") : packHasAdmin(packOrThrow(opts.pack))) await applyOpenAuth(targetDir);
+  // Compose: the email LAYER already owns mod-email + the driver placement.
+  if (!composing && opts.auth && opts.magicLink) await applyEmail(targetDir, opts.email);
   // Resend delivery on the agent pack unlocks the inbound demo: email → agent → threaded reply.
   if (opts.pack === "agentic" && opts.examples && opts.email === "resend") {
     await writeFile(join(targetDir, "workflows", "email-agent-reply.json"), EMAIL_AGENT_REPLY_WORKFLOW);
@@ -1646,11 +2201,16 @@ async function scaffold(opts: Dims & {
   if (opts.auth && opts.oidc) await applyOidc(targetDir, opts.magicLink);
   if (opts.docs) await applyDocs(targetDir);
   const seeded = aliasSeedPlan(opts.providers ?? []);
-  if (seeded) await applyAiAliases(targetDir, seeded); // before applyVaultKey — its env hints belong in .env too
+  if (seeded) await applyAiAliases(targetDir, seeded, opts.vaultKey); // before applyVaultKey — its env hints belong in .env too
   if (opts.vaultKey) await applyVaultKey(targetDir);
   if (opts.providers?.length) await applyProviders(targetDir, opts.providers);
-  if (packHasBuddy(packOrThrow(opts.pack))) await writeFile(join(targetDir, ".mcp.json"), MCP_CONFIG);
-  spin?.stop(`Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.oidc ? " + oidc" : ""}${opts.auth && opts.magicLink && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""}${seeded ? " + model aliases" : ""})`);
+  const wantsMcp = composing ? layers.includes("buddy") : packHasBuddy(packOrThrow(opts.pack));
+  if (wantsMcp) await writeFile(join(targetDir, ".mcp.json"), MCP_CONFIG);
+  spin?.stop(
+    composing
+      ? `Stack composed (${layers.filter((l) => VISIBLE_LAYERS.includes(l)).join(" + ")}${opts.examples ? "" : ", no examples"})`
+      : `Modpack unpacked (${opts.pack}${opts.examples ? "" : ", no examples"}${opts.auth ? " + auth" : ""}${opts.oidc ? " + oidc" : ""}${opts.auth && opts.magicLink && opts.email !== "console" ? ` + email (${opts.email})` : ""}${opts.docs ? " + docs" : ""}${opts.vaultKey ? " + vault key" : ""}${opts.providers?.length ? ` + ${opts.providers.length} provider(s)` : ""}${seeded ? " + model aliases" : ""})`,
+  );
 
   if (opts.git) {
     spawnSync("git", ["init", "-q"], { cwd: targetDir });
@@ -1930,8 +2490,15 @@ function cancel(): void {
 
 async function main(): Promise<void> {
   try {
+    const argv = process.argv.slice(2);
+    // `add` grows an EXISTING project — its own tiny surface, before any
+    // scaffold flag parsing (its layers would read as a project name).
+    if (argv[0] === "add") {
+      const { runAdd } = await import("./add.js");
+      return await runAdd(argv.slice(1));
+    }
     // parseFlags inside the try: a bad flag value gets the friendly ✗, not a stack.
-    const flags = parseFlags(process.argv.slice(2));
+    const flags = parseFlags(argv);
     if (flags.help) return usage();
     if (flags.list) return listPacks();
     if (flags.dryRun) return previewManifest(flags);

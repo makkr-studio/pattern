@@ -35,6 +35,8 @@ export type {
   CommandDef,
   SettingsField,
   SettingsSection,
+  ChecklistDef,
+  ChecklistStep,
 } from "./frontend.js";
 
 // Docs contribution contract (docs host: @pattern-js/mod-docs)
@@ -74,6 +76,12 @@ export * from "./types.js";
 
 // Errors
 export * from "./errors.js";
+
+// Durable execution — the RunLedger (0.5)
+export * from "./durable/ledger.js";
+
+// What a workflow DOES, as data — the one definition hashing/diffing/pinning share
+export * from "./workflow-behavior.js";
 
 // Registries
 export {
@@ -145,6 +153,7 @@ export { resolvePrincipal, meetsRequirement, resolveAuthRequirement, type AuthRe
 export {
   AUTH_HOME_URL,
   AUTH_LOGIN_URL,
+  ENGINE_INTROSPECT,
   IDENTITY_SERVICE,
   principalToUser,
   userInputSchema,
@@ -181,3 +190,6 @@ export {
 export * as boundaries from "./boundaries/index.js";
 // The domain-outcome helper for boundary.http.status (collision-proof 4xx).
 export { httpOutcome } from "./boundaries/index.js";
+
+// The rate-limit brick: shared by the HTTP host's per-route `rateLimit` and `core.flow.throttle`.
+export { RateLimiter, parseDurationMs, type RateLimitRule, type RateLimitVerdict } from "./rate-limit.js";

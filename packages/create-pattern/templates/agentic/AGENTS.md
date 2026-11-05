@@ -17,9 +17,9 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
    and `npx pattern graph <file>` to see the graph in the terminal.
 3. The agent needs a **model** and a **key**. Pick the model with an `ai.model`
    node wired into `agents.agent.model` (config `{ routing, provider, modelId }`),
-   or set a default in admin → Settings → AI Providers and skip the node. The
+   or set a default in admin → Resources → AI Providers and skip the node. The
    provider key resolves by name: `OPENAI_API_KEY` in the environment (`.env` is
-   loaded on boot, real env wins) → a vault secret of that name (admin → System →
+   loaded on boot, real env wins) → a vault secret of that name (admin → Resources →
    Secrets, masked out of run samples). Gateway routing uses one
    `AI_GATEWAY_API_KEY` instead. `PATTERN_VAULT_KEY` (the vault master key) lives
    in `.env`.
@@ -39,7 +39,7 @@ agentic workflow, add a tool, add a guardrail, or expose a run over HTTP.
   provider, modelId }`; output `model` is a *value*. Wire it into
   `agents.agent.model`. Direct uses the provider's key from the vault/env; gateway
   uses one `AI_GATEWAY_API_KEY`. Skip it to fall back to the default model set in
-  admin → Settings → AI Providers.
+  admin → Resources → AI Providers.
 - **`agents.agent`**: config `{ name, instructions }`; inputs `model` (a ModelRef
   from `ai.model`), `tools` (a toolset), `guardrails`, `handoffs`. Output `agent`
   is a *value* you wire onward; it doesn't run anything by itself.
@@ -76,7 +76,7 @@ copy; verify ports with `npx pattern ops agents.run`):
     { "id": "in", "op": "boundary.http.request", "config": { "method": "POST", "path": "/ask" } },
     { "id": "question", "op": "core.object.get", "config": { "path": "question" } },
     { "id": "tools", "op": "agents.tools.workflows" },
-    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5-mini" } },
+    { "id": "model", "op": "ai.model", "config": { "routing": "direct", "provider": "openai", "modelId": "gpt-5.6-luna" } },
     { "id": "agent", "op": "agents.agent", "config": { "name": "assistant", "instructions": "Be concise. Use a tool when it helps." } },
     { "id": "run", "op": "agents.run" },
     { "id": "out", "op": "boundary.http.response" }
@@ -144,7 +144,7 @@ if you have no preference.
 
 This project ships a small worker pool (`workers` in `pattern.config.json`), so
 the admin's Process page reads **hybrid**. Set a workflow's `offload` flag
-(editor → gear, or `"offload": true`) to run a compute-heavy flow on that pool
+(editor → *Workflow settings*, or `"offload": true`) to run a compute-heavy flow on that pool
 instead of the host event loop; remove the `workers` field to go back to inline.
 
 ## Where things live

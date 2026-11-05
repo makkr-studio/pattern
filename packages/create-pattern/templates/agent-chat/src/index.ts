@@ -7,9 +7,9 @@
  * and mod-admin (the kitchen at /admin — the chat's turn pipeline IS a workflow
  * you can fork and rewire).
  *
- * The agent runs on the "default" model alias you configure in admin → Settings →
+ * The agent runs on the "default" model alias you configure in admin → Resources →
  * AI Providers. Each alias carries its own provider key, sourced from the vault
- * (admin → System → Secrets) or an env var you name per alias. No global key.
+ * (admin → Resources → Secrets) or an env var you name per alias. No global key.
  */
 import { loadProject } from "@pattern-js/runtime-node";
 

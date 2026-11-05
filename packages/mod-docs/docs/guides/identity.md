@@ -55,8 +55,9 @@ also returns the link in its result as `copy`.
 Opaque 256-bit tokens in an `HttpOnly; SameSite=Lax` cookie (`Secure` via the
 `cookieSecure` option; enable behind TLS). Only the sha256 lands in storage.
 Sliding 30-day expiry with throttled touches; revocable individually or
-per-user; **role changes and disabling revoke sessions** (privilege change =
-re-login). Storage is `node:sqlite` at `./.pattern-data/identity.db`
+per-user; **losing a role or scope, elevation to `admin`, and disabling revoke
+sessions** (re-login). A role gain keeps the session: scopes resolve live on
+every request, so a paid plan's role unlocks the user's open tab. Storage is `node:sqlite` at `./.pattern-data/identity.db`
 (**gitignored**); never put identity data in `.pattern/`, which is committed
 workflow storage. All racy writes are CAS (`version` columns), so a future
 Postgres driver is the same SQL and multi-instance degrades to CAS-retry.
@@ -78,13 +79,14 @@ shown under Options below) is the standard way to give your app its own roles.
 
 Installing mod-identity flips `/admin` (API + SPA) to require the `admin`
 scope, unless `adminMod({ auth: … })` was set explicitly (`auth: false` keeps
-it open). A logged-out browser hitting `/admin` is 302'd to the login page
+it open). A logged-out browser hitting `/admin` (or any gated `GET` route) is 302'd to the login page
 (any mod can advertise one via core's `AUTH_LOGIN_URL` service key). Logins
 without an explicit `next` land on the app's advertised home: the admin
 registers its mount under core's `AUTH_HOME_URL` service key; absent that,
 identity's own `/auth/welcome` page (never a bare `/`); fetch
-calls get bare 401s, which the admin SPA turns into a login redirect. The
-admin grows an **Access** section: Users (invite, disable, log-out-everywhere),
+calls get 401 when signed out and 403 when signed in without the scope; the
+admin SPA turns a 401 into a login redirect. The
+admin grows its **Administration** section: Users (invite, disable, log-out-everywhere),
 Invite, Sessions (revoke), all Tier-1 declarative pages over `identity.*` ops.
 
 ## The `user` port
@@ -115,7 +117,7 @@ seeded). Authenticated connections auto-join two rooms:
 
 The packaged answer is `@pattern-js/mod-email` plus a driver
 (`mod-email-resend` or `mod-email-smtp`): install them, create the `default`
-account in admin → System → Email, and sign-in links send themselves — no code
+account in admin → Resources → Email, and sign-in links send themselves — no code
 (see the Email chapter).
 
 Underneath sits a hook chain open to any channel. Subscribe a workflow to
@@ -161,6 +163,7 @@ export default identityMod({
 | --- | --- |
 | `GET /auth/login` | Login page (sections from registered methods) |
 | `GET /auth/token?t=…` | Token callback → session cookie → redirect `next` |
+| `POST /auth/code` | The emailed 6-digit code → session cookie (same single-use token as the link; 5 attempts) |
 | `POST /auth/logout` | Revoke current session, clear cookie |
 | `GET /auth/whoami` | Current principal (JSON) |
 | `GET /auth/welcome` | Post-login landing when no home is advertised |

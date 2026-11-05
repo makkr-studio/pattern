@@ -213,7 +213,7 @@ export function ReplayPage() {
         subtitle="Scrub the run event-by-event — nodes light up as they execute; hover an edge to see what flowed through it."
         actions={
           <div className="flex items-center gap-2">
-            <Badge hue={run.summary.status === "error" ? 340 : 150}>{run.summary.status}</Badge>
+            <Badge hue={run.summary.status === "error" ? 340 : run.summary.status === "canceled" ? 45 : 150}>{run.summary.status}</Badge>
             <Link to={`/runs/${runId}`} className="text-muted text-xs underline">
               waterfall view
             </Link>

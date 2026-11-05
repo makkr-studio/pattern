@@ -31,17 +31,27 @@ import {
 import type { RunDeps } from "./scheduler/run.js";
 import { InProcessTransport } from "./transport/in-process.js";
 import { collectIssues, validateWorkflow } from "./validate.js";
-import { WorkflowValidationError } from "./errors.js";
-import type { FrontendContribution, SettingsSection } from "./frontend.js";
+import { ResumeBlockedError, RunCanceled, WorkflowValidationError, type AmbiguousNode } from "./errors.js";
+import {
+  RUN_LEDGER,
+  decodeLedgerValue,
+  ledgerWorkflowHash,
+  type LedgerNodeRecord,
+  type LedgerRunHeader,
+  type RunLedger,
+} from "./durable/ledger.js";
+import type { ChecklistDef, FrontendContribution, SettingsSection } from "./frontend.js";
 import type { DocsContribution } from "./docs.js";
 import {
   ANONYMOUS,
+  effectsOf,
   type AuthContext,
   type AuthProvider,
   type ConnectionRegistry,
   type EventBus,
   type HookDefinition,
   type OpDefinition,
+  type OpEffects,
   type OpServices,
   type Principal,
   type RunHandle,
@@ -129,6 +139,33 @@ export interface EngineOptions {
    * defaults). The Node adapter's `loadProject` injects `process.env`.
    */
   env?: Record<string, string | undefined>;
+  /**
+   * What a declared `requireAuth` does when NO auth provider is registered —
+   * i.e. when nobody can authenticate, so the requirement is unenforceable.
+   * `"deny"` (default) refuses the request with a reason that names the fix:
+   * a route that asked for authentication never serves open because a mod
+   * went missing. `"open"` is the explicit dev opt-in: the route serves
+   * unauthenticated and the host warns loudly at boot. Either way, adding a
+   * provider enforces the same declaration with zero workflow changes.
+   */
+  unenforcedAuth?: "deny" | "open";
+}
+
+/**
+ * What a re-run/resume would do (0.5 durable execution) — shown to the
+ * operator BEFORE they confirm. See `Engine.rerunPlan`.
+ */
+export interface RerunPlan {
+  runId: string;
+  from: "failure" | "start";
+  /** Nodes seeded from their recorded outputs — never re-executed. */
+  reuse: Array<{ nodeId: string; op: string }>;
+  /** Nodes that execute (again, or for the first time), with their replay-safety stamp. */
+  execute: Array<{ nodeId: string; op: string; effects: OpEffects }>;
+  /** Recorded skips that stay skipped. */
+  skipped: string[];
+  /** External-effect nodes whose outcome is unknown — an unconfirmed resume refuses to cross them. */
+  ambiguous: AmbiguousNode[];
 }
 
 export interface RunOptions {
@@ -170,6 +207,8 @@ export class Engine {
    *  forward traces via `ingestTrace`) can be wired after the engine exists. */
   private offloadTransport?: RunTransport;
   private readonly env: Record<string, string | undefined>;
+  /** Posture for a declared-but-unenforceable `requireAuth` (see EngineOptions). */
+  private readonly unenforcedAuth: "deny" | "open";
   /** Backstop (ms) for the streaming trace true-end; threaded into RunDeps. */
   private readonly streamDrainTtlMs?: number;
   /** Per-workflow event-subscription cleanups, so updates/removes tear down cleanly. */
@@ -202,6 +241,7 @@ export class Engine {
     this.workflows = opts.workflows ?? new InMemoryWorkflowRegistry();
     this.connections = opts.connections ?? new InMemoryConnectionRegistry();
     this.env = opts.env ?? {};
+    this.unenforcedAuth = opts.unenforcedAuth ?? "deny";
     this.streamDrainTtlMs = opts.streamDrainTtlMs;
 
     const hookRunner = new HookChainRunner(this.hooks, this.workflows, (wf, trig, input, principal, hookDepth, opts) =>
@@ -214,6 +254,42 @@ export class Engine {
     if (opts.registerCoreOps !== false) {
       registerCoreOps(this.ops);
     }
+
+    // ── run.failed (0.5 failure alerts): traces → one bus event per failure. ──
+    // The trace channel knows a run died; the event bus is what workflows can
+    // subscribe to (`boundary.event { event: "run.failed" }` → email, Slack,
+    // whatever the operator wires). This internal sink bridges the two:
+    //  - parent-less runs only (a sub-run's failure already fails its parent —
+    //    one incident, one event);
+    //  - errors only (a cancel is an operator's choice, not an incident);
+    //  - never for a run that was ITSELF triggered by run.failed — the honest
+    //    recursion guard for a failing alert workflow (checked by the firing
+    //    trigger node's config at emission time, so it also covers operator
+    //    edits made after registration).
+    const startInfo = new Map<string, { workflowId: string; trigger: string }>();
+    this.onTrace({
+      onRunStart: (run) => {
+        if (run.parent) return;
+        // Bounded: a run missing its end callback must not leak forever.
+        if (startInfo.size > 10_000) startInfo.delete(startInfo.keys().next().value!);
+        startInfo.set(run.runId, { workflowId: run.workflowId, trigger: run.trigger });
+      },
+      onRunEnd: (run) => {
+        const info = startInfo.get(run.runId);
+        if (!info) return;
+        startInfo.delete(run.runId);
+        if (run.status !== "error") return;
+        const trig = this.workflows.get(info.workflowId)?.nodes.find((n) => n.id === info.trigger);
+        if (trig?.op === "boundary.event" && (trig.config as { event?: string } | undefined)?.event === "run.failed") return;
+        this.events.emit("run.failed", {
+          runId: run.runId,
+          workflowId: info.workflowId,
+          trigger: info.trigger,
+          error: { message: run.error instanceof Error ? run.error.message : String(run.error ?? "unknown error") },
+          at: run.at ?? Date.now(),
+        });
+      },
+    });
   }
 
   /** The dependency bundle the scheduler/transport need. */
@@ -268,6 +344,17 @@ export class Engine {
    */
   hasAuthProvider(): boolean {
     return this.auth.chain().length > 0;
+  }
+
+  /**
+   * How a declared `requireAuth` behaves right now: `"enforced"` (a provider
+   * is registered), `"denied"` (none — requests are refused, the default), or
+   * `"open"` (none, and the explicit `unenforcedAuth: "open"` opt-in serves
+   * them unauthenticated). Hosts phrase their boot warning from this.
+   */
+  authPosture(): "enforced" | "denied" | "open" {
+    if (this.hasAuthProvider()) return "enforced";
+    return this.unenforcedAuth === "open" ? "open" : "denied";
   }
 
   declareHook<P>(def: HookDefinition<P>): this {
@@ -538,12 +625,14 @@ export class Engine {
     pages: FrontendContribution["pages"];
     commands: FrontendContribution["commands"];
     settings: Array<{ mod: string; section: SettingsSection }>;
+    checklists: Array<{ mod: string } & ChecklistDef>;
   } {
     const assets: Array<{ mod: string; assets: string }> = [];
     const menu: NonNullable<FrontendContribution["menu"]> = [];
     const pages: NonNullable<FrontendContribution["pages"]> = [];
     const commands: NonNullable<FrontendContribution["commands"]> = [];
     const settings: Array<{ mod: string; section: SettingsSection }> = [];
+    const checklists: Array<{ mod: string } & ChecklistDef> = [];
     for (const mod of this.mods) {
       const f = mod.frontend;
       if (!f) continue;
@@ -552,9 +641,10 @@ export class Engine {
       if (f.pages) pages.push(...f.pages);
       if (f.commands) commands.push(...f.commands);
       if (f.settings) settings.push(...f.settings.map((section) => ({ mod: mod.name, section })));
+      if (f.checklists) checklists.push(...f.checklists.map((c) => ({ mod: mod.name, ...c })));
     }
     menu.sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label));
-    return { assets, menu, pages, commands, settings };
+    return { assets, menu, pages, commands, settings, checklists };
   }
 
   /**
@@ -635,15 +725,27 @@ export class Engine {
    * requirement is resolved against the engine's env map here, per call —
    * hosts never see the deferred form.
    */
-  authorize(principal: Principal, requirement: AuthRequirement | undefined) {
+  authorize(principal: Principal, requirement: AuthRequirement | undefined): { ok: true } | { ok: false; reason: string } {
     const resolved = resolveAuthRequirement(requirement, this.env);
     // A requirement is *unenforceable* with no auth provider registered: nobody
-    // can authenticate, so enforcing it would brick the route (401 with no way
-    // in). So a declared requireAuth degrades to **advisory** — the route serves
-    // open and the host warns loudly at boot. Add a provider and the *same*
-    // declaration is enforced, with zero workflow changes. (≥1 provider → normal
-    // 401/403; a present-but-failing provider still denies, fail-secure.)
-    if (resolved && !this.hasAuthProvider()) return { ok: true as const };
+    // can authenticate. The default is to DENY — a route that declared
+    // `requireAuth` must never serve open because a provider mod went missing
+    // (a boot warning is not a compensating control on a server nobody
+    // watches). The refusal names the fix. `unenforcedAuth: "open"` is the
+    // explicit opt-in for the old advisory-open behavior (local work with no
+    // sign-in at all); the host still warns loudly. Add a provider and the
+    // *same* declaration is enforced, with zero workflow changes. (≥1 provider
+    // → normal 401/403; a present-but-failing provider still denies.)
+    if (resolved && !this.hasAuthProvider()) {
+      if (this.unenforcedAuth === "open") return { ok: true };
+      return {
+        ok: false,
+        reason:
+          "this route requires authentication but no auth provider is installed — add one " +
+          "(e.g. @pattern-js/mod-identity) or, for local work without sign-in, set " +
+          '"auth": { "unenforced": "open" } in pattern.config.json',
+      };
+    }
     return meetsRequirement(principal, resolved);
   }
 
@@ -683,6 +785,7 @@ export class Engine {
     hookDepth?: number,
     runId?: string,
     parent?: RunParentRef,
+    extra?: { seed?: LedgerNodeRecord[]; resumedFrom?: string; rootRunId?: string },
   ): Promise<RunResult> {
     // Per-run routing at the dispatch seam: an `offload`-flagged workflow goes
     // to the worker pool when one is configured; everything else stays inline.
@@ -698,6 +801,9 @@ export class Engine {
       hookDepth,
       runId,
       parent,
+      seed: extra?.seed,
+      resumedFrom: extra?.resumedFrom,
+      rootRunId: extra?.rootRunId,
     });
     // Track every in-flight run (whatever the entry path) so the admin can
     // cancel / pause it by runId while it executes.
@@ -718,7 +824,7 @@ export class Engine {
   cancelRun(runId: string, reason?: unknown): boolean {
     const h = this.inflightRuns.get(runId);
     if (!h) return false;
-    h.abort(reason ?? new Error("cancelled from admin"));
+    h.abort(reason ?? new RunCanceled("cancelled from admin"));
     return true;
   }
 
@@ -737,6 +843,148 @@ export class Engine {
   runPaused(runId: string): boolean | undefined {
     const h = this.inflightRuns.get(runId);
     return h ? (h.paused?.() ?? false) : undefined;
+  }
+
+  /**
+   * Load a ledgered run for re-run/resume, with every precondition checked:
+   * a ledger exists, the run is recorded and settled, its workflow is still
+   * registered and structurally unchanged (resume needs the exact graph that
+   * ran — roll back first, or re-run from start after a redeploy).
+   */
+  private async ledgeredRun(runId: string): Promise<{ rec: { header: LedgerRunHeader; nodes: LedgerNodeRecord[] }; workflow: Workflow }> {
+    const ledger = this.service<RunLedger>(RUN_LEDGER);
+    if (!ledger) throw new Error("no RunLedger is configured — durable re-run needs one (loadProject provides it)");
+    const rec = await ledger.get(runId);
+    if (!rec) {
+      throw new Error(
+        `run "${runId}" has no ledger record — only runs of durable: true workflows can be re-run (turn on Durable in the workflow settings)`,
+      );
+    }
+    if (rec.header.status === "running") {
+      throw new Error(`run "${runId}" is still running — cancel it first, or wait for it to settle`);
+    }
+    const workflow = this.workflows.get(rec.header.workflowId);
+    if (!workflow) throw new Error(`workflow "${rec.header.workflowId}" is no longer registered`);
+    if (ledgerWorkflowHash(workflow) !== rec.header.workflowHash) {
+      throw new Error(
+        `workflow "${rec.header.workflowId}" changed since run "${runId}" — resume needs the exact structure that ran. Roll back to that version and resume, or re-run fresh with new input`,
+      );
+    }
+    return { rec, workflow };
+  }
+
+  /**
+   * What `rerun` WOULD do — computed from the ledger record, so an operator
+   * sees the consequences before confirming: which nodes reuse their recorded
+   * outputs, which execute (with their replay-safety), which skips hold, and
+   * which external-effect nodes are ambiguous (started and never finished, or
+   * failed without a `noEffect` verdict) and therefore block an unconfirmed
+   * resume. `from: "start"` executes everything — the plan says so.
+   */
+  async rerunPlan(runId: string, from: "failure" | "start" = "failure"): Promise<RerunPlan> {
+    const { rec, workflow } = await this.ledgeredRun(runId);
+    return this.planFor(runId, rec, workflow, from);
+  }
+
+  private planFor(
+    runId: string,
+    rec: { header: LedgerRunHeader; nodes: LedgerNodeRecord[] },
+    workflow: Workflow,
+    from: "failure" | "start",
+  ): RerunPlan {
+    const effectsFor = (node: Workflow["nodes"][number]): OpEffects => {
+      const op = this.ops.get(node.op);
+      // An unregistered op can't vouch for anything — treat it as external.
+      return op ? effectsOf(op, node.config ?? {}) : "external";
+    };
+    const plan: RerunPlan = { runId, from, reuse: [], execute: [], skipped: [], ambiguous: [] };
+    const trigger = rec.header.triggerNodeId;
+    if (from === "start") {
+      for (const n of workflow.nodes) if (n.id !== trigger) plan.execute.push({ nodeId: n.id, op: n.op, effects: effectsFor(n) });
+      return plan;
+    }
+    if (rec.header.status === "ok") {
+      throw new Error(`run "${runId}" completed fine — use from: "start" to run it again`);
+    }
+    const byId = new Map(rec.nodes.map((n) => [n.nodeId, n] as const));
+    for (const n of workflow.nodes) {
+      if (n.id === trigger) continue;
+      const r = byId.get(n.id);
+      if (r?.status === "done" && !r.streaming && !r.unserializable) {
+        plan.reuse.push({ nodeId: n.id, op: n.op });
+        continue;
+      }
+      if (r?.status === "skipped") {
+        plan.skipped.push(n.id);
+        continue;
+      }
+      // Everything else executes: recorded error/started/streaming/
+      // unserializable, and nodes the failed run never reached.
+      const effects = effectsFor(n);
+      plan.execute.push({ nodeId: n.id, op: n.op, effects });
+      if (effects !== "external") continue;
+      // The danger zone. A bare "started" means the process died mid-call. An
+      // "error" means the op threw — which does NOT prove the provider didn't
+      // act (accepted the charge, lost the response) unless the op said so.
+      if (r?.status === "started") plan.ambiguous.push({ nodeId: n.id, op: n.op, reason: "started" });
+      else if (r?.status === "error" && !r.error?.noEffect) plan.ambiguous.push({ nodeId: n.id, op: n.op, reason: "error" });
+    }
+    return plan;
+  }
+
+  /**
+   * Re-run a ledgered run (0.5 durable execution). `from: "start"` replays the
+   * recorded trigger input as a fresh run (a new idempotency lineage — every
+   * node executes again, external effects included); `from: "failure"`
+   * (default) seeds every completed node's recorded outputs, re-executes only
+   * the failed frontier onward, and carries the lineage root forward so
+   * `ctx.rootRunId`-pinned provider keys REPLAY instead of repeating. Only
+   * terminal runs of `durable: true` workflows have a ledger record; the
+   * workflow must be structurally unchanged since the run. Throws
+   * `ResumeBlockedError` when external-effects nodes are ambiguous (see
+   * `rerunPlan`), unless `confirmExternal`.
+   */
+  async rerun(
+    runId: string,
+    opts: { from?: "failure" | "start"; confirmExternal?: boolean } = {},
+  ): Promise<{ runId: string; result: Promise<RunResult> }> {
+    const from = opts.from ?? "failure";
+    const { rec, workflow } = await this.ledgeredRun(runId);
+    const plan = this.planFor(runId, rec, workflow, from);
+    if (plan.ambiguous.length && !opts.confirmExternal) throw new ResumeBlockedError(plan.ambiguous);
+
+    // The recorded trigger input, decoded (stream inputs were unserializable —
+    // they decode to undefined, and the validator warned at save time).
+    const input: TriggerInput = {};
+    for (const [k, v] of Object.entries(rec.header.input)) input[k] = decodeLedgerValue(v);
+
+    // The frontier: done + serializable nodes seed; skipped nodes seed as
+    // skip; error/started/streaming/unserializable re-run.
+    const seed: LedgerNodeRecord[] | undefined =
+      from === "failure"
+        ? rec.nodes.filter((n) => (n.status === "done" && !n.streaming && !n.unserializable) || n.status === "skipped")
+        : undefined;
+    // Resume continues the lineage (same provider idempotency keys); a re-run
+    // from start is a new lineage — "do it again" is the operator's intent.
+    const rootRunId = from === "failure" ? (rec.header.rootRunId ?? runId) : undefined;
+
+    const newRunId = crypto.randomUUID();
+    // The recorded principal: the run must behave as it did — gating the rerun
+    // itself is the caller's job (the admin route requires runs:write).
+    const result = this.runFrom(
+      workflow,
+      rec.header.triggerNodeId,
+      input,
+      rec.header.principal,
+      undefined,
+      rec.header.params,
+      undefined,
+      undefined,
+      newRunId,
+      undefined,
+      { seed, resumedFrom: runId, rootRunId },
+    );
+    return { runId: newRunId, result };
   }
 
   /** Ids of runs currently executing. */

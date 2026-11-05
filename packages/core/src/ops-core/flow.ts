@@ -12,6 +12,7 @@ import { WorkflowError } from "../errors.js";
 import { defineOp, required, value, z } from "./helpers.js";
 import { deepEqual } from "./scalars.js";
 import type { OpDefinition } from "../types.js";
+import { RateLimiter, parseDurationMs } from "../rate-limit.js";
 
 const subworkflowRef = z.union([z.object({ workflowId: z.string() }), z.object({ workflow: z.any() })]);
 
@@ -28,6 +29,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 export const branch = defineOp({
   type: "core.flow.branch",
+  effects: "pure",
   title: "core.flow.branch",
   description: "Boolean condition → pulses control-out `then` or `else`.",
   inputs: { condition: required(z.boolean()) },
@@ -42,6 +44,7 @@ export const branch = defineOp({
 
 export const switchOp = defineOp({
   type: "core.flow.switch",
+  effects: "pure",
   title: "core.flow.switch",
   description: "Match a value against config.cases → pulses `case.<i>` or `default`.",
   inputs: { value: required() },
@@ -62,6 +65,7 @@ export const switchOp = defineOp({
 
 export const gate = defineOp({
   type: "core.flow.gate",
+  effects: "pure",
   title: "core.flow.gate",
   description: "Pass control through `out` only if condition is true; otherwise the path stops here.",
   inputs: { condition: required(z.boolean()) },
@@ -76,6 +80,7 @@ export const gate = defineOp({
 
 export const sequence = defineOp({
   type: "core.flow.sequence",
+  effects: "pure",
   title: "core.flow.sequence",
   description: "Pulse control-outs 0..count-1 in order, each waiting for the previous subgraph to finish.",
   inputs: {},
@@ -93,6 +98,7 @@ export const sequence = defineOp({
 
 export const parallel = defineOp({
   type: "core.flow.parallel",
+  effects: "pure",
   title: "core.flow.parallel",
   description: "Fan control-out to N branches at once (control-outs 0..count-1).",
   inputs: {},
@@ -108,6 +114,7 @@ export const parallel = defineOp({
 
 export const join = defineOp({
   type: "core.flow.join",
+  effects: "pure",
   title: "core.flow.join",
   description: "Converge N control-ins (waits for all), then pulses `out`. (AND semantics are automatic.)",
   inputs: {},
@@ -117,6 +124,7 @@ export const join = defineOp({
 
 export const delay = defineOp({
   type: "core.flow.delay",
+  effects: "pure",
   title: "core.flow.delay",
   description: "Wait a configured duration, then pulse `out`.",
   inputs: {},
@@ -153,6 +161,7 @@ export const tryOp = defineOp({
 
 export const throwOp = defineOp({
   type: "core.flow.throw",
+  effects: "pure",
   title: "core.flow.throw",
   description: "Raise an error (fails the run / triggers an enclosing try).",
   inputs: { data: value() },
@@ -166,6 +175,7 @@ export const throwOp = defineOp({
 
 export const assertOp = defineOp({
   type: "core.flow.assert",
+  effects: "pure",
   title: "core.flow.assert",
   description: "Fail unless condition holds; otherwise pass control through.",
   inputs: { condition: required(z.boolean()) },
@@ -180,6 +190,7 @@ export const assertOp = defineOp({
 
 export const noop = defineOp({
   type: "core.flow.noop",
+  effects: "pure",
   title: "core.flow.noop",
   description: "Pure pass-through / sequencing point. Forwards `value` if wired.",
   inputs: { value: value() },
@@ -215,6 +226,7 @@ export const foreach = defineOp({
 
 export const log = defineOp({
   type: "core.log",
+  effects: "idempotent",
   title: "core.log",
   description: "Emit a structured log line to the trace sink; pass-through of `value`.",
   inputs: { value: value() },
@@ -231,10 +243,46 @@ export const log = defineOp({
   },
 });
 
+/** `core.flow.throttle` counters, one set per engine (keyed by its event bus). */
+const throttleLimiters = new WeakMap<object, RateLimiter>();
+function throttleLimiterFor(owner: object): RateLimiter {
+  let l = throttleLimiters.get(owner);
+  if (!l) throttleLimiters.set(owner, (l = new RateLimiter()));
+  return l;
+}
+
+export const throttle = defineOp({
+  type: "core.flow.throttle",
+  // Stateful (it counts) but touches nothing outside the process: a resumed
+  // run re-counting one hit is harmless.
+  effects: "idempotent",
+  title: "core.flow.throttle",
+  description:
+    "Let at most config.max passes through per config.window (ms, or \"30s\" / \"15m\" / \"1h\") → pulses `out`; " +
+    "over the limit → pulses `limited` (with `retryAfterMs`). Counts per node, and per `key` when wired " +
+    "(an email, a user id, a workflow id). Sliding window, in-process.",
+  inputs: { key: value(z.unknown()) },
+  outputs: { remaining: value(z.number()), retryAfterMs: value(z.number()) },
+  config: z.object({
+    max: z.number().int().positive(),
+    window: z.union([z.number().int().positive(), z.string()]).default("1m"),
+  }),
+  controlOut: ["out", "limited"],
+  execute: async (ctx) => {
+    const { max, window } = ctx.config as { max: number; window: number | string };
+    const key = ctx.input.has("key") ? await ctx.input.value("key") : undefined;
+    const scope = `${ctx.workflowId}:${ctx.nodeId}:${key === undefined ? "" : typeof key === "string" ? key : JSON.stringify(key)}`;
+    const v = throttleLimiterFor(ctx.services.events).hit(scope, { max, windowMs: parseDurationMs(window) });
+    void ctx.pulse(v.ok ? "out" : "limited");
+    return { remaining: v.remaining, retryAfterMs: v.retryAfterMs };
+  },
+});
+
 export const flowOps: OpDefinition[] = [
   branch,
   switchOp,
   gate,
+  throttle,
   sequence,
   parallel,
   join,

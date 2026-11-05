@@ -12,8 +12,8 @@ import type {
 } from "@pattern-js/mod-agents";
 
 export type ScriptedTurn =
-  | { kind: "text"; text: string; deltas?: string[] }
-  | { kind: "tool_call"; name: string; callId: string; args: Record<string, unknown> }
+  | { kind: "text"; text: string; deltas?: string[]; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } }
+  | { kind: "tool_call"; name: string; callId: string; args: Record<string, unknown>; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } }
   | { kind: "throw"; message: string }
   | { kind: "hang" };
 
@@ -38,7 +38,7 @@ export function scriptedModelService(turns: ScriptedTurn[]): AiModelService & { 
       }
       if (turn.kind === "text") {
         for (const delta of turn.deltas ?? [turn.text]) yield { type: "text-delta", delta };
-        yield { type: "finish", finishReason: "stop", message: { role: "assistant", content: turn.text } };
+        yield { type: "finish", finishReason: "stop", usage: turn.usage, message: { role: "assistant", content: turn.text } };
         return;
       }
       // tool_call
@@ -46,6 +46,7 @@ export function scriptedModelService(turns: ScriptedTurn[]): AiModelService & { 
       yield {
         type: "finish",
         finishReason: "tool-calls",
+        usage: turn.usage,
         message: {
           role: "assistant",
           content: "",

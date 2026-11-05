@@ -55,7 +55,7 @@ The **same key forever** decrypts the vault. Without it the vault loads *locked*
 (reads/writes fail with a setup hint); lose it and the ciphertext is
 unrecoverable, so back it up where you keep other root secrets.
 
-Read secrets in a workflow with `vault.read`; write them on the admin's **System →
+Read secrets in a workflow with `vault.read`; write them on the admin's **Resources →
 Secrets** page. The headline pairing is `@pattern-js/mod-ai`: a model wired inline
 resolves its provider's key by name (e.g. a vault secret named `OPENAI_API_KEY`
 for OpenAI) with no node wired at all.

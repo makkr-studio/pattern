@@ -2,7 +2,7 @@
 
 Working `providers` entries for the common issuers. In every case, register
 the redirect URI `https://your-host/auth/oidc/<id>/callback` in the IdP's app
-settings, and put the client secret in the vault (admin → System → Secrets) or
+settings, and put the client secret in the vault (admin → Resources → Secrets) or
 an env var.
 
 ## Google

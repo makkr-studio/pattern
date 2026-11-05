@@ -22,10 +22,10 @@ export const objectGenerate: OpDefinition = {
   inputs: objectInputs,
   outputs: { object: value(), usage: value(usageSchema) },
   execute: async (ctx) => {
-    const { model, system, messages } = await textInput(ctx);
+    const { model, system, messages, options } = await textInput(ctx);
     const schema = await ctx.input.value<Record<string, unknown>>("schema");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r = await generateObject({ model, system, messages, schema: jsonSchema(schema as any), abortSignal: ctx.signal });
+    const r = await generateObject({ model, instructions: system, messages, schema: jsonSchema(schema as any), abortSignal: ctx.signal, ...options });
     return { object: r.object, usage: mapUsage(r.usage) };
   },
 };
@@ -38,10 +38,10 @@ export const objectStream: OpDefinition = {
   inputs: objectInputs,
   outputs: { partialStream: stream(), object: value(), usage: value(usageSchema) },
   execute: async (ctx) => {
-    const { model, system, messages } = await textInput(ctx);
+    const { model, system, messages, options } = await textInput(ctx);
     const schema = await ctx.input.value<Record<string, unknown>>("schema");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = streamObject({ model, system, messages, schema: jsonSchema(schema as any), abortSignal: ctx.signal });
+    const result = streamObject({ model, instructions: system, messages, schema: jsonSchema(schema as any), abortSignal: ctx.signal, ...options });
     return {
       partialStream: iterableToStream(result.partialObjectStream),
       object: result.object,

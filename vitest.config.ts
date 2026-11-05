@@ -28,6 +28,8 @@ export default defineConfig({
       "@pattern-js/mod-docs": r("./packages/mod-docs/src/index.ts"),
       "@pattern-js/mod-buddy": r("./packages/mod-buddy/src/index.ts"),
       "@pattern-js/mod-vectors": r("./packages/mod-vectors/src/index.ts"),
+      "@pattern-js/mod-billing-stripe": r("./packages/mod-billing-stripe/src/index.ts"),
+      "@pattern-js/mod-billing": r("./packages/mod-billing/src/index.ts"),
       // runtime-node is loaded from its built dist (the worker pool needs built
       // JS to spawn workers); its own @pattern-js/core imports still alias above.
     },

@@ -6,6 +6,7 @@ import { OpsSection } from "./sections/OpsSection";
 import { EdgeKindsToy } from "./sections/EdgeKindsToy";
 import { MiniEditorSection } from "./sections/MiniEditorSection";
 import { DxAxSection } from "./sections/DxAxSection";
+import { OpenForBusiness } from "./sections/OpenForBusiness";
 import { Ecosystem } from "./sections/Ecosystem";
 import { ModalitiesSection } from "./sections/ModalitiesSection";
 import { EditsItself } from "./sections/EditsItself";
@@ -38,6 +39,7 @@ export function App() {
         <EdgeKindsToy />
         <MiniEditorSection />
         <DxAxSection />
+        <OpenForBusiness />
         <Ecosystem />
         <ModalitiesSection />
         <EditsItself />

@@ -21,6 +21,7 @@ const jsonSchema = z.record(z.string(), z.unknown());
 /** Declare a reusable schema; its output feeds config ports or validators. */
 export const schemaDefine: OpDefinition = {
   type: "core.schema.define",
+  effects: "pure",
   title: "core.schema.define",
   description:
     "Defines a schema (JSON Schema wire format) and emits it as a value. Wire `schema` into a " +
@@ -38,6 +39,7 @@ export const schemaDefine: OpDefinition = {
 /** Validate a value against a schema (wired or configured) at runtime. */
 export const schemaValidate: OpDefinition = {
   type: "core.schema.validate",
+  effects: "pure",
   title: "core.schema.validate",
   description:
     "Validates `value` against a schema (the `schema` input, else config.schema). Outputs " +

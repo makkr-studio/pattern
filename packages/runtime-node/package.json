@@ -1,6 +1,6 @@
 {
   "name": "@pattern-js/runtime-node",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Pattern runtime adapter for Node — HTTP/WS host, worker-thread pool, connection registry, sqlite trace sink.",
   "type": "module",
   "license": "MIT",
@@ -37,16 +37,16 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@pattern-js/core": "workspace:*",
     "@flystorage/file-storage": "^1.2.2",
-    "@flystorage/local-fs": "^1.2.0",
     "@flystorage/in-memory": "^1.1.0",
-    "zod": "^4.0.0",
-    "ws": "^8.18.0"
+    "@flystorage/local-fs": "^1.2.0",
+    "@pattern-js/core": "workspace:*",
+    "ws": "^8.22.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.12",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.2",
     "typescript": "^5.6.0"
   },
   "repository": {

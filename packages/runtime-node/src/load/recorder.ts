@@ -88,7 +88,7 @@ export class FlightRecorder implements TraceSink {
     if (this.recording) this.runs += 1;
   }
 
-  onRunEnd(run: { status: "ok" | "error" }): void {
+  onRunEnd(run: { status: "ok" | "error" | "canceled" }): void {
     this.concurrency = Math.max(0, this.concurrency - 1);
     if (this.recording && run.status === "error") this.runErrors += 1;
   }

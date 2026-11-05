@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Identity/PII/billing data (sqlite + config) — never commit.
+# (.pattern/ IS committed: it's your versioned workflow store.)
+.pattern-data/
+
+# Secrets — .env is loaded automatically by loadProject (existing env wins)
+.env

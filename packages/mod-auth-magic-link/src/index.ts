@@ -5,12 +5,13 @@
  * one sitting: it proves the SPI. The split of labor —
  *
  *  - **mod-identity** owns the kernel: single-use tokens, the `/auth/token`
- *    callback that turns a consumed token into a user + session, the signup
- *    policy, the login page.
+ *    and `/auth/code` callbacks that turn a consumed token into a user +
+ *    session, the signup policy, the login page.
  *  - **this mod** owns the *flow*: a "request a link" route that issues a
- *    login token for an email and hands it to the `identity.deliverToken`
- *    hook (an email/SMS/chat workflow — or the console fallback, which is
- *    the zero-config dev login).
+ *    login token (link + short code — the code is the installed-PWA path,
+ *    where the emailed link opens in the wrong cookie jar) and hands it to
+ *    the `identity.deliverToken` hook (an email/SMS/chat workflow — or the
+ *    console fallback, which is the zero-config dev login).
  *
  * It registers its login method in `ready` (after the identity service
  * exists — two-phase install), so listing order in pattern.config.json
@@ -47,8 +48,9 @@ const requestOp: OpDefinition = {
   type: "auth.magiclink.request",
   title: "auth.magiclink.request",
   description:
-    'Issue a single-use login link for an email and deliver it via the "identity.deliverToken" ' +
-    "hook (console fallback). Always responds identically — no account enumeration.",
+    'Issue a single-use login link + 6-digit sign-in code for an email and deliver both via the "identity.deliverToken" ' +
+    "hook (console fallback). The code completes the login in-place (POST {mount}/code) — the installed-PWA path. " +
+    "Always responds identically — no account enumeration.",
   reusable: false,
   // Pure: the workflow decomposes the form (the host parses urlencoded → an
   // object) into these ports + the request url (for the absolute link origin).
@@ -77,20 +79,41 @@ const requestOp: OpDefinition = {
     if (looksLikeEmail(email)) {
       const user = await svc.findUserByEmail(email);
       const shouldIssue = user ? !user.disabled : (await svc.getSignup()) === "open";
-      if (shouldIssue) {
-        const issued = await svc.issueToken({ purpose: "login", email, data: { next } });
-        await deliverToken(ctx, { email, path: issued.path, purpose: "login", origin, expiresAt: issued.expiresAt });
+      // The per-address budget: past it, nothing is sent, and the page below
+      // is identical, so the throttle reveals nothing either.
+      if (shouldIssue && !(await svc.signInEmailAllowed(email))) {
+        ctx.log("warn", "sign-in email not sent: this address hit its per-address budget (mod-identity rateLimit.perAddress)");
+      } else if (shouldIssue) {
+        // `code: true` — the same token also gets a short sign-in code, so an
+        // installed PWA (whose emailed link would open in the system browser's
+        // cookie jar) can complete the login right here via POST {mount}/code.
+        const issued = await svc.issueToken({ purpose: "login", email, data: { next }, code: true });
+        await deliverToken(ctx, {
+          email,
+          path: issued.path,
+          purpose: "login",
+          origin,
+          expiresAt: issued.expiresAt,
+          code: issued.code,
+        });
       }
     }
     // Identical response either way — nothing leaks about who exists or
-    // whether anything was sent. The workflow sets the text/html content-type.
-    return { html: renderSentPage(looksLikeEmail(email) ? email : "that address") };
+    // whether anything was sent (the code form always renders; a code for a
+    // non-account never matches). The workflow sets the text/html content-type.
+    return {
+      html: renderSentPage(looksLikeEmail(email) ? email : "that address", {
+        action: `${svc.options.mount}/code`,
+        email,
+        next,
+      }),
+    };
   },
 };
 
 /* ── the route ─────────────────────────────────────────────────────────── */
 
-function requestRoute(mount: string): Workflow {
+function requestRoute(mount: string, perClient: MagicLinkOptions["rateLimit"]): Workflow {
   return {
     id: "magic-link.route.request",
     name: `Identity · POST ${mount}/magic-link/request`,
@@ -99,7 +122,17 @@ function requestRoute(mount: string): Workflow {
       "hook (mod-email sends it; the console prints it otherwise). Responds with the \"check your email\" page.",
     source: "code",
     nodes: [
-      { id: "in", op: "boundary.http.request", config: { method: "POST", path: `${mount}/magic-link/request` } },
+      {
+        id: "in",
+        op: "boundary.http.request",
+        config: {
+          method: "POST",
+          path: `${mount}/magic-link/request`,
+          // One client IP's budget across all addresses (429 past it); the
+          // per-address budget lives in mod-identity (rateLimit.perAddress).
+          ...(perClient ? { rateLimit: { max: perClient.max, window: perClient.window, by: "ip" } } : {}),
+        },
+      },
       { id: "form", op: "core.object.extract", config: { keys: ["email", "next"] } },
       { id: "call", op: "auth.magiclink.request" },
       { id: "ct", op: "core.const.object", config: { value: { "content-type": "text/html; charset=utf-8" } } },
@@ -123,6 +156,12 @@ export interface MagicLinkOptions {
   mount?: string;
   /** Label on the login page. Default "Send me a sign-in link". */
   label?: string;
+  /**
+   * Sign-in requests one client IP may make per window, whatever addresses it
+   * types (429 past it). Default { max: 10, window: "15m" }; `false` turns it
+   * off. Each address also has its own budget: mod-identity `rateLimit.perAddress`.
+   */
+  rateLimit?: { max: number; window: number | string } | false;
 }
 
 
@@ -142,7 +181,7 @@ export function magicLinkMod(options: MagicLinkOptions = {}): PatternMod {
     name: "@pattern-js/mod-auth-magic-link",
     docs: { filesystem: "magic-link-docs", title: "Magic-link login", order: 41 },
     ops: [requestOp],
-    workflows: [requestRoute(mount)],
+    workflows: [requestRoute(mount, options.rateLimit ?? { max: 10, window: "15m" })],
     // `ready`, not `setup`: the identity service registers in identity's setup,
     // and every setup runs before any ready — order in the config is free.
     ready: (engine: Engine) => {

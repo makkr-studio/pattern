@@ -16,7 +16,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { localFs, provideFilesystem } from "@pattern-js/runtime-node";
-import { AUTH_LOGIN_URL, IDENTITY_SERVICE, defineMod, z, type Engine, type PatternMod } from "@pattern-js/core";
+import { AUTH_LOGIN_URL, ENGINE_INTROSPECT, IDENTITY_SERVICE, defineMod, z, type Engine, type PatternMod } from "@pattern-js/core";
 import { resolveOptions, type IdentityOptions } from "./options.js";
 import { DefaultIdentityService } from "./service.js";
 import { sessionAuthProvider } from "./auth-provider.js";
@@ -54,7 +54,7 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
     ops: identityOps,
     // Auth-page routes + the admin Access screens' dedicated routes (one
     // purposeful endpoint per screen and action, replacing the invoke path).
-    workflows: [...endpointWorkflows(opts.mount), ...identityAdminRoutes()],
+    workflows: [...endpointWorkflows(opts.mount, opts.rateLimit.perClient), ...identityAdminRoutes()],
     authProviders: [sessionAuthProvider(() => service), apiTokenAuthProvider(() => service)],
     hooks: [
       {
@@ -83,8 +83,16 @@ export function identityMod(options: IdentityOptions = {}): PatternMod {
       engine.provideService(IDENTITY_SERVICE, service);
       engine.provideService(AUTH_LOGIN_URL, `${opts.mount}/login`);
     },
-    ready: async () => {
+    ready: async (engine: Engine) => {
       if (!service) return;
+      // `pattern ops/validate/run`: an inspection, not a server; no link to mint.
+      if (engine.service(ENGINE_INTROSPECT)) return;
+      if (process.env.NODE_ENV === "production" && !process.env.PATTERN_PUBLIC_URL?.trim()) {
+        console.warn(
+          "[pattern] ⚠ NODE_ENV=production without PATTERN_PUBLIC_URL: sign-in and invite links will NOT be emailed " +
+            "(they would be built from the client-controlled Host header). Set PATTERN_PUBLIC_URL to your public origin.",
+        );
+      }
       // Bootstrap-on-empty: the first admin signs up through a one-time link.
       const count = await service.listUsers().then((u) => u.length);
       if (count > 0) return;

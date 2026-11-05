@@ -18,3 +18,13 @@ principal; `cookies` is the lower-level escape hatch). One caution: declare the
 input shape in **one** place. A JSON Schema here *and* a Zod schema on the op's
 port makes the edge fail the validator's structural check. See
 *Designing your API*.
+
+Cap what one client can spend with `rateLimit`:
+`{ "max": 10, "window": "15m", "by": "ip" }` answers `429` with a
+`Retry-After` header once a client IP has made 10 requests in the sliding
+window, and the workflow never runs. `"by": "user"` budgets each signed-in
+user (anonymous callers fall back to their IP). Counters live in the process.
+The `ip` output carries the client address the host resolved: the socket
+peer, or the address the trusted proxies forwarded when `PATTERN_TRUST_PROXY`
+is set. Wire it into `core.flow.throttle` for budgets that depend on the
+request content.

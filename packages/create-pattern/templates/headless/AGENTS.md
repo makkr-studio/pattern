@@ -189,7 +189,7 @@ returns the link in its result as `copy` (handy for scripted/seed flows), and
 sign-ins print to the console until you subscribe a delivery workflow to the
 `identity.deliverToken` hook — or install `@pattern-js/mod-email` plus a driver
 (`mod-email-resend` / `mod-email-smtp`) and create a `default` account in
-admin → System → Email: its packaged workflow claims the hook automatically.
+admin → Resources → Email: its packaged workflow claims the hook automatically.
 The trigger's `user` output port carries
 `{ id, email?, scopes } | null`; wire it to scope data per user. To add app
 scopes, wrap the mod: `identityMod({ roles: { editor: ["edit","read"] } })` is

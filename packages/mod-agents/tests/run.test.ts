@@ -84,6 +84,19 @@ const merged = (res: { outputs: Record<string, Record<string, unknown>> }) =>
   };
 
 describe("agents.run against a scripted model service", () => {
+  it("a failed turn hands back the history it started from (saving it never wipes the conversation)", async () => {
+    const { engine } = await boot([{ kind: "throw", message: "provider down" }]);
+    engine.registerWorkflow(runnerWorkflow());
+    const prior = [
+      { role: "user", content: "earlier question" },
+      { role: "assistant", content: "earlier answer" },
+    ];
+    const res = await engine.run("agent-run", { input: { input: "hi", history: prior } });
+    const out = merged(res as never);
+    expect(out.stopReason).toBe("error");
+    expect(out.history).toEqual(prior);
+  });
+
   it("streams text deltas and settles output/history/done", async () => {
     const { engine } = await boot([{ kind: "text", text: "Hello Benoit!", deltas: ["Hello ", "Benoit!"] }]);
     engine.registerWorkflow(runnerWorkflow());

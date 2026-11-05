@@ -41,7 +41,7 @@ my-app/
   workflows/              # workflows as JSON files (the app's behavior)
   mods/                   # app-local mods (optional)
   src/index.ts            # loadProject() → start()
-  .env.example            # PATTERN_VAULT_KEY, provider keys (e.g. OPENAI_API_KEY), feature switches
+  .env.example            # PATTERN_VAULT_KEY + feature switches (provider keys live in the encrypted vault)
   AGENTS.md               # recipes for coding agents working on the app
 ```
 
